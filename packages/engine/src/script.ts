@@ -185,7 +185,7 @@ export type Effect =
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
   | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref }
-  | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref }
+  | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean }
   | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
   | { kind: 'setPT'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }

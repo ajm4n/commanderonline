@@ -50,6 +50,10 @@ export interface ParsedNoun {
   text: string;
   /** Head noun was plural ("Creatures you control"). */
   plural: boolean;
+  /** Minimum number of targets when "up to" is really "one, two, or three". */
+  minCount?: number;
+  /** "target player controls" / "that player controls": the controller is a player phrase resolved by the sentence parser. */
+  controllerPhrase?: string;
 }
 
 const CREATURE_TYPE_RE = /^[A-Z][a-z]+(?:-[A-Z][a-z]+)?$/;
@@ -84,6 +88,11 @@ export function parseNoun(raw: string): ParsedNoun | null {
 
   // Quantifiers
   text = text.replace(/^each of /i, '');
+  // "one, two, or three target creatures" → up to three, at least one
+  if ((m = text.match(/^one, two, or three target (.+)$/i)) || (m = text.match(/^one or two target (.+)$/i))) {
+    const inner = parseNoun(`target ${m[1]}`);
+    return inner ? { ...inner, count: /three/i.test(m[0]) ? 3 : 2, upTo: true, minCount: 1 } : null;
+  }
   if ((m = text.match(/^up to (\w+) (other |another )?target (.+)$/i))) {
     const n = wordToNumber(m[1]);
     if (n === null) return null;
@@ -137,7 +146,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
 
   // Trailing qualifiers
   const quals: string[] = [];
-  const QUAL_RE = /\s+(in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control|you own|you do not control|an opponent controls|your opponents control|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|with total power and toughness \d+ or less|of the chosen type|of the chosen creature type|with the greatest power among creatures (?:that player|you) controls?|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
+  const QUAL_RE = /\s+(in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control|you own|you do not control|an opponent controls|your opponents control|target player controls|target opponent controls|its controller controls|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|with total power and toughness \d+ or less|of the chosen type|of the chosen creature type|with the greatest power among creatures (?:that player|you) controls?|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
   for (;;) {
     const q = text.match(QUAL_RE);
     if (!q) break;
@@ -211,9 +220,10 @@ export function parseNoun(raw: string): ParsedNoun | null {
     const leftHead = left[left.length - 1];
     const types = new Set(result.filter.types ?? []);
     const subtypes = new Set(result.filter.subtypes ?? []);
-    const addHead = (h: string | undefined) => {
-      if (!h) return false;
-      const hl = h.toLowerCase().replace(/,$/, '');
+    const addHead = (hRaw: string | undefined) => {
+      if (!hRaw) return false;
+      const h = hRaw.replace(/,$/, '');
+      const hl = h.toLowerCase();
       if (hl in TYPE_WORDS) types.add(TYPE_WORDS[hl]);
       else if (h in SUBTYPE_ALIASES) subtypes.add(SUBTYPE_ALIASES[h]);
       else if (CREATURE_TYPE_RE.test(h) && !NOT_TYPES.has(h)) subtypes.add(singularize(h));
@@ -306,9 +316,9 @@ function applyQualifier(q: string, r: ParsedNoun) {
     r.filter.hasCounter = m[1];
   } else if (q === 'you control') r.filter.controller = 'you';
   else if (q === 'you own') r.filter.owner = 'you';
-  else if (q === 'you do not control' || q === 'an opponent controls' || q === 'your opponents control' || q === 'that opponent controls') r.filter.controller = 'opponent';
+  else if (q === 'you do not control' || q === 'an opponent controls' || q === 'your opponents control') r.filter.controller = 'opponent';
   else if (q === 'you do not own' || q === 'an opponent owns') r.filter.owner = 'opponent';
-  else if (q === 'that player controls' || q === 'defending player controls') r.filter.controller = 'any';
+  else if (q === 'that player controls' || q === 'defending player controls' || q === 'target player controls' || q === 'target opponent controls' || q === 'its controller controls' || q === 'that opponent controls') r.controllerPhrase = q.replace(/ controls$/, '');
   else if (q === 'from your graveyard' || q === 'in your graveyard') {
     r.filter.zone = 'graveyard';
     r.filter.owner = 'you';
@@ -367,7 +377,7 @@ function applyQualifier(q: string, r: ParsedNoun) {
 export function toTargetSpec(n: ParsedNoun): TargetSpec {
   const desc = n.text;
   const count = n.count === 'X' ? 1 : n.count;
-  const spec: TargetSpec = { description: desc, kind: n.kind, min: n.upTo ? 0 : count, max: count };
+  const spec: TargetSpec = { description: desc, kind: n.kind, min: n.upTo ? (n.minCount ?? 0) : count, max: count };
   if (n.kind === 'player' || n.kind === 'objectOrPlayer') spec.playerFilter = n.playerFilter ?? 'any';
   if (n.kind === 'object' || n.kind === 'objectOrPlayer' || n.kind === 'any' || n.kind === 'spell') {
     const f: ObjectFilter = { ...n.filter };

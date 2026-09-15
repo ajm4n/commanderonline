@@ -29,6 +29,11 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   const names = [faceName];
   const sn = shortName(faceName);
   if (sn) names.push(sn);
+  // Planeswalkers refer to themselves by first name ("Ajani deals 3 damage").
+  if (/Planeswalker/.test(card.typeLine) && !faceName.includes(',') && faceName.includes(' ')) {
+    const first = faceName.split(' ')[0];
+    if (first.length >= 3 && /^[A-Z]/.test(first)) names.push(first);
+  }
   for (const n of names) {
     const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     t = t.replace(new RegExp(esc + "'s", 'g'), "~'s");

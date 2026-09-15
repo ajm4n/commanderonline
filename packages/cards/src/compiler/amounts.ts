@@ -30,6 +30,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'that much' || t === 'that many' || t === 'that much damage' || t === 'that amount') return { kind: 'triggerAmount' };
   if (t === 'the life lost this way' || t === 'the total life lost this way' || t === 'the total amount of life lost this way' || t === 'the amount of life lost this way') return { kind: 'ctxMemory', key: 'lifeLostThisWay' };
   if (t === 'the number of cards milled this way' || t === 'the number of cards put into your graveyard this way') return { kind: 'ctxMemory', key: 'lastMoved' };
+  if (t === 'the number of cards revealed this way') return { kind: 'ctxMemory', key: 'revealedCount' };
   if (t === 'twice that much' || t === 'twice that many') return { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 };
   if (t === 'that many cards minus one' || t === 'that many minus one') return { kind: 'sum', parts: [{ kind: 'discardedThisWay', ref: { ref: 'iter' } }, -1] };
   if (t === 'the greatest number of cards a player discarded this way') return { kind: 'ctxMemory', key: 'maxDiscarded' };

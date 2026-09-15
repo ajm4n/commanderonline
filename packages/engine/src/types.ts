@@ -311,6 +311,8 @@ export type RuleModification =
   | { kind: 'cantBeBlockedByPowerLessThanSource' }
   /** "~ can't attack unless defending player controls an Island." */
   | { kind: 'cantAttackUnlessDefenderControls'; filter: ObjectFilter }
+  /** "~ can't be blocked by creatures with flying" / "by Walls" */
+  | { kind: 'cantBeBlockedBy'; filter: ObjectFilter }
   | { kind: 'maxBlockers'; count: number }
   | { kind: 'custom'; tag: string; data?: unknown };
 
@@ -370,6 +372,8 @@ export interface ObjectFilter {
   lowestToughness?: boolean;
   /** Must have the creature type stored in the source's memory under this key ("of the chosen type"). */
   chosenSubtypeKey?: string;
+  /** Controlled by the player a Ref resolves to ("lands target player controls"); bound to `controller` when the effect runs. */
+  controllerRef?: import('./script.js').Ref;
   custom?: string;
 }
 

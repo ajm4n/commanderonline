@@ -73,6 +73,11 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (gy) return SELF;
   const noun = parseNoun(t);
   if (!noun) return null;
+  if (noun.controllerPhrase) {
+    const pr = playerRef(noun.controllerPhrase, ctx);
+    if (!pr) return null;
+    noun.filter.controllerRef = pr;
+  }
   if (noun.target) {
     const spec = toTargetSpec(noun);
     ctx.targets.push(spec);
@@ -95,6 +100,11 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
 export function chooseRef(phrase: string, ctx: ParseCtx, who: Ref = YOU, upTo = false): { pre: Effect[]; ref: Ref } | null {
   const noun = parseNoun(phrase.trim());
   if (!noun || noun.target || noun.each) return null;
+  if (noun.controllerPhrase) {
+    const pr = playerRef(noun.controllerPhrase, ctx);
+    if (!pr) return null;
+    noun.filter.controllerRef = pr;
+  }
   const f: ObjectFilter = { ...noun.filter };
   if (!f.zone) f.zone = 'battlefield';
   if (f.zone === 'battlefield' && !f.controller && who.ref === 'controller') f.controller = 'you';
@@ -646,9 +656,24 @@ const PATTERNS: Pattern[] = [
   [/^put (?:a|an|(\w+|X)) ([+-]\d+\/[+-]\d+|\w+) counters? on (.+)$/i, (m, ctx) => {
     const n = m[1] ? wordToNumber(m[1]) : 1;
     if (n === null) return null;
-    const isObjectTarget = !/^(you|each player|each opponent|target player|target opponent|that player)$/i.test(m[3]);
+    const isObjectTarget = !/^(you|each player|each opponent|target player|target opponent|that player|defending player|its controller|that creature's controller|the chosen player|the chosen opponent)$/i.test(m[3]);
     const ref = isObjectTarget ? objRef(m[3], ctx) : playerRef(m[3], ctx);
+    if (!ref && isObjectTarget && /^(?:a|an) /i.test(m[3])) {
+      const c = chooseRef(m[3], ctx);
+      if (c) return [...c.pre, { kind: 'addCounters', counter: m[2], amount: n, on: c.ref }];
+    }
     return ref ? [{ kind: 'addCounters', counter: m[2], amount: n, on: ref }] : null;
+  }],
+  [/^distribute (\w+|X) ([+-]\d+\/[+-]\d+|\w+) counters among (.+)$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const ref = objRef(m[3], ctx);
+    return n !== null && ref ? [{ kind: 'addCounters', counter: m[2], amount: n, on: ref, divided: true }] : null;
+  }],
+  [/^(?:(.+?) )?draws? a card for each (.+)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const noun = parseNoun(m[2]);
+    if (!who || !noun) return null;
+    return [{ kind: 'draw', amount: { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } }, who }];
   }],
   [/^put (?:a|an|(\w+|X)) ([+-]\d+\/[+-]\d+|\w+) counters? on (.+?) for each (.+)$/i, (m, ctx) => {
     const n = m[1] ? wordToNumber(m[1]) : 1;
@@ -1048,9 +1073,9 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
     const b = anyRef(parts[1], ctx);
     if (a && b) return [mk(a), mk(b)];
   }
-  if (/^(?:any number of|up to \w+) targets?$/i.test(t) || /^any target$/i.test(t) || /^up to (\w+) targets?$/i.test(t) || /^one or two targets$/i.test(t)) {
+  if (/^(?:any number of|up to \w+) targets?$/i.test(t) || /^any target$/i.test(t) || /^up to (\w+) targets?$/i.test(t) || /^one or two targets$/i.test(t) || /^one, two, or three targets$/i.test(t)) {
     const um = t.match(/^up to (\w+) targets?$/i);
-    const n = um ? wordToNumber(um[1]) : /^one or two/i.test(t) ? 2 : 1;
+    const n = um ? wordToNumber(um[1]) : /^one or two/i.test(t) ? 2 : /^one, two, or three/i.test(t) ? 3 : 1;
     ctx.targets.push({ description: t, kind: 'any', min: um ? 0 : 1, max: typeof n === 'number' ? n : 10 });
     const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
     ctx.lastObj = ref;

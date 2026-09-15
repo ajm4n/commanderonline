@@ -220,6 +220,16 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'addCounters':
+      if (e.divided) {
+        const objs = g.resolveObjects(e.on, ctx).filter((o) => o.zone === 'battlefield');
+        const total = amt(e.amount);
+        if (objs.length > 1) {
+          const resp = yield* g.ask({ type: 'distribute', player: ctx.controller, prompt: `Distribute ${total} ${e.counter} counters`, amount: total, targets: objs.map((o) => ({ kind: 'object' as const, id: o.id })), minPer: 1, sourceId: ctx.sourceId ?? undefined });
+          const amounts = resp.type === 'distribute' ? resp.amounts : objs.map((_, i) => (i === 0 ? total : 0));
+          objs.forEach((o, i) => g.addCounters(o.id, e.counter, amounts[i], ctx.sourceId ?? undefined));
+        } else for (const o of objs) g.addCounters(o.id, e.counter, total, ctx.sourceId ?? undefined);
+        return;
+      }
       for (const o of g.resolveObjects(e.on, ctx)) if (o.zone === 'battlefield' || o.zone === 'stack') g.addCounters(o.id, e.counter, amt(e.amount), ctx.sourceId ?? undefined);
       // Player counters (poison / experience)
       for (const t of g.resolveRef(e.on, ctx)) {
@@ -762,6 +772,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           else g.moveObject(hit, e.destination, { skipEvents: e.destination === 'hand', cause: e.destination === 'exile' ? 'exile' : 'other' });
           ctx.memory['lastMoved'] = [hit];
         }
+        ctx.memory['revealedCount'] = ((ctx.memory['revealedCount'] as number) ?? 0) + seen.length;
         const rest = seen.filter((id) => id !== hit);
         if (e.rest === 'bottom') for (const id of g.rng.shuffle(rest)) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
         else for (const id of rest) g.moveObject(id, e.rest, { cause: e.rest === 'exile' ? 'exile' : 'mill' });

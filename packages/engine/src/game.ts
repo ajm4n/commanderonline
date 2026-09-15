@@ -1066,7 +1066,7 @@ export class Game {
     const cmp = (a: number, op: string, b: number) => (op === '>=' ? a >= b : op === '<=' ? a <= b : op === '==' ? a === b : op === '>' ? a > b : op === '<' ? a < b : a !== b);
     switch (c.kind) {
       case 'count':
-        return cmp(objectsMatching(this, c.filter, { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }).length, c.op, this.resolveAmount(c.value, ectx));
+        return cmp(objectsMatching(this, this.bindFilter(c.filter, ectx), { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }).length, c.op, this.resolveAmount(c.value, ectx));
       case 'life': {
         const ps = this.resolvePlayers(c.ref, ectx);
         return ps.every((p) => cmp(this.player(p).life, c.op, this.resolveAmount(c.value, ectx)));
@@ -1156,7 +1156,7 @@ export class Game {
     const fctx: FilterContext = { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x };
     switch (a.kind) {
       case 'count':
-        return objectsMatching(this, a.filter, fctx).length + (a.plus ?? 0);
+        return objectsMatching(this, this.bindFilter(a.filter, ctx), fctx).length + (a.plus ?? 0);
       case 'countersOn':
         return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + (o.counters[a.counter] ?? 0), 0);
       case 'power':
@@ -1256,6 +1256,15 @@ export class Game {
     }
   }
 
+  /** Bind a filter's `controllerRef` to a concrete player for this effect context. */
+  bindFilter(filter: import('./types.js').ObjectFilter, ctx: EffectContext): import('./types.js').ObjectFilter {
+    if (!filter.controllerRef) return filter;
+    const p = this.resolvePlayers(filter.controllerRef, ctx)[0];
+    const { controllerRef: _cr, ...rest } = filter;
+    void _cr;
+    return p ? { ...rest, controller: p } : { ...rest, controller: '__nobody__' };
+  }
+
   /** Resolve a Ref to concrete targets (objects and/or players). */
   resolveRef(ref: Ref, ctx: EffectContext): Target[] {
     const objT = (ids: (ObjectId | undefined | null)[]): Target[] => ids.filter((x): x is ObjectId => typeof x === 'number' && !!this.state.objects[x]).map((id) => ({ kind: 'object', id }));
@@ -1300,7 +1309,7 @@ export class Game {
       case 'attachments':
         return objT(ctx.sourceId !== null ? this.state.objects[ctx.sourceId]?.attachments ?? [] : []);
       case 'all':
-        return objT(objectsMatching(this, ref.filter, { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }).map((o) => o.id));
+        return objT(objectsMatching(this, this.bindFilter(ref.filter, ctx), { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }).map((o) => o.id));
       case 'iter':
         return ctx.iter ? [ctx.iter] : [];
       case 'lastCreated':

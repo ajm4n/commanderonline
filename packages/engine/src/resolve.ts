@@ -139,8 +139,11 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
 function* runSpellEffects(g: Game, spell: SpellAbilitySpec, item: StackItem, ctx: EffectContext): Gen {
   if (spell.modes && spell.modes.length) {
     const modes = item.modes ?? [];
+    // Shared effects before the modes ("Destroy target creature, then choose one —"); their targets come first.
+    const shared = spell.targets?.length ?? 0;
+    if (spell.effects.length) yield* executeEffects(g, spell.effects, { ...ctx, targets: ctx.targets.slice(0, shared), targetSlots: ctx.targetSlots?.slice(0, shared) });
     // Targets were chosen per mode in order; re-slice targets per mode.
-    let slotOffset = 0;
+    let slotOffset = shared;
     for (const m of modes) {
       const mode = spell.modes[m];
       if (!mode) continue;

@@ -235,6 +235,12 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     // Modal spells
     let maxModesIf: { condition: Condition; max: number } | undefined;
     let repeatable = false;
+    if ((m = line.match(/^Choose (one|two|one or both)\. (.+?), then —$/i))) {
+      const r = parseEffects(m[2], spellCtx);
+      spellEffects.push(...r.effects);
+      if (r.unhandled.length) unhandledLines.push(...r.unhandled);
+      line = `Choose ${m[1]}`;
+    }
     if ((m = line.match(/^Choose (one)\. If you control a commander as you cast (?:this spell|~), you may choose both instead\.?$/i))) {
       maxModesIf = { condition: { kind: 'controlsCommander' }, max: 2 };
       line = 'Choose one';
@@ -425,7 +431,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   // Dice result rows ("1—9 | effect") attach to the preceding roll.
   void 0;
   if (isSpell || modal || spellEffects.length) {
-    if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, maxModesIf: modalMaxIf, modesRepeatable: modalRepeatable || undefined, effects: [], targets: [] });
+    if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, maxModesIf: modalMaxIf, modesRepeatable: modalRepeatable || undefined, effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : [] });
     else abilities.push({ kind: 'spell', effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : undefined });
     void spellTargets;
   }

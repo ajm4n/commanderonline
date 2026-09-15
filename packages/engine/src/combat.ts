@@ -67,6 +67,7 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
     if (r.kind === 'cantBeBlockedByPowerLE' && (bch.power ?? 0) <= r.power) return false;
     if (r.kind === 'cantBeBlockedByPowerGE' && (bch.power ?? 0) >= r.power) return false;
     if (r.kind === 'cantBeBlockedByPowerLessThanSource' && (bch.power ?? 0) < (ach.power ?? 0)) return false;
+    if (r.kind === 'cantBeBlockedBy' && matchesFilter(g, blocker, { ...r.filter, zone: 'battlefield' }, { sourceId: attacker.id, controller: attacker.controller })) return false;
     if (r.kind === 'custom' && r.tag === 'ringBearer' && (bch.power ?? 0) > (ach.power ?? 0)) return false;
   }
   // "Target creature can't block ~ this turn"
@@ -143,7 +144,9 @@ function* declareAttackers(g: Game, active: PlayerId): Gen {
     attacks = resp.attacks;
     const valid = attacks.every((a) => candidates.some((c) => c.id === a.attacker && c.canAttack.some((t) => t === a.target))) && new Set(attacks.map((a) => a.attacker)).size === attacks.length;
     const mustOk = candidates.filter((c) => c.mustAttack).every((c) => attacks.some((a) => a.attacker === c.id));
-    if (valid && mustOk) break;
+    // "~ can't attack alone"
+    const aloneOk = attacks.length !== 1 || !g.characteristics(attacks[0].attacker).rules.some((r) => r.kind === 'custom' && (r.tag === 'cantAttackAlone' || r.tag === 'cantAttackOrBlockAlone'));
+    if (valid && mustOk && aloneOk) break;
     g.log(valid ? 'Some creatures must attack this combat.' : 'Invalid attack declaration.');
   }
   g.state.turn.attackers = attacks.map((a) => a.attacker);
@@ -182,7 +185,8 @@ function* declareBlockers(g: Game): Gen {
       const perBlocker = new Map<ObjectId, number>();
       for (const b of blocks) perBlocker.set(b.blocker, (perBlocker.get(b.blocker) ?? 0) + 1);
       const countOk = [...perBlocker].every(([id, n]) => n <= 1 + g.characteristics(id).rules.filter((r) => r.kind === 'custom' && r.tag === 'extraBlock').length);
-      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && countOk;
+      const blockAloneOk = blocks.length !== 1 || !g.characteristics(blocks[0].blocker).rules.some((r) => r.kind === 'custom' && (r.tag === 'cantBlockAlone' || r.tag === 'cantAttackOrBlockAlone'));
+      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && countOk && blockAloneOk;
       // Block requirements: "must be blocked if able", "all creatures able to block ~ do so", "target creature blocks ~ this turn if able".
       const requirementsOk = mine.every((a) => {
         const rules = g.characteristics(a.id).rules;
