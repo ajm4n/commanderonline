@@ -1,5 +1,6 @@
-import { loadCardDb } from '../../src/db-node.js';
-import { compileCard } from '../../src/compiler/index.js';
+/** Rank the first unhandled line of every uncompiled card, plus planeswalker samples: `npx tsx scripts/analyze.ts`. */
+import { loadCardDb } from '../src/db-node.js';
+import { compileCard } from '../src/compiler/index.js';
 const db = await loadCardDb();
 const key = (u: string) => u.replace(/\{[^}]+\}/g, '{M}').replace(/\b\d+\b/g, 'N').slice(0, 110);
 const first = new Map<string, number>(); const ex = new Map<string, string>();

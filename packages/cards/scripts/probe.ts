@@ -1,6 +1,7 @@
-import { loadCardDb } from '../../src/db-node.js';
-import { compileCard } from '../../src/compiler/index.js';
-import { normalizeOracle } from '../../src/compiler/text.js';
+/** Print how given cards compile: `npx tsx scripts/probe.ts "Card Name" ...` (set DUMP=1 for the full script). */
+import { loadCardDb } from '../src/db-node.js';
+import { compileCard } from '../src/compiler/index.js';
+import { normalizeOracle } from '../src/compiler/text.js';
 const db = await loadCardDb();
 const names = process.argv.slice(2);
 for (const n of names) {

@@ -53,10 +53,10 @@ try {
   }
   assert(landPlayer !== null, 'a land was played through the UI');
   const other = landPlayer === a ? b : a;
-  await waitFor(other, (x) => x.view.battlefield.length >= 1, { label: 'other player sees the land' });
-  const so = await state(other);
-  const land = so.view.objects[so.view.battlefield[0]];
-  assert(land && land.controller !== so.view.you && land.types.includes('Land'), `opponent's land is visible to the other browser (${land?.name})`);
+  // Both players may have played lands by now: look for one the observer does not control.
+  const so = await waitFor(other, (x) => x.view.battlefield.some((id) => x.view.objects[id]?.controller !== x.view.you), { label: 'other player sees the land' });
+  const land = so.view.battlefield.map((id) => so.view.objects[id]).find((o) => o && o.controller !== so.view.you);
+  assert(land && land.types.includes('Land'), `opponent's land is visible to the other browser (${land?.name})`);
   await a.shot('02-board');
   await b.shot('02-board');
   // Reconnect: reload B and make sure it rejoins the game.
