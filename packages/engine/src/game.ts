@@ -66,6 +66,8 @@ export interface DelayedTrigger {
   once: boolean;
   /** Extra context captured when the delayed trigger was created. */
   context: Record<string, unknown>;
+  /** When set, the trigger refers to that specific object: it only fires while the source is still in this zone (rule 400.7). */
+  sourceZone?: ZoneName;
 }
 
 export interface GameState {
@@ -289,8 +291,9 @@ export class Game {
   }
 
   /** Yield a decision and validate the response type. Re-asks on invalid input. */
-  *ask(d: DecisionInput): Gen<Response> {
-    const decision = { ...d, id: this.state.nextDecisionId++ } as Decision;
+  *ask(d: DecisionInput, opts: { reuseId?: number; error?: string } = {}): Gen<Response> {
+    const decision = { ...d, id: opts.reuseId ?? this.state.nextDecisionId++ } as Decision;
+    if (opts.error) (decision as { error?: string }).error = opts.error;
     for (;;) {
       const resp: Response = yield decision;
       if (resp && resp.type === 'manual') {
@@ -838,6 +841,11 @@ export class Game {
       if (dt.event !== event.name) continue;
       const src = this.state.objects[dt.sourceId];
       const evalObj = src ?? (event.snapshot as GameObject);
+      if (dt.sourceZone && src?.zone !== dt.sourceZone) {
+        // The object it referred to has changed zones: it is a new object and the delayed trigger does nothing.
+        if (dt.once) this.state.delayedTriggers = this.state.delayedTriggers.filter((x) => x.id !== dt.id);
+        continue;
+      }
       if (dt.filter && !this.triggerMatches(dt.filter, event, evalObj, dt.controller, lkiCh)) continue;
       this.pendingTriggers.push({
         sourceId: dt.sourceId,
@@ -1719,6 +1727,8 @@ export class Game {
   *priorityRound(): Gen {
     let current = this.state.turn.activePlayer;
     let passes = 0;
+    let failed: { id: number; error: string } | null = null;
+    let askId = -1;
     for (;;) {
       if (this.state.over) return;
       yield* checkStateBasedActions(this);
@@ -1745,7 +1755,10 @@ export class Game {
       if (nothingToDo && this.config.autoPassWhenNothingToDo) {
         resp = { type: 'pass' };
       } else {
-        resp = yield* this.ask(decision);
+        // After a failed action the same player is re-asked under the same decision id, so clients can tell it is a retry.
+        askId = failed ? failed.id : this.state.nextDecisionId;
+        resp = yield* this.ask(decision, failed ? { reuseId: failed.id, error: failed.error } : {});
+        failed = null;
       }
       if (resp.type === 'pass') {
         passes++;
@@ -1767,6 +1780,8 @@ export class Game {
       else if (resp.type === 'activate') acted = yield* activateAbility(this, current, resp.objectId, resp.abilityIndex, resp);
       if (!acted) {
         // Action was cancelled or illegal: same player keeps priority.
+        const what: string = 'objectId' in resp ? this.nameOf(resp.objectId) : 'that';
+        failed = { id: askId, error: `Could not ${resp.type === 'playLand' ? 'play' : resp.type === 'activate' ? 'activate' : 'cast'} ${what}.` };
       }
     }
   }

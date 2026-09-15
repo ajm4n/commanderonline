@@ -310,7 +310,7 @@ export function GameScreen() {
       {ui.menu?.kind === 'object' && menuObj && <ObjectMenu view={view} obj={menuObj} at={ui.menu} decision={decision} onClose={() => ui.setMenu(null)} manual={manual} onCast={(o) => cast(o)} onPlayLand={playLand} onActivate={activate} />}
       {ui.menu?.kind === 'player' && <PlayerMenu view={view} playerId={ui.menu.id} at={ui.menu} onClose={() => ui.setMenu(null)} manual={manual} />}
       {ui.browse && <ZoneBrowser view={view} player={ui.browse.player} zone={ui.browse.zone} highlights={highlights} decisionActive={decisionActive} handlers={handlers} onClose={() => ui.setBrowse(null)} />}
-      <Dialogs view={view} manual={manual} onCast={(o, i) => cast(o, i)} onPlayLand={playLand} onConcede={concede} />
+      <Dialogs view={view} manual={manual} onCast={(o, i, alt) => cast(o, i, alt)} onPlayLand={playLand} onConcede={concede} />
     </div>
   );
 }

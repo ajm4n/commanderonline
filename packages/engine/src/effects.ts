@@ -840,7 +840,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'delayedTrigger':
-      g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: e.event, filter: e.filter, effects: e.effects, text: e.text, controller: ctx.controller, sourceId: ctx.sourceId ?? -1, once: e.once ?? true, context: { ...ctx.triggerContext, delayedTargets: ctx.targets, delayedMemory: { ...ctx.memory } } });
+      // A delayed trigger about "this object" stops applying once it changes zones.
+      g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: e.event, filter: e.filter, effects: e.effects, text: e.text, controller: ctx.controller, sourceId: ctx.sourceId ?? -1, once: e.once ?? true, context: { ...ctx.triggerContext, delayedTargets: ctx.targets, delayedMemory: { ...ctx.memory } } , sourceZone: JSON.stringify(e.effects).includes('"ref":"self"') && ctx.sourceId != null ? g.state.objects[ctx.sourceId]?.zone : undefined });
       return;
     case 'log':
       g.log(e.text);
