@@ -282,8 +282,8 @@ export type Modification =
   | { layer: 4; addTypes?: string[]; removeTypes?: string[]; setTypes?: string[]; addSubtypes?: string[]; addSupertypes?: Supertype[] }
   | { layer: 5; setColors?: Color[]; addColors?: Color[] }
   | { layer: 6; addKeywords?: string[]; removeKeywords?: string[]; loseAllAbilities?: boolean; addAbilityText?: string[] }
-  | { layer: '7b'; setPower?: number; setToughness?: number }
-  | { layer: '7c'; power: number; toughness: number }
+  | { layer: '7b'; setPower?: number; setToughness?: number; powerAmount?: import('./script.js').Amount; toughnessAmount?: import('./script.js').Amount }
+  | { layer: '7c'; power: number; toughness: number; /** Multiply by the number of objects matching ("+1/+1 for each artifact you control"). */ perCount?: ObjectFilter }
   | { layer: '7d'; switchPT: true }
   | { layer: 'control'; controller: PlayerId | 'sourceController' } // layer 2
   | { layer: 'copy'; card: CardData } // layer 1
@@ -306,6 +306,11 @@ export type RuleModification =
   | { kind: 'damagePrevention'; amount: number | 'all' }
   | { kind: 'hasteLike' }
   | { kind: 'cantBeBlockedByPowerLE'; power: number }
+  | { kind: 'cantBeBlockedByPowerGE'; power: number }
+  /** "Creatures with power less than ~'s power can't block it." */
+  | { kind: 'cantBeBlockedByPowerLessThanSource' }
+  /** "~ can't attack unless defending player controls an Island." */
+  | { kind: 'cantAttackUnlessDefenderControls'; filter: ObjectFilter }
   | { kind: 'maxBlockers'; count: number }
   | { kind: 'custom'; tag: string; data?: unknown };
 
@@ -361,6 +366,8 @@ export interface ObjectFilter {
   ptSumLE?: number;
   /** Power equal to the greatest power among objects matching the rest of the filter for the same controller. */
   highestPower?: boolean;
+  /** Toughness equal to the least toughness among objects matching the rest of the filter for the same controller (bolster). */
+  lowestToughness?: boolean;
   custom?: string;
 }
 

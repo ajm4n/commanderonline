@@ -1,8 +1,12 @@
 import type { Game, Gen } from './game.js';
 import type { GameObject, ObjectId, PlayerId, Step, Target } from './types.js';
 import { summoningSick } from './casting.js';
-import { protectionApplies } from './filters.js';
+import { protectionApplies, matchesFilter } from './filters.js';
 import { BASIC_LAND_TYPES } from './typeline.js';
+
+function matchesFilterFor(g: Game, id: ObjectId, filter: import('./types.js').ObjectFilter, controller: PlayerId): boolean {
+  return matchesFilter(g, g.obj(id), { ...filter, zone: 'battlefield' }, { sourceId: null, controller });
+}
 
 function creaturesOf(g: Game, p: PlayerId): GameObject[] {
   return g.state.battlefield.map((id) => g.obj(id)).filter((o) => o.controller === p && !o.phasedOut && g.characteristics(o.id).types.includes('Creature'));
@@ -25,7 +29,9 @@ function goadedBy(g: Game, o: GameObject): PlayerId[] {
 function attackTargets(g: Game, o: GameObject): (PlayerId | ObjectId)[] {
   const out: (PlayerId | ObjectId)[] = [];
   const goaders = goadedBy(g, o);
+  const unless = g.characteristics(o.id).rules.filter((r) => r.kind === 'cantAttackUnlessDefenderControls');
   for (const p of g.opponentsOf(o.controller)) {
+    if (unless.some((r) => !g.state.battlefield.some((id) => g.obj(id).controller === p && g.characteristics(id).types.length > 0 && matchesFilterFor(g, id, r.filter, p)))) continue;
     out.push(p);
     for (const id of g.state.battlefield) {
       const t = g.obj(id);
@@ -59,8 +65,12 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
   if (ach.keywords.has('Skulk') && (bch.power ?? 0) > (ach.power ?? 0)) return false;
   for (const r of ach.rules) {
     if (r.kind === 'cantBeBlockedByPowerLE' && (bch.power ?? 0) <= r.power) return false;
+    if (r.kind === 'cantBeBlockedByPowerGE' && (bch.power ?? 0) >= r.power) return false;
+    if (r.kind === 'cantBeBlockedByPowerLessThanSource' && (bch.power ?? 0) < (ach.power ?? 0)) return false;
     if (r.kind === 'custom' && r.tag === 'ringBearer' && (bch.power ?? 0) > (ach.power ?? 0)) return false;
   }
+  // "Target creature can't block ~ this turn"
+  if (bch.rules.some((r) => r.kind === 'custom' && r.tag === 'cantBlockSource' && r.data === attacker.id)) return false;
   for (const prot of ach.protections) if (protectionApplies(prot, bch.colors, bch.types, bch.subtypes, true)) return false;
   // Landwalk
   for (const [land] of Object.entries(BASIC_LAND_TYPES)) {
@@ -168,7 +178,21 @@ function* declareBlockers(g: Game): Gen {
       const resp = yield* g.ask({ type: 'declareBlockers', player: d, prompt: 'Declare blockers', attackers: mine.map((a) => a.id), candidates });
       if (resp.type !== 'blockers') break;
       blocks = resp.blocks;
-      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && new Set(blocks.map((b) => b.blocker)).size === blocks.length;
+      // A creature blocks one attacker, plus one more per "can block an additional creature" rule.
+      const perBlocker = new Map<ObjectId, number>();
+      for (const b of blocks) perBlocker.set(b.blocker, (perBlocker.get(b.blocker) ?? 0) + 1);
+      const countOk = [...perBlocker].every(([id, n]) => n <= 1 + g.characteristics(id).rules.filter((r) => r.kind === 'custom' && r.tag === 'extraBlock').length);
+      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && countOk;
+      // Block requirements: "must be blocked if able", "all creatures able to block ~ do so", "target creature blocks ~ this turn if able".
+      const requirementsOk = mine.every((a) => {
+        const rules = g.characteristics(a.id).rules;
+        const able = candidates.filter((c) => c.canBlock.includes(a.id));
+        if (!able.length) return true;
+        const blockedBy = blocks.filter((b) => b.attacker === a.id).map((b) => b.blocker);
+        if (rules.some((r) => r.kind === 'custom' && r.tag === 'mustBeBlocked') && blockedBy.length === 0) return false;
+        if (rules.some((r) => r.kind === 'custom' && r.tag === 'lure') && able.some((c) => !blockedBy.includes(c.id) && !blocks.some((b) => b.blocker === c.id))) return false;
+        return able.every((c) => !g.characteristics(c.id).rules.some((r) => r.kind === 'custom' && r.tag === 'mustBlock' && r.data === a.id) || blockedBy.includes(c.id) || blocks.some((b) => b.blocker === c.id));
+      });
       // Menace: needs 2+ blockers
       const menaceOk = mine.every((a) => {
         const n = blocks.filter((b) => b.attacker === a.id).length;
@@ -180,8 +204,8 @@ function* declareBlockers(g: Game): Gen {
         if (maxBlockers && n > maxBlockers.count) return false;
         return true;
       });
-      if (valid && menaceOk) break;
-      g.log(valid ? 'A creature with menace must be blocked by two or more creatures.' : 'Invalid block declaration.');
+      if (valid && menaceOk && requirementsOk) break;
+      g.log(!valid ? 'Invalid block declaration.' : !menaceOk ? 'A creature with menace must be blocked by two or more creatures.' : 'A block requirement was not met (a creature must be blocked if able).');
     }
     for (const b of blocks) {
       const blocker = g.obj(b.blocker);

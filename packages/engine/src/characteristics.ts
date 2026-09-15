@@ -2,7 +2,7 @@ import type { Game } from './game.js';
 import type { CardType, Color, ContinuousEffect, GameObject, Modification, ObjectFilter, ObjectId, RuleModification, Supertype } from './types.js';
 import { parseTypeLine } from './typeline.js';
 import { manaValue as costManaValue } from './mana.js';
-import { matchesFilter } from './filters.js';
+import { objectsMatching, matchesFilter } from './filters.js';
 import type { StaticAbilitySpec } from './script.js';
 
 /** Fully computed characteristics of an object after applying all continuous effects. */
@@ -209,6 +209,10 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     if (e.mod.layer !== '7b') continue;
     if (e.mod.setPower !== undefined) ch.power = e.mod.setPower;
     if (e.mod.setToughness !== undefined) ch.toughness = e.mod.setToughness;
+    const src = e.sourceId !== null ? g.state.objects[e.sourceId] : undefined;
+    const actx = { sourceId: e.sourceId, controller: src?.controller ?? obj.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} };
+    if (e.mod.powerAmount !== undefined) ch.power = g.resolveAmount(e.mod.powerAmount, actx);
+    if (e.mod.toughnessAmount !== undefined) ch.toughness = g.resolveAmount(e.mod.toughnessAmount, actx);
   }
   // Layer 7c: modify P/T (effects + counters)
   if (ch.types.includes('Creature') || ch.power !== null) {
@@ -216,8 +220,13 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     let dt = 0;
     for (const e of effects) {
       if (e.mod.layer !== '7c') continue;
-      dp += e.mod.power;
-      dt += e.mod.toughness;
+      let times = 1;
+      if (e.mod.perCount) {
+        const src = e.sourceId !== null ? g.state.objects[e.sourceId] : undefined;
+        times = objectsMatching(g, e.mod.perCount, { sourceId: e.sourceId, controller: src?.controller ?? obj.controller }).length;
+      }
+      dp += e.mod.power * times;
+      dt += e.mod.toughness * times;
     }
     dp += (obj.counters['+1/+1'] ?? 0) - (obj.counters['-1/-1'] ?? 0);
     dt += (obj.counters['+1/+1'] ?? 0) - (obj.counters['-1/-1'] ?? 0);

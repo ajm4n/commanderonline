@@ -113,6 +113,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const amounts = resp.type === 'distribute' ? resp.amounts : targets.map((_, i) => (i === 0 ? total : 0));
         targets.forEach((t, i) => g.dealDamage(source, t, amounts[i], false));
       } else for (const t of targets) g.dealDamage(source, t, total, false);
+      ctx.memory['lastDamaged'] = [...((ctx.memory['lastDamaged'] as ObjectId[]) ?? []), ...targets.filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id)];
       return;
     }
     case 'destroy':
@@ -278,7 +279,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'applyRule': {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
-      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 'rule', rule: e.rule } });
+      // Rules that refer back to the effect's source ("can't block ~ this turn") carry its id.
+      const rule = e.rule.kind === 'custom' && e.rule.data === '__self__' ? { ...e.rule, data: ctx.sourceId } : e.rule;
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 'rule', rule } });
       return;
     }
     case 'tap':
@@ -732,6 +735,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: '7d', switchPT: true } });
       return;
     }
+    case 'emblem': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const card = { ...tokenCard({ name: 'Emblem', typeLine: 'Emblem', colors: [], oracleText: e.text }, g, ctx), isToken: false };
+        g.createObject(card, p, 'command', { controller: p });
+        g.log(`${g.player(p).name} gets an emblem: "${e.text}"`);
+      }
+      return;
+    }
     case 'extraLandThisTurn':
       for (const p of playersOf(g, e.who, ctx)) g.player(p).landsPlayedThisTurn--;
       return;
@@ -1086,6 +1097,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
   const ectx: EffectContext = { sourceId: id, controller, targets: [], triggerContext: {}, x: o.xValue ?? 0, modes: o.modes ?? [], memory: {} };
   for (const ab of script.abilities) {
     if (ab.kind !== 'replacement' || ab.event !== 'entersBattlefield' || !ab.self) continue;
+    if (ab.condition && !g.checkCondition(ab.condition, { sourceId: id, controller })) continue;
     if (ab.tapped && !(ab.unless && g.checkCondition(ab.unless, { sourceId: id, controller }))) tapped = true;
     if (ab.payLifeOrTapped !== undefined) {
       let paid = false;
@@ -1111,6 +1123,9 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
     } else if (ab.choose === 'creatureType') {
       yield* executeEffect(g, { kind: 'chooseCreatureType', key: ab.chooseKey ?? 'creatureType' }, ectx);
       chosen[ab.chooseKey ?? 'creatureType'] = ectx.memory[ab.chooseKey ?? 'creatureType'];
+    } else if (ab.choose === 'cardName') {
+      yield* executeEffect(g, { kind: 'nameCard', key: ab.chooseKey ?? 'cardName' }, ectx);
+      chosen[ab.chooseKey ?? 'cardName'] = ectx.memory[ab.chooseKey ?? 'cardName'];
     }
   }
   // Other permanents' ETB replacements (e.g. "Artifacts enter tapped").

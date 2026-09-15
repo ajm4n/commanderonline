@@ -22,6 +22,7 @@ export interface CompileResult {
 const KEYWORD_LINE_RE = /^(Flying|First strike|Double strike|Deathtouch|Lifelink|Trample|Vigilance|Haste|Flash|Defender|Reach|Menace|Hexproof|Indestructible|Shroud|Fear|Intimidate|Skulk|Horsemanship|Shadow|Infect|Wither|Toxic \d+|Prowess|Changeling|Devoid|Partner|Partner with [^,;]+|Friends forever|Choose a Background|Ward (?:\{[^}]+\})+|Ward—[^.]+|Protection from [^,;]+|Hexproof from [^,;]+|Enchant [^,;]+|Equip (?:\{[^}]+\})+|Equip \d+|Kicker (?:\{[^}]+\})+|Flashback (?:\{[^}]+\})+|Flashback—[^.]+|Cycling (?:\{[^}]+\})+|Undying|Persist|Exalted|Convoke|Delve|Affinity for \w+|Improvise|Cascade|Storm|Rebound|Split second|Riot|Unleash|Mentor|Landwalk|Islandwalk|Swampwalk|Forestwalk|Mountainwalk|Plainswalk|Flanking|Bushido \d+|Rampage \d+|Annihilator \d+|Battle cry|Extort|Ingest|Myriad|Melee|Dethrone|Afflict \d+|Fabricate \d+|Crew \d+|Ninjutsu (?:\{[^}]+\})+|Commander ninjutsu (?:\{[^}]+\})+|Buyback (?:\{[^}]+\})+|Evoke (?:\{[^}]+\})+|Escape—[^.]+|Unearth (?:\{[^}]+\})+|Emerge (?:\{[^}]+\})+|Madness (?:\{[^}]+\})+|Morph (?:\{[^}]+\})+|Megamorph (?:\{[^}]+\})+|Disguise (?:\{[^}]+\})+|Miracle (?:\{[^}]+\})+|Dredge \d+|Suspend \d+—(?:\{[^}]+\})+|Vanishing \d+|Fading \d+|Echo (?:\{[^}]+\})+|Cumulative upkeep [^.]+|Modular \d+|Sunburst|Graft \d+|Bloodthirst \d+|Devour \d+|Undaunted|Living weapon|Daybound|Nightbound|Decayed|Disturb (?:\{[^}]+\})+|Training|Backup \d+|Blitz (?:\{[^}]+\})+|Casualty \d+|Enlist|Ravenous|Boast — [^.]+|Foretell (?:\{[^}]+\})+|Squad (?:\{[^}]+\})+|Reconfigure (?:\{[^}]+\})+|Compleated|For Mirrodin!|Prototype [^.]+|Encore (?:\{[^}]+\})+|Mutate (?:\{[^}]+\})+|Escalate (?:\{[^}]+\})+|Surge (?:\{[^}]+\})+|Awaken \d+—(?:\{[^}]+\})+|Renown \d+|Outlast (?:\{[^}]+\})+|Prowl (?:\{[^}]+\})+|Conspire|Retrace|Reinforce \d+—(?:\{[^}]+\})+|Champion [^.]+|Evolve|Cipher|Bestow (?:\{[^}]+\})+|Tribute \d+|Dash (?:\{[^}]+\})+|Embalm (?:\{[^}]+\})+|Eternalize (?:\{[^}]+\})+|Exert|Ascend|Jump-start|Afterlife \d+|Spectacle (?:\{[^}]+\})+|Amass \w+ \d+|Adventure|Offspring (?:\{[^}]+\})+|Impending \d+—(?:\{[^}]+\})+|Gift [^.]+|Bargain|Cleave (?:\{[^}]+\})+|Companion — [^.]+|Level up (?:\{[^}]+\})+|Soulbond|Haunt|Aura swap (?:\{[^}]+\})+|Fortify (?:\{[^}]+\})+|Transmute (?:\{[^}]+\})+|Ripple \d+|Frenzy \d+|Gravestorm|Poisonous \d+|Recover (?:\{[^}]+\})+|Absorb \d+|Vanishing|Wither|Provoke|Entwine (?:\{[^}]+\})+|Splice onto [^.]+|Offering|Epic|Hidden agenda|Double agenda|Assist|Legendary landwalk|Nonbasic landwalk|Desertwalk|Phasing|Banding|Rampage|Shadow|Totem armor|Vigilance|Hideaway \d+|Job select|Start your engines!|Saddle \d+|Spree|Plot|Freerunning (?:\{[^}]+\})+|Umbra armor|Devoid|Exploit|Soulshift \d+|Mobilize \d+)$/i;
 
 function isKeywordLine(line: string): boolean {
+  if (KEYWORD_LINE_RE.test(line.replace(/\.$/, ''))) return true;
   const parts = line.replace(/\.$/, '').split(/[,;]\s*/);
   if (!parts.length) return false;
   return parts.every((p) => {
@@ -158,6 +159,12 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     if (/^Station$/i.test(line)) {
       abilities.push({ kind: 'activated', text: 'Station', cost: { tapUntapped: { filter: { types: ['Creature'], controller: 'you', other: true }, count: 1 } }, effects: [{ kind: 'addCounters', counter: 'charge', amount: { kind: 'power', ref: { ref: 'chosen', key: 'costTapped' } }, on: { ref: 'self' } }], sorcerySpeed: true });
+      compiledLines.push(line);
+      continue;
+    }
+    if ((m = line.match(/^(?:~|This spell) costs? ((?:\{[^}]+\})+) more to cast for each target beyond the first\.?$/i))) {
+      // Colored symbols count as generic mana here (the engine's cost modifiers are generic-only).
+      costModifiers.push({ amount: (m[1].match(/\{([^}]+)\}/g) ?? []).reduce((s, x) => s + (/^\{\d+\}$/.test(x) ? parseInt(x.slice(1, -1), 10) : 1), 0), direction: 'more', perExtraTarget: true, text: line });
       compiledLines.push(line);
       continue;
     }

@@ -78,7 +78,7 @@ export function parseCost(text: string): AbilityCost | null {
 const STEP_WORDS: Record<string, string[]> = { upkeep: ['upkeep'], 'draw step': ['draw'], 'end step': ['end'], combat: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'], 'main phase': ['main1', 'main2'], 'precombat main phase': ['main1'], 'postcombat main phase': ['main2'], 'declare attackers step': ['declareAttackers'], 'declare blockers step': ['declareBlockers'] };
 
 export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
-  let t = text.trim();
+  let t = text.trim().replace(/Activate only (.+?) and only (.+?)\.?$/i, 'Activate only $1. Activate only $2.');
   const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
   let m: RegExpMatchArray | null;
   const addCond = (c: Condition) => {

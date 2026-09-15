@@ -455,6 +455,7 @@ export class Game {
       if (ce.affected.kind === 'fixed' ? !ce.affected.ids.includes(obj.id) : !matchesFilter(this, obj, ce.affected.filter, { sourceId: ce.sourceId, controller: ce.controller })) continue;
       granted.push(...ce.modification.addAbilityText);
     }
+    if (card.typeLine === 'Emblem' && obj.zone === 'command') s = { ...s, abilities: s.abilities.map((ab) => (ab.kind === 'static' || ab.kind === 'triggered' || ab.kind === 'activated' ? ({ ...ab, zone: 'command' } as typeof ab) : ab)) };
     if (!granted.length) return s;
     const extra: CardScript['abilities'] = [];
     for (const text of granted) {
@@ -637,6 +638,10 @@ export class Game {
     const obj = this.state.objects[id];
     if (!obj) return null;
     const fromZone = obj.zone;
+    // "If that creature would die this turn, exile it instead" (a rule granted by a resolved effect).
+    if (!opts.skipEvents && toZone === 'graveyard' && fromZone === 'battlefield' && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'exileIfDies')) {
+      return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
+    }
     // Self replacement effects: "If ~ would die / be put into a graveyard, exile it instead."
     if (!opts.skipEvents && toZone === 'graveyard' && !obj.card.isToken) {
       for (const ab of this.scriptFor(obj).abilities) {
@@ -936,6 +941,15 @@ export class Game {
     if (f.notYourTurn && this.state.turn.activePlayer === controller) return false;
     if (f.fromZone && e.fromZone !== f.fromZone) return false;
     if (f.notFromZone && e.fromZone === f.notFromZone) return false;
+    if (f.attachedToSource) {
+      const src = this.state.objects[obj.id] ?? obj;
+      const attachedTo = src.attachedTo ?? (src.lastKnownInfo as GameObject | undefined)?.attachedTo ?? null;
+      if (e.objectId === undefined || attachedTo !== e.objectId) return false;
+    }
+    if (f.targetsSource) {
+      const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
+      if (!item || !item.targets.some((t) => t.kind === 'object' && t.id === obj.id)) return false;
+    }
     if (f.toZone && e.toZone !== f.toZone) return false;
     if (f.counterType && e.counterType !== f.counterType) return false;
     if (f.minAmount !== undefined && (e.amount ?? 0) < f.minAmount) return false;
@@ -1211,6 +1225,8 @@ export class Game {
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + this.player(p).library.length, 0);
       case 'countRef':
         return this.resolveObjects(a.ref, ctx).filter((o) => !a.filter || matchesFilter(this, o, { ...a.filter, zone: a.filter.zone ?? o.zone }, fctx)).length;
+      case 'totalPower':
+        return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
       case 'discardedThisWay':
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + ((ctx.memory[`discarded:${p}`] as number) ?? 0), 0);
       case 'differenceLife': {

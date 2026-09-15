@@ -588,11 +588,12 @@ export function buildPriorityDecision(g: Game, p: PlayerId): PriorityDecision {
   const playable: ObjectId[] = [];
   const landOk = canPlayLandNow(g, p);
   const zonesToScan: ObjectId[] = [...pl.hand, ...pl.command, ...pl.graveyard, ...pl.exile];
+  const landsFromGraveyard = g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playLandsFromGraveyard');
   for (const o of g.opponentsOf(p)) zonesToScan.push(...g.player(o).graveyard.filter((id) => g.obj(id).memory['castableBy'] === p), ...g.player(o).exile.filter((id) => Object.values(g.obj(id).counters).some((n) => n > 0)));
   for (const id of zonesToScan) {
     const obj = g.obj(id);
     if (isLandCard(obj) || obj.card.faces?.some((f) => /\bLand\b/.test(f.typeLine))) {
-      if (landOk && (obj.zone === 'hand' || obj.zone === 'command' || (obj.zone === 'exile' && castableFrom(g, p, obj)))) {
+      if (landOk && (obj.zone === 'hand' || obj.zone === 'command' || (obj.zone === 'exile' && castableFrom(g, p, obj)) || (obj.zone === 'graveyard' && landsFromGraveyard && obj.owner === p))) {
         if (isLandCard(obj) || obj.card.layout === 'modal_dfc') playable.push(id);
       }
       if (isLandCard(obj) && obj.card.layout !== 'modal_dfc') continue;
@@ -635,6 +636,7 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
   }
   if (spec.oncePerTurn && g.state.turnStats[`once:${obj.id}:${spec.text}`]) return false;
   if (spec.condition && !g.checkCondition(spec.condition, { sourceId: obj.id, controller: p })) return false;
+  if (obj.zone === 'battlefield' && g.characteristics(obj.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantActivate')) return false;
   if (spec.cost.tap && !canUseTapAbility(g, obj)) return false;
   if (spec.cost.untap && !obj.tapped) return false;
   if (spec.cost.sacrificeSelf && obj.zone !== 'battlefield') return false;
@@ -671,7 +673,8 @@ export function* playLand(g: Game, p: PlayerId, id: ObjectId): Gen<boolean> {
     if (back < 1) return false;
     faceIndex = back;
   }
-  if (!(obj.zone === 'hand' || (obj.zone === 'exile' && castableFrom(g, p, obj)) || obj.zone === 'command')) return false;
+  const fromGraveyard = obj.zone === 'graveyard' && obj.owner === p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playLandsFromGraveyard');
+  if (!(obj.zone === 'hand' || (obj.zone === 'exile' && castableFrom(g, p, obj)) || obj.zone === 'command' || fromGraveyard)) return false;
   obj.faceIndex = faceIndex;
   const r = yield* enterBattlefield(g, id, p, {});
   if (!r) return false;
@@ -798,6 +801,12 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
       revert();
       return false;
     }
+  }
+  // "costs {1} more to cast for each target beyond the first"
+  for (const mod of script.costModifiers ?? []) {
+    if (!mod.perExtraTarget) continue;
+    const n = targets.filter((t) => t.kind !== 'none').length - 1;
+    if (n > 0) cost = adjustGeneric(cost, (mod.direction === 'less' ? -1 : 1) * mod.amount * n);
   }
   // Mana
   if (obj.memory['anyManaType'] || opts.anyMana) cost = { symbols: cost.symbols.map((sy) => (sy.kind === 'color' || sy.kind === 'hybrid' || sy.kind === 'phyrexian' ? { kind: 'generic' as const, amount: 1 } : sy.kind === 'monoHybrid' ? { kind: 'generic' as const, amount: 2 } : sy)), xCount: cost.xCount };

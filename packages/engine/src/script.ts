@@ -40,7 +40,9 @@ export type Amount =
   /** Number of objects a Ref resolves to (optionally filtered), e.g. "creature cards milled this way". */
   | { kind: 'countRef'; ref: Ref; filter?: ObjectFilter }
   /** Cards the given player discarded by the current effect. */
-  | { kind: 'discardedThisWay'; ref: Ref };
+  | { kind: 'discardedThisWay'; ref: Ref }
+  /** Sum of power of matching objects ("creatures you control have total power 8 or greater"). */
+  | { kind: 'totalPower'; filter: ObjectFilter };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -261,6 +263,8 @@ export type Effect =
   | { kind: 'grantAbility'; text: string; on: Ref; duration?: Duration }
   | { kind: 'switchPT'; on: Ref; duration?: Duration }
   | { kind: 'extraLandThisTurn'; who?: Ref }
+  /** "You get an emblem with '...'" */
+  | { kind: 'emblem'; text: string; who?: Ref }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
 
 // ---------------------------------------------------------------------------
@@ -303,6 +307,10 @@ export interface TriggerFilter {
   toPlayer?: boolean;
   /** For zone-change events: the object must not have come from this zone. */
   notFromZone?: ZoneName;
+  /** The event object must be what the source is attached to ("When enchanted creature dies"). */
+  attachedToSource?: boolean;
+  /** For cast events: the spell must target the source (heroic). */
+  targetsSource?: boolean;
   /** Custom */
   custom?: string;
 }
@@ -395,7 +403,7 @@ export interface SpellAbilitySpec {
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }
@@ -421,6 +429,8 @@ export interface CostModifier {
   direction: 'less' | 'more';
   /** Reduce/increase once per matching object. */
   per?: ObjectFilter;
+  /** "costs {1} more to cast for each target beyond the first" */
+  perExtraTarget?: boolean;
   condition?: Condition;
   text?: string;
 }

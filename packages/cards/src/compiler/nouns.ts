@@ -65,6 +65,10 @@ export function parseNoun(raw: string): ParsedNoun | null {
   // Special targets
   if (/^any target$/i.test(text)) return { ...result, target: true, kind: 'any' };
   if ((m = text.match(/^any number of target (players|opponents)$/i))) return { ...result, target: true, kind: 'player', playerFilter: /opponent/i.test(m[1]) ? 'opponent' : 'any', count: 6, upTo: true };
+  if ((m = text.match(/^any number of target (.+)$/i))) {
+    const inner = parseNoun(`target ${m[1]}`);
+    return inner ? { ...inner, count: 20, upTo: true } : null;
+  }
   if ((m = text.match(/^(?:up to (\w+) )?targets? (players?|opponents?)$/i))) {
     const n = wordToNumber(m[1]);
     return { ...result, target: true, kind: 'player', playerFilter: /opponent/i.test(m[2]) ? 'opponent' : 'any', count: n ?? 1, upTo: !!m[1] };
@@ -80,13 +84,18 @@ export function parseNoun(raw: string): ParsedNoun | null {
 
   // Quantifiers
   text = text.replace(/^each of /i, '');
-  if ((m = text.match(/^up to (\w+) target (.+)$/i))) {
+  if ((m = text.match(/^up to (\w+) (other |another )?target (.+)$/i))) {
     const n = wordToNumber(m[1]);
     if (n === null) return null;
     result.upTo = true;
     result.count = n;
     result.target = true;
-    text = m[2];
+    if (m[2]) result.other = true;
+    text = m[3];
+  } else if ((m = text.match(/^(?:another|other) target (.+)$/i))) {
+    result.other = true;
+    result.target = true;
+    text = m[1];
   } else if ((m = text.match(/^(\w+) target (.+)$/i)) && wordToNumber(m[1]) !== null) {
     result.count = wordToNumber(m[1])!;
     result.target = true;
