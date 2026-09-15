@@ -309,6 +309,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const n = e.amount !== undefined ? amt(e.amount) : 1;
       for (const p of playersOf(g, e.who, ctx)) {
         const pool = g.player(p).manaPool;
+        if (e.mana === 'chosenColor') {
+          const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+          const c = (src?.memory['color'] ?? src?.chosen['color'] ?? 'W') as ManaColor;
+          pool[c] += n;
+          g.touch();
+          continue;
+        }
         if (e.mana === 'anyColor' || e.mana === 'anyOneColor' || e.mana === 'commanderColors') {
           const opts = e.mana === 'commanderColors' ? g.colorsOfCommander(p) : COLORS;
           const choices = (opts.length ? opts : COLORS).map((c) => ({ id: c, label: c }));
@@ -330,6 +337,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (t.kind !== 'stackItem') continue;
         const item = g.state.stack.find((s) => s.id === t.id);
         if (!item) continue;
+        const spellObj = g.state.objects[item.sourceId];
+        if (item.kind === 'spell' && spellObj && g.scriptFor(spellObj).abilities.some((a) => a.kind === 'static' && a.rule?.kind === 'custom' && a.rule.tag === 'cantBeCountered')) {
+          g.log(`${item.text} can't be countered.`);
+          continue;
+        }
         if (e.unlessPays) {
           const paid = yield* offerToPay(g, item.controller, e.unlessPays, `Pay ${e.unlessPays} to prevent ${item.text} from being countered?`);
           if (paid) continue;
@@ -547,6 +559,17 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           g.touch();
           return;
         }
+        if (e.then === 'topRestGraveyard' || e.then === 'graveyardRestTop') {
+          const keepN = e.pick !== undefined ? amt(e.pick) : e.then === 'topRestGraveyard' ? 1 : n;
+          const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.then === 'topRestGraveyard' ? `Choose up to ${keepN} to keep on top (the rest go to your graveyard)` : 'Choose any number to put into your graveyard', candidates: top, min: 0, max: e.then === 'topRestGraveyard' ? Math.min(keepN, top.length) : top.length, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+          const chosen = resp.type === 'objects' ? resp.ids : [];
+          const toGy = e.then === 'topRestGraveyard' ? top.filter((id) => !chosen.includes(id)) : chosen;
+          const stay = top.filter((id) => !toGy.includes(id));
+          pl.library.splice(0, n, ...stay);
+          for (const id of toGy) g.moveObject(id, 'graveyard', { cause: 'mill' });
+          g.touch();
+          return;
+        }
         const pickN = e.pick !== undefined ? amt(e.pick) : 1;
         const cands = e.filter ? top.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter!, zone: 'library' }, { sourceId: ctx.sourceId, controller: p })) : top;
         let picked: ObjectId[] = [];
@@ -560,7 +583,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           else g.moveObject(id, 'hand', { skipEvents: true });
         }
         if (e.then === 'handRestGraveyard') for (const id of rest) g.moveObject(id, 'graveyard');
-        else {
+        else if (e.then === 'handRestTop') {
+          let order = rest;
+          if (rest.length > 1) {
+            const resp = yield* g.ask({ type: 'orderObjects', player: p, prompt: 'Put the rest back on top in any order', objectIds: rest, context: 'libraryTop' });
+            if (resp.type === 'order') order = resp.ids;
+          }
+          pl.library.splice(0, 0, ...order.filter((id) => g.state.objects[id]?.zone === 'library' && !pl.library.includes(id)));
+          g.touch();
+        } else {
           let order = rest;
           if (rest.length > 1) {
             const resp = yield* g.ask({ type: 'orderObjects', player: p, prompt: 'Put the rest on the bottom in any order', objectIds: rest, context: 'libraryTop' });
@@ -662,8 +693,43 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'exileTop': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        const n = amt(e.amount);
+        const moved: ObjectId[] = [];
+        for (let i = 0; i < n; i++) {
+          const id = pl.library[0];
+          if (id === undefined) break;
+          const r = g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined, faceDown: e.faceDown });
+          if (r) moved.push(r.id);
+        }
+        ctx.memory['lastMoved'] = moved;
+        if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) {
+          const src = g.state.objects[ctx.sourceId];
+          src.memory['exiled'] = [...((src.memory['exiled'] as ObjectId[]) ?? []), ...moved];
+        }
+        if (moved.length) g.log(`${pl.name} exiles the top ${moved.length === 1 ? 'card' : `${moved.length} cards`} of their library: ${moved.map((id) => g.nameOf(id)).join(', ')}.`);
+      }
+      return;
+    }
+    case 'revealHand': {
+      for (const p of g.resolvePlayers(e.who, ctx)) {
+        const names = g.player(p).hand.map((id) => g.nameOf(id));
+        g.log(`${g.player(p).name} reveals their hand: ${names.join(', ') || '(empty)'}.`, { kind: 'revealHand', data: { player: p, ids: [...g.player(p).hand] } });
+      }
+      return;
+    }
     case 'ifPays': {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
+      if (e.energy !== undefined) {
+        if (g.player(who).energy < e.energy) return;
+        const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${e.energy} energy? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+        if (r.type !== 'yesNo' || !r.value) return;
+        g.player(who).energy -= e.energy;
+        yield* executeEffects(g, e.effects, ctx);
+        return;
+      }
       if (e.payLife !== undefined) {
         if (g.player(who).life < e.payLife) return;
         const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${e.payLife} life? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
@@ -847,6 +913,15 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
   for (const ab of script.abilities) {
     if (ab.kind !== 'replacement' || ab.event !== 'entersBattlefield' || !ab.self) continue;
     if (ab.tapped) tapped = true;
+    if (ab.payLifeOrTapped !== undefined) {
+      let paid = false;
+      if (g.player(controller).life >= ab.payLifeOrTapped) {
+        const r = yield* g.ask({ type: 'yesNo', player: controller, prompt: `${o.card.name}: pay ${ab.payLifeOrTapped} life to have it enter untapped?`, yesLabel: `Pay ${ab.payLifeOrTapped} life`, noLabel: 'Enter tapped', sourceId: id });
+        paid = r.type === 'yesNo' && r.value;
+      }
+      if (paid) g.loseLife(controller, ab.payLifeOrTapped, id);
+      else tapped = true;
+    }
     if (ab.counters) counters[ab.counters.counter] = (counters[ab.counters.counter] ?? 0) + g.resolveAmount(ab.counters.amount, ectx);
     if (ab.choose === 'color') {
       const resp = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose a color`, options: COLORS.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: id });

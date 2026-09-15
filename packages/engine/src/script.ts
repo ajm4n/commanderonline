@@ -56,6 +56,8 @@ export type Ref =
   | { ref: 'activePlayer' }
   | { ref: 'chosen'; key: string }
   | { ref: 'stackTarget' } // the spell targeted (for counterspells)
+  | { ref: 'controllerOf'; of: Ref }
+  | { ref: 'ownerOf'; of: Ref }
   | { ref: 'player'; id: PlayerId };
 
 export const R = {
@@ -179,7 +181,7 @@ export type Effect =
   | { kind: 'surveil'; amount: Amount; who?: Ref }
   | { kind: 'mill'; amount: Amount; who?: Ref }
   | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; chooser?: 'self' | 'controller' }
-  | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors'; amount?: Amount; who?: Ref }
+  | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor'; amount?: Amount; who?: Ref }
   | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
   | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile'; tapped?: boolean; reveal?: boolean; shuffle?: boolean }
   | { kind: 'shuffle'; who?: Ref }
@@ -201,7 +203,7 @@ export type Effect =
   | { kind: 'goad'; what: Ref }
   | { kind: 'regenerate'; what: Ref }
   | { kind: 'preventDamage'; amount: Amount | 'all'; to: Ref; duration?: Duration }
-  | { kind: 'lookAtTop'; amount: Amount; who?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'revealPickFilter'; filter?: ObjectFilter; pick?: Amount }
+  | { kind: 'lookAtTop'; amount: Amount; who?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'topRestGraveyard' | 'graveyardRestTop' | 'handRestTop'; filter?: ObjectFilter; pick?: Amount }
   | { kind: 'revealTop'; who?: Ref; ifMatches?: ObjectFilter; then?: Effect[]; else?: Effect[]; destination?: 'hand' | 'graveyard' | 'bottom' | 'stay' }
   | { kind: 'castWithoutPaying'; what: Ref }
   | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent' }
@@ -215,7 +217,9 @@ export type Effect =
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref }
   | { kind: 'unlessPays'; who: Ref; cost: string; effects: Effect[]; text?: string }
-  | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number }
+  | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
+  | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
+  | { kind: 'revealHand'; who: Ref }
   | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean }
   | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number }
   | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter }
@@ -357,13 +361,13 @@ export interface SpellAbilitySpec {
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[] }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
-  | { kind: 'replacement'; text: string; event: 'dies'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
+  | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }
   | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean }
   | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' }
-  | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; filter?: ObjectFilter; counterType?: CounterType }
+  | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; filter?: ObjectFilter; counterType?: CounterType }
   | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number }
   | { kind: 'replacement'; text: string; event: 'wouldLoseGame'; instead: Effect[] }
   | { kind: 'replacement'; text: string; event: 'custom'; tag: string };

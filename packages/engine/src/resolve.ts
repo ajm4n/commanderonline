@@ -50,6 +50,11 @@ export function* resolveTopOfStack(g: Game): Gen {
     memory: {},
     stackItemId: item.id,
   };
+  if (item.triggerContext?.delayedTargets) {
+    const dt = item.triggerContext.delayedTargets as Target[];
+    ctx.targets = dt.map((t) => (t.kind === 'object' && !g.state.objects[t.id] ? { kind: 'none' } : t));
+    ctx.memory = { ...((item.triggerContext.delayedMemory as Record<string, unknown>) ?? {}) };
+  }
   if (item.triggerContext?.snapshot && !ctx.sourceId) ctx.sourceId = item.sourceId; // LKI source for dies triggers (object may be in graveyard)
   if (!g.state.objects[item.sourceId]) ctx.sourceId = null;
 

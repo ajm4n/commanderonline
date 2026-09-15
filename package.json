@@ -9,8 +9,8 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "dev": "pnpm --parallel -r dev",
-    "cards:fetch": "pnpm --filter @commander/cards fetch",
-    "cards:coverage": "pnpm --filter @commander/cards coverage"
+    "cards:fetch": "pnpm --filter @commander/cards run fetch",
+    "cards:coverage": "pnpm --filter @commander/cards run coverage"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

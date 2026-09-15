@@ -5,14 +5,21 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/db-node.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "fetch": "node --experimental-strip-types scripts/fetch-scryfall.ts"
+    "fetch": "tsx scripts/fetch-scryfall.ts",
+    "coverage": "tsx scripts/coverage.ts"
   },
   "dependencies": {
     "@commander/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
   }
 }

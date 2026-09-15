@@ -318,6 +318,7 @@ export interface ObjectFilter {
   nonToken?: boolean;
   attacking?: boolean;
   blocking?: boolean;
+  attackingOrBlocking?: boolean;
   other?: boolean; // exclude the source object itself
   self?: boolean; // only the source object
   keywords?: string[]; // has any of these keywords

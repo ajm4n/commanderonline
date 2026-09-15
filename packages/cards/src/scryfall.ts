@@ -159,7 +159,8 @@ export function toCardData(c: ScryfallCard): CardData {
     typeLine,
     oracleText,
     colors,
-    oracleId: c.oracle_id ?? front?.name ?? c.id,
+    // Reversible cards carry oracle_id on their faces rather than at the top level.
+    oracleId: c.oracle_id ?? c.card_faces?.[0]?.oracle_id ?? c.id,
     scryfallId: c.id,
     layout,
     cmc: typeof c.cmc === 'number' ? c.cmc : 0,
@@ -189,11 +190,33 @@ export function toCardData(c: ScryfallCard): CardData {
   return card;
 }
 
+/**
+ * Paper formats. A card that is legal, banned or restricted in any of these has a
+ * paper printing; digital-only cards (Alchemy, Arena-only) are `not_legal` in all of them.
+ */
+const PAPER_FORMATS = [
+  'commander', 'legacy', 'vintage', 'modern', 'pioneer', 'standard', 'pauper', 'paupercommander', 'duel',
+  'oldschool', 'premodern', 'predh',
+];
+
+/**
+ * Whether the card exists in paper. The `oracle_cards` bulk feed picks one
+ * representative printing per oracle id and that printing may be digital-only
+ * (e.g. Demonic Consultation -> Masters Edition II on MTGO), so `games` alone
+ * is not enough; fall back to paper-format legalities.
+ */
+function hasPaperPrinting(c: ScryfallCard): boolean {
+  if (Array.isArray(c.games) && c.games.includes('paper')) return true;
+  const legalities = c.legalities;
+  if (!legalities) return false;
+  return PAPER_FORMATS.some((f) => legalities[f] !== undefined && legalities[f] !== 'not_legal');
+}
+
 /** Whether a Scryfall card is a real, paper-playable card (not a token, emblem, art card, digital-only card ...). */
 export function isPlayableCard(c: ScryfallCard): boolean {
   if (!c || typeof c.name !== 'string') return false;
   if (UNPLAYABLE_LAYOUTS.has(c.layout)) return false;
-  if (!Array.isArray(c.games) || !c.games.includes('paper')) return false;
+  if (!hasPaperPrinting(c)) return false;
   if (c.set_type === 'memorabilia' || c.set_type === 'token' || c.set_type === 'minigame') return false;
   if (c.type_line && /^(Token|Card|Emblem|Stickers?|Attraction|Hero|Conspiracy|Dungeon|Phenomenon|Plane|Scheme|Vanguard)\b/.test(c.type_line)) return false;
   return true;

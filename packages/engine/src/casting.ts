@@ -102,7 +102,7 @@ function manaFromAbility(g: Game, obj: GameObject, ab: ActivatedAbilitySpec): Ma
     else if (e.mana === 'commanderColors') for (const c of g.colorsOfCommander(obj.controller)) alts.push(new Array(n).fill(c));
     else {
       const arr: ManaColor[] = [];
-      for (let i = 0; i < n; i++) arr.push(...e.mana);
+      for (let i = 0; i < n; i++) arr.push(...(e.mana as ManaColor[]));
       alts.push(arr);
     }
   }

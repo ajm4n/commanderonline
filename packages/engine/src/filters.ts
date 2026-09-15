@@ -52,6 +52,9 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.nonToken && obj.card.isToken) return false;
   if (filter.attacking && obj.attacking === null) return false;
   if (filter.blocking && obj.blocking.length === 0) return false;
+  if (filter.attackingOrBlocking && obj.attacking === null && obj.blocking.length === 0) return false;
+  if (filter.custom === 'nonbasic' && ch.supertypes.includes('Basic')) return false;
+  if (filter.custom && /^non(white|blue|black|red|green)$/.test(filter.custom) && ch.colors.includes(({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[filter.custom.slice(3) as 'white'])) return false;
   if (filter.keywords && !filter.keywords.some((k) => ch.keywords.has(k))) return false;
   if (filter.withoutKeywords && filter.withoutKeywords.some((k) => ch.keywords.has(k))) return false;
   const x = ctx.x ?? 0;
@@ -92,8 +95,9 @@ export function canTarget(g: Game, target: Target, sourceId: ObjectId | null, co
     const p = g.state.players[target.id];
     if (!p || p.lost) return false;
     // Player hexproof (e.g. Leyline of Sanctity / Aegis of the Gods)
-    if (p.flags['hexproof'] && target.id !== controller) return false;
-    if (p.flags['shroud']) return false;
+    const prules = g.playerRules(target.id);
+    if ((p.flags['hexproof'] || prules.some((r) => r.kind === 'custom' && r.tag === 'hexproof')) && target.id !== controller) return false;
+    if (p.flags['shroud'] || prules.some((r) => r.kind === 'custom' && r.tag === 'shroud')) return false;
     return true;
   }
   if (target.kind === 'stackItem') {

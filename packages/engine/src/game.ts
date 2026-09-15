@@ -607,6 +607,22 @@ export class Game {
     const obj = this.state.objects[id];
     if (!obj) return null;
     const fromZone = obj.zone;
+    // Self replacement effects: "If ~ would die / be put into a graveyard, exile it instead."
+    if (!opts.skipEvents && toZone === 'graveyard' && !obj.card.isToken) {
+      for (const ab of this.scriptFor(obj).abilities) {
+        if (ab.kind !== 'replacement' || !('self' in ab) || !ab.self || (ab.event !== 'dies' && ab.event !== 'putIntoGraveyard' && ab.event !== 'leavesBattlefield')) continue;
+        if (ab.event === 'dies' && fromZone !== 'battlefield') continue;
+        if (ab.event === 'leavesBattlefield' && fromZone !== 'battlefield') continue;
+        if ((ab as { instead: string }).instead === 'exile') return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
+        if ((ab as { instead: string }).instead === 'returnToHand') return this.moveObject(id, 'hand', { ...opts, cause: 'bounce' });
+        if ((ab as { instead: string }).instead === 'shuffleIntoLibrary') {
+          const r = this.moveObject(id, 'library', { ...opts });
+          this.shuffleLibrary(obj.owner);
+          return r;
+        }
+        if ((ab as { instead: string }).instead === 'commandZone') return this.moveObject(id, 'command', { ...opts, skipEvents: true });
+      }
+    }
     const snapshot: GameObject = JSON.parse(JSON.stringify(obj));
     const lkiCh = fromZone === 'battlefield' ? this.characteristics(id) : null;
     this.touch();
@@ -1175,6 +1191,10 @@ export class Game {
       }
       case 'player':
         return plT([ref.id]);
+      case 'controllerOf':
+        return plT([...new Set(this.resolveRef(ref.of, ctx).map((t) => (t.kind === 'object' ? this.state.objects[t.id]?.controller : t.kind === 'stackItem' ? this.state.stack.find((s) => s.id === t.id)?.controller : t.kind === 'player' ? t.id : undefined)))]);
+      case 'ownerOf':
+        return plT([...new Set(this.resolveRef(ref.of, ctx).map((t) => (t.kind === 'object' ? this.state.objects[t.id]?.owner : t.kind === 'player' ? t.id : undefined)))]);
     }
   }
   resolveObjects(ref: Ref, ctx: EffectContext): GameObject[] {
@@ -1292,7 +1312,7 @@ export class Game {
       this.emit({ name: 'dealsDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });
       this.emit({ name: 'dealtDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });
       if (combat) {
-        this.emit({ name: 'dealsCombatDamage', sourceId: sourceId ?? undefined, objectId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat: true, otherPlayerId: controller });
+        this.emit({ name: 'dealsCombatDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat: true, otherPlayerId: controller });
         this.emit({ name: 'dealtCombatDamageToPlayer', sourceId: sourceId ?? undefined, objectId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat: true, otherPlayerId: controller });
       }
     } else if (target.kind === 'object') {
@@ -1353,6 +1373,7 @@ export class Game {
         if (ab.kind === 'replacement' && ab.event === 'counterAdded') {
           if (ab.counterType && ab.counterType !== type) continue;
           if (ab.filter && !matchesFilter(this, o, ab.filter, { sourceId: src.id, controller: src.controller })) continue;
+          if (ab.multiply) amount *= ab.multiply;
           amount += ab.extra;
         }
       }
