@@ -258,6 +258,56 @@ describe('rooms', () => {
     await Promise.all([host.close(), guest.close()]);
   });
 
+  it('lets spectators watch with a public view and serves the game history for replays', async () => {
+    const host = await Client.connect();
+    const guest = await Client.connect();
+    await host.request({ type: 'createRoom', playerName: 'Alice' }, 'welcome');
+    await guest.request({ type: 'joinRoom', roomId: host.roomId, playerName: 'Bob' }, 'lobby');
+    await host.request({ type: 'setDeck', deck: forestDeck('Ezuri, Renegade Leader') }, 'lobby', (m) => m.lobby.players[0].deckSize === 40);
+    await guest.request({ type: 'setDeck', deck: forestDeck('Krenko, Mob Boss') }, 'lobby', (m) => m.lobby.players[1].deckSize === 40);
+    await host.request({ type: 'setReady', ready: true }, 'lobby', (m) => m.lobby.players[0].ready);
+    await guest.request({ type: 'setReady', ready: true }, 'lobby', (m) => m.lobby.players[1].ready);
+
+    // A spectator joins the lobby before the game starts and is counted, not seated.
+    const watcher = await Client.connect();
+    const spectatorLobby = await watcher.request({ type: 'joinRoom', roomId: host.roomId, playerName: 'Eve', spectator: true }, 'lobby');
+    expect(spectatorLobby.lobby.players.map((p) => p.name)).toEqual(['Alice', 'Bob']);
+    expect(spectatorLobby.lobby.spectators).toBe(1);
+    const hostSees = await host.next('lobby', (m) => m.lobby.spectators === 1);
+    expect(hostSees.lobby.spectators).toBe(1);
+
+    // Before the game starts there is no history.
+    const noGame = await watcher.request({ type: 'getHistory' }, 'error');
+    expect(noGame.code).toBe('NO_GAME');
+
+    const [watcherView] = await Promise.all([watcher.next('view'), host.request({ type: 'startGame' }, 'lobby', (m) => m.lobby.started)]);
+    // The spectator's view is public: no seat, no decision, no hidden hands.
+    expect(watcherView.view.you).toBe('');
+    expect(watcherView.view.decision).toBeNull();
+    for (const p of watcherView.view.players) {
+      expect(p.hand).toBeNull();
+      expect(p.handCount).toBe(7);
+    }
+
+    // Players keep the first mulligan decision; the spectator cannot act.
+    const hostView = await host.next('view', () => true, 5000).catch(() => host.lastView()!);
+    const chooserId = (hostView && 'view' in hostView ? hostView.view : hostView).waitingOn!;
+    const chooser = chooserId === host.playerId ? host : guest;
+    const decision = chooser.lastView()!.decision!;
+    const notYours = await watcher.request({ type: 'decision', decisionId: decision.id, response: { type: 'mulligan', keep: true } }, 'error');
+    expect(notYours.code).toBe('SPECTATOR');
+
+    // A kept hand becomes a history entry the spectator can fetch and replay.
+    chooser.send({ type: 'decision', decisionId: decision.id, response: { type: 'mulligan', keep: true } });
+    await watcher.next('view', (m) => m.view.waitingOn !== chooserId);
+    const history = await watcher.request({ type: 'getHistory' }, 'history');
+    expect(history.setups.map((s) => s.name)).toEqual(['Alice', 'Bob']);
+    expect(history.history.length).toBeGreaterThanOrEqual(1);
+    expect(history.history[0]).toEqual({ player: chooserId, response: { type: 'mulligan', keep: true } });
+
+    await Promise.all([host.close(), guest.close(), watcher.close()]);
+  });
+
   it('reconnects a player by playerId + token and resends lobby and view', async () => {
     const host = await Client.connect();
     await host.request({ type: 'createRoom', playerName: 'Solo' }, 'welcome');

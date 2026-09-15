@@ -225,7 +225,7 @@ export class RoomManager {
       } else if (msg.type === 'chat') {
         const text = String(msg.text ?? '').trim().slice(0, 500);
         if (text) for (const w of [...room.seats.map((x) => x.socket), ...room.spectators]) send(w, { type: 'chat', from: 'spectator', name: 'Spectator', text, at: Date.now() });
-      }
+      } else throw new ClientError('Spectators cannot act in the game', 'SPECTATOR');
       return;
     }
 

@@ -93,22 +93,34 @@ See `ARCHITECTURE.md` for the engine design.
 
 ## Known gaps and what's next
 
-Fixed since the first cut: level up and LEVEL blocks, Plot, Warp, Station and STATION blocks,
-Monstrosity, control-changing auras ("You control enchanted creature"), self cost reductions
-("costs {1} less to cast for each ...", affinity), and convoke, delve and improvise payment. The
-client and server are covered by browser tests (multi-turn solo play and a two-browser game).
+Fixed since the first cut: level up and LEVEL blocks, Plot, Warp, Station and STATION blocks (including
+Spacecraft "10+ |" rows), Monstrosity, control-changing auras, self cost reductions and affinity, convoke,
+delve and improvise payment, a manual "tap exactly these" mana prompt, copies that choose new targets,
+rule 613.8 dependency ordering between continuous effects, granted rules text (tokens "with '...'",
+"gains 'When this dies, ...'", emblems), spectators and a replay viewer in the client, commander override
+in the deck picker, and a Cast options dialog that actually casts (alternative costs such as warp, modal
+spells, X spells, adventures and modal double-faced cards are covered by a browser test).
+
+The oracle-text compiler is free and offline (regex templates, no paid API). Coverage over the full
+Commander-legal pool is tracked by `pnpm cards:coverage`; at the time of writing it automates 48% of
+cards completely and another 32% partially. Cards it cannot fully script still play: unscripted
+sentences become a prompt at the right moment and the player resolves them by hand (Untap-style).
 
 Still open, roughly in order of value:
 
-- **Compiler long tail.** About 23% of the pool has no automation and 36% is partial. The
-  coverage report ranks what is left; the biggest remaining templates are "target player reveals
-  their hand, you choose a card, they discard it", Class cards, "can't be blocked by creatures
-  with power N or less", Saga transform-and-return, dice rolls, the Ring and the initiative.
-- **Mana payment is auto-tap.** The engine picks lands for you (Arena-style); there is no manual
-  "tap exactly these" prompt yet, and hybrid or phyrexian edge cases pay the simplest way.
-- **Copies choose no new targets.** Copying a spell keeps the original's targets.
-- **Layer edge cases.** Dependencies between continuous effects (rule 613.8) are ordered by
-  timestamp only; copy effects of copies and some CDAs are approximations.
-- **Tokens with granted text.** "Create a token with 'Whenever ...'" tokens carry the text but the
-  compiler does not script it until that text is a known template.
-- **No spectators or replays UI.** Games are replayable from history in code, not in the client.
+- **Compiler long tail.** The remaining templates are a very flat distribution (the most common
+  unhandled line appears on 34 of 33,574 cards). Recent rounds targeted discard decks (Tinybones,
+  Bone Miser, Waste Not, Syr Konrad, Painful Quandary, ...), combat restrictions, reveals and
+  planeswalker emblems. Keep running the coverage report and adding templates by frequency; the
+  `test/tinybones.test.ts` suite shows how to prove a deck's cards end to end.
+- **Keyword actions without engine support.** Discover, connive on non-self objects, incubate,
+  multikicker, overload, replicate, clash, day/night, Attractions and stickers, firebending and other
+  Un-/Universes Beyond mechanics either compile to a prompt or not at all.
+- **Text-changing and "choose a name" effects.** Named-card restrictions (Meddling Mage), chosen-type
+  anthems and "becomes the basic land type of your choice" are prompts, not automation.
+- **Modal double-faced back faces and flip cards** work for casting and playing lands, but transform
+  and flip triggers on the back face are only as good as the compiler's handling of that face's text.
+- **Moxfield URL import** is blocked by Moxfield's bot protection (Cloudflare returns 403 to any
+  server). Paste the "Export" text instead; Archidekt URLs work.
+- **Hosting.** GitHub Pages needs *Settings → Pages → Source: GitHub Actions* enabled once; the
+  Render/Fly/Docker configs run the full multiplayer server.
