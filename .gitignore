@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+# Scryfall bulk data is fetched, never committed
+packages/cards/data/scryfall/
+apps/web/dist/
+.env

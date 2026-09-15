@@ -1,0 +1,219 @@
+{
+  "id": 7654321,
+  "name": "Prosper, Tome-Bound Treasure Storm",
+  "createdAt": "2023-11-05T14:02:31.554213Z",
+  "updatedAt": "2024-06-18T20:15:07.001122Z",
+  "deckFormat": 3,
+  "description": "Exile and impulse draw.",
+  "featured": "https://storage.googleapis.com/archidekt-card-images/afr/aa9e0a86-2b0f-4d7c-8f51-000000000101_art_crop.jpg",
+  "customFeatured": "",
+  "game": 1,
+  "private": false,
+  "viewCount": 1520,
+  "points": 14,
+  "userInput": 0,
+  "owner": { "id": 424242, "username": "treasurehoarder", "avatar": "", "frame": null, "ckAffiliate": "", "tcgAffiliate": "", "referrerEnum": null },
+  "cardPackage": null,
+  "playmat": null,
+  "playmatFile": null,
+  "bookmarked": false,
+  "tags": [],
+  "categories": [
+    { "id": 1001, "name": "Commander", "includedInDeck": true, "includedInPrice": true, "isPremier": true },
+    { "id": 1002, "name": "Ramp", "includedInDeck": true, "includedInPrice": true, "isPremier": false },
+    { "id": 1003, "name": "Land", "includedInDeck": true, "includedInPrice": true, "isPremier": false },
+    { "id": 1004, "name": "Removal", "includedInDeck": true, "includedInPrice": true, "isPremier": false },
+    { "id": 1005, "name": "Draw", "includedInDeck": true, "includedInPrice": true, "isPremier": false },
+    { "id": 1006, "name": "Maybeboard", "includedInDeck": false, "includedInPrice": false, "isPremier": false },
+    { "id": 1007, "name": "Sideboard", "includedInDeck": false, "includedInPrice": true, "isPremier": false }
+  ],
+  "cards": [
+    {
+      "id": 500000001,
+      "quantity": 1,
+      "modifier": "Normal",
+      "customCmc": null,
+      "companion": false,
+      "flippedDefault": false,
+      "label": "Commander,#e1e1e1",
+      "removedCategories": null,
+      "deletedAt": null,
+      "createdAt": "2023-11-05T14:02:31.554213Z",
+      "categories": ["Commander"],
+      "card": {
+        "id": 2100001,
+        "uid": "aa9e0a86-2b0f-4d7c-8f51-000000000101",
+        "collectorNumber": "232",
+        "multiverseid": 527515,
+        "mtgoFoilId": null,
+        "mtgoNormalId": null,
+        "tcgProductId": 241105,
+        "ckFoilId": null,
+        "ckNormalId": null,
+        "cmEd": null,
+        "scgSku": null,
+        "scgFoilSku": null,
+        "flavor": "",
+        "artist": "Justin Gerard",
+        "displayName": null,
+        "prices": { "ck": 1.99, "ckfoil": 3.49, "tcg": 1.2, "tcgfoil": 2.1, "cm": 1.5, "cmfoil": 2.3, "mtgo": 0.02, "mtgofoil": 0.02 },
+        "rarity": "mythic",
+        "options": ["Normal", "Foil"],
+        "owned": 0,
+        "edition": {
+          "editioncode": "afc",
+          "editionname": "Forgotten Realms Commander",
+          "editiondate": "2021-07-23",
+          "editiontype": "commander",
+          "mtgoCode": "afc"
+        },
+        "oracleCard": {
+          "id": 300001,
+          "uid": "c0c8d6b5-1111-4f7b-8a9d-000000000201",
+          "cmc": 4,
+          "colorIdentity": ["Black", "Red"],
+          "colors": ["Black", "Red"],
+          "faces": [],
+          "layout": "normal",
+          "legalities": { "commander": "legal", "legacy": "legal", "vintage": "legal" },
+          "manaCost": "{2}{B}{R}",
+          "manaProduction": { "W": null, "U": null, "B": null, "R": null, "G": null, "C": null },
+          "name": "Prosper, Tome-Bound",
+          "power": "1",
+          "salt": 0.43,
+          "subTypes": ["Tiefling", "Warlock"],
+          "superTypes": ["Legendary"],
+          "text": "Deathtouch\nMystic Arcanum — At the beginning of your end step, exile the top card of your library. Until the end of your next turn, you may play that card.\nPact Boon — Whenever you play a card from exile, create a Treasure token.",
+          "tokens": [],
+          "toughness": "4",
+          "types": ["Creature"],
+          "loyalty": null,
+          "defaultCategory": "Commander"
+        },
+        "globalCategories": []
+      }
+    },
+    {
+      "id": 500000002,
+      "quantity": 1,
+      "modifier": "Normal",
+      "customCmc": null,
+      "companion": false,
+      "flippedDefault": false,
+      "label": ",#37d67a",
+      "categories": ["Ramp"],
+      "card": {
+        "id": 2100002,
+        "uid": "b5f2a3c4-2222-4c5d-8e9f-000000000002",
+        "collectorNumber": "263",
+        "edition": { "editioncode": "c21", "editionname": "Commander 2021", "editiondate": "2021-04-23", "editiontype": "commander", "mtgoCode": "c21" },
+        "oracleCard": {
+          "id": 300002,
+          "uid": "d5a5f4c3-3333-4f7b-8a9d-000000000202",
+          "cmc": 1,
+          "colorIdentity": [],
+          "colors": [],
+          "faces": [],
+          "layout": "normal",
+          "manaCost": "{1}",
+          "name": "Sol Ring",
+          "text": "{T}: Add {C}{C}.",
+          "types": ["Artifact"],
+          "subTypes": [],
+          "superTypes": []
+        }
+      }
+    },
+    {
+      "id": 500000003,
+      "quantity": 1,
+      "modifier": "Foil",
+      "categories": ["Ramp", "Artifact"],
+      "card": {
+        "id": 2100003,
+        "uid": "c6a3b4d5-3333-4c5d-8e9f-000000000003",
+        "collectorNumber": "331",
+        "edition": { "editioncode": "eld", "editionname": "Throne of Eldraine", "editiondate": "2019-10-04", "editiontype": "expansion", "mtgoCode": "eld" },
+        "oracleCard": { "id": 300003, "uid": "e6b6a5d4-4444-4f7b-8a9d-000000000203", "cmc": 2, "layout": "normal", "manaCost": "{2}", "name": "Arcane Signet", "text": "{T}: Add one mana of any color in your commander's color identity.", "types": ["Artifact"] }
+      }
+    },
+    {
+      "id": 500000004,
+      "quantity": 1,
+      "modifier": "Normal",
+      "categories": ["Removal"],
+      "card": {
+        "id": 2100004,
+        "uid": "5f6a7b8c-cccc-4c5d-8e9f-00000000000c",
+        "collectorNumber": "187",
+        "edition": { "editioncode": "clb", "editionname": "Commander Legends: Battle for Baldur's Gate", "editiondate": "2022-06-10", "editiontype": "draft_innovation", "mtgoCode": "clb" },
+        "oracleCard": { "id": 300004, "uid": "f7c7b6e5-5555-4f7b-8a9d-000000000204", "cmc": 1, "layout": "normal", "manaCost": "{R}", "name": "Lightning Bolt", "text": "Lightning Bolt deals 3 damage to any target.", "types": ["Instant"] }
+      }
+    },
+    {
+      "id": 500000005,
+      "quantity": 12,
+      "modifier": "Normal",
+      "categories": ["Land"],
+      "card": {
+        "id": 2100005,
+        "uid": "4e5f6a7b-bbbb-4c5d-8e9f-00000000000b",
+        "collectorNumber": "279",
+        "edition": { "editioncode": "mkm", "editionname": "Murders at Karlov Manor", "editiondate": "2024-02-09", "editiontype": "expansion", "mtgoCode": "mkm" },
+        "oracleCard": { "id": 300005, "uid": "08d8c7f6-6666-4f7b-8a9d-000000000205", "cmc": 0, "layout": "normal", "manaCost": "", "name": "Mountain", "text": "({T}: Add {R}.)", "types": ["Land"], "superTypes": ["Basic"], "subTypes": ["Mountain"] }
+      }
+    },
+    {
+      "id": 500000006,
+      "quantity": 11,
+      "modifier": "Normal",
+      "categories": ["Land"],
+      "card": {
+        "id": 2100006,
+        "uid": "6a7b8c9d-dddd-4c5d-8e9f-00000000000d",
+        "collectorNumber": "277",
+        "edition": { "editioncode": "mkm", "editionname": "Murders at Karlov Manor", "editiondate": "2024-02-09", "editiontype": "expansion", "mtgoCode": "mkm" },
+        "oracleCard": { "id": 300006, "uid": "19e9d8a7-7777-4f7b-8a9d-000000000206", "cmc": 0, "layout": "normal", "manaCost": "", "name": "Swamp", "text": "({T}: Add {B}.)", "types": ["Land"], "superTypes": ["Basic"], "subTypes": ["Swamp"] }
+      }
+    },
+    {
+      "id": 500000007,
+      "quantity": 1,
+      "modifier": "Normal",
+      "categories": ["Maybeboard", "Draw"],
+      "card": {
+        "id": 2100007,
+        "uid": "7b8c9d0e-eeee-4c5d-8e9f-00000000000e",
+        "collectorNumber": "77",
+        "edition": { "editioncode": "cmm", "editionname": "Commander Masters", "editiondate": "2023-08-04", "editiontype": "masters", "mtgoCode": "cmm" },
+        "oracleCard": { "id": 300007, "uid": "2af0e9b8-8888-4f7b-8a9d-000000000207", "cmc": 3, "layout": "normal", "manaCost": "{2}{U}", "name": "Rhystic Study", "text": "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}.", "types": ["Enchantment"] }
+      }
+    },
+    {
+      "id": 500000008,
+      "quantity": 1,
+      "modifier": "Normal",
+      "categories": ["Sideboard"],
+      "card": {
+        "id": 2100008,
+        "uid": "8c9d0e1f-ffff-4c5d-8e9f-00000000000f",
+        "collectorNumber": "115",
+        "edition": { "editioncode": "eld", "editionname": "Throne of Eldraine", "editiondate": "2019-10-04", "editiontype": "expansion", "mtgoCode": "eld" },
+        "oracleCard": { "id": 300008, "uid": "3b01fac9-9999-4f7b-8a9d-000000000208", "cmc": 3, "layout": "adventure", "manaCost": "{2}{R}", "name": "Bonecrusher Giant // Stomp", "text": "Whenever Bonecrusher Giant becomes the target of a spell, Bonecrusher Giant deals 2 damage to that spell's controller.", "types": ["Creature"] }
+      }
+    },
+    {
+      "id": 500000009,
+      "quantity": 1,
+      "modifier": "Normal",
+      "categories": [],
+      "card": {
+        "id": 2100009,
+        "uid": "9d0e1f2a-0000-4c5d-8e9f-000000000010",
+        "collectorNumber": "350",
+        "edition": { "editioncode": "cmr", "editionname": "Commander Legends", "editiondate": "2020-11-20", "editiontype": "draft_innovation", "mtgoCode": "cmr" },
+        "oracleCard": { "id": 300009, "uid": "4c12abda-aaaa-4f7b-8a9d-000000000209", "cmc": 0, "layout": "normal", "manaCost": "", "name": "Command Tower", "text": "{T}: Add one mana of any color in your commander's color identity.", "types": ["Land"] }
+      }
+    }
+  ]
+}

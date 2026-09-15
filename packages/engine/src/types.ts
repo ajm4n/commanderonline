@@ -1,0 +1,646 @@
+/**
+ * Core engine types. The engine is pure and deterministic: given the same
+ * seed and the same sequence of player decisions it produces the same game.
+ */
+
+export type PlayerId = string;
+export type ObjectId = number;
+
+export type Color = 'W' | 'U' | 'B' | 'R' | 'G';
+export const COLORS: Color[] = ['W', 'U', 'B', 'R', 'G'];
+export type ManaColor = Color | 'C';
+
+export type ZoneName =
+  | 'library'
+  | 'hand'
+  | 'battlefield'
+  | 'graveyard'
+  | 'stack'
+  | 'exile'
+  | 'command';
+
+export type CardType =
+  | 'Artifact'
+  | 'Battle'
+  | 'Creature'
+  | 'Enchantment'
+  | 'Instant'
+  | 'Kindred'
+  | 'Land'
+  | 'Planeswalker'
+  | 'Sorcery';
+
+export type Supertype = 'Basic' | 'Legendary' | 'Snow' | 'World';
+
+/** Static card data as printed. Sourced from Scryfall oracle data. */
+export interface CardFace {
+  name: string;
+  manaCost: string; // e.g. "{2}{G}{G}", "" for lands
+  typeLine: string; // "Legendary Creature — Elf Druid"
+  oracleText: string;
+  power?: string; // "2", "*", "1+*"
+  toughness?: string;
+  loyalty?: string;
+  defense?: string;
+  colors: Color[];
+  imageUri?: string;
+}
+
+export type Layout =
+  | 'normal'
+  | 'split'
+  | 'flip'
+  | 'transform'
+  | 'modal_dfc'
+  | 'meld'
+  | 'leveler'
+  | 'class'
+  | 'saga'
+  | 'adventure'
+  | 'mutate'
+  | 'prototype'
+  | 'battle'
+  | 'planar'
+  | 'scheme'
+  | 'vanguard'
+  | 'token'
+  | 'double_faced_token'
+  | 'emblem'
+  | 'augment'
+  | 'host'
+  | 'art_series'
+  | 'reversible_card'
+  | 'case';
+
+export interface CardData extends CardFace {
+  oracleId: string;
+  scryfallId?: string;
+  layout: Layout;
+  cmc: number;
+  colorIdentity: Color[];
+  keywords: string[]; // Scryfall keyword list e.g. ["Flying", "Haste"]
+  /** Back / second face for transform, MDFC, adventure, split. */
+  faces?: CardFace[];
+  /** True for tokens created by effects. */
+  isToken?: boolean;
+  producedMana?: ManaColor[];
+}
+
+export type CounterType = string; // "+1/+1", "-1/-1", "loyalty", "charge", "poison" (players), ...
+
+export interface GameObject {
+  id: ObjectId;
+  card: CardData;
+  /** Which face is currently active (0 = front). */
+  faceIndex: number;
+  owner: PlayerId;
+  controller: PlayerId;
+  zone: ZoneName;
+  tapped: boolean;
+  flipped: boolean;
+  faceDown: boolean;
+  /** Turn number this object came under its controller's control on the battlefield. */
+  controlSinceTurn: number;
+  /** Monotonic timestamp: when the object entered its current zone. */
+  timestamp: number;
+  counters: Record<CounterType, number>;
+  damage: number;
+  deathtouchDamage: boolean;
+  attachedTo: ObjectId | null;
+  attachments: ObjectId[];
+  isCommander: boolean;
+  /** Number of times cast from the command zone (for commander tax). */
+  commanderCasts: number;
+  /** Whether this permanent attacked / blocked this combat. */
+  attacking: PlayerId | ObjectId | null;
+  blocking: ObjectId[];
+  blockedBy: ObjectId[];
+  /** Objects this creature is blocked (even if blockers are removed). */
+  wasBlocked: boolean;
+  /** Which "phase" the permanent is in for phasing. */
+  phasedOut: boolean;
+  /** Chosen values remembered on the object (e.g. chosen color, named card). */
+  chosen: Record<string, unknown>;
+  /** Copy of a card's characteristics if this is a copy (clone effects). */
+  copyOf?: CardData;
+  /** Did this object enter the battlefield this turn? (for haste / summoning sickness) */
+  enteredThisTurn: boolean;
+  /** Was this spell cast (vs. put on stack by other means)? */
+  wasCast: boolean;
+  /** Which zone the spell/permanent came from when cast/entering. */
+  castFromZone?: ZoneName;
+  /** X value chosen when cast. */
+  xValue?: number;
+  /** Spell modes chosen when cast (modal spells). */
+  modes?: number[];
+  /** Whether the spell was kicked / other optional additional costs paid. */
+  additionalCostsPaid: string[];
+  /** Persistent per-object memory used by scripts (e.g. "exiled cards"). */
+  memory: Record<string, unknown>;
+  /** Turn on which the card was revealed as a "when you cast" trigger etc. */
+  lastKnownInfo?: Partial<GameObject>;
+}
+
+export interface ManaPool {
+  W: number;
+  U: number;
+  B: number;
+  R: number;
+  G: number;
+  C: number;
+}
+
+export function emptyPool(): ManaPool {
+  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+}
+
+export interface Player {
+  id: PlayerId;
+  name: string;
+  life: number;
+  poison: number;
+  experience: number;
+  energy: number;
+  manaPool: ManaPool;
+  commanderDamage: Record<ObjectId, number>;
+  library: ObjectId[];
+  hand: ObjectId[];
+  graveyard: ObjectId[];
+  exile: ObjectId[];
+  command: ObjectId[];
+  landsPlayedThisTurn: number;
+  maxLandsPerTurn: number;
+  spellsCastThisTurn: number;
+  lost: boolean;
+  lossReason?: string;
+  mulligansTaken: number;
+  keptHand: boolean;
+  /** Whether this player has drawn a card from an empty library (SBA loss). */
+  attemptedDrawFromEmpty: boolean;
+  /** Player-level "flags" for effects like "you can't lose the game". */
+  flags: Record<string, unknown>;
+  /** Turn-scoped stats used by triggers ("first time each turn"). */
+  turnStats: Record<string, number>;
+  /** Persistent monarch / initiative etc. */
+  designations: string[];
+}
+
+export type Phase = 'beginning' | 'precombatMain' | 'combat' | 'postcombatMain' | 'ending';
+export type Step =
+  | 'untap'
+  | 'upkeep'
+  | 'draw'
+  | 'main1'
+  | 'beginCombat'
+  | 'declareAttackers'
+  | 'declareBlockers'
+  | 'firstStrikeDamage'
+  | 'combatDamage'
+  | 'endCombat'
+  | 'main2'
+  | 'end'
+  | 'cleanup';
+
+export interface TurnState {
+  number: number;
+  activePlayer: PlayerId;
+  phase: Phase;
+  step: Step;
+  /** Extra turns queued as player ids. */
+  extraTurns: PlayerId[];
+  /** Steps to skip this turn. */
+  skipSteps: Step[];
+  /** Whether combat damage has happened this combat (for first strike). */
+  firstStrikeHappened: boolean;
+  /** Attackers declared this combat. */
+  attackers: ObjectId[];
+}
+
+/** A spell or ability waiting to resolve. */
+export interface StackItem {
+  id: number;
+  kind: 'spell' | 'ability' | 'triggered';
+  /** The spell object (for spells) or the source object of the ability. */
+  sourceId: ObjectId;
+  controller: PlayerId;
+  /** Human-readable description of what will happen. */
+  text: string;
+  /** Which ability index on the card (for activated/triggered). */
+  abilityRef?: string;
+  targets: Target[];
+  /** Object timestamps when targeted; a changed timestamp means the target left its zone (new object). */
+  targetStamps?: (number | null)[];
+  /** Chosen modes for modal abilities. */
+  modes?: number[];
+  xValue?: number;
+  /** Values captured at trigger time (e.g. the creature that died, damage dealt). */
+  triggerContext?: Record<string, unknown>;
+  /** Whether the item was countered / fizzled. */
+  countered?: boolean;
+  /** Copies keep a snapshot of the original card. */
+  copiedCard?: CardData;
+  /** Mana spent to cast the spell. */
+  manaSpent?: ManaPool;
+  /** Zone the spell will go to on resolution/countering if not battlefield. */
+  resolveToZone?: ZoneName;
+  timestamp: number;
+}
+
+export type Target =
+  | { kind: 'object'; id: ObjectId }
+  | { kind: 'player'; id: PlayerId }
+  | { kind: 'stackItem'; id: number }
+  | { kind: 'none' };
+
+/**
+ * A continuous effect currently applying to the game. Applied in layer order
+ * when computing an object's characteristics.
+ */
+export interface ContinuousEffect {
+  id: number;
+  sourceId: ObjectId | null;
+  controller: PlayerId;
+  timestamp: number;
+  /** Static (from a permanent's ability) or from a resolved spell/ability. */
+  fromStatic: boolean;
+  /** Which objects it affects: fixed set (locked in at creation) or a filter. */
+  affected: { kind: 'fixed'; ids: ObjectId[] } | { kind: 'filter'; filter: ObjectFilter };
+  duration: 'permanent' | 'endOfTurn' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'thisTurn' | 'endOfCombat';
+  modification: Modification;
+}
+
+export type Modification =
+  | { layer: 4; addTypes?: string[]; removeTypes?: string[]; setTypes?: string[]; addSubtypes?: string[] }
+  | { layer: 5; setColors?: Color[]; addColors?: Color[] }
+  | { layer: 6; addKeywords?: string[]; removeKeywords?: string[]; loseAllAbilities?: boolean; addAbilityText?: string[] }
+  | { layer: '7b'; setPower?: number; setToughness?: number }
+  | { layer: '7c'; power: number; toughness: number }
+  | { layer: '7d'; switchPT: true }
+  | { layer: 'control'; controller: PlayerId } // layer 2
+  | { layer: 'copy'; card: CardData } // layer 1
+  | { layer: 'rule'; rule: RuleModification }; // non-characteristic rule changes
+
+export type RuleModification =
+  | { kind: 'cantAttack' }
+  | { kind: 'cantBlock' }
+  | { kind: 'cantBeBlocked' }
+  | { kind: 'mustAttack' }
+  | { kind: 'cantUntap' }
+  | { kind: 'cantBeTargeted'; by?: 'spells' | 'abilities' | 'opponents' }
+  | { kind: 'extraLandDrop'; count: number }
+  | { kind: 'noMaxHandSize' }
+  | { kind: 'costReduction'; amount: number; filter?: SpellFilter }
+  | { kind: 'costIncrease'; amount: number; filter?: SpellFilter }
+  | { kind: 'entersTapped' }
+  | { kind: 'cantLose' }
+  | { kind: 'cantGainLife' }
+  | { kind: 'damagePrevention'; amount: number | 'all' }
+  | { kind: 'hasteLike' }
+  | { kind: 'custom'; tag: string; data?: unknown };
+
+/** Filters describe which objects an effect / trigger / target applies to. */
+export interface ObjectFilter {
+  zone?: ZoneName | ZoneName[];
+  types?: string[]; // any of these card types
+  notTypes?: string[];
+  subtypes?: string[]; // any of these subtypes
+  notSubtypes?: string[];
+  supertypes?: Supertype[];
+  colors?: Color[]; // any of these
+  colorless?: boolean;
+  monocolored?: boolean;
+  multicolored?: boolean;
+  controller?: 'you' | 'opponent' | 'any' | PlayerId;
+  owner?: 'you' | 'opponent' | 'any';
+  tapped?: boolean;
+  untapped?: boolean;
+  isToken?: boolean;
+  nonToken?: boolean;
+  attacking?: boolean;
+  blocking?: boolean;
+  other?: boolean; // exclude the source object itself
+  self?: boolean; // only the source object
+  keywords?: string[]; // has any of these keywords
+  withoutKeywords?: string[];
+  powerLE?: number | 'X';
+  powerGE?: number | 'X';
+  toughnessLE?: number;
+  toughnessGE?: number;
+  cmcLE?: number | 'X';
+  cmcGE?: number;
+  cmcEQ?: number;
+  isCommander?: boolean;
+  hasCounter?: CounterType;
+  legendary?: boolean;
+  nonland?: boolean;
+  /** Only objects attached to / attached by. */
+  attachedToSource?: boolean;
+  nameIs?: string;
+  historic?: boolean;
+  /** Was cast this turn / entered this turn etc. */
+  enteredThisTurn?: boolean;
+  custom?: string;
+}
+
+export interface SpellFilter extends ObjectFilter {
+  /** Spell filters can additionally match by controller of the spell. */
+  spellController?: 'you' | 'opponent' | 'any';
+}
+
+export interface PlayerFilter {
+  who: 'you' | 'opponent' | 'any' | 'each' | 'eachOpponent' | 'controller' | 'owner' | 'target' | 'active' | 'defending';
+}
+
+/** Log entry for the game log / replay. */
+export interface LogEntry {
+  seq: number;
+  turn: number;
+  text: string;
+  /** Which players may see it (undefined = everyone). */
+  visibleTo?: PlayerId[];
+  /** Structured payload for the client (kind + data). */
+  kind?: string;
+  data?: Record<string, unknown>;
+}
+
+/** Game-level event names used for triggers. */
+export type GameEventName =
+  | 'entersBattlefield'
+  | 'leavesBattlefield'
+  | 'dies'
+  | 'putIntoGraveyard'
+  | 'exiled'
+  | 'returnedToHand'
+  | 'cast'
+  | 'spellResolved'
+  | 'abilityActivated'
+  | 'countered'
+  | 'attacks'
+  | 'attacked' // a player/planeswalker was attacked
+  | 'blocks'
+  | 'becomesBlocked'
+  | 'dealsDamage'
+  | 'dealsCombatDamage'
+  | 'dealtDamage'
+  | 'dealtCombatDamageToPlayer'
+  | 'lifeGained'
+  | 'lifeLost'
+  | 'drawCard'
+  | 'discard'
+  | 'sacrifice'
+  | 'tapped'
+  | 'untapped'
+  | 'counterAdded'
+  | 'counterRemoved'
+  | 'tokenCreated'
+  | 'landPlayed'
+  | 'mill'
+  | 'scry'
+  | 'shuffle'
+  | 'beginningOfUpkeep'
+  | 'beginningOfDraw'
+  | 'beginningOfPrecombatMain'
+  | 'beginningOfCombat'
+  | 'beginningOfDeclareAttackers'
+  | 'beginningOfEndStep'
+  | 'endOfCombat'
+  | 'endOfTurn'
+  | 'beginningOfTurn'
+  | 'beginningOfPostcombatMain'
+  | 'playerLost'
+  | 'becomesTarget'
+  | 'transformed'
+  | 'coinFlipped'
+  | 'controlChanged'
+  | 'becomesMonarch'
+  | 'cleanup';
+
+export interface GameEvent {
+  name: GameEventName;
+  /** The primary object involved (the creature that died, the spell cast, ...). */
+  objectId?: ObjectId;
+  /** Secondary object (the source of damage, the attacked planeswalker ...). */
+  sourceId?: ObjectId;
+  /** Player involved (who drew, who was dealt damage, whose upkeep). */
+  playerId?: PlayerId;
+  /** Second player (the defending player, controller of the source). */
+  otherPlayerId?: PlayerId;
+  amount?: number;
+  /** Zone moved from / to. */
+  fromZone?: ZoneName;
+  toZone?: ZoneName;
+  counterType?: CounterType;
+  combat?: boolean;
+  /** Snapshot of the object as it last existed (for dies / leaves triggers). */
+  snapshot?: GameObject;
+  /** Free-form data. */
+  data?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Decisions: the engine runs until it needs a choice from a player.
+// ---------------------------------------------------------------------------
+
+export interface DecisionBase {
+  id: number;
+  player: PlayerId;
+  /** Text shown to the player. */
+  prompt: string;
+  /** Source object providing context, if any. */
+  sourceId?: ObjectId;
+}
+
+export interface PriorityDecision extends DecisionBase {
+  type: 'priority';
+  /** Which actions the player can legally take right now. */
+  playableCards: ObjectId[];
+  activatableAbilities: { objectId: ObjectId; abilityIndex: number; text: string }[];
+  canPlayLand: boolean;
+}
+
+export interface ChooseTargetsDecision extends DecisionBase {
+  type: 'chooseTargets';
+  /** Legal targets per target slot. */
+  slots: { description: string; legal: Target[]; min: number; max: number }[];
+}
+
+export interface YesNoDecision extends DecisionBase {
+  type: 'yesNo';
+  yesLabel?: string;
+  noLabel?: string;
+}
+
+export interface ChooseOptionDecision extends DecisionBase {
+  type: 'chooseOption';
+  options: { id: string; label: string; disabled?: boolean }[];
+  min: number;
+  max: number;
+}
+
+export interface ChooseObjectsDecision extends DecisionBase {
+  type: 'chooseObjects';
+  /** Candidate objects (hidden zones included; the client renders what it can). */
+  candidates: ObjectId[];
+  min: number;
+  max: number;
+  /** If true, candidates come from a hidden zone and the choosing player may see them. */
+  revealToChooser?: boolean;
+}
+
+export interface OrderObjectsDecision extends DecisionBase {
+  type: 'orderObjects';
+  objectIds: ObjectId[];
+  /** Ordering triggers on the stack, cards on top of library, etc. */
+  context: 'triggers' | 'libraryTop' | 'graveyard' | 'blockers' | 'damageAssignment';
+  items?: { id: number; text: string }[];
+}
+
+export interface DeclareAttackersDecision extends DecisionBase {
+  type: 'declareAttackers';
+  /** Creatures that can attack and who they could attack. */
+  candidates: { id: ObjectId; canAttack: (PlayerId | ObjectId)[]; mustAttack: boolean }[];
+}
+
+export interface DeclareBlockersDecision extends DecisionBase {
+  type: 'declareBlockers';
+  attackers: ObjectId[];
+  candidates: { id: ObjectId; canBlock: ObjectId[] }[];
+}
+
+export interface PayManaDecision extends DecisionBase {
+  type: 'payMana';
+  cost: string;
+  /** Suggested auto-payment: object ids to tap, in order, plus pool mana to use. */
+  suggestion: { tap: ObjectId[]; fromPool: ManaPool } | null;
+  /** All untapped mana sources the player controls. */
+  sources: { id: ObjectId; produces: ManaColor[][] }[];
+}
+
+export interface ChooseNumberDecision extends DecisionBase {
+  type: 'chooseNumber';
+  min: number;
+  max: number;
+}
+
+export interface MulliganDecision extends DecisionBase {
+  type: 'mulligan';
+  hand: ObjectId[];
+  mulligansTaken: number;
+}
+
+export interface DistributeDecision extends DecisionBase {
+  type: 'distribute';
+  /** Total amount (damage, counters) to split among targets. */
+  amount: number;
+  targets: Target[];
+  minPer: number;
+}
+
+export interface ManualTriggerDecision extends DecisionBase {
+  type: 'manualTrigger';
+  /** An unscripted card's trigger the engine detected from oracle text. */
+  text: string;
+  objectId: ObjectId;
+}
+
+export type Decision =
+  | PriorityDecision
+  | ChooseTargetsDecision
+  | YesNoDecision
+  | ChooseOptionDecision
+  | ChooseObjectsDecision
+  | OrderObjectsDecision
+  | DeclareAttackersDecision
+  | DeclareBlockersDecision
+  | PayManaDecision
+  | ChooseNumberDecision
+  | MulliganDecision
+  | DistributeDecision
+  | ManualTriggerDecision;
+
+export type DecisionType = Decision['type'];
+
+/** Player responses to decisions. */
+export type Response =
+  | { type: 'pass' }
+  | { type: 'playLand'; objectId: ObjectId }
+  | { type: 'cast'; objectId: ObjectId; faceIndex?: number; xValue?: number; modes?: number[]; alternativeCost?: string }
+  | { type: 'activate'; objectId: ObjectId; abilityIndex: number; xValue?: number; modes?: number[] }
+  | { type: 'targets'; targets: Target[][] }
+  | { type: 'yesNo'; value: boolean }
+  | { type: 'options'; ids: string[] }
+  | { type: 'objects'; ids: ObjectId[] }
+  | { type: 'order'; ids: number[] }
+  | { type: 'attackers'; attacks: { attacker: ObjectId; target: PlayerId | ObjectId }[] }
+  | { type: 'blockers'; blocks: { blocker: ObjectId; attacker: ObjectId }[] }
+  | { type: 'payMana'; tap: ObjectId[]; fromPool?: Partial<ManaPool>; auto?: boolean }
+  | { type: 'number'; value: number }
+  | { type: 'mulligan'; keep: boolean; bottom?: ObjectId[] }
+  | { type: 'distribute'; amounts: number[] }
+  | { type: 'manualDone' }
+  | { type: 'cancel' }
+  // Manual-mode escape hatches: anything the rules engine cannot automate yet.
+  | { type: 'manual'; action: ManualAction };
+
+/**
+ * Manual actions let players resolve unscripted cards by hand, Untap-style.
+ * They bypass rules enforcement but keep the game state consistent.
+ */
+export type ManualAction =
+  | { kind: 'moveObject'; objectId: ObjectId; toZone: ZoneName; position?: 'top' | 'bottom' | number; tapped?: boolean }
+  | { kind: 'tap'; objectId: ObjectId; tapped: boolean }
+  | { kind: 'setLife'; playerId: PlayerId; life: number }
+  | { kind: 'adjustLife'; playerId: PlayerId; delta: number }
+  | { kind: 'addCounters'; objectId: ObjectId; counterType: CounterType; delta: number }
+  | { kind: 'createToken'; name: string; typeLine?: string; power?: string; toughness?: string; colors?: Color[]; oracleText?: string; count?: number; tapped?: boolean }
+  | { kind: 'addMana'; color: ManaColor; amount: number }
+  | { kind: 'draw'; count: number }
+  | { kind: 'mill'; count: number }
+  | { kind: 'shuffle' }
+  | { kind: 'damage'; objectId: ObjectId; amount: number }
+  | { kind: 'setControl'; objectId: ObjectId; controller: PlayerId }
+  | { kind: 'attach'; objectId: ObjectId; to: ObjectId | null }
+  | { kind: 'reveal'; objectId: ObjectId }
+  | { kind: 'setMemory'; objectId: ObjectId; key: string; value: unknown }
+  | { kind: 'transform'; objectId: ObjectId }
+  | { kind: 'concede' }
+  | { kind: 'poison'; playerId: PlayerId; delta: number }
+  | { kind: 'commanderDamage'; playerId: PlayerId; commanderId: ObjectId; delta: number };
+
+export interface GameConfig {
+  seed: number;
+  startingLife: number;
+  startingHandSize: number;
+  /** Free mulligan (Commander) */
+  freeMulligan: boolean;
+  /** Commander damage rule threshold */
+  commanderDamageThreshold: number;
+  format: 'commander' | 'brawl' | 'standard-ish';
+  /** Whether to auto-pass priority when a player has nothing to do (huge UX win). */
+  autoPassWhenNothingToDo: boolean;
+  /** Auto-yield: skip priority for players who have no instant-speed plays. */
+  smartStops: boolean;
+}
+
+export const DEFAULT_CONFIG: GameConfig = {
+  seed: 1,
+  startingLife: 40,
+  startingHandSize: 7,
+  freeMulligan: true,
+  commanderDamageThreshold: 21,
+  format: 'commander',
+  autoPassWhenNothingToDo: true,
+  smartStops: true,
+};
+
+export interface DeckList {
+  /** Oracle ids or names; resolved to CardData by the caller. */
+  commanders: CardData[];
+  mainboard: CardData[];
+}
+
+export interface PlayerSetup {
+  id: PlayerId;
+  name: string;
+  deck: DeckList;
+}

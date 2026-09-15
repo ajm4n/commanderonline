@@ -1,0 +1,49 @@
+{
+  "id": "legacy1234",
+  "name": "Krenko Goblins",
+  "format": "commander",
+  "publicUrl": "https://www.moxfield.com/decks/legacy1234",
+  "publicId": "legacy1234",
+  "commanders": {
+    "Krenko, Mob Boss": {
+      "quantity": 1,
+      "boardType": "commanders",
+      "finish": "nonFoil",
+      "card": {
+        "id": "2c3d4e5f-9999-4c5d-8e9f-000000000009",
+        "scryfall_id": "2c3d4e5f-9999-4c5d-8e9f-000000000009",
+        "set": "m13",
+        "name": "Krenko, Mob Boss",
+        "cn": "137"
+      }
+    }
+  },
+  "mainboard": {
+    "Sol Ring": {
+      "quantity": 1,
+      "boardType": "mainboard",
+      "card": { "id": "b5f2a3c4-2222-4c5d-8e9f-000000000002", "set": "c21", "name": "Sol Ring", "cn": "263" }
+    },
+    "Skullclamp": {
+      "quantity": 1,
+      "boardType": "mainboard",
+      "card": { "id": "3d4e5f6a-aaaa-4c5d-8e9f-00000000000a", "set": "dst", "name": "Skullclamp", "cn": "140" }
+    },
+    "Mountain": {
+      "quantity": 30,
+      "boardType": "mainboard",
+      "card": { "id": "4e5f6a7b-bbbb-4c5d-8e9f-00000000000b", "set": "mkm", "name": "Mountain", "cn": "279" }
+    }
+  },
+  "sideboard": {},
+  "maybeboard": {
+    "Lightning Bolt": {
+      "quantity": 1,
+      "boardType": "maybeboard",
+      "card": { "id": "5f6a7b8c-cccc-4c5d-8e9f-00000000000c", "set": "clb", "name": "Lightning Bolt", "cn": "187" }
+    }
+  },
+  "companions": {},
+  "signatureSpells": {},
+  "tokens": []
+}

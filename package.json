@@ -1,0 +1,20 @@
+{
+  "name": "commanderonline",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Rules-enforced Magic: The Gathering Commander played in the browser.",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "dev": "pnpm --parallel -r dev",
+    "cards:fetch": "pnpm --filter @commander/cards fetch",
+    "cards:coverage": "pnpm --filter @commander/cards coverage"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -1,0 +1,310 @@
+import type { Game, Gen } from './game.js';
+import type { GameObject, ObjectId, PlayerId, Step, Target } from './types.js';
+import { summoningSick } from './casting.js';
+import { protectionApplies } from './filters.js';
+import { BASIC_LAND_TYPES } from './typeline.js';
+
+function creaturesOf(g: Game, p: PlayerId): GameObject[] {
+  return g.state.battlefield.map((id) => g.obj(id)).filter((o) => o.controller === p && !o.phasedOut && g.characteristics(o.id).types.includes('Creature'));
+}
+
+function canAttack(g: Game, o: GameObject): boolean {
+  if (o.tapped) return false;
+  const ch = g.characteristics(o.id);
+  if (ch.keywords.has('Defender') && !ch.rules.some((r) => r.kind === 'custom' && r.tag === 'canAttackWithDefender')) return false;
+  if (ch.rules.some((r) => r.kind === 'cantAttack')) return false;
+  if (summoningSick(g, o)) return false;
+  return true;
+}
+
+function goadedBy(g: Game, o: GameObject): PlayerId[] {
+  return g.characteristics(o.id).rules.filter((r) => r.kind === 'custom' && r.tag === 'goaded').map((r) => (r as { data: PlayerId }).data);
+}
+
+/** Who can this creature attack? Players and planeswalkers/battles they control. */
+function attackTargets(g: Game, o: GameObject): (PlayerId | ObjectId)[] {
+  const out: (PlayerId | ObjectId)[] = [];
+  const goaders = goadedBy(g, o);
+  for (const p of g.opponentsOf(o.controller)) {
+    out.push(p);
+    for (const id of g.state.battlefield) {
+      const t = g.obj(id);
+      if (t.controller !== p) continue;
+      const ch = g.characteristics(id);
+      if (ch.types.includes('Planeswalker') || ch.types.includes('Battle')) out.push(id);
+    }
+  }
+  if (goaders.length) {
+    const nonGoader = out.filter((t) => (typeof t === 'string' ? !goaders.includes(t) : !goaders.includes(g.obj(t).controller)));
+    if (nonGoader.length) return nonGoader;
+  }
+  return out;
+}
+
+function defenderOf(g: Game, target: PlayerId | ObjectId): PlayerId {
+  return typeof target === 'string' ? target : g.obj(target).controller;
+}
+
+function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
+  const bch = g.characteristics(blocker.id);
+  const ach = g.characteristics(attacker.id);
+  if (blocker.tapped) return false;
+  if (bch.rules.some((r) => r.kind === 'cantBlock')) return false;
+  if (ach.rules.some((r) => r.kind === 'cantBeBlocked')) return false;
+  if (ach.keywords.has('Flying') && !(bch.keywords.has('Flying') || bch.keywords.has('Reach'))) return false;
+  if (ach.keywords.has('Shadow') !== bch.keywords.has('Shadow')) return false;
+  if (ach.keywords.has('Horsemanship') && !bch.keywords.has('Horsemanship')) return false;
+  if (ach.keywords.has('Fear') && !(bch.types.includes('Artifact') || bch.colors.includes('B'))) return false;
+  if (ach.keywords.has('Intimidate') && !(bch.types.includes('Artifact') || bch.colors.some((c) => ach.colors.includes(c)))) return false;
+  if (ach.keywords.has('Skulk') && (bch.power ?? 0) > (ach.power ?? 0)) return false;
+  for (const prot of ach.protections) if (protectionApplies(prot, bch.colors, bch.types, bch.subtypes, true)) return false;
+  // Landwalk
+  for (const [land] of Object.entries(BASIC_LAND_TYPES)) {
+    if (ach.keywords.has(`${land}walk`) && g.state.battlefield.some((id) => g.obj(id).controller === blocker.controller && g.characteristics(id).subtypes.includes(land))) return false;
+  }
+  // "can block only creatures with flying"
+  if (bch.rules.some((r) => r.kind === 'custom' && r.tag === 'blockOnlyFlying') && !ach.keywords.has('Flying')) return false;
+  return true;
+}
+
+export function* runCombatStep(g: Game, step: Step): Gen {
+  const active = g.state.turn.activePlayer;
+  switch (step) {
+    case 'beginCombat':
+      g.emit({ name: 'beginningOfCombat', playerId: active });
+      yield* g.priorityRound();
+      return;
+    case 'declareAttackers':
+      yield* declareAttackers(g, active);
+      if (g.state.turn.attackers.length) yield* g.priorityRound();
+      return;
+    case 'declareBlockers':
+      yield* declareBlockers(g);
+      yield* g.priorityRound();
+      return;
+    case 'firstStrikeDamage':
+      yield* dealCombatDamage(g, true);
+      g.state.turn.firstStrikeHappened = true;
+      yield* g.priorityRound();
+      return;
+    case 'combatDamage':
+      yield* dealCombatDamage(g, false);
+      yield* g.priorityRound();
+      return;
+    case 'endCombat':
+      g.emit({ name: 'endOfCombat', playerId: active });
+      yield* g.priorityRound();
+      for (const o of Object.values(g.state.objects)) {
+        o.attacking = null;
+        o.blocking = [];
+        o.blockedBy = [];
+        o.wasBlocked = false;
+      }
+      g.state.turn.attackers = [];
+      g.expireEffects('endOfCombat');
+      g.touch();
+      return;
+  }
+}
+
+function* declareAttackers(g: Game, active: PlayerId): Gen {
+  const creatures = creaturesOf(g, active).filter((o) => canAttack(g, o));
+  const candidates = creatures
+    .map((o) => {
+      const targets = attackTargets(g, o);
+      const ch = g.characteristics(o.id);
+      const must = goadedBy(g, o).length > 0 || ch.rules.some((r) => r.kind === 'mustAttack');
+      return { id: o.id, canAttack: targets, mustAttack: must };
+    })
+    .filter((c) => c.canAttack.length > 0);
+  g.emit({ name: 'beginningOfDeclareAttackers', playerId: active });
+  if (candidates.length === 0) {
+    g.state.turn.attackers = [];
+    return;
+  }
+  let attacks: { attacker: ObjectId; target: PlayerId | ObjectId }[] = [];
+  for (;;) {
+    const resp = yield* g.ask({ type: 'declareAttackers', player: active, prompt: 'Declare attackers', candidates });
+    if (resp.type !== 'attackers') return;
+    attacks = resp.attacks;
+    const valid = attacks.every((a) => candidates.some((c) => c.id === a.attacker && c.canAttack.some((t) => t === a.target))) && new Set(attacks.map((a) => a.attacker)).size === attacks.length;
+    const mustOk = candidates.filter((c) => c.mustAttack).every((c) => attacks.some((a) => a.attacker === c.id));
+    if (valid && mustOk) break;
+    g.log(valid ? 'Some creatures must attack this combat.' : 'Invalid attack declaration.');
+  }
+  g.state.turn.attackers = attacks.map((a) => a.attacker);
+  const defenders = new Set<PlayerId>();
+  for (const a of attacks) {
+    const o = g.obj(a.attacker);
+    o.attacking = a.target;
+    const ch = g.characteristics(o.id);
+    if (!ch.keywords.has('Vigilance')) g.tap(o.id);
+    defenders.add(defenderOf(g, a.target));
+  }
+  g.touch();
+  if (attacks.length) g.log(`${g.player(active).name} attacks with ${attacks.map((a) => `${g.nameOf(a.attacker)} → ${typeof a.target === 'string' ? g.player(a.target).name : g.nameOf(a.target)}`).join(', ')}.`, { kind: 'attack', data: { attacks } });
+  for (const a of attacks) {
+    g.emit({ name: 'attacks', objectId: a.attacker, playerId: active, otherPlayerId: defenderOf(g, a.target), sourceId: typeof a.target === 'number' ? a.target : undefined, combat: true });
+  }
+  for (const d of defenders) g.emit({ name: 'attacked', playerId: d, otherPlayerId: active, amount: attacks.filter((a) => defenderOf(g, a.target) === d).length, combat: true });
+  // Battle cry / Exalted / Myriad hooks handled by scripts via 'attacks' events.
+}
+
+function* declareBlockers(g: Game): Gen {
+  const attackers = g.state.turn.attackers.map((id) => g.state.objects[id]).filter((o): o is GameObject => !!o && o.zone === 'battlefield' && o.attacking !== null);
+  if (!attackers.length) return;
+  const defenders = [...new Set(attackers.map((a) => defenderOf(g, a.attacking!)))];
+  for (const d of g.apnap().filter((p) => defenders.includes(p))) {
+    const mine = attackers.filter((a) => defenderOf(g, a.attacking!) === d);
+    const blockers = creaturesOf(g, d).filter((o) => !o.tapped);
+    const candidates = blockers.map((b) => ({ id: b.id, canBlock: mine.filter((a) => canBlock(g, b, a)).map((a) => a.id) })).filter((c) => c.canBlock.length);
+    if (!candidates.length) continue;
+    let blocks: { blocker: ObjectId; attacker: ObjectId }[] = [];
+    for (;;) {
+      const resp = yield* g.ask({ type: 'declareBlockers', player: d, prompt: 'Declare blockers', attackers: mine.map((a) => a.id), candidates });
+      if (resp.type !== 'blockers') break;
+      blocks = resp.blocks;
+      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && new Set(blocks.map((b) => b.blocker)).size === blocks.length;
+      // Menace: needs 2+ blockers
+      const menaceOk = mine.every((a) => {
+        const n = blocks.filter((b) => b.attacker === a.id).length;
+        const ch = g.characteristics(a.id);
+        if (ch.keywords.has('Menace') && n === 1) return false;
+        const minBlockers = ch.rules.find((r) => r.kind === 'custom' && r.tag === 'minBlockers') as { data?: number } | undefined;
+        if (minBlockers?.data && n > 0 && n < minBlockers.data) return false;
+        return true;
+      });
+      if (valid && menaceOk) break;
+      g.log(valid ? 'A creature with menace must be blocked by two or more creatures.' : 'Invalid block declaration.');
+    }
+    for (const b of blocks) {
+      const blocker = g.obj(b.blocker);
+      const attacker = g.obj(b.attacker);
+      blocker.blocking.push(b.attacker);
+      attacker.blockedBy.push(b.blocker);
+      attacker.wasBlocked = true;
+    }
+    g.touch();
+    if (blocks.length) g.log(`${g.player(d).name} blocks: ${blocks.map((b) => `${g.nameOf(b.blocker)} blocks ${g.nameOf(b.attacker)}`).join(', ')}.`, { kind: 'block', data: { blocks } });
+    for (const b of blocks) g.emit({ name: 'blocks', objectId: b.blocker, sourceId: b.attacker, playerId: d, combat: true });
+    for (const a of mine) if (a.blockedBy.length) g.emit({ name: 'becomesBlocked', objectId: a.id, playerId: a.controller, combat: true });
+  }
+  // Damage assignment order for attackers blocked by multiple creatures.
+  for (const a of attackers) {
+    if (a.blockedBy.length > 1) {
+      const resp = yield* g.ask({ type: 'orderObjects', player: a.controller, prompt: `Order blockers for ${g.nameOf(a.id)} (damage assigned in this order)`, objectIds: [...a.blockedBy], context: 'damageAssignment' });
+      if (resp.type === 'order') a.blockedBy = resp.ids;
+    }
+  }
+}
+
+interface DamageAssignment {
+  source: ObjectId;
+  target: Target;
+  amount: number;
+}
+
+function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
+  const assignments: DamageAssignment[] = [];
+  const dealsNow = (o: GameObject) => {
+    const ch = g.characteristics(o.id);
+    const fs = ch.keywords.has('First strike');
+    const ds = ch.keywords.has('Double strike');
+    if (firstStrikeStep) return fs || ds;
+    if (ds) return true;
+    if (fs) return false; // already dealt in first-strike step
+    return true;
+  };
+  const attackers = g.state.turn.attackers.map((id) => g.state.objects[id]).filter((o): o is GameObject => !!o && o.zone === 'battlefield' && o.attacking !== null);
+  for (const a of attackers) {
+    if (!dealsNow(a)) continue;
+    const ch = g.characteristics(a.id);
+    const power = ch.power ?? 0;
+    if (power <= 0) continue;
+    const deathtouch = ch.keywords.has('Deathtouch');
+    const blockers = a.blockedBy.map((id) => g.state.objects[id]).filter((b): b is GameObject => !!b && b.zone === 'battlefield');
+    if (!a.wasBlocked) {
+      const target: Target = typeof a.attacking === 'string' ? { kind: 'player', id: a.attacking } : { kind: 'object', id: a.attacking as ObjectId };
+      if (target.kind === 'object' && !g.state.objects[target.id]) continue;
+      assignments.push({ source: a.id, target, amount: power });
+      continue;
+    }
+    if (blockers.length === 0) {
+      // Blocked, blockers gone: no damage unless trample.
+      if (ch.keywords.has('Trample') && a.attacking !== null) {
+        const target: Target = typeof a.attacking === 'string' ? { kind: 'player', id: a.attacking } : { kind: 'object', id: a.attacking as ObjectId };
+        assignments.push({ source: a.id, target, amount: power });
+      }
+      continue;
+    }
+    // Assign lethal to each blocker in order, remainder to next; trample excess to defender.
+    let remaining = power;
+    const lethalFor = (b: GameObject) => {
+      if (deathtouch) return 1;
+      const bch = g.characteristics(b.id);
+      const already = assignments.filter((x) => x.target.kind === 'object' && x.target.id === b.id).reduce((s, x) => s + x.amount, 0);
+      return Math.max(0, (bch.toughness ?? 0) - b.damage - already);
+    };
+    let assignedAny = false;
+    if (blockers.length > 1 || ch.keywords.has('Trample')) {
+      // Player may distribute; default to lethal-first.
+      const plan: number[] = [];
+      let rem = remaining;
+      for (let i = 0; i < blockers.length; i++) {
+        const lethal = lethalFor(blockers[i]);
+        const give = i === blockers.length - 1 && !ch.keywords.has('Trample') ? rem : Math.min(rem, lethal);
+        plan.push(give);
+        rem -= give;
+      }
+      const targets: Target[] = blockers.map((b) => ({ kind: 'object', id: b.id }));
+      const defender: Target | null = ch.keywords.has('Trample') && a.attacking !== null ? (typeof a.attacking === 'string' ? { kind: 'player', id: a.attacking } : { kind: 'object', id: a.attacking as ObjectId }) : null;
+      if (defender) {
+        targets.push(defender);
+        plan.push(rem);
+        rem = 0;
+      }
+      let amounts = plan;
+      const canChoose = blockers.length > 1; // single blocker (+ trample): lethal first, excess tramples over
+      if (canChoose && targets.length > 1) {
+        const resp = yield* g.ask({ type: 'distribute', player: a.controller, prompt: `Assign ${power} combat damage from ${g.nameOf(a.id)} (lethal damage must be assigned in order${ch.keywords.has('Trample') ? '; excess may trample over' : ''})`, amount: power, targets, minPer: 0, sourceId: a.id });
+        if (resp.type === 'distribute') {
+          // Validate ordering: each blocker before the last assigned must have lethal.
+          let ok = true;
+          let seenShort = false;
+          for (let i = 0; i < blockers.length; i++) {
+            const lethal = lethalFor(blockers[i]);
+            if (seenShort && resp.amounts[i] > 0) ok = false;
+            if (resp.amounts[i] < lethal) seenShort = true;
+          }
+          if (defender && seenShort && resp.amounts[blockers.length] > 0) ok = false;
+          if (ok) amounts = resp.amounts;
+          else g.log('Damage assignment must give lethal damage in order; using default assignment.');
+        }
+      }
+      targets.forEach((t, i) => {
+        if (amounts[i] > 0) assignments.push({ source: a.id, target: t, amount: amounts[i] });
+      });
+      assignedAny = true;
+    }
+    if (!assignedAny) assignments.push({ source: a.id, target: { kind: 'object', id: blockers[0].id }, amount: remaining });
+  }
+  // Blockers deal damage to attackers they block.
+  for (const id of g.state.battlefield) {
+    const b = g.obj(id);
+    if (!b.blocking.length || !dealsNow(b)) continue;
+    const power = g.characteristics(b.id).power ?? 0;
+    if (power <= 0) continue;
+    const alive = b.blocking.filter((aid) => g.state.objects[aid]?.zone === 'battlefield');
+    if (!alive.length) continue;
+    if (alive.length === 1) assignments.push({ source: b.id, target: { kind: 'object', id: alive[0] }, amount: power });
+    else {
+      const resp = yield* g.ask({ type: 'distribute', player: b.controller, prompt: `Assign ${power} damage from ${g.nameOf(b.id)} among the creatures it blocks`, amount: power, targets: alive.map((aid) => ({ kind: 'object' as const, id: aid })), minPer: 0, sourceId: b.id });
+      const amounts = resp.type === 'distribute' ? resp.amounts : alive.map((_, i) => (i === 0 ? power : 0));
+      alive.forEach((aid, i) => amounts[i] > 0 && assignments.push({ source: b.id, target: { kind: 'object', id: aid }, amount: amounts[i] }));
+    }
+  }
+  if (!assignments.length) return;
+  // All combat damage is dealt simultaneously.
+  for (const a of assignments) g.dealDamage(a.source, a.target, a.amount, true);
+  g.touch();
+}
