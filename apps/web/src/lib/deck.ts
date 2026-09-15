@@ -5,6 +5,7 @@ import { scriptFor } from '@commander/cards';
 import { resolveCards, rememberCard, type ResolveProgress } from './scryfall.js';
 import { importDeckFromServer, isNetworkError, resolveNamesOnServer } from './api.js';
 import { loadJson, saveJson } from './storage.js';
+import { localDb } from './localdb.js';
 
 export interface CoverageStats {
   full: number;
@@ -72,11 +73,24 @@ export async function prepareDeckFromText(text: string, onProgress?: (p: Resolve
   if (parsed.commanders.length === 0 && parsed.mainboard.length === 0) throw new Error('No cards found in that text.');
   const names = [...parsed.commanders, ...parsed.mainboard].map((e) => e.name.trim());
   let resolved: { cards: Map<string, CardData>; missing: string[] };
+  // A bundled database (offline builds) answers first; anything it lacks goes to Scryfall.
+  const local = await localDb();
+  const localHits = new Map<string, CardData>();
+  let remaining = names;
+  if (local) {
+    remaining = [];
+    for (const n of new Set(names)) {
+      const c = local.byName(n);
+      if (c) localHits.set(n, c);
+      else remaining.push(n);
+    }
+  }
   try {
-    resolved = await resolveCards(names, onProgress);
+    resolved = remaining.length ? await resolveCards(remaining, onProgress) : { cards: new Map(), missing: [] };
+    for (const [n, c] of localHits) resolved.cards.set(n, c);
   } catch (e) {
     // Scryfall unreachable (offline, blocked, rate limited): fall back to the game server's card database.
-    resolved = { cards: new Map(), missing: [...new Set(names)] };
+    resolved = { cards: new Map(localHits), missing: [...new Set(remaining)] };
     warnings.push(`Scryfall was unreachable (${e instanceof Error ? e.message : 'network error'}); resolving through the game server instead.`);
   }
   if (resolved.missing.length) {
