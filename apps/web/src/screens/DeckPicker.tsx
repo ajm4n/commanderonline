@@ -194,18 +194,16 @@ function DeckSummary({ prepared, onChange, onUse }: { prepared: PreparedDeck; on
     return payload.mainboard.filter((c) => /Legendary/.test(c.typeLine) && (/Creature/.test(c.typeLine) || /can be your commander/i.test(c.oracleText)) && !seen.has(c.name) && seen.add(c.name));
   }, [payload.mainboard]);
 
-  const setCommander = (card: CardData | null) => {
-    let commanders = payload.commanders;
-    let mainboard = payload.mainboard;
-    // Put the previous commander(s) back into the mainboard, then promote the new one.
-    mainboard = [...mainboard, ...commanders];
-    commanders = [];
-    if (card) {
-      commanders = [card];
-      mainboard = removeOne(mainboard, card);
-    }
+  const applyCommanders = (commanders: CardData[], mainboard: CardData[]) => {
     const next: DeckPayload = { ...payload, commanders, mainboard, name: payload.name || deckNameFrom(commanders) };
     onChange({ ...prepared, payload: next, coverage: computeCoverage([...commanders, ...mainboard]) });
+  };
+  const addCommander = (card: CardData) => {
+    if (payload.commanders.length >= 2) return;
+    applyCommanders([...payload.commanders, card], removeOne(payload.mainboard, card));
+  };
+  const removeCommander = (card: CardData) => {
+    applyCommanders(removeOne(payload.commanders, card), [...payload.mainboard, card]);
   };
 
   const pct = (n: number) => (total ? Math.round((100 * n) / total) : 0);
@@ -223,10 +221,20 @@ function DeckSummary({ prepared, onChange, onUse }: { prepared: PreparedDeck; on
         <div className="col">
           <div>
             <div className="muted small">Commander{payload.commanders.length > 1 ? 's' : ''}</div>
-            <div style={{ fontWeight: 600 }}>{payload.commanders.map((c) => c.name).join(' & ') || '—'}</div>
-            {legendaries.length > 0 && (
-              <select value="" onChange={(e) => setCommander(legendaries.find((c) => c.name === e.target.value) ?? null)} style={{ marginTop: 4, maxWidth: '100%' }}>
-                <option value="">Change commander…</option>
+            <div className="commander-list">
+              {payload.commanders.map((c) => (
+                <div key={c.name} className="row">
+                  <span style={{ fontWeight: 600 }}>{c.name}</span>
+                  <button className="xs ghost" title="Remove as commander" data-testid="remove-commander" onClick={() => removeCommander(c)}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {payload.commanders.length === 0 && <span className="muted">—</span>}
+            </div>
+            {legendaries.length > 0 && payload.commanders.length < 2 && (
+              <select value="" data-testid="add-commander" onChange={(e) => e.target.value && addCommander(legendaries.find((c) => c.name === e.target.value)!)} style={{ marginTop: 4, maxWidth: '100%' }}>
+                <option value="">{payload.commanders.length ? 'Add partner / second commander…' : 'Choose a commander…'}</option>
                 {legendaries.map((c) => (
                   <option key={c.name} value={c.name}>
                     {c.name}

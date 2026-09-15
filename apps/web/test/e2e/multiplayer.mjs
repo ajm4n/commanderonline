@@ -25,10 +25,18 @@ try {
   const oppInB = sb.view.players.find((p) => p.id !== sb.view.you);
   assert(meA.hand?.length === 7 && oppInB.hand === null && oppInB.handCount === 7, "B sees A's hand count but not A's cards");
   // Both keep.
-  for (const p of [a, b]) {
-    const s = await waitFor(p, (x) => x.decision?.type === 'mulligan' || x.view.turn.number >= 1, { label: 'mulligan' });
-    if (s.decision?.type === 'mulligan') await act(p, s);
+  // The engine asks the (random) starting player first, so drive whichever page holds the decision.
+  const kept = new Set();
+  const t0 = Date.now();
+  while (kept.size < 2 && Date.now() - t0 < 30000) {
+    for (const p of [a, b]) {
+      const s = await state(p);
+      if (s?.decision?.type === 'mulligan') { await act(p, s); kept.add(p); }
+      else if (s?.view?.turn?.number >= 1) kept.add(p);
+    }
+    await sleep(150);
   }
+  assert(kept.size === 2, 'both players resolved their mulligan');
   // Play until someone has played a land, driving whichever page has the decision.
   const started = Date.now();
   let landPlayer = null;

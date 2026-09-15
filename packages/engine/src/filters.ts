@@ -68,6 +68,10 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.cmcEQ !== undefined && ch.manaValue !== filter.cmcEQ) return false;
   if (filter.isCommander !== undefined && obj.isCommander !== filter.isCommander) return false;
   if (filter.hasCounter && !(obj.counters[filter.hasCounter] > 0)) return false;
+  if (filter.hasAnyCounter && !Object.values(obj.counters).some((n) => n > 0)) return false;
+  if (filter.fromLibraryThisTurn && !(obj.lastZoneChange?.from === 'library' && obj.lastZoneChange.turn === g.state.turn.number)) return false;
+  if (filter.enteredZoneThisTurn && obj.lastZoneChange?.turn !== g.state.turn.number) return false;
+  if (filter.custom === 'ringBearer' && !ch.rules.some((r) => r.kind === 'custom' && r.tag === 'ringBearer')) return false;
   if (filter.nameIs && ch.name !== filter.nameIs) return false;
   if (filter.historic && !(ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga'))) return false;
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;

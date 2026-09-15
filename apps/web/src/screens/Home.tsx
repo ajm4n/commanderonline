@@ -115,6 +115,9 @@ export function Home() {
                 <button type="submit" disabled={!code.trim() || serverOk === false}>
                   Join
                 </button>
+                <button type="button" title="Watch this game as a spectator" disabled={!code.trim() || serverOk === false} onClick={() => joinRoom(code, true)}>
+                  Watch
+                </button>
               </form>
             </div>
           </div>

@@ -62,9 +62,32 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     });
   };
 
+  let pendingRoll: { kind: 'rollDie'; sides: number; results: { min: number; max: number; effects: Effect[] }[] } | null = null;
+  const findRoll = (effects: Effect[]): typeof pendingRoll => {
+    for (const e of effects) {
+      if (e.kind === 'rollDie' && e.results.length === 0) return e;
+      if ('effects' in e && Array.isArray((e as { effects?: Effect[] }).effects)) {
+        const r = findRoll((e as { effects: Effect[] }).effects);
+        if (r) return r;
+      }
+    }
+    return null;
+  };
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
     let m: RegExpMatchArray | null;
+    if ((m = line.match(/^(\d+)(?:\s*[—–-]\s*(\d+))?\s*\|\s*(.+)$/))) {
+      if (!pendingRoll) for (const ab of [...abilities].reverse()) if ('effects' in ab && Array.isArray(ab.effects)) { pendingRoll = findRoll(ab.effects); if (pendingRoll) break; }
+      if (!pendingRoll) pendingRoll = findRoll(spellEffects);
+      if (pendingRoll) {
+        const ctx = newCtx();
+        const r = parseEffects(m[3], ctx);
+        pendingRoll.results.push({ min: parseInt(m[1], 10), max: m[2] ? parseInt(m[2], 10) : parseInt(m[1], 10), effects: r.effects });
+        if (r.unhandled.length) unhandledLines.push(...r.unhandled);
+        else compiledLines.push(line);
+        continue;
+      }
+    } else pendingRoll = null;
     // LEVEL a-b / LEVEL a+ / STATION a+ blocks
     if ((m = line.match(/^LEVEL (\d+)-(\d+)$/)) || (m = line.match(/^LEVEL (\d+)\+$/)) || (m = line.match(/^STATION (\d+)\+$/))) {
       const station = /^STATION/.test(line);
@@ -283,6 +306,15 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           }
           effects = [{ kind: 'chooseMode', options, count: modalHead[1].toLowerCase() === 'two' ? 2 : 1 }];
         } else ({ effects, unhandled } = parseEffects(rest.text, ctx));
+        // Class cards: "{2}{W}: Level 2" gains the level; abilities after it need that level.
+        const lvl = rest.text.match(/^Level (\d+)\.?$/i);
+        if (lvl) {
+          const n = parseInt(lvl[1], 10);
+          abilities.push({ kind: 'activated', text: line, cost, effects: [{ kind: 'addCounters', counter: 'level', amount: 1, on: { ref: 'self' } }], sorcerySpeed: true, condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: 'level', op: '==', value: n - 2 } });
+          block = { condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: 'level', op: '>=', value: n - 1 }, station: false };
+          compiledLines.push(line);
+          continue;
+        }
         const isMana = effects.length > 0 && effects.every((e) => e.kind === 'addMana' || (e.kind === 'chooseMode' && e.options.every((o) => o.effects.every((x) => x.kind === 'addMana')))) && ctx.targets.length === 0;
         const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, condition: rest.yourTurn ? { kind: 'yourTurn' } : undefined };
         if (cost.discardSelf || cost.exileSelf && /from your graveyard/i.test(costText)) ab.zone = cost.discardSelf ? 'hand' : 'graveyard';
@@ -318,6 +350,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     unhandledLines.push(line);
   }
+  // Dice result rows ("1—9 | effect") attach to the preceding roll.
+  void 0;
   if (isSpell || modal || spellEffects.length) {
     if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, effects: [], targets: [] });
     else abilities.push({ kind: 'spell', effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : undefined });

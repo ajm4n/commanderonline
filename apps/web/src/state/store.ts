@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { GameView, GameConfig, ManualAction, Response, PlayerId, LogEntry } from '@commander/engine';
 import type { ClientMessage, ServerMessage, LobbyState, DeckPayload } from '@commander/protocol';
+import { Game, viewFor, type PlayerSetup } from '@commander/engine';
+import { scriptFor } from '@commander/cards';
 import { LocalConnection, WebSocketConnection, type GameConnection, type ConnectionStatus } from '../lib/connection.js';
 import { loadPlayerName, savePlayerName, saveRoomCredentials, loadRoomCredentials, clearRoomCredentials } from '../lib/storage.js';
 import { saveRecentDeck } from '../lib/deck.js';
@@ -48,7 +50,13 @@ interface AppState {
   openDeckPicker(returnTo?: Screen): void;
   startSolo(): void;
   createRoom(): void;
-  joinRoom(code: string): void;
+  joinRoom(code: string, spectator?: boolean): void;
+  /** Replay viewer state: rebuilt locally from the decision history. */
+  replay: { setups: PlayerSetup[]; config: Partial<GameConfig>; history: { player: PlayerId; response: Response }[]; index: number; playing: boolean } | null;
+  startReplay(): void;
+  replaySeek(index: number): void;
+  replayPlay(playing: boolean): void;
+  exitReplay(): void;
   leave(): void;
   chooseDeck(deck: DeckPayload): void;
   setReady(ready: boolean): void;
@@ -126,6 +134,7 @@ export const useStore = create<AppState>((set, get) => {
         return;
       }
       case 'view': {
+        if (s.replay) return; // replay viewer owns the view until exited
         const { toasts, seq } = deriveToasts(s.view, msg.view, s.lastLogSeq);
         const err = decisionError(msg.view);
         const patch: Partial<AppState> = { view: msg.view, lastLogSeq: seq, screen: 'game' };
@@ -142,6 +151,11 @@ export const useStore = create<AppState>((set, get) => {
       case 'gameOver':
         set({ gameOver: { winner: msg.winner } });
         return;
+      case 'history': {
+        const index = msg.history.length;
+        set({ replay: { setups: msg.setups, config: msg.config, history: msg.history, index, playing: false }, view: replayView(msg.setups, msg.config, msg.history, index), screen: 'game' });
+        return;
+      }
       case 'chat':
         set({ chat: [...s.chat, { from: msg.from, name: msg.name, text: msg.text, at: msg.at }].slice(-200) });
         return;
@@ -152,7 +166,13 @@ export const useStore = create<AppState>((set, get) => {
     }
   }
 
-  function connectOnline(onOpen: () => void): WebSocketConnection {
+  /** Rebuild the game up to `index` decisions and return the public (spectator) view. */
+function replayView(setups: PlayerSetup[], config: Partial<GameConfig>, history: { player: PlayerId; response: Response }[], index: number): GameView {
+  const g = Game.replay(setups, config, history.slice(0, index), scriptFor);
+  return viewFor(g, null);
+}
+
+function connectOnline(onOpen: () => void): WebSocketConnection {
     const conn = new WebSocketConnection({
       onStatus: (status) => set({ connStatus: status }),
       onOpen: (reconnect) => {
@@ -184,6 +204,7 @@ export const useStore = create<AppState>((set, get) => {
     toasts: [],
     chat: [],
     gameOver: null,
+    replay: null,
     deckReturnTo: 'lobby',
     lastLogSeq: -1,
     lastDecisionError: null,
@@ -228,18 +249,49 @@ export const useStore = create<AppState>((set, get) => {
       attach(conn, 'online');
       set({ screen: 'lobby' });
     },
-    joinRoom(code) {
+    joinRoom(code, spectator = false) {
       const s = get();
       const roomId = code.trim().toUpperCase();
       if (!roomId) return;
-      const creds = loadRoomCredentials(roomId);
+      const creds = spectator ? null : loadRoomCredentials(roomId);
       const conn = connectOnline(() => {
-        conn.send({ type: 'joinRoom', roomId, playerName: s.playerName || creds?.name || 'Player', playerId: creds?.playerId, token: creds?.token });
+        conn.send({ type: 'joinRoom', roomId, playerName: s.playerName || creds?.name || 'Player', playerId: creds?.playerId, token: creds?.token, spectator: spectator || undefined });
         const d = get().deck;
-        if (d) conn.send({ type: 'setDeck', deck: d });
+        if (d && !spectator) conn.send({ type: 'setDeck', deck: d });
       });
       attach(conn, 'online');
       set({ screen: 'lobby', roomId });
+    },
+    startReplay() {
+      get().connection?.send({ type: 'getHistory' });
+    },
+    replaySeek(index) {
+      const r = get().replay;
+      if (!r) return;
+      const i = Math.max(0, Math.min(r.history.length, index));
+      set({ replay: { ...r, index: i }, view: replayView(r.setups, r.config, r.history, i) });
+    },
+    replayPlay(playing) {
+      const r = get().replay;
+      if (!r) return;
+      set({ replay: { ...r, playing } });
+      if (playing) {
+        const tick = () => {
+          const cur = get().replay;
+          if (!cur || !cur.playing) return;
+          if (cur.index >= cur.history.length) {
+            set({ replay: { ...cur, playing: false } });
+            return;
+          }
+          get().replaySeek(cur.index + 1);
+          setTimeout(tick, 350);
+        };
+        setTimeout(tick, 350);
+      }
+    },
+    exitReplay() {
+      set({ replay: null });
+      get().sync();
     },
     leave() {
       const s = get();

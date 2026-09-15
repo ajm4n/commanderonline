@@ -4,7 +4,7 @@
 import type { Game, Gen } from './game.js';
 import type { GameObject, ObjectId, PlayerId, PriorityDecision, Response, StackItem, Target, ZoneName, ManaColor, ManaPool } from './types.js';
 import { emptyPool } from './types.js';
-import type { ActivatedAbilitySpec, AbilityCost, CardScript, TargetSpec } from './script.js';
+import type { ActivatedAbilitySpec, AbilityCost, CardScript, TargetSpec, Effect } from './script.js';
 import { type ManaCost, type ManaSourceOption, parseManaCost, solvePayment, adjustGeneric, maxX, expandRequirements, parseAddManaText, formatCost } from './mana.js';
 import { BASIC_LAND_TYPES } from './typeline.js';
 import { matchesFilter, objectsMatching } from './filters.js';
@@ -94,7 +94,12 @@ function canUseTapAbility(g: Game, obj: GameObject): boolean {
 /** Mana each ability could produce, as alternatives. */
 function manaFromAbility(g: Game, obj: GameObject, ab: ActivatedAbilitySpec): ManaColor[][] {
   const alts: ManaColor[][] = [];
+  const flat: Effect[] = [];
   for (const e of ab.effects) {
+    if (e.kind === 'chooseMode') for (const o of e.options) flat.push(...o.effects);
+    else flat.push(e);
+  }
+  for (const e of flat) {
     if (e.kind !== 'addMana') continue;
     const n = e.amount !== undefined ? g.resolveAmount(e.amount, { sourceId: obj.id, controller: obj.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 1;
     if (n <= 0) continue;
@@ -156,10 +161,12 @@ export function manaSourcesFor(g: Game, p: PlayerId, extra: CastingKeywords = {}
     const obj = g.obj(id);
     if (obj.controller !== p || obj.phasedOut) continue;
     const alts: ManaColor[][] = [];
+    let sacs = false;
     for (const ab of abilitiesOf(g, obj)) {
       if (!ab.spec.manaAbility) continue;
       if (ab.spec.cost.tap && !canUseTapAbility(g, obj)) continue;
-      if (ab.spec.cost.mana || ab.spec.cost.sacrificeSelf || ab.spec.cost.sacrifice || ab.spec.cost.payLife) continue; // don't auto-pay with costly sources
+      if (ab.spec.cost.mana || ab.spec.cost.sacrifice || ab.spec.cost.payLife || ab.spec.cost.discard || ab.spec.cost.removeCounters) continue; // don't auto-pay with costly sources
+      if (ab.spec.cost.sacrificeSelf) sacs = true; // Treasure, Lotus Petal: usable, but last
       if (ab.spec.condition && !g.checkCondition(ab.spec.condition, { sourceId: obj.id, controller: p })) continue;
       alts.push(...manaFromAbility(g, obj, ab.spec));
     }
@@ -168,7 +175,7 @@ export function manaSourcesFor(g: Game, p: PlayerId, extra: CastingKeywords = {}
     const uniq = new Map<string, ManaColor[]>();
     for (const a of alts) uniq.set(a.join(''), a);
     const ch = g.characteristics(id);
-    const priority = ch.supertypes.includes('Basic') ? 0 : ch.types.includes('Land') ? 1 + uniq.size : ch.types.includes('Creature') ? 10 : 5 + uniq.size;
+    const priority = sacs ? 40 : ch.supertypes.includes('Basic') ? 0 : ch.types.includes('Land') ? 1 + uniq.size : ch.types.includes('Creature') ? 10 : 5 + uniq.size;
     out.push({ id, alternatives: [...uniq.values()], priority, kind: 'mana' });
   }
   virtual();
@@ -180,14 +187,16 @@ export function* tapForMana(g: Game, sourceId: ObjectId, produce: ManaColor[]): 
   const obj = g.state.objects[sourceId];
   if (!obj) return;
   const ab = abilitiesOf(g, obj).find((a) => a.spec.manaAbility && manaFromAbility(g, obj, a.spec).some((alt) => alt.join('') === produce.join('')));
-  g.tap(sourceId);
-  const pool = g.player(obj.controller).manaPool;
+  if (!ab || ab.spec.cost.tap) g.tap(sourceId);
+  const controller = obj.controller;
+  const pool = g.player(controller).manaPool;
   for (const c of produce) pool[c]++;
   g.touch();
   if (ab) {
+    if (ab.spec.cost.sacrificeSelf) g.moveObject(sourceId, 'graveyard', { cause: 'sacrifice', sourceId });
     // Side effects other than adding mana (e.g. painland damage).
-    const extra = ab.spec.effects.filter((e) => e.kind !== 'addMana');
-    if (extra.length) yield* executeEffects(g, extra, { sourceId, controller: obj.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
+    const extra = ab.spec.effects.filter((e) => e.kind !== 'addMana' && e.kind !== 'chooseMode');
+    if (extra.length) yield* executeEffects(g, extra, { sourceId, controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
   }
   g.emit({ name: 'abilityActivated', objectId: sourceId, playerId: obj.controller, data: { mana: true } });
 }
@@ -226,7 +235,7 @@ function deductFromPool(pool: ManaPool, cost: ManaCost, x: number): boolean {
  * Pay a mana cost: auto-tap sources (Arena-style) then deduct from pool.
  * Returns false (with no changes) if the cost can't be paid.
  */
-export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, sourceId: ObjectId | null, keywords: CastingKeywords = {}): Gen<boolean> {
+export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, sourceId: ObjectId | null, keywords: CastingKeywords = {}, manual = false): Gen<boolean> {
   const player = g.player(p);
   // Prefer paying with real mana; only reach for convoke/improvise/delve when needed.
   let sources = manaSourcesFor(g, p);
@@ -235,7 +244,41 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
     sources = manaSourcesFor(g, p, keywords);
     solution = solvePayment(cost, x, player.manaPool, sources);
   }
+  // Phyrexian mana: offer 2 life per symbol that mana can't cover.
+  if (!solution && cost.symbols.some((sy) => sy.kind === 'phyrexian')) {
+    const phy = cost.symbols.filter((sy) => sy.kind === 'phyrexian').length;
+    for (let k = 1; k <= phy; k++) {
+      let dropped = 0;
+      const reduced: ManaCost = { symbols: cost.symbols.filter((sy) => (sy.kind === 'phyrexian' && dropped < k ? (dropped++, false) : true)), xCount: cost.xCount };
+      const sol = solvePayment(reduced, x, player.manaPool, sources);
+      if (sol && player.life > 2 * k) {
+        const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay ${2 * k} life for ${k} Phyrexian mana symbol${k === 1 ? '' : 's'}?`, sourceId: sourceId ?? undefined });
+        if (r.type !== 'yesNo' || !r.value) return false;
+        g.loseLife(p, 2 * k, sourceId ?? undefined);
+        cost = reduced;
+        solution = sol;
+        break;
+      }
+    }
+  }
   if (!solution) return false;
+  if (manual) {
+    // Let the player pick exactly which sources to use.
+    const suggestion = { tap: solution.tap, fromPool: solution.fromPool };
+    for (;;) {
+      const r = yield* g.ask({ type: 'payMana', player: p, prompt: `Pay ${formatCost(cost, x)}: choose sources to tap`, cost: formatCost(cost, x), suggestion, sources: sources.map((so) => ({ id: so.id, produces: so.alternatives })), sourceId: sourceId ?? undefined });
+      if (r.type === 'cancel') return false;
+      if (r.type !== 'payMana') return false;
+      if (r.auto) break;
+      const chosen = sources.filter((so) => r.tap.includes(so.id));
+      const sol = solvePayment(cost, x, player.manaPool, chosen);
+      if (sol && sol.tap.length === chosen.length) {
+        solution = sol;
+        break;
+      }
+      g.log('Those sources cannot pay this cost exactly; choose again or use the suggestion.');
+    }
+  }
   const delveCount = solution.tap.filter((id) => sources.find((s) => s.id === id)?.kind === 'delve').length;
   if (delveCount > 0) {
     const gy = [...player.graveyard];
@@ -326,7 +369,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   }
   if (cost.sacrificeSelf) g.moveObject(obj.id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
   if (cost.exileSelf) g.moveObject(obj.id, 'exile', { cause: 'exile', sourceId: obj.id });
-  if (cost.discardSelf) g.moveObject(obj.id, 'graveyard', { cause: 'discard' });
+  if (cost.discardSelf) {
+    g.moveObject(obj.id, 'graveyard', { cause: 'discard' });
+    g.emit({ name: 'discardBatch', playerId: p, amount: 1, objectId: obj.id });
+  }
   if (cost.returnSelf) g.moveObject(obj.id, 'hand', { cause: 'bounce' });
   if (cost.discard) {
     const hand = [...g.player(p).hand];
@@ -340,6 +386,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
         ids = resp.ids;
       }
       for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'discard' });
+      if (ids.length) g.emit({ name: 'discardBatch', playerId: p, amount: ids.length, objectId: ids[0] });
     }
   }
   if (cost.exileFromGraveyard) {
@@ -390,9 +437,22 @@ export function canCastSorcerySpeed(g: Game, p: PlayerId): boolean {
 
 /** Zones a player may cast the object from right now. */
 function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
-  if (obj.owner !== p && obj.zone !== 'exile') return false;
+  if (obj.owner !== p && obj.zone !== 'exile' && obj.zone !== 'graveyard') return false;
   if (obj.zone === 'hand' || obj.zone === 'command') return true;
-  if (obj.zone === 'graveyard') return /^Flashback/m.test(obj.card.oracleText) || obj.memory['castableFromGraveyard'] === true;
+  if (obj.zone === 'graveyard') return (obj.owner === p && /^Flashback/m.test(obj.card.oracleText)) || obj.memory['castableBy'] === p;
+  if (obj.zone === 'exile' && obj.memory['playableBy'] !== p) {
+    // "You may play cards you don't own with stash counters on them from exile" style permissions.
+    for (const r of g.playerRules(p)) {
+      if (r.kind === 'custom' && r.tag === 'playExiledWithCounter') {
+        const d = r.data as { counter: string; notOwned?: boolean; yourTurn?: boolean } | undefined;
+        if (!d) continue;
+        if ((obj.counters[d.counter] ?? 0) <= 0) continue;
+        if (d.notOwned && obj.owner === p) continue;
+        if (d.yourTurn && g.state.turn.activePlayer !== p) continue;
+        return true;
+      }
+    }
+  }
   if (obj.zone === 'exile') {
     const until = obj.memory['playableUntil'];
     if (obj.memory['playableBy'] !== p) return false;
@@ -409,6 +469,8 @@ function freeFromExile(g: Game, obj: GameObject): boolean {
 export interface CastOptions {
   free?: boolean;
   faceIndex?: number;
+  /** Mana of any type may be spent (colored symbols become generic). */
+  anyMana?: boolean;
 }
 
 /** The face being cast. */
@@ -462,7 +524,7 @@ export function availableAlternativeCosts(g: Game, p: PlayerId, obj: GameObject)
   return out;
 }
 
-function spellTargets(g: Game, obj: GameObject, script: CardScript, faceIndex: number, modes: number[]): TargetSpec[] {
+export function spellTargets(g: Game, obj: GameObject, script: CardScript, faceIndex: number, modes: number[]): TargetSpec[] {
   const face = faceOf(obj, faceIndex);
   const spell = script.abilities.find((a) => a.kind === 'spell');
   const specs: TargetSpec[] = [];
@@ -526,6 +588,7 @@ export function buildPriorityDecision(g: Game, p: PlayerId): PriorityDecision {
   const playable: ObjectId[] = [];
   const landOk = canPlayLandNow(g, p);
   const zonesToScan: ObjectId[] = [...pl.hand, ...pl.command, ...pl.graveyard, ...pl.exile];
+  for (const o of g.opponentsOf(p)) zonesToScan.push(...g.player(o).graveyard.filter((id) => g.obj(id).memory['castableBy'] === p), ...g.player(o).exile.filter((id) => Object.values(g.obj(id).counters).some((n) => n > 0)));
   for (const id of zonesToScan) {
     const obj = g.obj(id);
     if (isLandCard(obj) || obj.card.faces?.some((f) => /\bLand\b/.test(f.typeLine))) {
@@ -630,6 +693,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   const ch = g.characteristics(obj.id);
   const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash');
   if (freeFromExile(g, obj)) opts = { ...opts, free: true };
+  if (fromZone === 'exile' && obj.memory['playableBy'] !== p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playExiledWithCounter' && (r.data as { anyMana?: boolean } | undefined)?.anyMana)) opts = { ...opts, anyMana: true };
   if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;
   const keywords = castingKeywordsOf(g, obj);
   const altId = resp.alternativeCost;
@@ -722,8 +786,9 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     }
   }
   // Mana
+  if (obj.memory['anyManaType'] || opts.anyMana) cost = { symbols: cost.symbols.map((sy) => (sy.kind === 'color' || sy.kind === 'hybrid' || sy.kind === 'phyrexian' ? { kind: 'generic' as const, amount: 1 } : sy.kind === 'monoHybrid' ? { kind: 'generic' as const, amount: 2 } : sy)), xCount: cost.xCount };
   if (!opts.free) {
-    const paid = yield* payCost(g, p, cost, x, id, keywords);
+    const paid = yield* payCost(g, p, cost, x, id, keywords, !!resp.manualMana);
     if (!paid) {
       revert();
       g.log(`${player.name} can't pay for ${face.name}.`);
@@ -853,3 +918,11 @@ function filtersMod(): typeof import('./filters.js') {
   return filtersModule;
 }
 import * as filtersModule from './filters.js';
+
+/** Total mana the player could produce right now from untapped sources (for display). */
+export function availableMana(g: Game, p: PlayerId): number {
+  let n = 0;
+  for (const c of Object.values(g.player(p).manaPool)) n += c;
+  for (const s of manaSourcesFor(g, p)) n += Math.max(...s.alternatives.map((a) => a.length));
+  return n;
+}

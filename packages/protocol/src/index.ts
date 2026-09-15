@@ -3,7 +3,7 @@
  * All messages are JSON. The server is authoritative; clients only ever
  * send decisions, manual actions and lobby commands.
  */
-import type { GameView, Response, ManualAction, PlayerId, GameConfig, CardData, LogEntry } from '@commander/engine';
+import type { GameView, Response, ManualAction, PlayerId, GameConfig, CardData, LogEntry, PlayerSetup } from '@commander/engine';
 
 export interface DeckPayload {
   name: string;
@@ -30,6 +30,7 @@ export interface LobbyState {
   started: boolean;
   /** Human-readable join code / URL fragment. */
   joinCode: string;
+  spectators: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +41,9 @@ export type ClientMessage =
   /** Create a new room; server replies with `lobby`. */
   | { type: 'createRoom'; playerName: string; config?: Partial<GameConfig> }
   /** Join an existing room. `playerId` lets a reconnecting client reclaim their seat. */
-  | { type: 'joinRoom'; roomId: string; playerName: string; playerId?: PlayerId; token?: string }
+  | { type: 'joinRoom'; roomId: string; playerName: string; playerId?: PlayerId; token?: string; spectator?: boolean }
+  /** Ask for the full decision history (for the replay viewer). */
+  | { type: 'getHistory' }
   | { type: 'leaveRoom' }
   | { type: 'setDeck'; deck: DeckPayload }
   | { type: 'setReady'; ready: boolean }
@@ -74,6 +77,8 @@ export type ServerMessage =
   | { type: 'chat'; from: PlayerId; name: string; text: string; at: number }
   | { type: 'error'; message: string; code?: string }
   | { type: 'gameOver'; winner: PlayerId | null }
+  /** Everything needed to rebuild the game locally: inputs plus every decision so far. */
+  | { type: 'history'; setups: PlayerSetup[]; config: Partial<GameConfig>; history: { player: PlayerId; response: Response }[] }
   | { type: 'pong' };
 
 export function encode(m: ClientMessage | ServerMessage): string {

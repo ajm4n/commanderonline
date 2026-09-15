@@ -141,6 +141,8 @@ export interface GameObject {
   memory: Record<string, unknown>;
   /** Turn on which the card was revealed as a "when you cast" trigger etc. */
   lastKnownInfo?: Partial<GameObject>;
+  /** Most recent zone change (for "put there from their library this turn"). */
+  lastZoneChange?: { from: ZoneName; turn: number };
 }
 
 export interface ManaPool {
@@ -185,6 +187,11 @@ export interface Player {
   turnStats: Record<string, number>;
   /** Persistent monarch / initiative etc. */
   designations: string[];
+  /** How many times the Ring has tempted this player (0-4 levels of abilities). */
+  ringLevel: number;
+  /** Dungeon currently being explored, if any. */
+  dungeon: { name: string; room: string } | null;
+  dungeonsCompleted: number;
 }
 
 export type Phase = 'beginning' | 'precombatMain' | 'combat' | 'postcombatMain' | 'ending';
@@ -272,7 +279,7 @@ export interface ContinuousEffect {
 }
 
 export type Modification =
-  | { layer: 4; addTypes?: string[]; removeTypes?: string[]; setTypes?: string[]; addSubtypes?: string[] }
+  | { layer: 4; addTypes?: string[]; removeTypes?: string[]; setTypes?: string[]; addSubtypes?: string[]; addSupertypes?: Supertype[] }
   | { layer: 5; setColors?: Color[]; addColors?: Color[] }
   | { layer: 6; addKeywords?: string[]; removeKeywords?: string[]; loseAllAbilities?: boolean; addAbilityText?: string[] }
   | { layer: '7b'; setPower?: number; setToughness?: number }
@@ -298,6 +305,8 @@ export type RuleModification =
   | { kind: 'cantGainLife' }
   | { kind: 'damagePrevention'; amount: number | 'all' }
   | { kind: 'hasteLike' }
+  | { kind: 'cantBeBlockedByPowerLE'; power: number }
+  | { kind: 'maxBlockers'; count: number }
   | { kind: 'custom'; tag: string; data?: unknown };
 
 /** Filters describe which objects an effect / trigger / target applies to. */
@@ -342,6 +351,12 @@ export interface ObjectFilter {
   historic?: boolean;
   /** Was cast this turn / entered this turn etc. */
   enteredThisTurn?: boolean;
+  /** Has any counter of this type (e.g. exiled cards with stash counters). */
+  hasAnyCounter?: boolean;
+  /** Was put into its current zone from a library this turn (milled). */
+  fromLibraryThisTurn?: boolean;
+  /** Was put into its current zone this turn. */
+  enteredZoneThisTurn?: boolean;
   custom?: string;
 }
 
@@ -390,6 +405,7 @@ export type GameEventName =
   | 'lifeLost'
   | 'drawCard'
   | 'discard'
+  | 'discardBatch'
   | 'sacrifice'
   | 'tapped'
   | 'untapped'
@@ -417,6 +433,10 @@ export type GameEventName =
   | 'controlChanged'
   | 'becomesMonarch'
   | 'becomesMonstrous'
+  | 'takesInitiative'
+  | 'ventures'
+  | 'dungeonCompleted'
+  | 'ringTempted'
   | 'cleanup';
 
 export interface GameEvent {
@@ -570,7 +590,7 @@ export type DecisionType = Decision['type'];
 export type Response =
   | { type: 'pass' }
   | { type: 'playLand'; objectId: ObjectId }
-  | { type: 'cast'; objectId: ObjectId; faceIndex?: number; xValue?: number; modes?: number[]; alternativeCost?: string }
+  | { type: 'cast'; objectId: ObjectId; faceIndex?: number; xValue?: number; modes?: number[]; alternativeCost?: string; manualMana?: boolean }
   | { type: 'activate'; objectId: ObjectId; abilityIndex: number; xValue?: number; modes?: number[] }
   | { type: 'targets'; targets: Target[][] }
   | { type: 'yesNo'; value: boolean }

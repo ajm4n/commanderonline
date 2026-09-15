@@ -33,7 +33,8 @@ export type Amount =
   | { kind: 'times'; a: Amount; b: Amount }
   | { kind: 'max'; a: Amount; b: Amount }
   | { kind: 'chosenNumber' }
-  | { kind: 'differenceLife'; from: Ref; to: Ref };
+  | { kind: 'differenceLife'; from: Ref; to: Ref }
+  | { kind: 'ctxMemory'; key: string };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -58,6 +59,8 @@ export type Ref =
   | { ref: 'stackTarget' } // the spell targeted (for counterspells)
   | { ref: 'controllerOf'; of: Ref }
   | { ref: 'ownerOf'; of: Ref }
+  | { ref: 'blockersOf'; of: Ref }
+  | { ref: 'ringBearer' }
   | { ref: 'player'; id: PlayerId };
 
 export const R = {
@@ -121,6 +124,9 @@ export type Condition =
   | { kind: 'controlsCommander' }
   | { kind: 'commanderOnBattlefield' }
   | { kind: 'inZone'; ref: Ref; zone: ZoneName }
+  | { kind: 'playerStat'; stat: 'ringLevel' | 'dungeonsCompleted' | 'poison' | 'experience' | 'energy'; ref?: Ref; op: Comparison; value: Amount }
+  | { kind: 'hasInitiative'; ref?: Ref }
+  | { kind: 'eventThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; who?: Ref; op?: Comparison; value?: number }
   | { kind: 'not'; c: Condition }
   | { kind: 'and'; cs: Condition[] }
   | { kind: 'or'; cs: Condition[] }
@@ -157,11 +163,11 @@ export type Effect =
   | { kind: 'setLife'; amount: Amount; who?: Ref }
   | { kind: 'damage'; amount: Amount; to: Ref; source?: Ref; divided?: boolean }
   | { kind: 'destroy'; what: Ref; cantRegenerate?: boolean }
-  | { kind: 'exile'; what: Ref; untilSourceLeaves?: boolean; remember?: string }
+  | { kind: 'exile'; what: Ref; untilSourceLeaves?: boolean; remember?: string; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'sacrifice'; what: Ref }
   | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; unlessAlso?: never }
   | { kind: 'returnToHand'; what: Ref }
-  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount } }
+  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean }
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
   | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref }
@@ -206,6 +212,7 @@ export type Effect =
   | { kind: 'lookAtTop'; amount: Amount; who?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'topRestGraveyard' | 'graveyardRestTop' | 'handRestTop'; filter?: ObjectFilter; pick?: Amount }
   | { kind: 'revealTop'; who?: Ref; ifMatches?: ObjectFilter; then?: Effect[]; else?: Effect[]; destination?: 'hand' | 'graveyard' | 'bottom' | 'stay' }
   | { kind: 'castWithoutPaying'; what: Ref }
+  | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean }
   | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent' }
   | { kind: 'chooseColor'; key: string }
   | { kind: 'chooseCreatureType'; key: string }
@@ -220,7 +227,10 @@ export type Effect =
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
   | { kind: 'revealHand'; who: Ref }
-  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean }
+  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref }
+  | { kind: 'discardObjects'; what: Ref }
+  | { kind: 'ringTempts'; who?: Ref }
+  | { kind: 'takeInitiative'; who?: Ref }
   | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number }
   | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter }
   | { kind: 'log'; text: string }

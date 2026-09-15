@@ -21,6 +21,8 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (n !== null) return n;
   let m: RegExpMatchArray | null;
   if (t === 'that much' || t === 'that many' || t === 'that much damage' || t === 'that amount') return { kind: 'triggerAmount' };
+  if (t === 'the life lost this way' || t === 'the total life lost this way' || t === 'the total amount of life lost this way' || t === 'the amount of life lost this way') return { kind: 'ctxMemory', key: 'lifeLostThisWay' };
+  if (t === 'the number of cards milled this way' || t === 'the number of cards put into your graveyard this way') return { kind: 'ctxMemory', key: 'lastMoved' };
   if (t === 'twice that much' || t === 'twice that many') return { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 };
   if ((m = t.match(/^(?:its|that creature's|~'s|this creature's) (power|toughness)$/))) {
     const ref = /~|this/.test(m[0]) ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.self);

@@ -1476,3 +1476,8 @@ h3 {
 
 .bf-row.command { border-left: 2px solid rgba(255, 200, 80, 0.35); padding-left: 8px; position: relative; }
 .bf-label { position: absolute; top: -10px; left: 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 200, 80, 0.7); }
+
+.replay-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 40; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(20, 22, 32, 0.95); border: 1px solid rgba(255, 200, 80, 0.4); border-radius: 10px; min-width: 520px; }
+.spectator-banner { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 4px 12px; border-radius: 999px; background: rgba(120, 90, 255, 0.25); border: 1px solid rgba(120, 90, 255, 0.5); font-size: 12px; }
+.commander-list { display: flex; flex-direction: column; gap: 4px; }
+.commander-list .row { align-items: center; gap: 6px; }

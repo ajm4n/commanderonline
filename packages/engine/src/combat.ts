@@ -57,6 +57,10 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
   if (ach.keywords.has('Fear') && !(bch.types.includes('Artifact') || bch.colors.includes('B'))) return false;
   if (ach.keywords.has('Intimidate') && !(bch.types.includes('Artifact') || bch.colors.some((c) => ach.colors.includes(c)))) return false;
   if (ach.keywords.has('Skulk') && (bch.power ?? 0) > (ach.power ?? 0)) return false;
+  for (const r of ach.rules) {
+    if (r.kind === 'cantBeBlockedByPowerLE' && (bch.power ?? 0) <= r.power) return false;
+    if (r.kind === 'custom' && r.tag === 'ringBearer' && (bch.power ?? 0) > (ach.power ?? 0)) return false;
+  }
   for (const prot of ach.protections) if (protectionApplies(prot, bch.colors, bch.types, bch.subtypes, true)) return false;
   // Landwalk
   for (const [land] of Object.entries(BASIC_LAND_TYPES)) {
@@ -172,6 +176,8 @@ function* declareBlockers(g: Game): Gen {
         if (ch.keywords.has('Menace') && n === 1) return false;
         const minBlockers = ch.rules.find((r) => r.kind === 'custom' && r.tag === 'minBlockers') as { data?: number } | undefined;
         if (minBlockers?.data && n > 0 && n < minBlockers.data) return false;
+        const maxBlockers = ch.rules.find((r) => r.kind === 'maxBlockers') as { count: number } | undefined;
+        if (maxBlockers && n > maxBlockers.count) return false;
         return true;
       });
       if (valid && menaceOk) break;
@@ -306,5 +312,14 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
   if (!assignments.length) return;
   // All combat damage is dealt simultaneously.
   for (const a of assignments) g.dealDamage(a.source, a.target, a.amount, true);
+  if (g.pendingInitiative) {
+    const who = g.pendingInitiative;
+    g.pendingInitiative = null;
+    if (g.state.initiative !== who) {
+      g.state.initiative = who;
+      g.log(`${g.player(who).name} takes the initiative.`);
+      g.emit({ name: 'takesInitiative', playerId: who });
+    }
+  }
   g.touch();
 }

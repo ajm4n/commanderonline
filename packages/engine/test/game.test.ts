@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Game } from '../src/index.js';
+import { Game, canPlayLandNow } from '../src/index.js';
 import { newGame, deck, setup, FOREST, MOUNTAIN, ISLAND, PLAINS, BEARS, BOLT, SOL_RING, ELVES, SERRA, WALL, VISIONARY, BLOOD_ARTIST, ANTHEM, COUNTERSPELL, COMMANDER, GIANT_GROWTH, WRATH, UNSCRIPTED, UPKEEP_GUY, scriptProvider } from './helpers.js';
 
 const forests = () => deck([FOREST], 40);
@@ -44,8 +44,10 @@ describe('lands, mana and casting', () => {
     d.toMainPhase(p);
     d.playLand(p, 'Forest');
     expect(d.g.state.battlefield.length).toBe(1);
-    d.until((x) => x.type === 'priority' && x.player === p);
-    expect((d.d as { canPlayLand: boolean }).canPlayLand).toBe(false);
+    // With the land played and nothing castable, everyone auto-passes: the turn ends without a second land drop.
+    expect(d.g.state.turn.number).toBe(2);
+    expect(d.g.state.battlefield.filter((id) => d.g.obj(id).controller === p).length).toBe(1);
+    expect(canPlayLandNow(d.g, p)).toBe(false);
   });
 
   it('auto-taps lands to cast a creature; creature is summoning sick', () => {

@@ -62,6 +62,16 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (a !== null) return { kind: 'amount', a, op: m[3] === 'more' ? '>=' : '<=', b: parseInt(m[2], 10) };
   }
   if ((m = t.match(/^you have (\w+) or more (poison|experience) counters$/))) { const v = wordToNumber(m[1]); return { kind: 'turnStat', key: m[2], op: '>=', value: typeof v === 'number' ? v : 0 }; }
+  if ((m = t.match(/^(an opponent|you|a player|each opponent) (discarded a card|discarded one or more cards|drew a card|drew two or more cards|gained life|lost life|cast a spell|cast an instant or sorcery spell|attacked|sacrificed a permanent|sacrificed a creature|was dealt damage|milled a card|milled one or more cards) this turn$/))) {
+    const who = m[1] === 'you' ? 'you' : m[1] === 'a player' ? 'any' : 'opponent';
+    const ev = m[2];
+    const event: import('@commander/engine').GameEventName = /discard/.test(ev) ? 'discard' : /drew/.test(ev) ? 'drawCard' : /gained/.test(ev) ? 'lifeGained' : /lost/.test(ev) ? 'lifeLost' : /cast/.test(ev) ? 'cast' : /attacked/.test(ev) ? 'attacks' : /sacrificed/.test(ev) ? 'sacrifice' : /dealt damage/.test(ev) ? 'dealtDamage' : 'mill';
+    return { kind: 'eventThisTurn', event, player: who, op: '>=', value: /two or more/.test(ev) ? 2 : 1 };
+  }
+  if ((m = t.match(/^a creature died this turn$/))) return { kind: 'eventThisTurn', event: 'dies', player: 'any' };
+  if ((m = t.match(/^you have the initiative$/))) return { kind: 'hasInitiative' };
+  if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
+  if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
   return null;
 }

@@ -1,7 +1,7 @@
 export * from './scryfall.js';
 export * from './db.js';
 export { compileCard, type CompileResult } from './compiler/index.js';
-export { HAND_SCRIPTS } from './scripts/index.js';
+export { HAND_SCRIPTS, registerScripts } from './scripts/index.js';
 import type { CardData, CardScript } from '@commander/engine';
 import { compileCard } from './compiler/index.js';
 import { HAND_SCRIPTS } from './scripts/index.js';

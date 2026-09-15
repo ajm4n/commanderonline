@@ -149,7 +149,11 @@ export function parseDeckText(text: string): ImportedDeck {
 
   for (const raw of lines) {
     const line = raw.trim();
-    if (!line) continue;
+    if (!line) {
+      // Moxfield-style exports separate the commander block from the deck with a blank line and no "Deck" header.
+      if (current === 'commanders' && deck.commanders.length > 0) current = 'mainboard';
+      continue;
+    }
 
     const nameMatch = NAME_LINE.exec(line);
     if (nameMatch) {

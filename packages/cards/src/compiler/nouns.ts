@@ -64,6 +64,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
 
   // Special targets
   if (/^any target$/i.test(text)) return { ...result, target: true, kind: 'any' };
+  if ((m = text.match(/^any number of target (players|opponents)$/i))) return { ...result, target: true, kind: 'player', playerFilter: /opponent/i.test(m[1]) ? 'opponent' : 'any', count: 6, upTo: true };
   if ((m = text.match(/^(?:up to (\w+) )?targets? (players?|opponents?)$/i))) {
     const n = wordToNumber(m[1]);
     return { ...result, target: true, kind: 'player', playerFilter: /opponent/i.test(m[2]) ? 'opponent' : 'any', count: n ?? 1, upTo: !!m[1] };
@@ -125,7 +126,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
 
   // Trailing qualifiers
   const quals: string[] = [];
-  const QUAL_RE = /\s+(you control|you own|you do not control|an opponent controls|your opponents control|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
+  const QUAL_RE = /\s+(in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control|you own|you do not control|an opponent controls|your opponents control|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
   for (;;) {
     const q = text.match(QUAL_RE);
     if (!q) break;
@@ -138,13 +139,16 @@ export function parseNoun(raw: string): ParsedNoun | null {
   let head = words[words.length - 1];
   result.plural = /(?:[^s]s|ies|ches|shes|xes)$/i.test(head) && !/^(?:this|~|us)$/i.test(head) && !/ss$/i.test(head) || /^(?:creatures|artifacts|enchantments|lands|planeswalkers|permanents|spells|cards|tokens|opponents|players)$/i.test(head);
   let adjWords = words.slice(0, -1);
-  // "card"/"cards" head → previous word is the real type
+  // "card"/"cards" head → previous word is the real type ("creature card"), unless it is an
+  // adjective ("nonland card", "black card"), in which case the card can be anything.
   if (/^cards?$/i.test(head)) {
     result.isCard = true;
-    head = adjWords.length ? adjWords[adjWords.length - 1] : 'card';
-    adjWords = adjWords.slice(0, -1);
-    if (head === 'card') {
-      /* "a card" — any card */
+    const prev = adjWords.length ? adjWords[adjWords.length - 1] : undefined;
+    const probe: ParsedNoun = { ...result, filter: {} };
+    if (prev && !(prev.toLowerCase() in TYPE_WORDS) && !(prev in SUBTYPE_ALIASES) && !CREATURE_TYPE_RE.test(prev) && parseAdjectives([prev], probe)) head = 'card';
+    else {
+      head = prev ?? 'card';
+      adjWords = adjWords.slice(0, -1);
     }
   }
   // "token"/"tokens" head
@@ -279,7 +283,17 @@ function parseAdjectives(wordsIn: string[], r: ParsedNoun): boolean {
 
 function applyQualifier(q: string, r: ParsedNoun) {
   let m: RegExpMatchArray | null;
-  if (q === 'you control') r.filter.controller = 'you';
+  if (q === "in an opponent's graveyard" || q === "from an opponent's graveyard" || q === "in that player's graveyard" || q === "from that player's graveyard" || q === 'in their graveyard' || q === 'from their graveyard') {
+    r.filter.zone = 'graveyard';
+    r.filter.owner = 'opponent';
+    r.isCard = true;
+  } else if (/^that (?:was|were) put there from (?:their|your|a) library this turn$/.test(q) || /^put into (?:a|your|their) graveyard from (?:a|your|their) library this turn$/.test(q)) {
+    r.filter.fromLibraryThisTurn = true;
+    if (!r.filter.zone) r.filter.zone = 'graveyard';
+    r.isCard = true;
+  } else if ((m = q.match(/^with (?:a |an )?([+\-\w\/]+) counters? on (?:it|them)$/))) {
+    r.filter.hasCounter = m[1];
+  } else if (q === 'you control') r.filter.controller = 'you';
   else if (q === 'you own') r.filter.owner = 'you';
   else if (q === 'you do not control' || q === 'an opponent controls' || q === 'your opponents control' || q === 'that opponent controls') r.filter.controller = 'opponent';
   else if (q === 'you do not own' || q === 'an opponent owns') r.filter.owner = 'opponent';

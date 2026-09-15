@@ -34,6 +34,11 @@ export function GameScreen() {
   const connStatus = useStore((s) => s.connStatus);
   const mode = useStore((s) => s.mode);
   const gameOver = useStore((s) => s.gameOver);
+  const replay = useStore((s) => s.replay);
+  const startReplay = useStore((s) => s.startReplay);
+  const replaySeek = useStore((s) => s.replaySeek);
+  const replayPlay = useStore((s) => s.replayPlay);
+  const exitReplay = useStore((s) => s.exitReplay);
   const sync = useStore((s) => s.sync);
 
   const ui = useUi();
@@ -241,17 +246,46 @@ export function GameScreen() {
         )}
         <Hand view={view} highlights={highlights} decisionActive={decisionActive} handlers={handlers} />
         <DecisionBar view={view} decision={decision} respond={respond} />
-        {view.over && (
+        {view.over && !replay && (
           <div className="game-over">
             <div className="modal">
               <h2>Game over</h2>
               <p>{view.winner ? `${playerName(view, view.winner)} wins!` : gameOver ? 'Draw.' : 'The game has ended.'}</p>
-              <button className="primary" onClick={goHome}>
-                Back to menu
-              </button>
+              <div className="row" style={{ gap: 8 }}>
+                <button onClick={startReplay} data-testid="replay">
+                  Watch replay
+                </button>
+                <button className="primary" onClick={goHome}>
+                  Back to menu
+                </button>
+              </div>
             </div>
           </div>
         )}
+        {replay && (
+          <div className="replay-bar" data-testid="replay-bar">
+            <button className="sm" onClick={() => replaySeek(0)} title="Start">
+              ⏮
+            </button>
+            <button className="sm" onClick={() => replaySeek(replay.index - 1)} title="Back">
+              ◀
+            </button>
+            <button className="sm" onClick={() => replayPlay(!replay.playing)} title={replay.playing ? 'Pause' : 'Play'}>
+              {replay.playing ? '⏸' : '▶'}
+            </button>
+            <button className="sm" onClick={() => replaySeek(replay.index + 1)} title="Forward">
+              ▶▶
+            </button>
+            <input type="range" min={0} max={replay.history.length} value={replay.index} onChange={(e) => replaySeek(Number(e.target.value))} style={{ flex: 1 }} />
+            <span className="muted small">
+              step {replay.index}/{replay.history.length} · turn {view.turn.number}
+            </span>
+            <button className="sm" onClick={exitReplay}>
+              Exit replay
+            </button>
+          </div>
+        )}
+        {!replay && view.you === '' && <div className="spectator-banner">Spectating · {view.waitingOn ? `waiting on ${playerName(view, view.waitingOn)}` : 'game over'}</div>}
       </main>
 
       <aside className="sidebar">

@@ -1,5 +1,5 @@
 import type { Game } from './game.js';
-import type { CardType, Color, ContinuousEffect, GameObject, Modification, ObjectId, RuleModification, Supertype } from './types.js';
+import type { CardType, Color, ContinuousEffect, GameObject, Modification, ObjectFilter, ObjectId, RuleModification, Supertype } from './types.js';
 import { parseTypeLine } from './typeline.js';
 import { manaValue as costManaValue } from './mana.js';
 import { matchesFilter } from './filters.js';
@@ -71,16 +71,19 @@ function layerOrder(m: Modification): number {
  */
 export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
   const obj = g.state.objects[id];
-  const effects: { mod: Modification; ts: number; sourceId: ObjectId | null }[] = [];
+  /** `applies` re-evaluates the effect's filter against a working set of characteristics (for dependency ordering). */
+  const effects: { mod: Modification; ts: number; sourceId: ObjectId | null; applies?: (ch: Characteristics) => boolean }[] = [];
 
   // Stored effects
   for (const ce of g.state.continuousEffects) {
-    if (affects(g, ce, obj)) effects.push({ mod: ce.modification, ts: ce.timestamp, sourceId: ce.sourceId });
+    if (affects(g, ce, obj)) effects.push({ mod: ce.modification, ts: ce.timestamp, sourceId: ce.sourceId, applies: ce.affected.kind === 'filter' ? (ch) => matchesFilter(g, obj, (ce.affected as { filter: ObjectFilter }).filter, { sourceId: ce.sourceId, controller: ce.controller, chOverride: ch }) : undefined });
   }
   // Static abilities from battlefield permanents (and a few from other zones)
   for (const src of Object.values(g.state.objects)) {
     if (src.zone !== 'battlefield' && src.zone !== 'command') continue;
     if (src.phasedOut) continue;
+    // A source that has lost all abilities (Humility, Blood Moon on Urborg) grants nothing (rule 613.8 dependency).
+    if (src.id !== id && g.characteristics(src.id).lostAllAbilities) continue;
     const script = g.scriptFor(src);
     for (const ab of script.abilities) {
       if (ab.kind !== 'static') continue;
@@ -88,8 +91,10 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
       if (!ab.modification && !ab.rule) continue;
       if (ab.condition && !g.checkCondition(ab.condition, { sourceId: src.id, controller: src.controller })) continue;
       if (!staticAffects(g, ab, src, obj)) continue;
-      if (ab.modification) effects.push({ mod: ab.modification, ts: src.timestamp, sourceId: src.id });
-      if (ab.rule) effects.push({ mod: { layer: 'rule', rule: ab.rule }, ts: src.timestamp, sourceId: src.id });
+      const target = ab.affects ?? ab.ruleAffects;
+      const applies = target && typeof target === 'object' ? (ch: Characteristics) => matchesFilter(g, obj, target as ObjectFilter, { sourceId: src.id, controller: src.controller, chOverride: ch }) : undefined;
+      if (ab.modification) effects.push({ mod: ab.modification, ts: src.timestamp, sourceId: src.id, applies });
+      if (ab.rule) effects.push({ mod: { layer: 'rule', rule: ab.rule }, ts: src.timestamp, sourceId: src.id, applies });
     }
   }
   effects.sort((a, b) => layerOrder(a.mod) - layerOrder(b.mod) || a.ts - b.ts);
@@ -150,41 +155,55 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
       if (src && src.zone === 'battlefield') ch.controller = src.controller;
     } else ch.controller = e.mod.controller;
   }
+  /**
+   * Rule 613.8: within a layer, an effect that changes whether another applies is applied first.
+   * We detect that by re-evaluating each filter-based effect against the characteristics with
+   * and without the other effect applied; ties and cycles fall back to timestamp order.
+   */
+  const orderLayer = (layer: Modification['layer'], apply: (ch: Characteristics, m: Modification) => void) => {
+    const list = effects.filter((e) => e.mod.layer === layer);
+    if (list.length < 2) return list;
+    const depends = (a: typeof list[number], b: typeof list[number]) => {
+      // does b depend on a? (applying a changes whether b applies)
+      if (!b.applies) return false;
+      const before = b.applies(ch);
+      const trial = cloneCh(ch);
+      apply(trial, a.mod);
+      return b.applies(trial) !== before;
+    };
+    const ordered: typeof list = [];
+    const remaining = [...list];
+    while (remaining.length) {
+      // pick the earliest remaining effect that no other remaining effect must precede
+      let pick = remaining.find((b) => !remaining.some((a) => a !== b && depends(a, b) && !depends(b, a)));
+      if (!pick) pick = remaining[0];
+      ordered.push(pick);
+      remaining.splice(remaining.indexOf(pick), 1);
+    }
+    return ordered;
+  };
+  const applyTypes = (c: Characteristics, m: Modification) => {
+    if (m.layer !== 4) return;
+    if (m.setTypes) c.types = [...m.setTypes];
+    if (m.addTypes) for (const t of m.addTypes) if (!c.types.includes(t)) c.types.push(t);
+    const rm = m.removeTypes;
+    if (rm) c.types = c.types.filter((t) => !rm.includes(t));
+    if (m.addSubtypes) for (const t of m.addSubtypes) if (!c.subtypes.includes(t)) c.subtypes.push(t);
+    if (m.addSupertypes) for (const t of m.addSupertypes) if (!c.supertypes.includes(t)) c.supertypes.push(t);
+  };
+  const applyColors = (c: Characteristics, m: Modification) => {
+    if (m.layer !== 5) return;
+    if (m.setColors) c.colors = [...m.setColors];
+    if (m.addColors) for (const col of m.addColors) if (!c.colors.includes(col)) c.colors.push(col);
+  };
   // Layer 4: types
-  for (const e of effects) {
-    if (e.mod.layer !== 4) continue;
-    if (e.mod.setTypes) ch.types = [...e.mod.setTypes];
-    if (e.mod.addTypes) for (const t of e.mod.addTypes) if (!ch.types.includes(t)) ch.types.push(t);
-    const rm = e.mod.removeTypes;
-    if (rm) ch.types = ch.types.filter((t) => !rm.includes(t));
-    if (e.mod.addSubtypes) for (const t of e.mod.addSubtypes) if (!ch.subtypes.includes(t)) ch.subtypes.push(t);
-  }
+  for (const e of orderLayer(4, applyTypes)) applyTypes(ch, e.mod);
+  // The Ring-bearer is legendary (level 1).
+  if (effects.some((e) => e.mod.layer === 'rule' && e.mod.rule.kind === 'custom' && e.mod.rule.tag === 'ringBearer') && !ch.supertypes.includes('Legendary')) ch.supertypes.push('Legendary');
   // Layer 5: colors
-  for (const e of effects) {
-    if (e.mod.layer !== 5) continue;
-    if (e.mod.setColors) ch.colors = [...e.mod.setColors];
-    if (e.mod.addColors) for (const c of e.mod.addColors) if (!ch.colors.includes(c)) ch.colors.push(c);
-  }
+  for (const e of orderLayer(5, applyColors)) applyColors(ch, e.mod);
   // Layer 6: abilities
-  for (const e of effects) {
-    if (e.mod.layer !== 6) continue;
-    if (e.mod.loseAllAbilities) {
-      ch.keywords.clear();
-      ch.protections = [];
-      ch.hexproofFrom = [];
-      ch.lostAllAbilities = true;
-    }
-    if (e.mod.addKeywords) {
-      for (const k of e.mod.addKeywords) {
-        const prot = k.match(/^Protection from (.+)$/i);
-        const hex = k.match(/^Hexproof from (.+)$/i);
-        if (prot) ch.protections.push(prot[1]);
-        else if (hex) ch.hexproofFrom.push(hex[1]);
-        else ch.keywords.add(k);
-      }
-    }
-    if (e.mod.removeKeywords) for (const k of e.mod.removeKeywords) ch.keywords.delete(k);
-  }
+  for (const e of orderLayer(6, (c, m) => applyAbilities(c, m))) applyAbilities(ch, e.mod);
   // Layer 7b: set P/T
   for (const e of effects) {
     if (e.mod.layer !== '7b') continue;
@@ -224,6 +243,30 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
   // Loyalty counters define current loyalty on battlefield
   if (obj.zone === 'battlefield' && ch.types.includes('Planeswalker')) ch.loyalty = obj.counters['loyalty'] ?? 0;
   return ch;
+}
+
+function applyAbilities(c: Characteristics, m: Modification) {
+  if (m.layer !== 6) return;
+  if (m.loseAllAbilities) {
+    c.keywords.clear();
+    c.protections = [];
+    c.hexproofFrom = [];
+    c.lostAllAbilities = true;
+  }
+  if (m.addKeywords) {
+    for (const k of m.addKeywords) {
+      const prot = k.match(/^Protection from (.+)$/i);
+      const hex = k.match(/^Hexproof from (.+)$/i);
+      if (prot) c.protections.push(prot[1]);
+      else if (hex) c.hexproofFrom.push(hex[1]);
+      else c.keywords.add(k);
+    }
+  }
+  if (m.removeKeywords) for (const k of m.removeKeywords) c.keywords.delete(k);
+}
+
+function cloneCh(c: Characteristics): Characteristics {
+  return { ...c, types: [...c.types], supertypes: [...c.supertypes], subtypes: [...c.subtypes], colors: [...c.colors], keywords: new Set(c.keywords), protections: [...c.protections], hexproofFrom: [...c.hexproofFrom], rules: [...c.rules] };
 }
 
 function affects(g: Game, ce: ContinuousEffect, obj: GameObject): boolean {

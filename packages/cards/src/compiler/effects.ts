@@ -1,5 +1,5 @@
 /** Sentence → Effect[] parser. */
-import type { Effect, Ref, TargetSpec, TokenSpec, Duration, Color, ObjectFilter, Amount } from '@commander/engine';
+import type { Effect, Ref, TargetSpec, TokenSpec, Duration, Color, ObjectFilter, Amount, Condition } from '@commander/engine';
 import { TOKEN_PRESETS, parseAddManaText } from '@commander/engine';
 import { wordToNumber, sentences, lc } from './text.js';
 import { parseNoun, toTargetSpec, type ParsedNoun } from './nouns.js';
@@ -301,10 +301,14 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'destroy', what: ref, cantRegenerate: /regenerat/i.test(m[0]) }] : null;
   }],
-  [/^exile (.+?)(?: until ~ leaves the battlefield)?$/i, (m, ctx) => {
+  [/^exile (.+?)(?: from (?:their|your|its owner's|that player's) graveyard)?(?: with (?:a|an|(\w+)) (\w+) counters? on (?:it|them))?(?: until ~ leaves the battlefield)?$/i, (m, ctx) => {
     const until = / until ~ leaves the battlefield$/i.test(m[0]);
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'exile', what: ref, untilSourceLeaves: until, remember: 'exiled' }] : null;
+    if (!ref) return null;
+    const e: Effect = { kind: 'exile', what: ref, untilSourceLeaves: until, remember: 'exiled' };
+    if (m[3]) e.counters = { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) ?? 1) : 1 };
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [e];
   }],
   [/^(?:(.+?) )?sacrifices? (~|it|that creature|that permanent|enchanted creature|equipped creature)$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
@@ -522,10 +526,62 @@ const PATTERNS: Pattern[] = [
     const n = wordToNumber(m[1]);
     return n === null ? null : [{ kind: 'surveil', amount: n }];
   }],
-  [/^(?:(.+?) )?mills? (\w+|X) cards?$/i, (m, ctx) => {
+  [/^(?:(.+?) )?mills? (\w+|X|that many|half that many) cards?$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
-    const n = wordToNumber(m[2]);
+    const n = wordToNumber(m[2]) ?? amt(m[2], ctx);
     return who && n !== null ? [{ kind: 'mill', amount: n, who }] : null;
+  }],
+  [/^(?:(.+?) )?mills? cards equal to (.+)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const a = amt(m[2], ctx);
+    return who && a !== null ? [{ kind: 'mill', amount: a, who }] : null;
+  }],
+  // "choose target X." → just registers the target for the following sentences
+  [/^choose (target .+|up to \w+ target .+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx) ?? playerRef(m[1], ctx);
+    return ref ? [] : null;
+  }],
+  // Reveal-and-discard: "You choose a nonland card from it. That player discards that card."
+  [/^you choose (?:a|an|up to (\w+)) (?:(.+?) )?cards?(?: of that color| of the chosen color)? from (?:it|among them|that hand)$/i, (m, ctx) => {
+    const owner = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' as const } : null);
+    if (!owner) return null;
+    const noun = !m[2] || m[2] === 'card' ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[2]} card`);
+    if (!noun) return null;
+    const key = `revealed${ctx.targets.length}`;
+    const n = m[1] ? (wordToNumber(m[1]) ?? 1) : 1;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'hand' }, owner, count: n, key, upTo: !!m[1] }];
+  }],
+  [/^(?:that player|they|target player|each of those players) discards? (?:that card|those cards|it|them|the chosen cards?)$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    return ref ? [{ kind: 'discardObjects', what: ref }] : null;
+  }],
+  // "each opponent with no cards in hand loses 10 life" style
+  [/^each (opponent|player) (?:with|who has) (no cards in hand|(\w+) or more cards in hand|(\w+) or fewer cards in hand|more life than you|less life than you) (.+)$/i, (m, ctx) => {
+    const sub = newCtx({ ...ctx, targets: ctx.targets });
+    sub.lastPlayer = { ref: 'iter' };
+    const inner = parseSentence(m[5].replace(/^(loses?|gains?|draws?|discards?|sacrifices?|mills?)/i, (v) => v), sub);
+    if (!inner) return null;
+    let cond: Condition;
+    if (/^no cards/i.test(m[2])) cond = { kind: 'handSize', ref: { ref: 'iter' }, op: '==', value: 0 };
+    else if (m[3]) cond = { kind: 'handSize', ref: { ref: 'iter' }, op: '>=', value: wordToNumber(m[3]) as number };
+    else if (m[4]) cond = { kind: 'handSize', ref: { ref: 'iter' }, op: '<=', value: wordToNumber(m[4]) as number };
+    else cond = { kind: 'amount', a: { kind: 'life', ref: { ref: 'iter' } }, op: /more/i.test(m[2]) ? '>' : '<', b: { kind: 'life', ref: YOU } };
+    return [{ kind: 'forEach', over: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: [{ kind: 'conditional', if: cond, then: inner }] }];
+  }],
+  [/^the ring tempts you$/i, () => [{ kind: 'ringTempts' }]],
+  [/^you take the initiative$/i, () => [{ kind: 'takeInitiative' }]],
+  [/^(.+?) takes the initiative$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'takeInitiative', who }] : null;
+  }],
+  [/^roll a (?:d(\d+)|six-sided die|twenty-sided die)$/i, (m) => [{ kind: 'rollDie', sides: m[1] ? parseInt(m[1], 10) : /six/i.test(m[0]) ? 6 : 20, results: [] }]],
+  [/^exile this saga, then return it to the battlefield transformed under your control$/i, () => [{ kind: 'exile', what: SELF }, { kind: 'returnToBattlefield', what: SELF, transformed: true }]],
+  [/^(?:you may )?cast (.+?)(?:, and mana of any type can be spent to cast (?:that spell|it))?$/i, (m, ctx) => {
+    if (/without paying/i.test(m[0])) return null;
+    const anyMana = /mana of any type/i.test(m[0]);
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'castFrom', what: ref, anyManaType: anyMana }] : null;
   }],
   // Discard
   [/^(?:(.+?) )?discards? (?:(\w+|X) cards?|a card)( at random)?$/i, (m, ctx) => {
@@ -830,6 +886,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [{ kind: 'conditional', if: cond ?? { kind: 'manual', text: `Is this true: "${m[2]}"?` }, then: inner }];
     }
   }
+  text = text.replace(/^((?:any number of |up to \w+ )?target (?:players|opponents)) each /i, '$1 ');
   if ((m = text.match(/^(.+?), where X is (.+)$/i))) {
     // "…deals X damage…, where X is the number of…" → substitute amount
     const a = amt(m[2], ctx);

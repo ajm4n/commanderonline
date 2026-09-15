@@ -186,6 +186,7 @@ export class LocalConnection implements GameConnection {
   private closed = false;
   private gameOverSent = false;
   private viewQueued = false;
+  private lastSetups: PlayerSetup[] | null = null;
 
   constructor(private opts: LocalConnectionOptions = {}) {
     this.rng = seededRng(opts.seed ?? (Date.now() & 0xffffffff));
@@ -222,7 +223,7 @@ export class LocalConnection implements GameConnection {
       connected: true,
       isHost: i === 0,
     }));
-    return { roomId: this.roomId, players, config: { ...this.config }, started: this.started, joinCode: this.roomId };
+    return { roomId: this.roomId, players, config: { ...this.config }, started: this.started, joinCode: this.roomId, spectators: 0 };
   }
 
   private emitLobby() {
@@ -316,6 +317,7 @@ export class LocalConnection implements GameConnection {
     let game: Game;
     try {
       game = new Game(setups, { ...this.config, seed }, scriptFor);
+      this.lastSetups = setups;
     } catch (e) {
       return this.error(`Could not create game: ${(e as Error).message}`);
     }
@@ -424,6 +426,9 @@ export class LocalConnection implements GameConnection {
       case 'sync':
         this.emitLobby();
         this.emitView();
+        return;
+      case 'getHistory':
+        if (this.game && this.lastSetups) this.emit({ type: 'history', setups: this.lastSetups, config: this.game.config, history: this.game.history });
         return;
       case 'chat':
         this.emit({ type: 'chat', from: this.humanId, name: this.humanSeat()?.name ?? 'You', text: msg.text, at: Date.now() });

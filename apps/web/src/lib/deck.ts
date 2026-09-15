@@ -109,10 +109,14 @@ export async function prepareDeckFromText(text: string, onProgress?: (p: Resolve
   let commanders = expand(parsed.commanders, resolved.cards, missing);
   let mainboard = expand(parsed.mainboard, resolved.cards, missing);
   if (commanders.length > 2) {
-    // A "Commander" header with no following "Deck" header swallows the whole list: keep the
-    // cards that can actually lead a deck (at most two) and treat the rest as the mainboard.
-    const leaders = commanders.filter((c) => isCommanderCandidate(c)).slice(0, 2);
-    const picked = leaders.length ? leaders : commanders.slice(0, 1);
+    // A "Commander" header with no following "Deck" header swallows the whole list. The card
+    // listed first is the commander; a second one only if the two are partners / a background.
+    const first = commanders.find((c) => isCommanderCandidate(c)) ?? commanders[0];
+    const picked = [first];
+    const idx = commanders.indexOf(first);
+    const second = commanders[idx + 1];
+    const pairs = (a: CardData, b: CardData) => (/\bPartner\b/.test(a.oracleText) && /\bPartner\b/.test(b.oracleText)) || (/Choose a Background/.test(a.oracleText) && /\bBackground\b/.test(b.typeLine)) || (/Choose a Background/.test(b.oracleText) && /\bBackground\b/.test(a.typeLine));
+    if (second && isCommanderCandidate(second) && pairs(first, second)) picked.push(second);
     let rest = commanders;
     for (const c of picked) rest = removeOne(rest, c);
     commanders = picked;
@@ -137,6 +141,7 @@ export async function prepareDeckFromUrl(url: string): Promise<PreparedDeck> {
   try {
     res = await importDeckFromServer({ url: url.trim() });
   } catch (e) {
+    if (detectSource(url) === 'moxfield') throw new Error('Moxfield blocks automated downloads (they only allow approved apps). In Moxfield open your deck → More → Export → copy the text, then paste it here.');
     if (isNetworkError(e)) throw new Error('The game server is not reachable, so URL import is unavailable. Export your deck as text and paste it instead.');
     throw e;
   }

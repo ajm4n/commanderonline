@@ -3,7 +3,7 @@
  */
 import type { Game } from './game.js';
 import type { Decision, ObjectId, PlayerId, StackItem, TurnState, LogEntry, ManaPool, ZoneName, Color, RuleModification } from './types.js';
-import { abilitiesOf, summoningSick } from './casting.js';
+import { abilitiesOf, summoningSick, availableMana } from './casting.js';
 
 export interface ObjectView {
   id: ObjectId;
@@ -72,6 +72,11 @@ export interface PlayerView {
   hasPriority: boolean;
   isMonarch: boolean;
   landsPlayedThisTurn: number;
+  /** Mana the viewer could produce right now (own seat only). */
+  manaAvailable: number | null;
+  ringLevel: number;
+  dungeon: { name: string; room: string } | null;
+  hasInitiative: boolean;
 }
 
 export interface GameView {
@@ -188,8 +193,8 @@ export function objectView(g: Game, id: ObjectId, viewer: PlayerId, reveal: bool
   };
 }
 
-export function viewFor(g: Game, viewer: PlayerId): GameView {
-  const decision = g.pending && g.pending.player === viewer ? g.pending : null;
+export function viewFor(g: Game, viewer: PlayerId | null): GameView {
+  const decision = viewer !== null && g.pending && g.pending.player === viewer ? g.pending : null;
   const revealIds = new Set<ObjectId>();
   if (decision) {
     if (decision.type === 'chooseObjects' && decision.revealToChooser) decision.candidates.forEach((id) => revealIds.add(id));
@@ -199,7 +204,7 @@ export function viewFor(g: Game, viewer: PlayerId): GameView {
   const objects: Record<ObjectId, ObjectView> = {};
   for (const o of Object.values(g.state.objects)) {
     if (o.zone === 'library' && !revealIds.has(o.id)) continue; // library contents never sent
-    const v = objectView(g, o.id, viewer, revealIds.has(o.id));
+    const v = objectView(g, o.id, viewer ?? '__spectator__', revealIds.has(o.id));
     if (v) objects[o.id] = v;
   }
   const players: PlayerView[] = g.state.playerOrder.map((pid) => {
@@ -216,6 +221,10 @@ export function viewFor(g: Game, viewer: PlayerId): GameView {
       handCount: p.hand.length,
       libraryCount: p.library.length,
       hand: pid === viewer ? [...p.hand] : null,
+      manaAvailable: pid === viewer ? availableMana(g, pid) : null,
+      ringLevel: p.ringLevel,
+      dungeon: p.dungeon,
+      hasInitiative: g.state.initiative === pid,
       graveyard: [...p.graveyard],
       exile: [...p.exile],
       command: [...p.command],
@@ -228,7 +237,7 @@ export function viewFor(g: Game, viewer: PlayerId): GameView {
     };
   });
   return {
-    you: viewer,
+    you: viewer ?? '',
     players,
     playerOrder: g.state.playerOrder,
     objects,
@@ -237,7 +246,7 @@ export function viewFor(g: Game, viewer: PlayerId): GameView {
     turn: g.state.turn,
     decision,
     waitingOn: g.pending?.player ?? null,
-    log: g.state.log.filter((l) => !l.visibleTo || l.visibleTo.includes(viewer)).slice(-300),
+    log: g.state.log.filter((l) => !l.visibleTo || (viewer !== null && l.visibleTo.includes(viewer))).slice(-300),
     over: g.state.over,
     winner: g.state.winner,
     version: g.state.version,

@@ -34,7 +34,7 @@ import { matchesFilter, objectsMatching, legalTargets, sameTarget, type FilterCo
 import { parseTypeLine } from './typeline.js';
 import { ENFORCED_KEYWORDS } from './keywords.js';
 import { executeEffects, type EffectContext } from './effects.js';
-import { buildPriorityDecision, castSpell, activateAbility, playLand } from './casting.js';
+import { buildPriorityDecision, castSpell, activateAbility, playLand, abilitiesOf } from './casting.js';
 import { resolveTopOfStack } from './resolve.js';
 import { runCombatStep } from './combat.js';
 import { checkStateBasedActions } from './sba.js';
@@ -115,6 +115,8 @@ export class Game {
   private pendingTriggers: PendingTrigger[] = [];
   /** Objects exiled "until this leaves" whose source has left; returned by SBA. */
   pendingReturns: ObjectId[] = [];
+  /** Player who dealt combat damage to the initiative holder this damage step; takes the initiative afterwards. */
+  pendingInitiative: PlayerId | null = null;
   private computing = new Set<ObjectId>();
   /** Hook for tests / UI: called after each mutation batch. */
   onChange: (() => void) | null = null;
@@ -153,6 +155,9 @@ export class Game {
         flags: {},
         turnStats: {},
         designations: [],
+        ringLevel: 0,
+        dungeon: null,
+        dungeonsCompleted: 0,
       };
       for (const card of s.deck.mainboard) {
         const id = nextId++;
@@ -700,6 +705,7 @@ export class Game {
     obj.zone = toZone;
     obj.timestamp = this.now();
     obj.lastKnownInfo = snapshot;
+    obj.lastZoneChange = { from: fromZone, turn: this.state.turn.number };
 
     // Insert into destination.
     if (toZone === 'battlefield') {
@@ -786,6 +792,20 @@ export class Game {
       if (p) p.turnStats[event.name] = (p.turnStats[event.name] ?? 0) + 1;
     }
     this.collectTriggers(event);
+    this.collectRingTriggers(event);
+  }
+
+  /** The Ring's levels 2-4 are triggered abilities of the ring-bearer's controller. */
+  private collectRingTriggers(event: GameEvent) {
+    if (event.objectId === undefined) return;
+    if (event.name !== 'attacks' && event.name !== 'becomesBlocked' && event.name !== 'dealtCombatDamageToPlayer') return;
+    const obj = this.state.objects[event.objectId];
+    if (!obj || obj.zone !== 'battlefield') return;
+    if (!this.characteristics(obj.id).rules.some((r) => r.kind === 'custom' && r.tag === 'ringBearer')) return;
+    const p = this.player(obj.controller);
+    if (event.name === 'attacks' && p.ringLevel >= 2) this.pendingTriggers.push({ sourceId: obj.id, controller: p.id, ability: { kind: 'triggered', text: 'The Ring: whenever your Ring-bearer attacks, draw a card, then discard a card.', event: 'attacks', effects: [{ kind: 'draw', amount: 1 }, { kind: 'discard', amount: 1 }] }, context: this.triggerContextFrom(event) });
+    if (event.name === 'becomesBlocked' && p.ringLevel >= 3) this.pendingTriggers.push({ sourceId: obj.id, controller: p.id, ability: { kind: 'triggered', text: "The Ring: whenever your Ring-bearer becomes blocked by a creature, that creature's controller sacrifices it at end of combat.", event: 'becomesBlocked', effects: [{ kind: 'delayedTrigger', event: 'endOfCombat', text: 'Sacrifice blockers of the Ring-bearer', effects: [{ kind: 'sacrifice', what: { ref: 'chosen', key: 'ringBlockers' } }] }] }, context: { ...this.triggerContextFrom(event), ringBlockers: [...obj.blockedBy] } });
+    if (event.name === 'dealtCombatDamageToPlayer' && p.ringLevel >= 4) this.pendingTriggers.push({ sourceId: obj.id, controller: p.id, ability: { kind: 'triggered', text: 'The Ring: whenever your Ring-bearer deals combat damage to a player, each opponent loses 3 life.', event: 'dealtCombatDamageToPlayer', effects: [{ kind: 'loseLife', amount: 3, who: { ref: 'eachOpponent' } }] }, context: this.triggerContextFrom(event) });
   }
 
   private collectTriggers(event: GameEvent) {
@@ -1050,6 +1070,19 @@ export class Game {
         return this.state.battlefield.some((id) => this.obj(id).isCommander && this.obj(id).owner === ctx.controller);
       case 'inZone':
         return this.resolveObjects(c.ref, ectx).every((o) => o.zone === c.zone);
+      case 'playerStat': {
+        const ps = c.ref ? this.resolvePlayers(c.ref, ectx) : [ctx.controller];
+        return ps.every((p) => cmp(this.player(p)[c.stat], c.op, this.resolveAmount(c.value, ectx)));
+      }
+      case 'hasInitiative': {
+        const ps = c.ref ? this.resolvePlayers(c.ref, ectx) : [ctx.controller];
+        return ps.every((p) => this.state.initiative === p);
+      }
+      case 'eventThisTurn': {
+        const who: PlayerId[] = c.who ? this.resolvePlayers(c.who, ectx) : c.player === 'opponent' ? this.opponentsOf(ctx.controller) : c.player === 'any' ? this.activePlayers() : [ctx.controller];
+        const total = who.reduce((n, p) => n + (this.state.turnStats[`${c.event}:${p}`] ?? 0), 0);
+        return cmp(total, c.op ?? '>=', c.value ?? 1);
+      }
       case 'not':
         return !this.checkCondition(c.c, ctx);
       case 'and':
@@ -1124,6 +1157,10 @@ export class Game {
         return Math.max(this.resolveAmount(a.a, ctx), this.resolveAmount(a.b, ctx));
       case 'chosenNumber':
         return (ctx.memory['chosenNumber'] as number) ?? 0;
+      case 'ctxMemory': {
+        const v = ctx.memory[a.key];
+        return typeof v === 'number' ? v : Array.isArray(v) ? v.length : 0;
+      }
       case 'differenceLife': {
         const f = this.resolvePlayers(a.from, ctx)[0];
         const t = this.resolvePlayers(a.to, ctx)[0];
@@ -1195,7 +1232,7 @@ export class Game {
         return plT([this.state.turn.activePlayer]);
       case 'chosen': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
-        const v = (src?.memory[ref.key] ?? ctx.memory[ref.key]) as ObjectId[] | PlayerId | undefined;
+        const v = (ctx.memory[ref.key] ?? src?.memory[ref.key] ?? ctx.triggerContext[ref.key]) as ObjectId[] | PlayerId | undefined;
         if (Array.isArray(v)) return objT(v);
         if (typeof v === 'string') return plT([v]);
         return [];
@@ -1210,6 +1247,10 @@ export class Game {
         return plT([...new Set(this.resolveRef(ref.of, ctx).map((t) => (t.kind === 'object' ? this.state.objects[t.id]?.controller : t.kind === 'stackItem' ? this.state.stack.find((s) => s.id === t.id)?.controller : t.kind === 'player' ? t.id : undefined)))]);
       case 'ownerOf':
         return plT([...new Set(this.resolveRef(ref.of, ctx).map((t) => (t.kind === 'object' ? this.state.objects[t.id]?.owner : t.kind === 'player' ? t.id : undefined)))]);
+      case 'blockersOf':
+        return objT(this.resolveObjects(ref.of, ctx).flatMap((o) => o.blockedBy));
+      case 'ringBearer':
+        return objT(this.state.battlefield.filter((id) => this.obj(id).controller === ctx.controller && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'ringBearer')));
     }
   }
   resolveObjects(ref: Ref, ctx: EffectContext): GameObject[] {
@@ -1318,6 +1359,7 @@ export class Game {
         if (combat && src?.isCommander) {
           p.commanderDamage[src.id] = (p.commanderDamage[src.id] ?? 0) + dealt;
         }
+        if (combat && this.state.initiative === target.id && src && src.controller !== target.id) this.pendingInitiative = src.controller;
       }
       if (sch?.keywords.has('Toxic') && combat) {
         const tox = parseInt(sch.oracleText.match(/Toxic (\d+)/)?.[1] ?? '1', 10);
@@ -1593,6 +1635,9 @@ export class Game {
       }
       case 'upkeep':
         this.emit({ name: 'beginningOfUpkeep', playerId: pid });
+        if (this.state.initiative === pid) {
+          this.pendingTriggers.push({ sourceId: -1, controller: pid, ability: { kind: 'triggered', text: 'Initiative: venture into Undercity', event: 'beginningOfUpkeep', effects: [{ kind: 'ventureIntoDungeon' }] }, context: { dungeon: 'Undercity' } });
+        }
         yield* this.priorityRound();
         return;
       case 'draw':
@@ -1642,7 +1687,10 @@ export class Game {
       if (!noMax && p.hand.length > maxHand) {
         const n = p.hand.length - maxHand;
         const resp = yield* this.ask({ type: 'chooseObjects', player: pid, prompt: `Discard ${n} card${n === 1 ? '' : 's'} (hand size)`, candidates: [...p.hand], min: n, max: n, revealToChooser: true });
-        if (resp.type === 'objects') for (const id of resp.ids) this.moveObject(id, 'graveyard', { cause: 'discard' });
+        if (resp.type === 'objects') {
+          for (const id of resp.ids) this.moveObject(id, 'graveyard', { cause: 'discard' });
+          if (resp.ids.length) this.emit({ name: 'discardBatch', playerId: pid, amount: resp.ids.length, objectId: resp.ids[0] });
+        }
       }
       // Damage wears off, "until end of turn" ends.
       for (const o of Object.values(this.state.objects)) {
@@ -1686,7 +1734,13 @@ export class Game {
         continue;
       }
       const decision = buildPriorityDecision(this, current);
-      const nothingToDo = decision.playableCards.length === 0 && decision.activatableAbilities.length === 0 && !decision.canPlayLand;
+      const meaningfulAbilities = decision.activatableAbilities.filter((a) => {
+        const o = this.state.objects[a.objectId];
+        if (!o) return false;
+        const ab = abilitiesOf(this, o).find((x) => x.index === a.abilityIndex);
+        return !!ab && !ab.spec.manaAbility;
+      });
+      const nothingToDo = decision.playableCards.length === 0 && meaningfulAbilities.length === 0 && !decision.canPlayLand;
       let resp: Response;
       if (nothingToDo && this.config.autoPassWhenNothingToDo) {
         resp = { type: 'pass' };

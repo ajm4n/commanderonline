@@ -178,8 +178,20 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever you draw a card, (.+)$/i))) return { event: 'drawCard', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you draw your (first|second) card each turn, (.+)$/i))) return { event: 'drawCard', filter: { player: 'you', nthThisTurn: m[1] === 'first' ? 1 : 2 }, hasObject: true, hasPlayer: true, rest: m[2] };
   if ((m = L.match(/^Whenever (an opponent|a player) draws a card, (.+)$/i))) return { event: 'drawCard', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[2] };
-  if ((m = L.match(/^Whenever you discard a card, (.+)$/i))) return { event: 'discard', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
-  if ((m = L.match(/^Whenever (an opponent|a player) discards a card, (.+)$/i))) return { event: 'discard', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever you discard (a card|one or more cards), (.+)$/i))) return { event: /one or more/i.test(m[1]) ? 'discardBatch' : 'discard', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever (an opponent|a player) discards (a card|one or more cards), (.+)$/i))) return { event: /one or more/i.test(m[2]) ? 'discardBatch' : 'discard', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[3] };
+  if ((m = L.match(/^Whenever you mill (?:a card|one or more cards), (.+)$/i))) return { event: 'putIntoGraveyard', filter: { player: 'you', fromZone: 'library' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an|one or more) (.+?) (?:is|are) put into your graveyard from your library, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1]}`);
+    if (!tf) return null;
+    tf.fromZone = 'library';
+    tf.player = 'you';
+    return { event: 'putIntoGraveyard', filter: tf, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever the Ring tempts you, (.+)$/i))) return { event: 'ringTempted', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you venture into the dungeon, (.+)$/i))) return { event: 'ventures', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you complete a dungeon, (.+)$/i))) return { event: 'dungeonCompleted', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you take the initiative, (.+)$/i))) return { event: 'takesInitiative', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you sacrifice (?:a|an|another) (.+?), (.+)$/i))) {
     const tf = nounFilter(`a ${m[1]}`);
     if (!tf) return null;

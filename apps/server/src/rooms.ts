@@ -40,6 +40,10 @@ export interface Room {
   lastLogSeq: number;
   botScheduled: boolean;
   gameOverSent: boolean;
+  /** Connected spectators (no seat, public view only). */
+  spectators: WebSocket[];
+  /** Inputs kept for replay. */
+  setups: PlayerSetup[] | null;
   /** Repeat detection so a bot cannot spin on a decision the engine keeps re-asking. */
   botLastDecisionId: number;
   botRepeats: number;
@@ -62,6 +66,7 @@ export interface RoomManagerOptions {
 interface Binding {
   roomId: string;
   playerId: PlayerId;
+  spectator?: boolean;
 }
 
 class ClientError extends Error {
@@ -175,6 +180,11 @@ export class RoomManager {
     if (!b) return;
     const room = this.rooms.get(b.roomId);
     if (!room) return;
+    if (b.spectator) {
+      room.spectators = room.spectators.filter((w) => w !== socket);
+      this.broadcastLobby(room);
+      return;
+    }
     const seat = room.seats.find((s) => s.playerId === b.playerId);
     if (seat && seat.socket === socket) seat.socket = null;
     this.updateEmptySince(room);
@@ -195,8 +205,28 @@ export class RoomManager {
         this.createRoom(socket, msg.playerName, msg.config);
         return;
       case 'joinRoom':
-        this.joinRoom(socket, msg.roomId, msg.playerName, msg.playerId, msg.token);
+        if (msg.spectator) this.spectate(socket, msg.roomId);
+        else this.joinRoom(socket, msg.roomId, msg.playerName, msg.playerId, msg.token);
         return;
+    }
+    // Spectators may only sync, chat or fetch history.
+    const b = this.bindings.get(socket);
+    if (b?.spectator) {
+      const room = this.rooms.get(b.roomId);
+      if (!room) throw new ClientError('Room not found', 'ROOM_NOT_FOUND');
+      if (msg.type === 'sync') {
+        send(socket, { type: 'lobby', lobby: this.lobbyState(room) });
+        if (room.game) send(socket, { type: 'view', view: viewFor(room.game, null) });
+      } else if (msg.type === 'getHistory') this.sendHistory(socket, room);
+      else if (msg.type === 'leaveRoom') {
+        room.spectators = room.spectators.filter((w) => w !== socket);
+        this.bindings.delete(socket);
+        this.broadcastLobby(room);
+      } else if (msg.type === 'chat') {
+        const text = String(msg.text ?? '').trim().slice(0, 500);
+        if (text) for (const w of [...room.seats.map((x) => x.socket), ...room.spectators]) send(w, { type: 'chat', from: 'spectator', name: 'Spectator', text, at: Date.now() });
+      }
+      return;
     }
 
     const { room, seat } = this.seatFor(socket);
@@ -254,6 +284,9 @@ export class RoomManager {
         for (const s of room.seats) send(s.socket, out);
         return;
       }
+      case 'getHistory':
+        this.sendHistory(socket, room);
+        return;
       case 'sync':
         send(socket, { type: 'lobby', lobby: this.lobbyState(room) });
         if (room.game) send(socket, { type: 'view', view: viewFor(room.game, seat.playerId) });
@@ -286,12 +319,31 @@ export class RoomManager {
       gameOverSent: false,
       botLastDecisionId: -1,
       botRepeats: 0,
+      spectators: [],
+      setups: null,
     };
     this.rooms.set(id, room);
     this.bindings.set(socket, { roomId: id, playerId: seat.playerId });
     log.info(`room ${id} created by ${seat.name}`);
     send(socket, { type: 'welcome', playerId: seat.playerId, token: seat.token, roomId: id });
     this.broadcastLobby(room);
+  }
+
+  private spectate(socket: WebSocket, roomId: string): void {
+    const room = this.rooms.get(String(roomId ?? '').trim().toUpperCase());
+    if (!room) throw new ClientError('Room not found', 'ROOM_NOT_FOUND');
+    this.detach(socket);
+    room.spectators.push(socket);
+    this.bindings.set(socket, { roomId: room.id, playerId: '', spectator: true });
+    send(socket, { type: 'welcome', playerId: '', token: '', roomId: room.id });
+    this.broadcastLobby(room);
+    if (room.game) send(socket, { type: 'view', view: viewFor(room.game, null) });
+    log.info(`room ${room.id}: spectator joined`);
+  }
+
+  private sendHistory(socket: WebSocket, room: Room): void {
+    if (!room.game || !room.setups) throw new ClientError('No game to replay yet', 'NO_GAME');
+    send(socket, { type: 'history', setups: room.setups, config: room.game.config, history: room.game.history });
   }
 
   private joinRoom(socket: WebSocket, roomId: string, playerName: string, playerId?: PlayerId, token?: string): void {
@@ -404,6 +456,7 @@ export class RoomManager {
     const game = new Game(setups, { seed: randomInt(1, 2 ** 31 - 1), ...room.config }, scriptFor);
     game.start();
     room.game = game;
+    room.setups = setups;
     room.started = true;
     room.lastLogSeq = 0;
     room.gameOverSent = false;
@@ -441,12 +494,13 @@ export class RoomManager {
       connected: s.isBot || (s.socket !== null && s.socket.readyState === s.socket.OPEN),
       isHost: s.playerId === room.hostId,
     }));
-    return { roomId: room.id, players, config: room.config, started: room.started, joinCode: room.id };
+    return { roomId: room.id, players, config: room.config, started: room.started, joinCode: room.id, spectators: room.spectators.filter((w) => w.readyState === w.OPEN).length };
   }
 
   private broadcastLobby(room: Room): void {
     const msg: ServerMessage = { type: 'lobby', lobby: this.lobbyState(room) };
     for (const s of room.seats) send(s.socket, msg);
+    for (const w of room.spectators) send(w, msg);
   }
 
   /** Push each connected human their own redacted view (never anyone else's), then let bots act. */
@@ -462,6 +516,13 @@ export class RoomManager {
       const visible = newLog.filter((e: LogEntry) => !e.visibleTo || e.visibleTo.includes(s.playerId));
       if (visible.length) send(s.socket, { type: 'log', entries: visible });
       if (over) send(s.socket, { type: 'gameOver', winner: game.state.winner });
+    }
+    room.spectators = room.spectators.filter((w) => w.readyState === w.OPEN);
+    for (const w of room.spectators) {
+      send(w, { type: 'view', view: viewFor(game, null) });
+      const publicLog = newLog.filter((e: LogEntry) => !e.visibleTo);
+      if (publicLog.length) send(w, { type: 'log', entries: publicLog });
+      if (over) send(w, { type: 'gameOver', winner: game.state.winner });
     }
     if (over) room.gameOverSent = true;
     this.scheduleBots(room);

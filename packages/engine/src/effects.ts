@@ -8,7 +8,8 @@ import type { Effect, Ref, TokenSpec, Duration, Amount } from './script.js';
 import { TOKEN_PRESETS } from './tokens.js';
 import { matchesFilter, objectsMatching, legalTargets } from './filters.js';
 import { parseManaCost, solvePayment } from './mana.js';
-import { manaSourcesFor, payCost } from './casting.js';
+import { manaSourcesFor, payCost, spellTargets, chooseTargetsGrouped } from './casting.js';
+import { DUNGEONS } from './dungeons.js';
 
 export interface EffectContext {
   sourceId: ObjectId | null;
@@ -78,9 +79,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'gainLife':
       for (const p of playersOf(g, e.who, ctx)) g.gainLife(p, amt(e.amount), ctx.sourceId ?? undefined);
       return;
-    case 'loseLife':
-      for (const p of playersOf(g, e.who, ctx)) g.loseLife(p, amt(e.amount), ctx.sourceId ?? undefined);
+    case 'loseLife': {
+      const n = amt(e.amount);
+      for (const p of playersOf(g, e.who, ctx)) {
+        const before = g.player(p).life;
+        g.loseLife(p, n, ctx.sourceId ?? undefined);
+        ctx.memory['lifeLostThisWay'] = ((ctx.memory['lifeLostThisWay'] as number) ?? 0) + (before - g.player(p).life);
+      }
       return;
+    }
     case 'setLife':
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
@@ -110,6 +117,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (r) moved.push(r.id);
       }
       ctx.memory['lastMoved'] = moved;
+      if (e.counters) for (const id of moved) g.addCounters(id, e.counters.counter, amt(e.counters.amount), ctx.sourceId ?? undefined);
       if (e.remember && ctx.sourceId !== null) {
         const src = g.state.objects[ctx.sourceId];
         if (src) src.memory[e.remember] = [...((src.memory[e.remember] as ObjectId[]) ?? []), ...moved];
@@ -157,7 +165,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const controller = e.controller === 'owner' ? o.owner : ctx.controller;
         const counters = e.counters ? { [e.counters.counter]: amt(e.counters.amount) } : undefined;
         const r = yield* enterBattlefield(g, o.id, controller, { tapped: e.tapped, counters, ctx });
-        if (r) moved.push(r.id);
+        if (r) {
+          moved.push(r.id);
+          if (e.transformed && r.card.faces && r.card.faces.length > 1) {
+            r.faceIndex = 1;
+            g.touch();
+          }
+        }
       }
       ctx.memory['lastMoved'] = moved;
       return;
@@ -289,7 +303,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         if (e.amount === 'hand') {
-          for (const id of [...pl.hand]) g.moveObject(id, 'graveyard', { cause: 'discard' });
+          const all = [...pl.hand];
+          for (const id of all) g.moveObject(id, 'graveyard', { cause: 'discard' });
+          if (all.length) g.emit({ name: 'discardBatch', playerId: p, amount: all.length, objectId: all[0] });
           continue;
         }
         const n = Math.min(amt(e.amount), pl.hand.length);
@@ -303,8 +319,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           ids = resp.type === 'objects' ? resp.ids : pl.hand.slice(0, n);
         }
         for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'discard' });
+        if (ids.length) g.emit({ name: 'discardBatch', playerId: p, amount: ids.length, objectId: ids[0] });
       }
       return;
+    case 'discardObjects': {
+      const byOwner = new Map<PlayerId, ObjectId[]>();
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        if (o.zone !== 'hand') continue;
+        g.moveObject(o.id, 'graveyard', { cause: 'discard' });
+        byOwner.set(o.owner, [...(byOwner.get(o.owner) ?? []), o.id]);
+      }
+      for (const [p, ids] of byOwner) g.emit({ name: 'discardBatch', playerId: p, amount: ids.length, objectId: ids[0] });
+      return;
+    }
     case 'addMana': {
       const n = e.amount !== undefined ? amt(e.amount) : 1;
       for (const p of playersOf(g, e.who, ctx)) {
@@ -422,8 +449,23 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const item = g.state.stack.find((s) => s.id === t.id);
         if (!item) continue;
         for (let i = 0; i < n; i++) {
-          const copy = { ...item, id: g.state.nextStackId++, controller: ctx.controller, timestamp: g.now(), text: `${item.text} (copy)`, copiedCard: g.state.objects[item.sourceId]?.card, targets: [...item.targets] };
-          // TODO: allow new targets for the copy; keep same targets for now.
+          const copy = { ...item, id: g.state.nextStackId++, controller: ctx.controller, timestamp: g.now(), text: `${item.text} (copy)`, copiedCard: g.state.objects[item.sourceId]?.card, targets: [...item.targets], targetStamps: item.targetStamps ? [...item.targetStamps] : undefined };
+          // Rule 707.10c: the copy's controller may choose new targets.
+          const srcObj = g.state.objects[item.sourceId];
+          if (srcObj && item.targets.some((t) => t.kind !== 'none')) {
+            const specs = spellTargets(g, srcObj, g.scriptFor(srcObj), srcObj.faceIndex, item.modes ?? []);
+            if (specs.length) {
+              const r = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: `Choose new targets for the copy of ${item.text}?`, yesLabel: 'New targets', noLabel: 'Keep targets', sourceId: ctx.sourceId ?? undefined });
+              if (r.type === 'yesNo' && r.value) {
+                const chosen = yield* chooseTargetsGrouped(g, ctx.controller, item.sourceId, specs, `New targets for the copy of ${item.text}`, item.xValue);
+                if (chosen) {
+                  copy.targets = chosen.flat;
+                  copy.targetStamps = g.stampTargets(chosen.flat);
+                  copy.triggerContext = { ...(copy.triggerContext ?? {}), targetSlots: chosen.slots };
+                }
+              }
+            }
+          }
           g.state.stack.push(copy);
         }
         g.log(`${g.player(ctx.controller).name} copies ${item.text}.`);
@@ -632,6 +674,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: true });
       }
       return;
+    case 'castFrom':
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        const { castSpell } = await_casting();
+        o.memory['castableBy'] = ctx.controller;
+        const ok = yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: e.free, anyMana: e.anyManaType });
+        if (!ok) delete o.memory['castableBy'];
+      }
+      return;
     case 'playFromExile':
       for (const o of g.resolveObjects(e.what, ctx)) {
         o.memory['playableBy'] = ctx.controller;
@@ -691,7 +741,27 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'unlessPays': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
-        const paid = yield* offerToPay(g, p, e.cost, e.text ?? `Pay ${e.cost}? Otherwise: ${describe(e.effects)}`);
+        let paid = false;
+        if (e.cost === 'discard') {
+          const hand = g.player(p).hand;
+          if (hand.length) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? 'Discard a card? (choose none to decline)', candidates: [...hand], min: 0, max: 1, revealToChooser: true });
+            if (r.type === 'objects' && r.ids.length) {
+              g.moveObject(r.ids[0], 'graveyard', { cause: 'discard' });
+              g.emit({ name: 'discardBatch', playerId: p, amount: 1, objectId: r.ids[0] });
+              paid = true;
+            }
+          }
+        } else if (e.cost === 'sacrifice') {
+          const cands = g.state.battlefield.filter((id) => g.obj(id).controller === p && ['Artifact', 'Creature', 'Land'].some((t) => g.characteristics(id).types.includes(t)));
+          if (cands.length) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? 'Sacrifice an artifact, creature or land? (choose none to decline)', candidates: cands, min: 0, max: 1 });
+            if (r.type === 'objects' && r.ids.length) {
+              g.moveObject(r.ids[0], 'graveyard', { cause: 'sacrifice' });
+              paid = true;
+            }
+          }
+        } else paid = yield* offerToPay(g, p, e.cost, e.text ?? `Pay ${e.cost}? Otherwise: ${describe(e.effects)}`);
         if (!paid) yield* executeEffects(g, e.effects, { ...ctx, iter: { kind: 'player', id: p } });
       }
       return;
@@ -747,7 +817,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'chooseObjects': {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
-      const cands = objectsMatching(g, e.filter, { sourceId: ctx.sourceId, controller: who, x: ctx.x }, e.filter.zone ? undefined : ['battlefield']).map((o) => o.id);
+      let cands = objectsMatching(g, e.filter, { sourceId: ctx.sourceId, controller: who, x: ctx.x }, e.filter.zone ? undefined : ['battlefield']).map((o) => o.id);
+      if (e.owner) {
+        const owners = new Set(g.resolvePlayers(e.owner, ctx));
+        cands = cands.filter((id) => owners.has(g.obj(id).owner));
+      }
       const n = Math.min(amt(e.count), cands.length);
       let ids: ObjectId[] = [];
       if (cands.length > 0) {
@@ -772,7 +846,38 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.log(e.text);
       return;
     case 'ventureIntoDungeon':
-      yield* g.ask({ type: 'manualTrigger', player: ctx.controller, prompt: 'Venture into the dungeon (track your dungeon manually).', text: 'Venture into the dungeon', objectId: ctx.sourceId ?? -1 });
+      yield* venture(g, ctx.controller, ctx, ctx.triggerContext['dungeon'] as string | undefined);
+      return;
+    case 'takeInitiative':
+      for (const p of playersOf(g, e.who, ctx)) {
+        if (g.state.initiative !== p) {
+          g.state.initiative = p;
+          g.log(`${g.player(p).name} takes the initiative.`);
+          g.emit({ name: 'takesInitiative', playerId: p });
+        }
+        yield* venture(g, p, ctx, 'Undercity');
+      }
+      return;
+    case 'ringTempts':
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        pl.ringLevel = Math.min(4, pl.ringLevel + 1);
+        g.log(`The Ring tempts ${pl.name} (level ${pl.ringLevel}).`);
+        const cands = g.state.battlefield.filter((id) => g.obj(id).controller === p && g.characteristics(id).types.includes('Creature'));
+        if (cands.length) {
+          let pick = cands[0];
+          if (cands.length > 1) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'The Ring tempts you: choose your Ring-bearer', candidates: cands, min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'objects') pick = r.ids[0];
+          }
+          // Only one Ring-bearer at a time.
+          g.state.continuousEffects = g.state.continuousEffects.filter((ce) => !(ce.controller === p && ce.modification.layer === 'rule' && ce.modification.rule.kind === 'custom' && ce.modification.rule.tag === 'ringBearer'));
+          g.addContinuousEffect({ sourceId: null, controller: p, fromStatic: false, affected: { kind: 'fixed', ids: [pick] }, duration: 'permanent', modification: { layer: 'rule', rule: { kind: 'custom', tag: 'ringBearer' } } });
+          g.log(`${g.nameOf(pick)} is ${pl.name}'s Ring-bearer.`);
+        }
+        g.touch();
+        g.emit({ name: 'ringTempted', playerId: p });
+      }
       return;
     case 'investigate': {
       const n = e.count !== undefined ? amt(e.count) : 1;
@@ -1065,3 +1170,50 @@ function await_casting(): typeof import('./casting.js') {
   return castingModule;
 }
 import * as castingModule from './casting.js';
+
+/** Venture into a dungeon: enter the next room and run its effect. */
+export function* venture(g: Game, p: PlayerId, ctx: EffectContext, forced?: string): Gen {
+  const pl = g.player(p);
+  let room: import('./dungeons.js').Room;
+  if (!pl.dungeon) {
+    let name = forced;
+    if (!name) {
+      const options = Object.keys(DUNGEONS).filter((d) => d !== 'Undercity').map((d) => ({ id: d, label: d }));
+      const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: 'Venture: choose a dungeon to enter', options, min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      name = r.type === 'options' ? r.ids[0] : options[0].id;
+    }
+    const dungeon = DUNGEONS[name] ?? DUNGEONS['Lost Mine of Phandelver'];
+    room = dungeon.rooms[dungeon.start];
+    pl.dungeon = { name: dungeon.name, room: room.name };
+  } else {
+    const dungeon = DUNGEONS[pl.dungeon.name];
+    const current = dungeon.rooms[pl.dungeon.room];
+    let nextName = current.next[0];
+    if (current.next.length > 1) {
+      const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: `${dungeon.name}: choose the next room`, options: current.next.map((n) => ({ id: n, label: n })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      if (r.type === 'options') nextName = r.ids[0];
+    }
+    room = dungeon.rooms[nextName];
+    pl.dungeon.room = room.name;
+  }
+  g.touch();
+  g.log(`${pl.name} ventures into ${pl.dungeon.name}: ${room.name}.`, { kind: 'venture', data: { player: p, dungeon: pl.dungeon.name, room: room.name } });
+  g.emit({ name: 'ventures', playerId: p, data: { room: room.name } });
+  const roomCtx: EffectContext = { ...ctx, controller: p, targets: [], memory: { ...ctx.memory } };
+  if (room.name === 'Trap!') {
+    const opps = g.opponentsOf(p);
+    let target = opps[0];
+    if (opps.length > 1) {
+      const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: 'Trap!: choose a player to lose 5 life', options: opps.map((o) => ({ id: o, label: g.player(o).name })), min: 1, max: 1 });
+      if (r.type === 'options') target = r.ids[0];
+    }
+    roomCtx.memory['trapTarget'] = target;
+  }
+  yield* executeEffects(g, room.effects, roomCtx);
+  if (room.next.length === 0) {
+    pl.dungeon = null;
+    pl.dungeonsCompleted++;
+    g.log(`${pl.name} completes the dungeon.`);
+    g.emit({ name: 'dungeonCompleted', playerId: p });
+  }
+}

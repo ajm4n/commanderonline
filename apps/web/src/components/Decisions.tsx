@@ -60,6 +60,10 @@ export function DecisionBar({ view, decision, respond }: Omit<Props, 'handlers'>
               <div className="sub">
                 {d.playableCards.length} playable · {d.activatableAbilities.length} abilit{d.activatableAbilities.length === 1 ? 'y' : 'ies'}
                 {d.canPlayLand ? ' · land drop available' : ''}
+                {(() => {
+                  const me = view.players.find((p) => p.id === view.you);
+                  return me?.manaAvailable != null ? ` · ⚡ ${me.manaAvailable} mana available` : '';
+                })()}
               </div>
             </div>
             <button className="pass gold pulse" data-testid="pass" onClick={() => respond({ type: 'pass' })} title="Pass priority (Space)">

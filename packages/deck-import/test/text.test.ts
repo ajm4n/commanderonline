@@ -132,3 +132,15 @@ Maybeboard
     expect(deck.sideboard).toEqual([]);
   });
 });
+
+describe('Moxfield export shapes', () => {
+  it('a Commander header followed by a blank line ends the commander block', () => {
+    const d = parseDeckText(`Commander\n1 Tinybones, Trinket Thief (CMM) 470\n\n1 Sol Ring (CMM) 1\n1 Swamp (CMM) 1000\n1 Dark Ritual (CMM) 5\n`);
+    expect(d.commanders.map((c) => c.name)).toEqual(['Tinybones, Trinket Thief']);
+    expect(d.mainboard.length).toBe(3);
+  });
+  it('*CMDR* markers still win', () => {
+    const d = parseDeckText(`1 Sol Ring\n1 Tinybones, Trinket Thief *CMDR*\n1 Swamp`);
+    expect(d.commanders.map((c) => c.name)).toEqual(['Tinybones, Trinket Thief']);
+  });
+});

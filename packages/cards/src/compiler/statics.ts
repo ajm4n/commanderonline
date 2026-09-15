@@ -92,6 +92,9 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return a && b ? [...a, ...b] : null;
   }
   if ((m = L.match(/^(.+?) cannot be blocked$/i))) return objRule(m[1], { kind: 'cantBeBlocked' });
+  if ((m = L.match(/^(.+?) cannot be blocked by creatures with power (\d+) or less$/i))) return objRule(m[1], { kind: 'cantBeBlockedByPowerLE', power: parseInt(m[2], 10) });
+  if ((m = L.match(/^(.+?) cannot be blocked by more than one creature$/i))) return objRule(m[1], { kind: 'maxBlockers', count: 1 });
+  if ((m = L.match(/^(?:During your turn, )?you may (?:play|cast) cards( you do not own)? with (\w+) counters on them from exile(?:, and mana of any type can be spent to cast (?:those spells|them))?$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playExiledWithCounter', data: { counter: m[2], notOwned: !!m[1], yourTurn: /^During your turn/i.test(L), anyMana: /mana of any type/i.test(L) } } }];
   if ((m = L.match(/^(.+?) cannot be blocked except by two or more creatures$/i))) return objRule(m[1], { kind: 'custom', tag: 'minBlockers', data: 2 });
   if ((m = L.match(/^(.+?) can block only creatures with flying$/i))) return objRule(m[1], { kind: 'custom', tag: 'blockOnlyFlying' });
   if ((m = L.match(/^(.+?) attacks? each combat if able$/i))) return objRule(m[1], { kind: 'mustAttack' });
