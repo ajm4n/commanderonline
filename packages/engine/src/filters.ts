@@ -77,6 +77,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;
   if (filter.ptSumLE !== undefined && !(ch.power !== null && ch.toughness !== null && ch.power + ch.toughness <= filter.ptSumLE)) return false;
+  if (filter.chosenSubtypeKey) {
+    const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
+    const t = src?.memory[filter.chosenSubtypeKey];
+    if (typeof t !== 'string' || !(ch.subtypes.includes(t) || (ch.keywords.has('Changeling') && ch.types.includes('Creature')))) return false;
+  }
   if (filter.lowestToughness) {
     const rest: ObjectFilter = { ...filter, lowestToughness: undefined, controller: undefined };
     let best = Infinity;

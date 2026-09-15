@@ -61,7 +61,8 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   }
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
-    return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : null);
+    // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
+    return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : l === 'it' && !ctx.isSpell ? SELF : null);
   }
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker)$/.test(l)) return { ref: 'attachedTo' };
   if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
@@ -294,6 +295,42 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'loseLife', who, amount: { kind: 'times', a: per, b: { kind: 'max', a: { kind: 'sum', parts: [lim, { kind: 'times', a: { kind: 'handSize', ref: who }, b: -1 }] }, b: 0 } } }];
   }],
   [/^flip ~$/i, () => [{ kind: 'transform', what: SELF }]],
+  [/^(.+?) reveals (\w+) cards? from their hand and you choose one of them$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = wordToNumber(m[2]);
+    if (!who || n === null) return null;
+    const key = `revealed${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key: `${key}pick` };
+    return [{ kind: 'chooseObjects', who, filter: { zone: 'hand' }, owner: who, count: n, key }, { kind: 'chooseObjects', who: YOU, filter: {}, from: { ref: 'chosen', key }, count: 1, key: `${key}pick` }];
+  }],
+  [/^look at (.+?)'s hand and choose (\w+|X) cards? from it$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = wordToNumber(m[2]);
+    if (!who || n === null) return null;
+    const key = `looked${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'revealHand', who }, { kind: 'chooseObjects', who: YOU, filter: { zone: 'hand' }, owner: who, count: n, key }];
+  }],
+  [/^(?:that player|they) discards? those cards$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
+  [/^discover (\w+)$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    return n === null ? null : [{ kind: 'discover', amount: n }];
+  }],
+  [/^incubate (\w+)$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    return n === null ? null : [{ kind: 'createToken', token: { name: 'Incubator', typeLine: 'Artifact — Incubator', colors: [], preset: 'Incubator' }, count: 1 }, { kind: 'addCounters', counter: '+1/+1', amount: n, on: { ref: 'lastCreated' } }];
+  }],
+  [/^damage cannot be prevented this turn$/i, () => [{ kind: 'turnFlag', flag: 'noPrevention' }]],
+  [/^(?:(.+?) )?shuffles? (?:their|your) graveyard into (?:their|your) library$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    return who ? [{ kind: 'moveAll', who, from: 'graveyard', to: 'library' }, { kind: 'shuffle', who }] : null;
+  }],
+  [/^reveal cards from the top of your library until you reveal (?:a|an) (.+?) card\.? (?:put|you may put) (?:that card|it) (into your hand|onto the battlefield( tapped)?|into your graveyard)(?: and (?:put )?the rest|\. put the rest| and the rest) (on the bottom of your library in (?:a random|any) order|into your graveyard)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (!noun) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'revealUntil', filter: noun.filter, destination: /hand/.test(m[2]) ? 'hand' : /battlefield/.test(m[2]) ? 'battlefield' : 'graveyard', tapped: !!m[3], rest: /graveyard/.test(m[4]) ? 'graveyard' : 'bottom' }];
+  }],
   [/^(.+?) deals damage to itself equal to its power$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'dealsDamageEqualToPower', source: ref, to: ref }] : null;
@@ -1025,7 +1062,7 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
-  return /^(draft ~ face up|play with the top card of your library revealed|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered)\.?$/i.test(text.trim());
+  return /^(draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered)\.?$/i.test(text.trim());
 }
 
 /** Parse one sentence; returns null if not understood. */
@@ -1183,6 +1220,14 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     if (/^(?:you may )?pay/i.test(s) && sents[i + 1] && /^if you do, /i.test(sents[i + 1])) {
       s = `${s}. ${sents[i + 1]}`;
       i++;
+    }
+    if (/^reveal cards from the top of your library until you reveal /i.test(s) && sents[i + 1] && /^(put|you may put) /i.test(sents[i + 1])) {
+      s = `${s}. ${sents[i + 1]}`;
+      i++;
+      if (sents[i + 1] && /^(put the rest|and the rest)/i.test(sents[i + 1])) {
+        s = `${s}. ${sents[i + 1]}`;
+        i++;
+      }
     }
     // Merge "Reveal the top N cards of your library" with its follow-up sentences.
     if (/^reveal the top (?:\w+|X) cards of your library$/i.test(s)) {

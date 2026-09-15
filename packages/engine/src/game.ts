@@ -1225,6 +1225,25 @@ export class Game {
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + this.player(p).library.length, 0);
       case 'countRef':
         return this.resolveObjects(a.ref, ctx).filter((o) => !a.filter || matchesFilter(this, o, { ...a.filter, zone: a.filter.zone ?? o.zone }, fctx)).length;
+      case 'partySize': {
+        const roles = ['Cleric', 'Rogue', 'Warrior', 'Wizard'];
+        const creatures = objectsMatching(this, { types: ['Creature'], controller: 'you', zone: 'battlefield' }, fctx).map((o) => this.characteristics(o.id));
+        // Greedy assignment is exact for four roles: count distinct roles coverable by distinct creatures.
+        const used = new Set<number>();
+        let n = 0;
+        for (const role of roles) {
+          const i = creatures.findIndex((ch, idx) => !used.has(idx) && (ch.subtypes.includes(role) || ch.keywords.has('Changeling')));
+          if (i >= 0) {
+            used.add(i);
+            n++;
+          }
+        }
+        return n;
+      }
+      case 'kickCount': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+        return (src?.memory['kicks'] as number) ?? (src?.additionalCostsPaid.includes('kicker') ? 1 : 0);
+      }
       case 'totalPower':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
       case 'discardedThisWay':
@@ -1416,7 +1435,7 @@ export class Game {
     if (target.kind === 'player') {
       const p = this.player(target.id);
       // Prevention rules on player
-      for (const r of this.playerRules(target.id)) if (r.kind === 'damagePrevention') dealt = r.amount === 'all' ? 0 : Math.max(0, dealt - r.amount);
+      if (!this.state.turnStats['noPrevention']) for (const r of this.playerRules(target.id)) if (r.kind === 'damagePrevention') dealt = r.amount === 'all' ? 0 : Math.max(0, dealt - r.amount);
       if (dealt <= 0) return 0;
       if (sch?.keywords.has('Infect')) {
         p.poison += dealt;

@@ -69,11 +69,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (!a.ok) return null;
     const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } }];
     if (m[4]) {
-      const kws = parseKeywordList(m[4]);
-      if (!kws) return null;
-      out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } });
+      const quoted = m[4].match(/^"(.+)"$/);
+      const kws = quoted ? null : parseKeywordList(m[4]);
+      if (quoted) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: [quoted[1]] } });
+      else if (kws) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } });
+      else return null;
     }
     return out;
+  }
+  if ((m = L.match(/^(.+?) (?:have|has) "(.+)"$/i)) && !/^(you|each player|all players)/i.test(m[1])) {
+    const a = affectsOf(m[1]);
+    if (!a.ok) return null;
+    return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: [m[2]] } }];
   }
   if ((m = L.match(/^(.+?) (?:have|has) (.+)$/i)) && !/^(you|each|all players)/i.test(m[1])) {
     const kws = parseKeywordList(m[2]);
@@ -138,6 +145,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return noun ? objRule(m[1], { kind: 'cantAttackUnlessDefenderControls', filter: noun.filter }) : null;
   }
   if ((m = L.match(/^(.+?) must be blocked if able$/i))) return objRule(m[1], { kind: 'custom', tag: 'mustBeBlocked' });
+  if ((m = L.match(/^When you control no (.+?), sacrifice ~$/i))) {
+    const noun = parseNoun(m[1]);
+    return noun ? [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'sacrificeUnlessControl', data: noun.filter } }] : null;
+  }
+  if (/^Living metal$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 4, addTypes: ['Artifact', 'Creature'] }, condition: { kind: 'yourTurn' } }];
+  if ((m = L.match(/^~ enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it for each time it was kicked$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: { kind: 'times', a: m[1] ? (wordToNumber(m[1]) as number) : 1, b: { kind: 'kickCount' } } } }];
   if ((m = L.match(/^All creatures able to block (.+?) do so$/i))) return objRule(m[1], { kind: 'custom', tag: 'lure' });
   if ((m = L.match(/^(.+?) can block an additional creature each combat$/i))) return objRule(m[1], { kind: 'custom', tag: 'extraBlock' });
   if ((m = L.match(/^(.+?) can block any number of creatures$/i))) return objRule(m[1], { kind: 'custom', tag: 'extraBlock' }); // approximation: one extra

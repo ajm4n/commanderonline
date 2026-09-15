@@ -250,7 +250,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever you create a token, (.+)$/i)) || (m = L.match(/^Whenever one or more tokens enter under your control, (.+)$/i))) return { event: 'tokenCreated', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ becomes tapped, (.+)$/i))) return { event: 'tapped', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever ~ becomes untapped, (.+)$/i))) return { event: 'untapped', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
-  if ((m = L.match(/^When(?:ever)? ~ becomes the target of a spell or ability(?: an opponent controls)?, (.+)$/i))) return { event: 'becomesTarget', filter: { self: true, player: / an opponent controls/i.test(m[0]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? ~ becomes the target of a spell or ability(?: an opponent controls| you control)?(?: for the first time each turn)?, (.+)$/i))) return { event: 'becomesTarget', filter: { self: true, player: / an opponent controls/i.test(m[0]) ? 'opponent' : / you control/i.test(m[0]) ? 'you' : 'any', firstEachTurn: /first time each turn/i.test(m[0]) || undefined }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever (?:a|an) (.+?) you control becomes the target of a spell or ability an opponent controls, (.+)$/i))) {
     const tf = nounFilter(`a ${m[1]} you control`);
     if (!tf) return null;

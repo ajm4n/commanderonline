@@ -42,7 +42,11 @@ export type Amount =
   /** Cards the given player discarded by the current effect. */
   | { kind: 'discardedThisWay'; ref: Ref }
   /** Sum of power of matching objects ("creatures you control have total power 8 or greater"). */
-  | { kind: 'totalPower'; filter: ObjectFilter };
+  | { kind: 'totalPower'; filter: ObjectFilter }
+  /** Number of party roles (Cleric, Rogue, Warrior, Wizard) among creatures you control. */
+  | { kind: 'partySize' }
+  /** Times the spell was kicked (multikicker). */
+  | { kind: 'kickCount' };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -237,7 +241,7 @@ export type Effect =
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
   | { kind: 'revealHand'; who: Ref }
-  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref }
+  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref }
   | { kind: 'discardObjects'; what: Ref }
   | { kind: 'ringTempts'; who?: Ref }
   | { kind: 'takeInitiative'; who?: Ref }
@@ -265,6 +269,12 @@ export type Effect =
   | { kind: 'extraLandThisTurn'; who?: Ref }
   /** "You get an emblem with '...'" */
   | { kind: 'emblem'; text: string; who?: Ref }
+  /** Discover N / cascade: exile from the top until a nonland card with mana value <= N; cast it free or put it in hand. */
+  | { kind: 'discover'; amount: Amount }
+  /** Turn-wide flags such as "Damage can't be prevented this turn". */
+  | { kind: 'turnFlag'; flag: 'noPrevention' }
+  /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
+  | { kind: 'revealUntil'; filter: ObjectFilter; destination: 'hand' | 'battlefield' | 'graveyard' | 'exile'; rest: 'bottom' | 'graveyard' | 'exile'; tapped?: boolean; who?: Ref }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
 
 // ---------------------------------------------------------------------------
@@ -431,6 +441,8 @@ export interface CostModifier {
   per?: ObjectFilter;
   /** "costs {1} more to cast for each target beyond the first" */
   perExtraTarget?: boolean;
+  /** Reduce/increase once per unit of an amount ("for each creature in your party"). */
+  perAmount?: Amount;
   condition?: Condition;
   text?: string;
 }

@@ -743,6 +743,63 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'revealUntil': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        const seen: ObjectId[] = [];
+        let hit: ObjectId | null = null;
+        for (let i = 0; i < pl.library.length; i++) {
+          const id = pl.library[i];
+          seen.push(id);
+          g.log(`${pl.name} reveals ${g.nameOf(id)}.`);
+          if (matchesFilter(g, g.obj(id), { ...e.filter, zone: 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x })) {
+            hit = id;
+            break;
+          }
+        }
+        if (hit !== null) {
+          if (e.destination === 'battlefield') yield* enterBattlefield(g, hit, p, { tapped: e.tapped, ctx });
+          else g.moveObject(hit, e.destination, { skipEvents: e.destination === 'hand', cause: e.destination === 'exile' ? 'exile' : 'other' });
+          ctx.memory['lastMoved'] = [hit];
+        }
+        const rest = seen.filter((id) => id !== hit);
+        if (e.rest === 'bottom') for (const id of g.rng.shuffle(rest)) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
+        else for (const id of rest) g.moveObject(id, e.rest, { cause: e.rest === 'exile' ? 'exile' : 'mill' });
+      }
+      return;
+    }
+    case 'turnFlag':
+      g.state.turnStats[e.flag] = 1;
+      return;
+    case 'discover': {
+      const n = amt(e.amount);
+      const pl = g.player(ctx.controller);
+      const exiled: ObjectId[] = [];
+      let hit: ObjectId | null = null;
+      while (pl.library.length) {
+        const top = pl.library[0];
+        const r = g.moveObject(top, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
+        if (!r) break;
+        exiled.push(r.id);
+        const ch = g.characteristics(r.id);
+        if (!ch.types.includes('Land') && ch.manaValue <= n) {
+          hit = r.id;
+          break;
+        }
+      }
+      if (hit !== null) {
+        const resp = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: `Discover: cast ${g.nameOf(hit)} without paying its mana cost? (No puts it into your hand.)`, sourceId: ctx.sourceId ?? undefined });
+        let cast = false;
+        if (resp.type === 'yesNo' && resp.value) {
+          const { castSpell } = await_casting();
+          cast = yield* castSpell(g, ctx.controller, hit, { type: 'cast', objectId: hit }, { free: true });
+        }
+        if (!cast && g.state.objects[hit]?.zone === 'exile') g.moveObject(hit, 'hand', { skipEvents: true });
+      }
+      const rest = exiled.filter((id) => id !== hit && g.state.objects[id]?.zone === 'exile');
+      for (const id of g.rng.shuffle(rest)) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
+      return;
+    }
     case 'extraLandThisTurn':
       for (const p of playersOf(g, e.who, ctx)) g.player(p).landsPlayedThisTurn--;
       return;
@@ -875,7 +932,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'chooseObjects': {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
-      let cands = objectsMatching(g, e.filter, { sourceId: ctx.sourceId, controller: who, x: ctx.x }, e.filter.zone ? undefined : ['battlefield']).map((o) => o.id);
+      let cands = e.from ? g.resolveObjects(e.from, ctx).filter((o) => matchesFilter(g, o, { ...e.filter, zone: e.filter.zone ?? o.zone }, { sourceId: ctx.sourceId, controller: who, x: ctx.x })).map((o) => o.id) : objectsMatching(g, e.filter, { sourceId: ctx.sourceId, controller: who, x: ctx.x }, e.filter.zone ? undefined : ['battlefield']).map((o) => o.id);
       if (e.owner) {
         const owners = new Set(g.resolvePlayers(e.owner, ctx));
         cands = cands.filter((id) => owners.has(g.obj(id).owner));

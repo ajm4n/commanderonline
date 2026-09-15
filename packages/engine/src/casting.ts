@@ -480,7 +480,7 @@ function faceOf(obj: GameObject, faceIndex: number) {
 }
 
 /** Compute the total mana cost to cast, including commander tax and reductions. */
-export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex: number, opts: { kicker?: boolean; alternative?: string } = {}): ManaCost {
+export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex: number, opts: { kicker?: boolean; kicks?: number; alternative?: string } = {}): ManaCost {
   const face = faceOf(obj, faceIndex);
   let cost: ManaCost;
   const script = g.scriptFor({ ...obj, faceIndex });
@@ -492,8 +492,13 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   } else cost = parseManaCost(face.manaCost);
   if (obj.isCommander && obj.zone === 'command') cost = adjustGeneric(cost, obj.commanderCasts * 2);
   if (opts.kicker) {
-    const k = obj.card.oracleText.match(/Kicker (\{[^\n]+?\})(?:\s|$)/);
-    if (k) cost = { symbols: [...cost.symbols, ...parseManaCost(k[1]).symbols], xCount: cost.xCount };
+    const k = obj.card.oracleText.match(/(?:Multik|K)icker (\{[^\n]+?\})(?:\s|$)/);
+    const times = opts.kicks ?? 1;
+    if (k) {
+      const extra = parseManaCost(k[1]).symbols;
+      const all = Array.from({ length: times }, () => extra).flat();
+      cost = { symbols: [...cost.symbols, ...all], xCount: cost.xCount };
+    }
   }
   // Cost reductions / increases from static rules.
   let delta = 0;
@@ -503,8 +508,9 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   }
   // The spell's own cost modifiers (affinity, "costs {1} less for each ...").
   for (const mod of script.costModifiers ?? []) {
+    if (mod.perExtraTarget) continue; // applied at cast time once targets are known
     if (mod.condition && !g.checkCondition(mod.condition, { sourceId: obj.id, controller: p })) continue;
-    const n = mod.per ? objectsMatching(g, { ...mod.per, zone: mod.per.zone ?? 'battlefield' }, { sourceId: obj.id, controller: p }).length : 1;
+    const n = mod.per ? objectsMatching(g, { ...mod.per, zone: mod.per.zone ?? 'battlefield' }, { sourceId: obj.id, controller: p }).length : mod.perAmount !== undefined ? g.resolveAmount(mod.perAmount, { sourceId: obj.id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 1;
     delta += (mod.direction === 'less' ? -1 : 1) * mod.amount * n;
   }
   if (delta !== 0) cost = adjustGeneric(cost, delta);
@@ -750,8 +756,9 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   }
   obj.modes = modes;
 
-  // Kicker
+  // Kicker / multikicker
   let kicker = false;
+  let kicks = 0;
   if (!opts.free && /^Kicker /m.test(face.oracleText)) {
     const kcost = face.oracleText.match(/Kicker (\{[^\n]+?\})(?:\s|$)/)?.[1];
     if (kcost) {
@@ -759,13 +766,27 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
       if (solvePayment(total, 0, player.manaPool, manaSourcesFor(g, p))) {
         const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay the kicker cost ${kcost} for ${face.name}?`, sourceId: id });
         kicker = r.type === 'yesNo' && r.value;
+        if (kicker) kicks = 1;
       }
+    }
+  } else if (!opts.free && /^Multikicker /m.test(face.oracleText)) {
+    const kcost = face.oracleText.match(/Multikicker (\{[^\n]+?\})(?:\s|$)/)?.[1];
+    if (kcost) {
+      for (;;) {
+        const total = computeCastCost(g, p, obj, faceIndex, { kicker: true, kicks: kicks + 1 });
+        if (!solvePayment(total, 0, player.manaPool, manaSourcesFor(g, p))) break;
+        const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay the multikicker cost ${kcost} for ${face.name} ${kicks ? 'again' : ''} (${kicks} so far)?`, sourceId: id });
+        if (!(r.type === 'yesNo' && r.value)) break;
+        kicks++;
+      }
+      kicker = kicks > 0;
     }
   }
   if (kicker) obj.additionalCostsPaid.push('kicker');
+  obj.memory['kicks'] = kicks;
 
   // X
-  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
+  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
   if (altId) obj.additionalCostsPaid.push(altId);
   const baseCost = parseManaCost(face.manaCost);
   let x = resp.xValue ?? 0;

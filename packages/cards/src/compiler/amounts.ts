@@ -61,6 +61,8 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     return noun ? { kind: 'graveyardSize', ref: { ref: 'controller' }, filter: noun.filter } : null;
   }
   if (t === 'the number of lands you control') return { kind: 'landsYouControl' };
+  if (t === 'the number of creatures in your party') return { kind: 'partySize' };
+  if (t === 'the number of times it was kicked' || t === 'the number of times ~ was kicked') return { kind: 'kickCount' };
   if (t === 'the number of opponents you have' || t === 'the number of your opponents') return { kind: 'opponents' };
   if (t === 'the number of experience counters you have') return { kind: 'turnStat', key: 'experience' };
   if ((m = t.match(/^the number of (\+1\/\+1|-1\/-1|charge|loyalty|lore|\w+) counters on (~|it|that creature|this creature)$/))) return { kind: 'countersOn', ref: /~|this/.test(m[2]) ? ctx.self : ctx.lastObj ?? ctx.self, counter: m[1] };

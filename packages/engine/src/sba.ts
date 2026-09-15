@@ -1,7 +1,11 @@
 import type { Game, Gen } from './game.js';
 import type { GameObject, ObjectId } from './types.js';
 import { auraTargetSpec, enterBattlefield } from './effects.js';
-import { legalTargets } from './filters.js';
+import { legalTargets, matchesFilter } from './filters.js';
+
+function matchesFilterFor(g: Game, id: ObjectId, filter: import('./types.js').ObjectFilter, controller: import('./types.js').PlayerId): boolean {
+  return matchesFilter(g, g.obj(id), { ...filter, zone: 'battlefield' }, { sourceId: null, controller });
+}
 
 /**
  * State-based actions (rule 704). Loops until nothing changes. May need
@@ -11,6 +15,20 @@ export function* checkStateBasedActions(g: Game): Gen {
   for (let iter = 0; iter < 50; iter++) {
     if (g.state.over) return;
     let changed = false;
+
+    // "When you control no Islands, sacrifice ~." (a state trigger, handled like an SBA)
+    for (const id of [...g.state.battlefield]) {
+      const o = g.state.objects[id];
+      if (!o) continue;
+      for (const r of g.characteristics(id).rules) {
+        if (r.kind !== 'custom' || r.tag !== 'sacrificeUnlessControl') continue;
+        const filter = r.data as import('./types.js').ObjectFilter;
+        if (g.state.battlefield.some((x) => x !== id && g.obj(x).controller === o.controller && matchesFilterFor(g, x, filter, o.controller))) continue;
+        g.log(`${g.nameOf(id)} is sacrificed: its controller controls none of the required permanents.`);
+        g.moveObject(id, 'graveyard', { cause: 'sacrifice' });
+        changed = true;
+      }
+    }
 
     // 704.5a-c, 704.5u: players lose
     for (const pid of g.activePlayers()) {

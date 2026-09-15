@@ -25,6 +25,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const n = wordToNumber(m[2]);
     if (noun && typeof n === 'number') return { kind: 'amount', a: { kind: 'totalPower', filter: { ...noun.filter, zone: 'battlefield' } }, op: m[3] === 'greater' ? '>=' : '<=', b: n };
   }
+  if (t === 'you have a full party') return { kind: 'amount', a: { kind: 'partySize' }, op: '>=', b: 4 };
   if ((m = t.match(/^you have (\w+) or more opponents$/))) return { kind: 'amount', a: { kind: 'opponents' }, op: '>=', b: wordToNumber(m[1]) ?? 2 };
   if ((m = t.match(/^a player has (\d+) or (less|more) life$/))) return { kind: 'or', cs: [{ kind: 'life', ref: { ref: 'controller' }, op: m[2] === 'less' ? '<=' : '>=', value: parseInt(m[1], 10) }, { kind: 'life', ref: { ref: 'eachOpponent' }, op: m[2] === 'less' ? '<=' : '>=', value: parseInt(m[1], 10) }] };
   if ((m = t.match(/^(.+?) is (less than|greater than|fewer than|more than) (\w+)$/))) {
