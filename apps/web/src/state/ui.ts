@@ -11,6 +11,7 @@ export type DialogState =
   | { kind: 'number'; title: string; label: string; initial: number; onSubmit: (n: number) => void }
   | { kind: 'counter'; objectId: ObjectId }
   | { kind: 'face'; objectId: ObjectId }
+  | { kind: 'altcost'; objectId: ObjectId }
   | { kind: 'give'; objectId: ObjectId }
   | { kind: 'confirmConcede' }
   | null;
@@ -68,7 +69,7 @@ export const useUi = create<UiState>((set, get) => ({
       for (const c of d.candidates) if (c.mustAttack && c.canAttack.length) attacks[c.id] = c.canAttack[0];
       init.attacks = attacks;
     }
-    set({ ...init, dialog: get().dialog?.kind === 'face' ? null : get().dialog });
+    set({ ...init, dialog: get().dialog?.kind === 'face' || get().dialog?.kind === 'altcost' ? null : get().dialog });
   },
   setSlot(i) {
     set({ slot: i });

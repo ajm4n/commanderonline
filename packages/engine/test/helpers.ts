@@ -34,9 +34,34 @@ export const COMMANDER = card({ name: 'Test Commander', typeLine: 'Legendary Cre
 export const GIANT_GROWTH = card({ name: 'Giant Growth', typeLine: 'Instant', manaCost: '{G}', cmc: 1, oracleText: 'Target creature gets +3/+3 until end of turn.', colors: ['G'], colorIdentity: ['G'] });
 export const WRATH = card({ name: 'Wrath of God', typeLine: 'Sorcery', manaCost: '{2}{W}{W}', cmc: 4, oracleText: "Destroy all creatures. They can't be regenerated.", colors: ['W'], colorIdentity: ['W'] });
 export const UNSCRIPTED = card({ name: 'Mystery Sorcery', typeLine: 'Sorcery', manaCost: '{G}', cmc: 1, oracleText: 'Do something the engine does not understand.', colors: ['G'], colorIdentity: ['G'] });
+export const CONTROL_MAGIC = card({ name: 'Control Magic', typeLine: 'Enchantment — Aura', manaCost: '{2}{U}{U}', cmc: 4, oracleText: 'Enchant creature\nYou control enchanted creature.', colors: ['U'], colorIdentity: ['U'] });
+export const CONVOKE_GUY = card({ name: 'Convoke Wurm', typeLine: 'Creature — Wurm', manaCost: '{4}{G}{G}', cmc: 6, power: '5', toughness: '5', oracleText: 'Convoke', keywords: ['Convoke'], colors: ['G'], colorIdentity: ['G'] });
+export const DELVE_SPELL = card({ name: 'Delve Draw', typeLine: 'Sorcery', manaCost: '{6}{U}', cmc: 7, oracleText: 'Delve\nDraw three cards.', keywords: ['Delve'], colors: ['U'], colorIdentity: ['U'] });
+export const AFFINITY_GUY = card({ name: 'Frogmite', typeLine: 'Artifact Creature — Frog', manaCost: '{4}', cmc: 4, power: '2', toughness: '2', oracleText: 'Affinity for artifacts', keywords: ['Affinity'] });
+export const PLOT_SPELL = card({ name: 'Plot Bolt', typeLine: 'Sorcery', manaCost: '{R}', cmc: 1, oracleText: 'Plot Bolt deals 3 damage to any target.\nPlot {R}', colors: ['R'], colorIdentity: ['R'] });
+export const WARP_GUY = card({ name: 'Warp Beast', typeLine: 'Creature — Beast', manaCost: '{3}{G}', cmc: 4, power: '4', toughness: '4', oracleText: 'Warp {G}', colors: ['G'], colorIdentity: ['G'] });
+export const MONSTER = card({ name: 'Monster', typeLine: 'Creature — Beast', manaCost: '{2}{G}', cmc: 3, power: '2', toughness: '2', oracleText: '{2}{G}: Monstrosity 3.\nWhen Monster becomes monstrous, you gain 3 life.', colors: ['G'], colorIdentity: ['G'] });
+export const LEVELER = card({ name: 'Leveler', typeLine: 'Creature — Human', manaCost: '{W}', cmc: 1, power: '1', toughness: '1', oracleText: 'Level up {W}\nLEVEL 1-2\n2/2\nFirst strike\nLEVEL 3+\n3/3\nFirst strike, lifelink', colors: ['W'], colorIdentity: ['W'] });
 export const UPKEEP_GUY = card({ name: 'Upkeep Guy', typeLine: 'Creature — Human', manaCost: '{G}', cmc: 1, power: '1', toughness: '1', oracleText: 'At the beginning of your upkeep, you gain 1 life.', colors: ['G'], colorIdentity: ['G'] });
 
 export const SCRIPTS: Record<string, CardScript> = {
+  'Control Magic': { name: 'Control Magic', coverage: 'full', origin: 'hand', abilities: [{ kind: 'static', text: 'You control enchanted creature.', affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }] },
+  'Frogmite': { name: 'Frogmite', coverage: 'full', origin: 'hand', abilities: [], costModifiers: [{ amount: 1, direction: 'less', per: { types: ['Artifact'], controller: 'you', zone: 'battlefield' } }] },
+  'Plot Bolt': { name: 'Plot Bolt', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', targets: [T.any()], effects: [E.damage(3, R.target())] }, { kind: 'activated', text: 'Plot {R}', cost: { mana: '{R}' }, effects: [{ kind: 'plot' }], zone: 'hand', sorcerySpeed: true }] },
+  'Warp Beast': { name: 'Warp Beast', coverage: 'full', origin: 'hand', abilities: [], alternativeCosts: [{ id: 'warp', text: 'Warp {G}', cost: { mana: '{G}' }, zone: 'hand' }] },
+  'Delve Draw': { name: 'Delve Draw', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', effects: [E.draw(3)] }] },
+  Monster: { name: 'Monster', coverage: 'full', origin: 'hand', abilities: [{ kind: 'activated', text: '{2}{G}: Monstrosity 3.', cost: { mana: '{2}{G}' }, effects: [{ kind: 'monstrosity', amount: 3 }] }, { kind: 'triggered', text: 'When Monster becomes monstrous, you gain 3 life.', event: 'becomesMonstrous', filter: { self: true }, effects: [E.gainLife(3)] }] },
+  Leveler: {
+    name: 'Leveler',
+    coverage: 'full',
+    origin: 'hand',
+    abilities: [
+      { kind: 'activated', text: 'Level up {W}', cost: { mana: '{W}' }, effects: [E.counters('level', 1, R.self)], sorcerySpeed: true },
+      { kind: 'static', text: 'LEVEL 1-2 2/2', affects: 'self', modification: { layer: '7b', setPower: 2, setToughness: 2 }, condition: { kind: 'and', cs: [{ kind: 'hasCounter', ref: R.self, counter: 'level', op: '>=', value: 1 }, { kind: 'hasCounter', ref: R.self, counter: 'level', op: '<=', value: 2 }] } },
+      { kind: 'static', text: 'LEVEL 3+ 3/3', affects: 'self', modification: { layer: '7b', setPower: 3, setToughness: 3 }, condition: { kind: 'hasCounter', ref: R.self, counter: 'level', op: '>=', value: 3 } },
+      { kind: 'static', text: 'LEVEL 3+ lifelink', affects: 'self', modification: { layer: 6, addKeywords: ['Lifelink'] }, condition: { kind: 'hasCounter', ref: R.self, counter: 'level', op: '>=', value: 3 } },
+    ],
+  },
   'Lightning Bolt': { name: 'Lightning Bolt', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', targets: [T.any()], effects: [E.damage(3, R.target())] }] },
   'Sol Ring': { name: 'Sol Ring', coverage: 'full', origin: 'hand', abilities: [{ kind: 'activated', text: '{T}: Add {C}{C}.', cost: { tap: true }, effects: [E.mana(['C', 'C'])], manaAbility: true }] },
   'Llanowar Elves': { name: 'Llanowar Elves', coverage: 'full', origin: 'hand', abilities: [{ kind: 'activated', text: '{T}: Add {G}.', cost: { tap: true }, effects: [E.mana(['G'])], manaAbility: true }] },

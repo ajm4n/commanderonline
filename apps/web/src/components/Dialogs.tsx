@@ -7,7 +7,7 @@ import { cachedCard } from '../lib/scryfall.js';
 
 const COLORS: Color[] = ['W', 'U', 'B', 'R', 'G'];
 
-export function Dialogs({ view, manual, onCast, onPlayLand, onConcede }: { view: GameView; manual: (a: ManualAction) => void; onCast: (obj: ObjectView, faceIndex: number) => void; onPlayLand: (obj: ObjectView) => void; onConcede: () => void }) {
+export function Dialogs({ view, manual, onCast, onPlayLand, onConcede }: { view: GameView; manual: (a: ManualAction) => void; onCast: (obj: ObjectView, faceIndex: number, alternativeCost?: string | null) => void; onPlayLand: (obj: ObjectView) => void; onConcede: () => void }) {
   const dialog = useUi((s) => s.dialog);
   const setDialog = useUi((s) => s.setDialog);
   const close = () => setDialog(null);
@@ -27,6 +27,40 @@ export function Dialogs({ view, manual, onCast, onPlayLand, onConcede }: { view:
       const o = view.objects[dialog.objectId];
       if (!o) return null;
       return <FaceDialog obj={o} onClose={close} onCast={(i) => onCast(o, i)} onPlayLand={() => onPlayLand(o)} />;
+    }
+    case 'altcost': {
+      const o = view.objects[dialog.objectId];
+      if (!o) return null;
+      const alts = view.decision?.type === 'priority' ? view.decision.alternativeCosts?.filter((a) => a.objectId === o.id) ?? [] : [];
+      return (
+        <Modal title={`How do you want to cast ${o.name}?`} onClose={close} actions={<button onClick={close}>Cancel</button>}>
+          <div className="faces">
+            <button
+              data-testid="cast-normal"
+              onClick={() => {
+                onCast(o, 0, null);
+                close();
+              }}
+            >
+              <b>Cast for {o.manaCost || '{0}'}</b>
+              <span className="muted small">Normal cost</span>
+            </button>
+            {alts.map((a) => (
+              <button
+                key={a.id}
+                data-testid={`cast-alt-${a.id}`}
+                onClick={() => {
+                  onCast(o, 0, a.id);
+                  close();
+                }}
+              >
+                <b>{a.label}</b>
+                <span className="muted small">Alternative cost</span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      );
     }
     case 'confirmConcede':
       return (

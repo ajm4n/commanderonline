@@ -109,8 +109,49 @@ function manaFromAbility(g: Game, obj: GameObject, ab: ActivatedAbilitySpec): Ma
   return alts;
 }
 
-export function manaSourcesFor(g: Game, p: PlayerId): ManaSourceOption[] {
+export interface CastingKeywords {
+  convoke?: boolean;
+  improvise?: boolean;
+  delve?: boolean;
+}
+
+export function castingKeywordsOf(g: Game, obj: GameObject): CastingKeywords {
+  const ch = g.characteristics(obj.id);
+  const text = obj.card.oracleText ?? '';
+  return {
+    convoke: ch.keywords.has('Convoke') || /^Convoke\b/m.test(text),
+    improvise: ch.keywords.has('Improvise') || /^Improvise\b/m.test(text),
+    delve: ch.keywords.has('Delve') || /^Delve\b/m.test(text),
+  };
+}
+
+export function manaSourcesFor(g: Game, p: PlayerId, extra: CastingKeywords = {}): ManaSourceOption[] {
   const out: ManaSourceOption[] = [];
+  const virtual = (): void => {
+    const used = new Set(out.map((s) => s.id));
+    if (extra.convoke) {
+      for (const id of g.state.battlefield) {
+        const o = g.obj(id);
+        if (o.controller !== p || o.tapped || used.has(id)) continue;
+        const ch = g.characteristics(id);
+        if (!ch.types.includes('Creature')) continue;
+        const alts: ManaColor[][] = ch.colors.map((c) => [c]);
+        alts.push(['C']);
+        out.push({ id, alternatives: alts, priority: 50, kind: 'convoke' });
+      }
+    }
+    if (extra.improvise) {
+      for (const id of g.state.battlefield) {
+        const o = g.obj(id);
+        if (o.controller !== p || o.tapped || used.has(id)) continue;
+        if (!g.characteristics(id).types.includes('Artifact')) continue;
+        out.push({ id, alternatives: [['C']], priority: 60, kind: 'improvise', genericOnly: true });
+      }
+    }
+    if (extra.delve) {
+      for (const id of g.player(p).graveyard) out.push({ id, alternatives: [['C']], priority: 70, kind: 'delve', genericOnly: true });
+    }
+  };
   for (const id of g.state.battlefield) {
     const obj = g.obj(id);
     if (obj.controller !== p || obj.phasedOut) continue;
@@ -128,8 +169,9 @@ export function manaSourcesFor(g: Game, p: PlayerId): ManaSourceOption[] {
     for (const a of alts) uniq.set(a.join(''), a);
     const ch = g.characteristics(id);
     const priority = ch.supertypes.includes('Basic') ? 0 : ch.types.includes('Land') ? 1 + uniq.size : ch.types.includes('Creature') ? 10 : 5 + uniq.size;
-    out.push({ id, alternatives: [...uniq.values()], priority });
+    out.push({ id, alternatives: [...uniq.values()], priority, kind: 'mana' });
   }
+  virtual();
   return out;
 }
 
@@ -184,13 +226,33 @@ function deductFromPool(pool: ManaPool, cost: ManaCost, x: number): boolean {
  * Pay a mana cost: auto-tap sources (Arena-style) then deduct from pool.
  * Returns false (with no changes) if the cost can't be paid.
  */
-export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, sourceId: ObjectId | null): Gen<boolean> {
+export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, sourceId: ObjectId | null, keywords: CastingKeywords = {}): Gen<boolean> {
   const player = g.player(p);
-  const sources = manaSourcesFor(g, p);
-  const solution = solvePayment(cost, x, player.manaPool, sources);
+  // Prefer paying with real mana; only reach for convoke/improvise/delve when needed.
+  let sources = manaSourcesFor(g, p);
+  let solution = solvePayment(cost, x, player.manaPool, sources);
+  if (!solution && (keywords.convoke || keywords.improvise || keywords.delve)) {
+    sources = manaSourcesFor(g, p, keywords);
+    solution = solvePayment(cost, x, player.manaPool, sources);
+  }
   if (!solution) return false;
+  const delveCount = solution.tap.filter((id) => sources.find((s) => s.id === id)?.kind === 'delve').length;
+  if (delveCount > 0) {
+    const gy = [...player.graveyard];
+    const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Delve: exile ${delveCount} card${delveCount === 1 ? '' : 's'} from your graveyard`, candidates: gy, min: delveCount, max: delveCount, revealToChooser: true, sourceId: sourceId ?? undefined });
+    if (resp.type !== 'objects') return false;
+    for (const id of resp.ids) g.moveObject(id, 'exile', { cause: 'exile', sourceId: sourceId ?? undefined });
+    for (let i = 0; i < delveCount; i++) player.manaPool.C++;
+  }
   for (let i = 0; i < solution.tap.length; i++) {
     const src = sources.find((s) => s.id === solution.tap[i])!;
+    if (src.kind === 'delve') continue;
+    if (src.kind === 'convoke' || src.kind === 'improvise') {
+      g.tap(src.id);
+      for (const c of src.alternatives[solution.alternatives[i]]) player.manaPool[c]++;
+      g.log(`${player.name} taps ${g.nameOf(src.id)} to help pay (${src.kind}).`);
+      continue;
+    }
     yield* tapForMana(g, src.id, src.alternatives[solution.alternatives[i]]);
   }
   if (!deductFromPool(player.manaPool, cost, x)) {
@@ -299,6 +361,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       ids = resp.ids;
     }
     for (const id of ids) g.tap(id);
+    obj.memory['costTapped'] = ids;
   }
   if (cost.returnToHand) {
     const cands = objectsMatching(g, { ...cost.returnToHand.filter, controller: 'you' }, ctx).map((o) => o.id);
@@ -332,9 +395,15 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (obj.zone === 'graveyard') return /^Flashback/m.test(obj.card.oracleText) || obj.memory['castableFromGraveyard'] === true;
   if (obj.zone === 'exile') {
     const until = obj.memory['playableUntil'];
-    return obj.memory['playableBy'] === p && (until === 'permanent' || until === g.state.turn.number);
+    if (obj.memory['playableBy'] !== p) return false;
+    if (typeof obj.memory['plotted'] === 'number' && obj.memory['plotted'] >= g.state.turn.number) return false; // plot: a later turn
+    return until === 'permanent' || until === g.state.turn.number;
   }
   return false;
+}
+
+function freeFromExile(g: Game, obj: GameObject): boolean {
+  return obj.zone === 'exile' && obj.memory['freeCast'] === true;
 }
 
 export interface CastOptions {
@@ -352,7 +421,10 @@ function faceOf(obj: GameObject, faceIndex: number) {
 export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex: number, opts: { kicker?: boolean; alternative?: string } = {}): ManaCost {
   const face = faceOf(obj, faceIndex);
   let cost: ManaCost;
-  if (opts.alternative && obj.zone === 'graveyard') {
+  const script = g.scriptFor({ ...obj, faceIndex });
+  const alt = opts.alternative ? script.alternativeCosts?.find((a) => a.id === opts.alternative) : undefined;
+  if (alt) cost = parseManaCost(alt.cost.mana ?? '');
+  else if (opts.alternative === 'flashback' && obj.zone === 'graveyard') {
     const fb = obj.card.oracleText.match(/Flashback (\{[^\n]+?\})(?:\s|$)/);
     cost = parseManaCost(fb?.[1] ?? face.manaCost);
   } else cost = parseManaCost(face.manaCost);
@@ -367,9 +439,27 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
     if (r.kind === 'costReduction' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) delta -= r.amount;
     if (r.kind === 'costIncrease' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) delta += r.amount;
   }
-  // Affinity / convoke / delve approximations are left to manual tapping.
+  // The spell's own cost modifiers (affinity, "costs {1} less for each ...").
+  for (const mod of script.costModifiers ?? []) {
+    if (mod.condition && !g.checkCondition(mod.condition, { sourceId: obj.id, controller: p })) continue;
+    const n = mod.per ? objectsMatching(g, { ...mod.per, zone: mod.per.zone ?? 'battlefield' }, { sourceId: obj.id, controller: p }).length : 1;
+    delta += (mod.direction === 'less' ? -1 : 1) * mod.amount * n;
+  }
   if (delta !== 0) cost = adjustGeneric(cost, delta);
   return cost;
+}
+
+/** Alternative costs the player could pay for this card right now. */
+export function availableAlternativeCosts(g: Game, p: PlayerId, obj: GameObject): { id: string; label: string }[] {
+  const script = g.scriptFor(obj);
+  const out: { id: string; label: string }[] = [];
+  for (const alt of script.alternativeCosts ?? []) {
+    if (alt.zone && obj.zone !== alt.zone) continue;
+    if (alt.condition && !g.checkCondition(alt.condition, { sourceId: obj.id, controller: p })) continue;
+    const cost = computeCastCost(g, p, obj, 0, { alternative: alt.id });
+    if (solvePayment(cost, 0, g.player(p).manaPool, manaSourcesFor(g, p, castingKeywordsOf(g, obj)))) out.push({ id: alt.id, label: alt.text });
+  }
+  return out;
 }
 
 function spellTargets(g: Game, obj: GameObject, script: CardScript, faceIndex: number, modes: number[]): TargetSpec[] {
@@ -391,11 +481,12 @@ export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
   const isInstant = ch.types.includes('Instant') || ch.keywords.has('Flash') || /\bFlash\b/.test(face.oracleText.split('\n')[0] ?? '');
   const anyFaceInstant = obj.card.faces?.some((f) => /Instant/.test(f.typeLine) || /^Flash\b/m.test(f.oracleText));
   if (ch.types.includes('Land') && !(obj.card.faces?.some((f) => !/Land/.test(f.typeLine)))) return false; // lands are played, not cast
-  if (!isInstant && !anyFaceInstant && !canCastSorcerySpeed(g, p)) return false;
+  const sorceryOnly = obj.memory['sorceryOnly'] === true;
+  if ((sorceryOnly || (!isInstant && !anyFaceInstant)) && !canCastSorcerySpeed(g, p)) return false;
   // Can we afford it?
   const cost = computeCastCost(g, p, obj, 0);
-  const sources = manaSourcesFor(g, p);
-  if (!solvePayment(cost, 0, g.player(p).manaPool, sources)) {
+  const sources = manaSourcesFor(g, p, castingKeywordsOf(g, obj));
+  if (!freeFromExile(g, obj) && !solvePayment(cost, 0, g.player(p).manaPool, sources) && availableAlternativeCosts(g, p, obj).length === 0) {
     // Try other faces (MDFC / adventure)
     if (obj.card.faces) {
       for (let i = 1; i < obj.card.faces.length; i++) {
@@ -457,7 +548,13 @@ export function buildPriorityDecision(g: Game, p: PlayerId): PriorityDecision {
       abilities.push({ objectId: obj.id, abilityIndex: ab.index, text: ab.spec.text });
     }
   }
-  return { type: 'priority', id: 0, player: p, prompt: g.state.stack.length ? `${g.state.stack[g.state.stack.length - 1].text} is on the stack. Respond or pass.` : `${stepName(g)} — you have priority.`, playableCards: playable, activatableAbilities: abilities, canPlayLand: landOk && pl.hand.some((id) => isLandCard(g.obj(id))) };
+  const alternativeCosts: PriorityDecision['alternativeCosts'] = [];
+  for (const id of playable) {
+    const obj = g.obj(id);
+    if (isLandCard(obj)) continue;
+    for (const a of availableAlternativeCosts(g, p, obj)) alternativeCosts.push({ objectId: id, id: a.id, label: a.label });
+  }
+  return { type: 'priority', id: 0, player: p, prompt: g.state.stack.length ? `${g.state.stack[g.state.stack.length - 1].text} is on the stack. Respond or pass.` : `${stepName(g)} — you have priority.`, playableCards: playable, activatableAbilities: abilities, alternativeCosts, canPlayLand: landOk && pl.hand.some((id) => isLandCard(g.obj(id))) };
 }
 
 export function stepName(g: Game): string {
@@ -532,7 +629,11 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   const fromZone = obj.zone;
   const ch = g.characteristics(obj.id);
   const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash');
-  if (!opts.free && !isInstantSpeed && !canCastSorcerySpeed(g, p)) return false;
+  if (freeFromExile(g, obj)) opts = { ...opts, free: true };
+  if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;
+  const keywords = castingKeywordsOf(g, obj);
+  const altId = resp.alternativeCost;
+  if (altId && !availableAlternativeCosts(g, p, obj).some((a) => a.id === altId)) return false;
 
   const script = g.scriptFor({ ...obj, faceIndex });
   const player = g.player(p);
@@ -583,7 +684,8 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (kicker) obj.additionalCostsPaid.push('kicker');
 
   // X
-  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, alternative: fromZone === 'graveyard' ? 'flashback' : undefined });
+  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
+  if (altId) obj.additionalCostsPaid.push(altId);
   const baseCost = parseManaCost(face.manaCost);
   let x = resp.xValue ?? 0;
   if (baseCost.xCount > 0 && resp.xValue === undefined) {
@@ -621,12 +723,18 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   }
   // Mana
   if (!opts.free) {
-    const paid = yield* payCost(g, p, cost, x, id);
+    const paid = yield* payCost(g, p, cost, x, id, keywords);
     if (!paid) {
       revert();
       g.log(`${player.name} can't pay for ${face.name}.`);
       return false;
     }
+  }
+  if (fromZone === 'exile' && obj.memory['freeCast']) {
+    delete obj.memory['freeCast'];
+    delete obj.memory['plotted'];
+    delete obj.memory['sorceryOnly'];
+    delete obj.memory['playableBy'];
   }
 
   const item: StackItem = {

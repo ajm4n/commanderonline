@@ -61,15 +61,24 @@ export function GameScreen() {
   // Actions
   // -------------------------------------------------------------------------
   const cast = useCallback(
-    (obj: ObjectView, faceIndex?: number) => {
+    (obj: ObjectView, faceIndex?: number, alternativeCost?: string | null) => {
       if (faceIndex === undefined && obj.hasBackFace && FACE_CHOICE_LAYOUTS.has(obj.layout)) {
         useUi.getState().setDialog({ kind: 'face', objectId: obj.id });
         return;
       }
-      respond({ type: 'cast', objectId: obj.id, faceIndex: faceIndex && faceIndex > 0 ? faceIndex : undefined });
+      const alts = decision?.type === 'priority' ? decision.alternativeCosts?.filter((a) => a.objectId === obj.id) ?? [] : [];
+      if (alternativeCost === undefined && alts.length > 0) {
+        useUi.getState().setDialog({ kind: 'altcost', objectId: obj.id });
+        return;
+      }
+      respond({ type: 'cast', objectId: obj.id, faceIndex: faceIndex && faceIndex > 0 ? faceIndex : undefined, alternativeCost: alternativeCost ?? undefined });
     },
-    [respond],
+    [respond, decision],
   );
+  // Debug / test hook: the current view and a way to respond, for browser automation.
+  useEffect(() => {
+    (window as unknown as { __co?: unknown }).__co = { view, decision, respond };
+  }, [view, decision, respond]);
   const playLand = useCallback((obj: ObjectView) => respond({ type: 'playLand', objectId: obj.id }), [respond]);
   const activate = useCallback((obj: ObjectView, abilityIndex: number) => respond({ type: 'activate', objectId: obj.id, abilityIndex }), [respond]);
 

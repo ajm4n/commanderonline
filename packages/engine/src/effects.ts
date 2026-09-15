@@ -393,6 +393,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const o = g.obj(id);
         const prev = o.controller;
         o.controller = who;
+        if (dur === 'permanent') o.baseController = who;
         o.controlSinceTurn = g.state.turn.number;
         g.emit({ name: 'controlChanged', objectId: id, playerId: who, otherPlayerId: prev });
       }
@@ -409,6 +410,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [b.id] }, duration: 'permanent', modification: { layer: 'control', controller: ca } });
       a.controller = cb;
       b.controller = ca;
+      a.baseController = cb;
+      b.baseController = ca;
       g.touch();
       return;
     }
@@ -802,6 +805,24 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'skipTurn':
       for (const p of g.resolvePlayers(e.who, ctx)) g.player(p).flags['skipNextTurn'] = true;
       return;
+    case 'monstrosity': {
+      const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+      if (!src || src.zone !== 'battlefield' || src.memory['monstrous']) return;
+      g.addCounters(src.id, '+1/+1', amt(e.amount), src.id);
+      src.memory['monstrous'] = true;
+      g.log(`${g.nameOf(src.id)} becomes monstrous.`);
+      g.emit({ name: 'becomesMonstrous', objectId: src.id, playerId: src.controller });
+      return;
+    }
+    case 'plot': {
+      const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+      if (!src) return;
+      const moved = src.zone === 'exile' ? src : g.moveObject(src.id, 'exile', { cause: 'exile', sourceId: src.id });
+      if (!moved) return;
+      Object.assign(moved.memory, { plotted: g.state.turn.number, playableBy: ctx.controller, playableUntil: 'permanent', freeCast: true, sorceryOnly: true });
+      g.log(`${g.player(ctx.controller).name} plots ${g.nameOf(moved.id)}.`);
+      return;
+    }
     case 'manual':
       yield* g.ask({ type: 'manualTrigger', player: ctx.controller, prompt: e.text, text: e.text, objectId: ctx.sourceId ?? -1, sourceId: ctx.sourceId ?? undefined });
       return;

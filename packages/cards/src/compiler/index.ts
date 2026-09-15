@@ -2,7 +2,7 @@
  * Oracle text → CardScript compiler. Turns templated rules text into
  * executable scripts so the engine can automate cards nobody hand-scripted.
  */
-import type { AbilitySpec, ActivatedAbilitySpec, CardData, CardScript, Effect, TargetSpec, TriggeredAbilitySpec, Condition } from '@commander/engine';
+import type { AbilitySpec, ActivatedAbilitySpec, CardData, CardScript, Effect, TargetSpec, TriggeredAbilitySpec, Condition, CostModifier } from '@commander/engine';
 import { ENFORCED_KEYWORDS } from '@commander/engine';
 import { normalizeOracle } from './text.js';
 import { parseEffects, newCtx, parseSentence, isNoOpSentence, type ParseCtx } from './effects.js';
@@ -10,6 +10,7 @@ import { parseTriggerHead, splitTriggerRest } from './triggers.js';
 import { parseCost, parseActivationRestriction } from './costs.js';
 import { parseStatic } from './statics.js';
 import { parseCondition } from './conditions.js';
+import { parseNoun } from './nouns.js';
 import { parseTypeLine } from '@commander/engine';
 
 export interface CompileResult {
@@ -48,10 +49,99 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   let minModes = 1;
   let maxModes = 1;
   let additionalCost: CardScript['additionalCost'];
+  const alternativeCosts: NonNullable<CardScript['alternativeCosts']> = [];
+  const costModifiers: CostModifier[] = [];
+  /** Active LEVEL / STATION block: abilities parsed while it is open get this condition. */
+  let block: { condition: Condition; station: boolean } | null = null;
+  const withBlock = (abs: AbilitySpec[]): AbilitySpec[] => {
+    if (!block) return abs;
+    const cond = block.condition;
+    return abs.map((a) => {
+      if (a.kind === 'static' || a.kind === 'triggered' || a.kind === 'activated') return { ...a, condition: a.condition ? { kind: 'and', cs: [a.condition, cond] } : cond } as AbilitySpec;
+      return a;
+    });
+  };
 
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
     let m: RegExpMatchArray | null;
+    // LEVEL a-b / LEVEL a+ / STATION a+ blocks
+    if ((m = line.match(/^LEVEL (\d+)-(\d+)$/)) || (m = line.match(/^LEVEL (\d+)\+$/)) || (m = line.match(/^STATION (\d+)\+$/))) {
+      const station = /^STATION/.test(line);
+      const counter = station ? 'charge' : 'level';
+      const lo = parseInt(m[1], 10);
+      const hi = m[2] !== undefined ? parseInt(m[2], 10) : null;
+      const ge: Condition = { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '>=', value: lo };
+      block = { condition: hi === null ? ge : { kind: 'and', cs: [ge, { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '<=', value: hi }] }, station };
+      compiledLines.push(line);
+      continue;
+    }
+    if (block && (m = line.match(/^(\d+|\*)\/(\d+|\*)$/))) {
+      const pt = (v: string) => (v === '*' ? 0 : parseInt(v, 10));
+      abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: '7b', setPower: pt(m[1]), setToughness: pt(m[2]) }, condition: block.condition });
+      if (block.station) abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 4, addTypes: ['Creature'] }, condition: block.condition });
+      compiledLines.push(line);
+      continue;
+    }
+    if (block && isKeywordLine(line)) {
+      const kws = line.replace(/\.$/, '').split(/[,;]\s*/).map((k) => k.trim()).map((k) => k.charAt(0).toUpperCase() + k.slice(1).toLowerCase());
+      abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: kws }, condition: block.condition });
+      compiledLines.push(line);
+      continue;
+    }
+    // Casting keywords with rules the engine implements
+    if ((m = line.match(/^Plot ((?:\{[^}]+\})+)$/i))) {
+      abilities.push({ kind: 'activated', text: line, cost: { mana: m[1] }, effects: [{ kind: 'plot' }], zone: 'hand', sorcerySpeed: true });
+      compiledLines.push(line);
+      continue;
+    }
+    if ((m = line.match(/^Warp ((?:\{[^}]+\})+)$/i))) {
+      alternativeCosts.push({ id: 'warp', text: `Warp ${m[1]}`, cost: { mana: m[1] }, zone: 'hand' });
+      compiledLines.push(line);
+      continue;
+    }
+    if ((m = line.match(/^Affinity for (.+)$/i))) {
+      const noun = parseNounLoose(m[1]);
+      if (noun) {
+        costModifiers.push({ amount: 1, direction: 'less', per: { ...noun, controller: 'you' }, text: line });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    if ((m = line.match(/^Level up ((?:\{[^}]+\})+)$/i))) {
+      abilities.push({ kind: 'activated', text: line, cost: { mana: m[1] }, effects: [{ kind: 'addCounters', counter: 'level', amount: 1, on: { ref: 'self' } }], sorcerySpeed: true });
+      compiledLines.push(line);
+      continue;
+    }
+    if (/^Station$/i.test(line)) {
+      abilities.push({ kind: 'activated', text: 'Station', cost: { tapUntapped: { filter: { types: ['Creature'], controller: 'you', other: true }, count: 1 } }, effects: [{ kind: 'addCounters', counter: 'charge', amount: { kind: 'power', ref: { ref: 'chosen', key: 'costTapped' } }, on: { ref: 'self' } }], sorcerySpeed: true });
+      compiledLines.push(line);
+      continue;
+    }
+    if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast for each (.+?)\.?$/i))) {
+      const noun = parseNounLoose(m[3]);
+      if (noun) {
+        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', per: noun, text: line });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast if (.+?)\.?$/i))) {
+      const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (cond && cond.kind !== 'manual') {
+        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast as long as (.+?)\.?$/i))) {
+      const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (cond && cond.kind !== 'manual') {
+        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
+        compiledLines.push(line);
+        continue;
+      }
+    }
     if (isNoOpSentence(line)) {
       compiledLines.push(line);
       continue;
@@ -164,7 +254,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const heads = [head, ...(head.also ?? []).map((h) => ({ ...h, rest: head.rest }))];
       for (const h of heads) {
         const ab: TriggeredAbilitySpec = { kind: 'triggered', text: line, event: h.event, filter: h.filter, effects, targets: ctx.targets.length ? ctx.targets : undefined, optional: split.optional || undefined, condition, zone: h.zone, leavesTheBattlefield: h.leaves };
-        abilities.push(ab);
+        abilities.push(...withBlock([ab]));
       }
       if (unhandled.length) unhandledLines.push(...unhandled.map((u) => `${line.slice(0, line.indexOf(',') + 1)} ${u}`));
       else compiledLines.push(line);
@@ -200,7 +290,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           ab.condition = { kind: 'manual', text: `${rest.unhandled}?` };
           unhandledLines.push(rest.unhandled);
         }
-        abilities.push(ab);
+        abilities.push(...withBlock([ab]));
         if (unhandled.length) unhandledLines.push(...unhandled);
         else compiledLines.push(line);
         continue;
@@ -209,7 +299,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     // Static
     const stat = parseStatic(line, !isSpell);
     if (stat) {
-      abilities.push(...stat);
+      abilities.push(...withBlock(stat));
       compiledLines.push(line);
       continue;
     }
@@ -241,7 +331,17 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     return true;
   });
   const coverage: CardScript['coverage'] = meaningful.length === 0 || unhandledLines.length === 0 ? 'full' : automatedAbilities.length === 0 ? 'none' : 'partial';
-  return { script: { name: faceName, abilities, additionalCost, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined }, compiledLines, unhandledLines };
+  return { script: { name: faceName, abilities, additionalCost, alternativeCosts: alternativeCosts.length ? alternativeCosts : undefined, costModifiers: costModifiers.length ? costModifiers : undefined, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined }, compiledLines, unhandledLines };
+}
+
+/** Noun phrase → filter for cost modifiers ("creature on the battlefield", "artifacts", "Equipment you control"). */
+function parseNounLoose(text: string): import('@commander/engine').ObjectFilter | null {
+  const t = text.replace(/ on the battlefield$/i, '').trim();
+  const noun = parseNoun(t) ?? parseNoun(`a ${t}`);
+  if (!noun) return null;
+  const f = { ...noun.filter };
+  if (!f.zone) f.zone = 'battlefield';
+  return f;
 }
 
 /** For trigger lines we can't parse, guess a coarse event so the player still gets a prompt at roughly the right time. */

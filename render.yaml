@@ -1,0 +1,10 @@
+# One-click deploy on Render (free tier works): https://render.com/deploy?repo=<your fork url>
+services:
+  - type: web
+    name: commander-online
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 8787

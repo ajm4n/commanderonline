@@ -208,7 +208,10 @@ export const useStore = create<AppState>((set, get) => {
     },
     startSolo() {
       const s = get();
-      const conn = new LocalConnection();
+      const params = new URLSearchParams(location.search);
+      const seed = params.get('seed');
+      const botDelay = params.get('botDelay');
+      const conn = new LocalConnection({ seed: seed ? Number(seed) : undefined, botDelayMs: botDelay ? Number(botDelay) : undefined });
       attach(conn, 'solo');
       set({ screen: 'lobby' });
       conn.send({ type: 'createRoom', playerName: s.playerName || 'You' });

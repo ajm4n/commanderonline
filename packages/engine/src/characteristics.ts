@@ -142,7 +142,14 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     if (ward) ch.wardCost = ward[1].trim();
   }
   // Layer 2: control
-  for (const e of effects) if (e.mod.layer === 'control') ch.controller = e.mod.controller;
+  ch.controller = obj.baseController ?? obj.controller;
+  for (const e of effects) {
+    if (e.mod.layer !== 'control') continue;
+    if (e.mod.controller === 'sourceController') {
+      const src = e.sourceId !== null ? g.state.objects[e.sourceId] : undefined;
+      if (src && src.zone === 'battlefield') ch.controller = src.controller;
+    } else ch.controller = e.mod.controller;
+  }
   // Layer 4: types
   for (const e of effects) {
     if (e.mod.layer !== 4) continue;

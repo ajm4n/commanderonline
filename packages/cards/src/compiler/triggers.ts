@@ -216,6 +216,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     tf.counterType = m[1];
     return { event: 'counterAdded', filter: tf, hasObject: true, hasPlayer: false, rest: m[3] };
   }
+  if ((m = L.match(/^When ~ becomes monstrous, (.+)$/i))) return { event: 'becomesMonstrous', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever ~ transforms, (.+)$/i))) return { event: 'transformed', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever you become the monarch, (.+)$/i))) return { event: 'becomesMonarch', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever (?:a|an) (.+?) (?:is put into|enters) your graveyard from your library, (.+)$/i))) {

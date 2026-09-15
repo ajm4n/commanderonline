@@ -723,6 +723,10 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'revealTop', ifMatches: { types: ['Land'] }, then: [{ kind: 'putIntoHand', what: { ref: 'lastMoved' } }], else: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: ref }, { kind: 'may', prompt: 'Put the revealed card into your graveyard?', effects: [{ kind: 'moveToZone', what: { ref: 'lastMoved' }, zone: 'graveyard' }] }] }] : null;
   }],
   [/^venture into the dungeon$/i, () => [{ kind: 'ventureIntoDungeon' }]],
+  [/^monstrosity (\w+|X)$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    return n === null ? null : [{ kind: 'monstrosity', amount: n }];
+  }],
   [/^flip a coin$/i, () => [{ kind: 'flipCoin', win: [] }]],
 ];
 

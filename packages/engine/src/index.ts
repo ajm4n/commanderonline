@@ -9,5 +9,5 @@ export { Game, keywordsOnlyScript, type ScriptProvider, type GameState, type Gen
 export { computeCharacteristics, type Characteristics } from './characteristics.js';
 export { matchesFilter, objectsMatching, legalTargets, canTarget } from './filters.js';
 export { viewFor, objectView, type GameView, type ObjectView, type PlayerView } from './view.js';
-export { abilitiesOf, manaSourcesFor, canCastNow, canPlayLandNow, buildPriorityDecision, summoningSick, stepName } from './casting.js';
+export { abilitiesOf, manaSourcesFor, canCastNow, canPlayLandNow, buildPriorityDecision, summoningSick, stepName, availableAlternativeCosts, castingKeywordsOf } from './casting.js';
 export { describe as describeEffects, tokenCard } from './effects.js';

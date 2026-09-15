@@ -94,6 +94,9 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
   if (isPermanent && obj && !isCopy) {
     const fromStack = true;
     const entered = yield* enterBattlefield(g, obj.id, item.controller, { ctx, fromStack });
+    if (entered && obj.additionalCostsPaid.includes('warp')) {
+      g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: 'beginningOfEndStep', effects: [{ kind: 'exile', what: { ref: 'self' } }, { kind: 'playFromExile', what: { ref: 'self' }, duration: 'permanent' }], text: `Warp: exile ${face.name}`, controller: item.controller, sourceId: entered.id, once: true, context: {} });
+    }
     if (entered && /\bAura\b/.test(face.typeLine)) {
       const t = item.targets.find((x) => x.kind === 'object');
       if (t && t.kind === 'object' && g.state.objects[t.id]) attach(g, entered.id, t.id);

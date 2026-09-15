@@ -72,8 +72,20 @@ export function Battlefield({ view, controller, highlights, decisionActive, hand
     );
   };
 
+  const commandIds = view.players.find((p) => p.id === controller)?.command ?? [];
+  const commandCards = commandIds.map((id) => view.objects[id]).filter((o): o is ObjectView => !!o);
   return (
     <div className="bf">
+      {commandCards.length > 0 && (
+        <div className="bf-row command" title="Command zone">
+          <span className="bf-label">Command zone</span>
+          {commandCards.map((o) => (
+            <div key={o.id} className="card-wrap">
+              <Card obj={o} noRotate {...flagsFor(o.id, highlights, decisionActive)} onClick={handlers.onClick} onContextMenu={handlers.onContextMenu} onHover={handlers.onHover} showCoverage />
+            </div>
+          ))}
+        </div>
+      )}
       <div className={`bf-row creatures ${creatures.length ? '' : 'empty'}`}>{creatures.map((o) => renderCard(o))}</div>
       <div className={`bf-row others ${others.length ? '' : 'empty'}`}>{others.map((o) => renderCard(o))}</div>
       <div className={`bf-row lands ${piles.length ? '' : 'empty'}`}>

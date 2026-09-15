@@ -233,6 +233,8 @@ export type Effect =
   | { kind: 'dealsDamageEqualToPower'; source: Ref; to: Ref }
   | { kind: 'exchangeLife'; a: Ref; b: Ref }
   | { kind: 'skipTurn'; who: Ref }
+  | { kind: 'monstrosity'; amount: Amount }
+  | { kind: 'plot' }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
 
 // ---------------------------------------------------------------------------
@@ -382,6 +384,15 @@ export interface KeywordSpec {
   amount?: number;
 }
 
+export interface CostModifier {
+  amount: number;
+  direction: 'less' | 'more';
+  /** Reduce/increase once per matching object. */
+  per?: ObjectFilter;
+  condition?: Condition;
+  text?: string;
+}
+
 export interface CardScript {
   /** Card name (front face). */
   name: string;
@@ -389,8 +400,10 @@ export interface CardScript {
   keywords?: KeywordSpec[];
   /** Additional costs "As an additional cost to cast this spell, ..." */
   additionalCost?: AbilityCost;
-  /** Alternative costs (e.g. "You may pay {W} rather than pay this spell's mana cost if ..."). */
-  alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition }[];
+  /** Alternative costs (e.g. warp, "You may pay {W} rather than pay this spell's mana cost if ..."). */
+  alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition; zone?: ZoneName }[];
+  /** Cost changes the spell applies to itself ("costs {1} less to cast for each artifact you control", affinity). */
+  costModifiers?: CostModifier[];
   /** How much of the card's text is automated. */
   coverage: 'full' | 'partial' | 'none';
   /** Where the script came from. */

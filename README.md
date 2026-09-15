@@ -56,7 +56,20 @@ and shuffle tools. Manual actions are recorded in the same history as everything
 stay replayable.
 
 Current coverage across the 33,574-card pool (run `pnpm cards:coverage` for the live number):
-about 40% of cards fully automated, another 36% partially, 24% manual.
+41% of cards fully automated, another 36% partially, 23% manual.
+
+## Play it
+
+- **Browser-only (solo / goldfish):** the client is deployed to GitHub Pages from `main` by
+  `.github/workflows/pages.yml`: https://ajm4n.github.io/commanderonline/ . Everything runs in the
+  tab; cards and images come from Scryfall. Multiplayer needs a server, so the "Create room" panel
+  shows the server as offline there.
+- **Full stack (multiplayer rooms, URL import):** one container serves the API, the WebSocket
+  server and the built client, with the Scryfall card pool fetched at build time.
+  - Render: fork the repo, then https://render.com/deploy?repo=https://github.com/ajm4n/commanderonline
+    (the `render.yaml` blueprint uses the Dockerfile; the free tier works, it just sleeps when idle).
+  - Fly.io: `fly launch --copy-config --no-deploy && fly deploy` using the included `fly.toml`.
+  - Anywhere with Docker: `docker build -t commander . && docker run -p 8787:8787 commander`.
 
 ## Development
 
@@ -64,10 +77,38 @@ about 40% of cards fully automated, another 36% partially, 24% manual.
 pnpm -r typecheck
 pnpm -r test              # engine, cards, deck-import and server tests
 pnpm cards:coverage       # compiler coverage report with the most common unhandled lines
+pnpm --filter @commander/web e2e   # browser tests: needs a running server (E2E_URL, default :8790)
 ```
+
+The browser tests in `apps/web/test/e2e` drive the real client with Playwright: a solo game
+played for several turns through clicks (lands, spells, targets, attacks), and a two-browser
+multiplayer game (room code, ready, start, hidden information, reconnect). Set `PW_CHROMIUM` to
+your Chromium binary if it is not at the default path.
 
 Adding automation for a card: write a `CardScript` in `packages/cards/src/scripts/index.ts`
 (hand scripts win over compiled ones), or teach the compiler a new template in
 `packages/cards/src/compiler`. The coverage report lists the templates that would pay off most.
 
 See `ARCHITECTURE.md` for the engine design.
+
+## Known gaps and what's next
+
+Fixed since the first cut: level up and LEVEL blocks, Plot, Warp, Station and STATION blocks,
+Monstrosity, control-changing auras ("You control enchanted creature"), self cost reductions
+("costs {1} less to cast for each ...", affinity), and convoke, delve and improvise payment. The
+client and server are covered by browser tests (multi-turn solo play and a two-browser game).
+
+Still open, roughly in order of value:
+
+- **Compiler long tail.** About 23% of the pool has no automation and 36% is partial. The
+  coverage report ranks what is left; the biggest remaining templates are "target player reveals
+  their hand, you choose a card, they discard it", Class cards, "can't be blocked by creatures
+  with power N or less", Saga transform-and-return, dice rolls, the Ring and the initiative.
+- **Mana payment is auto-tap.** The engine picks lands for you (Arena-style); there is no manual
+  "tap exactly these" prompt yet, and hybrid or phyrexian edge cases pay the simplest way.
+- **Copies choose no new targets.** Copying a spell keeps the original's targets.
+- **Layer edge cases.** Dependencies between continuous effects (rule 613.8) are ordered by
+  timestamp only; copy effects of copies and some CDAs are approximations.
+- **Tokens with granted text.** "Create a token with 'Whenever ...'" tokens carry the text but the
+  compiler does not script it until that text is a known template.
+- **No spectators or replays UI.** Games are replayable from history in code, not in the client.

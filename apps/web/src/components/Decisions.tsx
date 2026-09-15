@@ -62,7 +62,7 @@ export function DecisionBar({ view, decision, respond }: Omit<Props, 'handlers'>
                 {d.canPlayLand ? ' · land drop available' : ''}
               </div>
             </div>
-            <button className="pass gold pulse" onClick={() => respond({ type: 'pass' })} title="Pass priority (Space)">
+            <button className="pass gold pulse" data-testid="pass" onClick={() => respond({ type: 'pass' })} title="Pass priority (Space)">
               {view.stack.length ? 'Pass (resolve)' : 'Pass'} <span className="kbd">␣</span>
             </button>
           </>
@@ -82,7 +82,7 @@ export function DecisionBar({ view, decision, respond }: Omit<Props, 'handlers'>
                 ))}
               </div>
             </div>
-            <button className="primary" disabled={!ok} onClick={() => respond({ type: 'targets', targets: d.slots.map((_, i) => ui.targets[i] ?? []) })}>
+            <button className="primary" data-testid="confirm-targets" disabled={!ok} onClick={() => respond({ type: 'targets', targets: d.slots.map((_, i) => ui.targets[i] ?? []) })}>
               Confirm
             </button>
             <button onClick={() => respond({ type: 'cancel' })}>Cancel</button>
@@ -112,10 +112,10 @@ export function DecisionBar({ view, decision, respond }: Omit<Props, 'handlers'>
                 {defenders.length > 1 && <span className="sub">(or click an opponent)</span>}
               </div>
             </div>
-            <button onClick={attackAll} disabled={d.candidates.length === 0}>
+            <button data-testid="attack-all" onClick={attackAll} disabled={d.candidates.length === 0}>
               All
             </button>
-            <button className="primary" onClick={() => respond({ type: 'attackers', attacks: Object.entries(ui.attacks).map(([a, t]) => ({ attacker: Number(a), target: t })) })}>
+            <button className="primary" data-testid="confirm-attackers" onClick={() => respond({ type: 'attackers', attacks: Object.entries(ui.attacks).map(([a, t]) => ({ attacker: Number(a), target: t })) })}>
               {n ? `Attack with ${n}` : 'No attacks'} <span className="kbd">␣</span>
             </button>
           </>
@@ -135,7 +135,7 @@ export function DecisionBar({ view, decision, respond }: Omit<Props, 'handlers'>
                 {ui.blocks.length === 0 && <span className="sub">{d.candidates.length} potential blocker(s), {d.attackers.length} attacker(s)</span>}
               </div>
             </div>
-            <button className="primary" onClick={() => respond({ type: 'blockers', blocks: ui.blocks })}>
+            <button className="primary" data-testid="confirm-blockers" onClick={() => respond({ type: 'blockers', blocks: ui.blocks })}>
               {ui.blocks.length ? `Block with ${ui.blocks.length}` : 'No blocks'} <span className="kbd">␣</span>
             </button>
           </>
@@ -147,7 +147,7 @@ export function DecisionBar({ view, decision, respond }: Omit<Props, 'handlers'>
               <div className="prompt">{d.prompt}</div>
               <div className="sub">Mulligans taken: {d.mulligansTaken}. Your hand is shown below.</div>
             </div>
-            <button className="primary" onClick={() => respond({ type: 'mulligan', keep: true })}>
+            <button className="primary" data-testid="keep" onClick={() => respond({ type: 'mulligan', keep: true })}>
               Keep <span className="kbd">␣</span>
             </button>
             <button onClick={() => respond({ type: 'mulligan', keep: false })}>Mulligan</button>
@@ -157,7 +157,7 @@ export function DecisionBar({ view, decision, respond }: Omit<Props, 'handlers'>
         return (
           <>
             <div className="prompt">{d.prompt}</div>
-            <button className="primary" onClick={() => respond({ type: 'yesNo', value: true })}>
+            <button className="primary" data-testid="yes" onClick={() => respond({ type: 'yesNo', value: true })}>
               {d.yesLabel ?? 'Yes'}
             </button>
             <button onClick={() => respond({ type: 'yesNo', value: false })}>{d.noLabel ?? 'No'}</button>

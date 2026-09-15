@@ -95,6 +95,8 @@ export interface GameObject {
   faceIndex: number;
   owner: PlayerId;
   controller: PlayerId;
+  /** Controller before continuous control-changing effects (layer 2) apply. */
+  baseController: PlayerId;
   zone: ZoneName;
   tapped: boolean;
   flipped: boolean;
@@ -276,7 +278,7 @@ export type Modification =
   | { layer: '7b'; setPower?: number; setToughness?: number }
   | { layer: '7c'; power: number; toughness: number }
   | { layer: '7d'; switchPT: true }
-  | { layer: 'control'; controller: PlayerId } // layer 2
+  | { layer: 'control'; controller: PlayerId | 'sourceController' } // layer 2
   | { layer: 'copy'; card: CardData } // layer 1
   | { layer: 'rule'; rule: RuleModification }; // non-characteristic rule changes
 
@@ -414,6 +416,7 @@ export type GameEventName =
   | 'coinFlipped'
   | 'controlChanged'
   | 'becomesMonarch'
+  | 'becomesMonstrous'
   | 'cleanup';
 
 export interface GameEvent {
@@ -456,6 +459,8 @@ export interface PriorityDecision extends DecisionBase {
   /** Which actions the player can legally take right now. */
   playableCards: ObjectId[];
   activatableAbilities: { objectId: ObjectId; abilityIndex: number; text: string }[];
+  /** Alternative ways to cast a playable card (warp, evoke, ...). */
+  alternativeCosts: { objectId: ObjectId; id: string; label: string }[];
   canPlayLand: boolean;
 }
 

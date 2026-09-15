@@ -126,6 +126,10 @@ export interface ManaSourceOption {
   alternatives: ManaColor[][];
   /** Penalty for using this source (prefer basics / single-color sources first). */
   priority: number;
+  /** Mana from this source can only pay generic costs (delve, improvise). */
+  genericOnly?: boolean;
+  /** Virtual sources created by casting keywords. */
+  kind?: 'mana' | 'convoke' | 'improvise' | 'delve';
 }
 
 export interface Payment {
@@ -235,7 +239,7 @@ export function solvePayment(cost: ManaCost, x: number, pool: ManaPool, sources:
       const used: number[] = [];
       for (const color of produced) {
         // find an unsatisfied colored req first, else generic
-        let idx = todo.findIndex((r, i) => !satisfied[i] && r.options !== 'any' && (r.options as ManaColor[]).includes(color));
+        let idx = src.genericOnly ? -1 : todo.findIndex((r, i) => !satisfied[i] && r.options !== 'any' && (r.options as ManaColor[]).includes(color));
         if (idx === -1) idx = todo.findIndex((r, i) => !satisfied[i] && r.options === 'any');
         if (idx === -1) break;
         satisfied[idx] = true;

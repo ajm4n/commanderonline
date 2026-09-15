@@ -1473,3 +1473,6 @@ h3 {
     flex-basis: 150px;
   }
 }
+
+.bf-row.command { border-left: 2px solid rgba(255, 200, 80, 0.35); padding-left: 8px; position: relative; }
+.bf-label { position: absolute; top: -10px; left: 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 200, 80, 0.7); }

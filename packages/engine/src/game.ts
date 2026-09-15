@@ -209,6 +209,7 @@ export class Game {
       faceIndex: 0,
       owner,
       controller: owner,
+      baseController: owner,
       zone,
       tapped: false,
       flipped: false,
@@ -505,6 +506,8 @@ export class Game {
     if (r) return r;
     r = [];
     for (const line of text.split('\n')) {
+      // Level / station blocks grant their keywords conditionally (handled by scripts), not always.
+      if (/^(LEVEL|STATION) \d/.test(line)) break;
       // Keyword lines: "Flying, first strike" / "Trample" / "Ward {2}" / "Flying; Haste"
       const clean = line.replace(/\s*\([^)]*\)/g, '').trim();
       if (!clean) continue;
@@ -645,6 +648,12 @@ export class Game {
       }
       // Effects that last until the source leaves end now.
       this.state.continuousEffects = this.state.continuousEffects.filter((ce) => !(ce.duration === 'untilSourceLeaves' && ce.sourceId === id));
+    }
+    // A zone change makes a new object: effects locked onto the old one end (rule 400.7).
+    if (fromZone !== toZone) {
+      this.state.continuousEffects = this.state.continuousEffects
+        .map((ce) => (ce.affected.kind === 'fixed' && ce.affected.ids.includes(id) ? { ...ce, affected: { kind: 'fixed' as const, ids: ce.affected.ids.filter((x) => x !== id) } } : ce))
+        .filter((ce) => !(ce.affected.kind === 'fixed' && ce.affected.ids.length === 0));
       const exiled = obj.memory['exiledUntilLeaves'] as ObjectId[] | undefined;
       if (exiled?.length) this.pendingReturns.push(...exiled);
     }
@@ -668,16 +677,21 @@ export class Game {
     obj.controlSinceTurn = this.state.turn.number;
     if (toZone !== 'stack' && toZone !== 'battlefield') {
       obj.controller = obj.owner;
+      obj.baseController = obj.owner;
       obj.xValue = undefined;
       obj.modes = undefined;
       obj.additionalCostsPaid = [];
       obj.wasCast = false;
-      obj.memory = {};
+      // Exile keeps "you may cast this from exile" style memory; other zones start clean.
+      if (toZone !== 'exile') obj.memory = {};
+      else obj.memory = Object.fromEntries(Object.entries(obj.memory).filter(([k]) => ['playableBy', 'playableUntil', 'plotted', 'freeCast', 'sorceryOnly', 'adventureExiled', 'exileOnResolve'].includes(k)));
       obj.chosen = {};
       if (toZone !== 'exile' || !opts.sourceId) obj.faceIndex = 0;
     } else if (opts.controller) {
       obj.controller = opts.controller;
+      obj.baseController = opts.controller;
     }
+    if (toZone === 'battlefield') obj.baseController = obj.controller;
     if (toZone === 'battlefield' && fromZone === 'stack') {
       // Spells resolving keep controller/X/modes.
     }
@@ -736,6 +750,7 @@ export class Game {
     const id = this.state.nextObjectId++;
     const obj = this.newObject(id, card, owner, zone);
     obj.controller = opts.controller ?? owner;
+    obj.baseController = obj.controller;
     obj.tapped = opts.tapped ?? false;
     obj.counters = opts.counters ? { ...opts.counters } : {};
     obj.timestamp = this.now();

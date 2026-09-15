@@ -47,7 +47,7 @@ export function Lobby() {
             {mode === 'online' && (
               <div className="panel row wrap">
                 <span className="muted">Join code</span>
-                <span className="joincode">{lobby.joinCode || lobby.roomId}</span>
+                <span className="joincode" data-testid="joincode">{lobby.joinCode || lobby.roomId}</span>
                 <button
                   className="sm"
                   onClick={() => {
@@ -102,7 +102,7 @@ export function Lobby() {
                 </button>
                 <span className="grow" />
                 {mode === 'online' && (
-                  <button className={me?.ready ? '' : 'primary'} disabled={!deck} onClick={() => setReady(!me?.ready)}>
+                  <button className={me?.ready ? '' : 'primary'} data-testid="ready" disabled={!deck} onClick={() => setReady(!me?.ready)}>
                     {me?.ready ? 'Not ready' : 'Ready'}
                   </button>
                 )}
@@ -121,7 +121,7 @@ export function Lobby() {
                   <span className="muted small">{mode === 'solo' ? 'Bots play a copy of your deck.' : 'Bots are goldfish seats that auto-pass.'}</span>
                 </div>
                 <div className="row wrap">
-                  <button className="primary gold" disabled={!canStart} onClick={startGame}>
+                  <button className="primary gold" data-testid="start-game" disabled={!canStart} onClick={startGame}>
                     Start game
                   </button>
                   {!deck && <span className="warning">You need a deck first.</span>}

@@ -32,6 +32,7 @@ export function PlayerPanel({ view, player: p, compact, legal, selected, onAvata
         <div
           className={`avatar ${legal ? 'legal' : ''} ${selected ? 'selected' : ''} ${waiting ? 'priority' : ''}`}
           style={{ background: avatarColor(view, p.id) }}
+          data-player={p.id}
           onClick={(e) => onAvatarClick(p.id, e)}
           onContextMenu={(e) => {
             e.preventDefault();

@@ -110,6 +110,24 @@ export function* checkStateBasedActions(g: Game): Gen {
       }
     }
 
+    // Control-changing continuous effects (layer 2) take effect here.
+    for (const id of [...g.state.battlefield]) {
+      const o = g.state.objects[id];
+      if (!o) continue;
+      const ch = g.characteristics(id);
+      if (ch.controller !== o.controller && g.state.players[ch.controller] && !g.state.players[ch.controller].lost) {
+        const prev = o.controller;
+        o.controller = ch.controller;
+        o.controlSinceTurn = g.state.turn.number;
+        o.attacking = null;
+        o.blocking = [];
+        g.touch();
+        g.log(`${g.player(ch.controller).name} gains control of ${g.nameOf(id)}.`);
+        g.emit({ name: 'controlChanged', objectId: id, playerId: ch.controller, otherPlayerId: prev });
+        changed = true;
+      }
+    }
+
     // Legend rule
     const groups = new Map<string, ObjectId[]>();
     for (const id of g.state.battlefield) {
