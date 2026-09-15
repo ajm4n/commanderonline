@@ -66,6 +66,14 @@ export function* executeEffects(g: Game, effects: Effect[], ctx: EffectContext):
   }
 }
 
+/** Track discards made by the current effect for "that many"/"the greatest number" follow-ups. */
+function rememberDiscard(ctx: EffectContext, p: PlayerId, ids: ObjectId[]) {
+  ctx.memory[`discarded:${p}`] = ((ctx.memory[`discarded:${p}`] as number) ?? 0) + ids.length;
+  ctx.memory['discardedCount'] = ((ctx.memory['discardedCount'] as number) ?? 0) + ids.length;
+  ctx.memory['maxDiscarded'] = Math.max((ctx.memory['maxDiscarded'] as number) ?? 0, ids.length);
+  ctx.memory['lastDiscarded'] = ids;
+}
+
 function playersOf(g: Game, ref: Ref | undefined, ctx: EffectContext): PlayerId[] {
   return ref ? g.resolvePlayers(ref, ctx) : [ctx.controller];
 }
@@ -74,7 +82,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
   const amt = (a: Amount) => g.resolveAmount(a, ctx);
   switch (e.kind) {
     case 'draw':
-      for (const p of playersOf(g, e.who, ctx)) g.drawCards(p, amt(e.amount));
+      for (const p of playersOf(g, e.who, ctx)) g.drawCards(p, g.resolveAmount(e.amount, { ...ctx, iter: { kind: 'player', id: p } }));
       return;
     case 'gainLife':
       for (const p of playersOf(g, e.who, ctx)) g.gainLife(p, amt(e.amount), ctx.sourceId ?? undefined);
@@ -306,6 +314,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const all = [...pl.hand];
           for (const id of all) g.moveObject(id, 'graveyard', { cause: 'discard' });
           if (all.length) g.emit({ name: 'discardBatch', playerId: p, amount: all.length, objectId: all[0] });
+          rememberDiscard(ctx, p, all);
           continue;
         }
         const n = Math.min(amt(e.amount), pl.hand.length);
@@ -320,6 +329,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         }
         for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'discard' });
         if (ids.length) g.emit({ name: 'discardBatch', playerId: p, amount: ids.length, objectId: ids[0] });
+        rememberDiscard(ctx, p, ids);
       }
       return;
     case 'discardObjects': {
@@ -688,6 +698,43 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         o.memory['playableUntil'] = e.duration === 'permanent' ? 'permanent' : g.state.turn.number;
       }
       return;
+    case 'moveAll': {
+      const moved: ObjectId[] = [];
+      for (const p of g.resolvePlayers(e.who, ctx)) {
+        for (const id of [...g.zoneList(p, e.from)]) {
+          const r = g.moveObject(id, e.to, { cause: e.to === 'exile' ? 'exile' : 'other', sourceId: ctx.sourceId ?? undefined });
+          if (r) moved.push(r.id);
+        }
+      }
+      ctx.memory['lastMoved'] = moved;
+      return;
+    }
+    case 'choosePlayer': {
+      const cands = e.who === 'opponent' ? g.opponentsOf(ctx.controller) : g.state.playerOrder.filter((p) => !g.player(p).lost);
+      if (!cands.length) return;
+      let pick = cands[0];
+      if (cands.length > 1) {
+        const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: e.who === 'opponent' ? 'Choose an opponent' : 'Choose a player', options: cands.map((p) => ({ id: p, label: g.player(p).name })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        if (resp.type === 'options') pick = resp.ids[0];
+      }
+      setMemory(g, ctx, e.key, pick);
+      return;
+    }
+    case 'grantAbility': {
+      const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
+      if (!ids.length) return;
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 6, addAbilityText: [e.text] } });
+      return;
+    }
+    case 'switchPT': {
+      const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
+      if (!ids.length) return;
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: '7d', switchPT: true } });
+      return;
+    }
+    case 'extraLandThisTurn':
+      for (const p of playersOf(g, e.who, ctx)) g.player(p).landsPlayedThisTurn--;
+      return;
     case 'chooseColor': {
       const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Choose a color', options: COLORS.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
       const c = resp.type === 'options' ? resp.ids[0] : 'W';
@@ -1039,7 +1086,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
   const ectx: EffectContext = { sourceId: id, controller, targets: [], triggerContext: {}, x: o.xValue ?? 0, modes: o.modes ?? [], memory: {} };
   for (const ab of script.abilities) {
     if (ab.kind !== 'replacement' || ab.event !== 'entersBattlefield' || !ab.self) continue;
-    if (ab.tapped) tapped = true;
+    if (ab.tapped && !(ab.unless && g.checkCondition(ab.unless, { sourceId: id, controller }))) tapped = true;
     if (ab.payLifeOrTapped !== undefined) {
       let paid = false;
       if (g.player(controller).life >= ab.payLifeOrTapped) {

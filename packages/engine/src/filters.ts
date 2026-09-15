@@ -76,6 +76,18 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.historic && !(ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga'))) return false;
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;
+  if (filter.ptSumLE !== undefined && !(ch.power !== null && ch.toughness !== null && ch.power + ch.toughness <= filter.ptSumLE)) return false;
+  if (filter.highestPower) {
+    const rest: ObjectFilter = { ...filter, highestPower: undefined, controller: undefined };
+    let best = -Infinity;
+    for (const other of Object.values(g.state.objects)) {
+      if (other.zone !== zone || other.controller !== obj.controller) continue;
+      if (!matchesFilter(g, other, rest, ctx)) continue;
+      const p = g.characteristics(other.id).power;
+      if (p !== null && p > best) best = p;
+    }
+    if (ch.power === null || ch.power < best) return false;
+  }
   return true;
 }
 

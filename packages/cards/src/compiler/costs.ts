@@ -1,7 +1,8 @@
 /** Activated-ability cost parsing. */
-import type { AbilityCost } from '@commander/engine';
+import type { AbilityCost, Condition } from '@commander/engine';
 import { parseNoun } from './nouns.js';
 import { wordToNumber } from './text.js';
+import { parseCondition } from './conditions.js';
 
 const MANA_RE = /^(?:\{[^}]+\})+$/;
 
@@ -74,10 +75,15 @@ export function parseCost(text: string): AbilityCost | null {
 }
 
 /** Trailing restrictions: "Activate only as a sorcery." etc. */
-export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; yourTurn?: boolean; unhandled?: string } {
+const STEP_WORDS: Record<string, string[]> = { upkeep: ['upkeep'], 'draw step': ['draw'], 'end step': ['end'], combat: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'], 'main phase': ['main1', 'main2'], 'precombat main phase': ['main1'], 'postcombat main phase': ['main2'], 'declare attackers step': ['declareAttackers'], 'declare blockers step': ['declareBlockers'] };
+
+export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
   let t = text.trim();
-  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; yourTurn?: boolean; unhandled?: string } = { text: t };
+  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
   let m: RegExpMatchArray | null;
+  const addCond = (c: Condition) => {
+    out.condition = out.condition ? { kind: 'and', cs: [out.condition, c] } : c;
+  };
   for (;;) {
     if ((m = t.match(/^(.*?)\s*Activate only as a sorcery\.?$/i))) {
       out.sorcerySpeed = true;
@@ -87,6 +93,21 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only during your turn\.?$/i))) {
       out.yourTurn = true;
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during your turn, before attackers are declared\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers'], player: 'you', beforeAttackers: true });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during (your|an opponent's|each|the) (upkeep|draw step|end step|combat|main phase|precombat main phase|postcombat main phase|declare attackers step|declare blockers step)\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: STEP_WORDS[m[3].toLowerCase()], player: m[2].toLowerCase() === 'your' ? 'you' : /opponent/i.test(m[2]) ? 'opponent' : 'any' });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during an opponent's turn\.?$/i))) {
+      addCond({ kind: 'notYourTurn' });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during combat\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: STEP_WORDS.combat });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only if (.+?)\.?$/i)) && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })) {
+      addCond(parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })!);
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only (.+?)\.?$/i))) {
       out.unhandled = `Activate only ${m[2]}`;

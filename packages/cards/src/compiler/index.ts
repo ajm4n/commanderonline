@@ -19,7 +19,7 @@ export interface CompileResult {
   unhandledLines: string[];
 }
 
-const KEYWORD_LINE_RE = /^(Flying|First strike|Double strike|Deathtouch|Lifelink|Trample|Vigilance|Haste|Flash|Defender|Reach|Menace|Hexproof|Indestructible|Shroud|Fear|Intimidate|Skulk|Horsemanship|Shadow|Infect|Wither|Toxic \d+|Prowess|Changeling|Devoid|Partner|Partner with [^,;]+|Friends forever|Choose a Background|Ward (?:\{[^}]+\})+|Ward—[^.]+|Protection from [^,;]+|Hexproof from [^,;]+|Enchant [^,;]+|Equip (?:\{[^}]+\})+|Equip \d+|Kicker (?:\{[^}]+\})+|Flashback (?:\{[^}]+\})+|Flashback—[^.]+|Cycling (?:\{[^}]+\})+|Undying|Persist|Exalted|Convoke|Delve|Affinity for \w+|Improvise|Cascade|Storm|Rebound|Split second|Riot|Unleash|Mentor|Landwalk|Islandwalk|Swampwalk|Forestwalk|Mountainwalk|Plainswalk|Flanking|Bushido \d+|Rampage \d+|Annihilator \d+|Battle cry|Extort|Ingest|Myriad|Melee|Dethrone|Afflict \d+|Fabricate \d+|Crew \d+|Ninjutsu (?:\{[^}]+\})+|Commander ninjutsu (?:\{[^}]+\})+|Buyback (?:\{[^}]+\})+|Evoke (?:\{[^}]+\})+|Escape—[^.]+|Unearth (?:\{[^}]+\})+|Emerge (?:\{[^}]+\})+|Madness (?:\{[^}]+\})+|Morph (?:\{[^}]+\})+|Megamorph (?:\{[^}]+\})+|Disguise (?:\{[^}]+\})+|Miracle (?:\{[^}]+\})+|Dredge \d+|Suspend \d+—(?:\{[^}]+\})+|Vanishing \d+|Fading \d+|Echo (?:\{[^}]+\})+|Cumulative upkeep [^.]+|Modular \d+|Sunburst|Graft \d+|Bloodthirst \d+|Devour \d+|Undaunted|Living weapon|Daybound|Nightbound|Decayed|Disturb (?:\{[^}]+\})+|Training|Backup \d+|Blitz (?:\{[^}]+\})+|Casualty \d+|Enlist|Ravenous|Boast — [^.]+|Foretell (?:\{[^}]+\})+|Squad (?:\{[^}]+\})+|Reconfigure (?:\{[^}]+\})+|Compleated|For Mirrodin!|Prototype [^.]+|Encore (?:\{[^}]+\})+|Mutate (?:\{[^}]+\})+|Escalate (?:\{[^}]+\})+|Surge (?:\{[^}]+\})+|Awaken \d+—(?:\{[^}]+\})+|Renown \d+|Outlast (?:\{[^}]+\})+|Prowl (?:\{[^}]+\})+|Conspire|Retrace|Reinforce \d+—(?:\{[^}]+\})+|Champion [^.]+|Evolve|Cipher|Bestow (?:\{[^}]+\})+|Tribute \d+|Dash (?:\{[^}]+\})+|Embalm (?:\{[^}]+\})+|Eternalize (?:\{[^}]+\})+|Exert|Ascend|Jump-start|Afterlife \d+|Spectacle (?:\{[^}]+\})+|Amass \w+ \d+|Adventure|Offspring (?:\{[^}]+\})+|Impending \d+—(?:\{[^}]+\})+|Gift [^.]+|Bargain|Cleave (?:\{[^}]+\})+|Companion — [^.]+|Level up (?:\{[^}]+\})+|Soulbond|Haunt|Aura swap (?:\{[^}]+\})+|Fortify (?:\{[^}]+\})+|Transmute (?:\{[^}]+\})+|Ripple \d+|Frenzy \d+|Gravestorm|Poisonous \d+|Recover (?:\{[^}]+\})+|Absorb \d+|Vanishing|Wither|Provoke|Entwine (?:\{[^}]+\})+|Splice onto [^.]+|Offering|Epic|Hidden agenda|Double agenda|Assist|Legendary landwalk|Nonbasic landwalk|Desertwalk|Phasing|Banding|Rampage|Shadow|Totem armor|Vigilance|Hideaway \d+|Job select|Start your engines!|Saddle \d+|Spree|Plot|Freerunning (?:\{[^}]+\})+|Umbra armor|Devoid)$/i;
+const KEYWORD_LINE_RE = /^(Flying|First strike|Double strike|Deathtouch|Lifelink|Trample|Vigilance|Haste|Flash|Defender|Reach|Menace|Hexproof|Indestructible|Shroud|Fear|Intimidate|Skulk|Horsemanship|Shadow|Infect|Wither|Toxic \d+|Prowess|Changeling|Devoid|Partner|Partner with [^,;]+|Friends forever|Choose a Background|Ward (?:\{[^}]+\})+|Ward—[^.]+|Protection from [^,;]+|Hexproof from [^,;]+|Enchant [^,;]+|Equip (?:\{[^}]+\})+|Equip \d+|Kicker (?:\{[^}]+\})+|Flashback (?:\{[^}]+\})+|Flashback—[^.]+|Cycling (?:\{[^}]+\})+|Undying|Persist|Exalted|Convoke|Delve|Affinity for \w+|Improvise|Cascade|Storm|Rebound|Split second|Riot|Unleash|Mentor|Landwalk|Islandwalk|Swampwalk|Forestwalk|Mountainwalk|Plainswalk|Flanking|Bushido \d+|Rampage \d+|Annihilator \d+|Battle cry|Extort|Ingest|Myriad|Melee|Dethrone|Afflict \d+|Fabricate \d+|Crew \d+|Ninjutsu (?:\{[^}]+\})+|Commander ninjutsu (?:\{[^}]+\})+|Buyback (?:\{[^}]+\})+|Evoke (?:\{[^}]+\})+|Escape—[^.]+|Unearth (?:\{[^}]+\})+|Emerge (?:\{[^}]+\})+|Madness (?:\{[^}]+\})+|Morph (?:\{[^}]+\})+|Megamorph (?:\{[^}]+\})+|Disguise (?:\{[^}]+\})+|Miracle (?:\{[^}]+\})+|Dredge \d+|Suspend \d+—(?:\{[^}]+\})+|Vanishing \d+|Fading \d+|Echo (?:\{[^}]+\})+|Cumulative upkeep [^.]+|Modular \d+|Sunburst|Graft \d+|Bloodthirst \d+|Devour \d+|Undaunted|Living weapon|Daybound|Nightbound|Decayed|Disturb (?:\{[^}]+\})+|Training|Backup \d+|Blitz (?:\{[^}]+\})+|Casualty \d+|Enlist|Ravenous|Boast — [^.]+|Foretell (?:\{[^}]+\})+|Squad (?:\{[^}]+\})+|Reconfigure (?:\{[^}]+\})+|Compleated|For Mirrodin!|Prototype [^.]+|Encore (?:\{[^}]+\})+|Mutate (?:\{[^}]+\})+|Escalate (?:\{[^}]+\})+|Surge (?:\{[^}]+\})+|Awaken \d+—(?:\{[^}]+\})+|Renown \d+|Outlast (?:\{[^}]+\})+|Prowl (?:\{[^}]+\})+|Conspire|Retrace|Reinforce \d+—(?:\{[^}]+\})+|Champion [^.]+|Evolve|Cipher|Bestow (?:\{[^}]+\})+|Tribute \d+|Dash (?:\{[^}]+\})+|Embalm (?:\{[^}]+\})+|Eternalize (?:\{[^}]+\})+|Exert|Ascend|Jump-start|Afterlife \d+|Spectacle (?:\{[^}]+\})+|Amass \w+ \d+|Adventure|Offspring (?:\{[^}]+\})+|Impending \d+—(?:\{[^}]+\})+|Gift [^.]+|Bargain|Cleave (?:\{[^}]+\})+|Companion — [^.]+|Level up (?:\{[^}]+\})+|Soulbond|Haunt|Aura swap (?:\{[^}]+\})+|Fortify (?:\{[^}]+\})+|Transmute (?:\{[^}]+\})+|Ripple \d+|Frenzy \d+|Gravestorm|Poisonous \d+|Recover (?:\{[^}]+\})+|Absorb \d+|Vanishing|Wither|Provoke|Entwine (?:\{[^}]+\})+|Splice onto [^.]+|Offering|Epic|Hidden agenda|Double agenda|Assist|Legendary landwalk|Nonbasic landwalk|Desertwalk|Phasing|Banding|Rampage|Shadow|Totem armor|Vigilance|Hideaway \d+|Job select|Start your engines!|Saddle \d+|Spree|Plot|Freerunning (?:\{[^}]+\})+|Umbra armor|Devoid|Exploit|Soulshift \d+|Mobilize \d+)$/i;
 
 function isKeywordLine(line: string): boolean {
   const parts = line.replace(/\.$/, '').split(/[,;]\s*/);
@@ -48,6 +48,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   let modal: { text: string; targets?: TargetSpec[]; effects: Effect[] }[] | null = null;
   let minModes = 1;
   let maxModes = 1;
+  let modalMaxIf: { condition: Condition; max: number } | undefined;
+  let modalRepeatable = false;
   let additionalCost: CardScript['additionalCost'];
   const alternativeCosts: NonNullable<CardScript['alternativeCosts']> = [];
   const costModifiers: CostModifier[] = [];
@@ -74,7 +76,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     return null;
   };
   for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
+    let line = lines[li];
     let m: RegExpMatchArray | null;
     if ((m = line.match(/^(\d+)(?:\s*[—–-]\s*(\d+))?\s*\|\s*(.+)$/))) {
       if (!pendingRoll) for (const ab of [...abilities].reverse()) if ('effects' in ab && Array.isArray(ab.effects)) { pendingRoll = findRoll(ab.effects); if (pendingRoll) break; }
@@ -88,6 +90,12 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     } else pendingRoll = null;
+    // Spacecraft rows: "10+ | Whenever you attack, ..." are STATION thresholds with the ability on the same line.
+    if ((m = line.match(/^(\d+)\+ \| (.+)$/))) {
+      block = { condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: 'charge', op: '>=', value: parseInt(m[1], 10) }, station: true };
+      line = m[2];
+      m = null;
+    }
     // LEVEL a-b / LEVEL a+ / STATION a+ blocks
     if ((m = line.match(/^LEVEL (\d+)-(\d+)$/)) || (m = line.match(/^LEVEL (\d+)\+$/)) || (m = line.match(/^STATION (\d+)\+$/))) {
       const station = /^STATION/.test(line);
@@ -130,6 +138,18 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         compiledLines.push(line);
         continue;
       }
+    }
+    if ((m = line.match(/^Soulshift (\d+)$/i))) {
+      const n = parseInt(m[1], 10);
+      abilities.push({ kind: 'triggered', text: line, event: 'dies', filter: { self: true }, leavesTheBattlefield: true, optional: true, targets: [{ description: `target Spirit card with mana value ${n} or less from your graveyard`, kind: 'object', filter: { zone: 'graveyard', owner: 'you', subtypes: ['Spirit'], cmcLE: n }, min: 1, max: 1 }], effects: [{ kind: 'putIntoHand', what: { ref: 'target', slot: 0 } }] });
+      compiledLines.push(line);
+      continue;
+    }
+    if ((m = line.match(/^Mobilize (\d+)$/i))) {
+      const n = parseInt(m[1], 10);
+      abilities.push({ kind: 'triggered', text: line, event: 'attacks', filter: { self: true }, effects: [{ kind: 'createToken', token: { name: 'Warrior', typeLine: 'Creature — Warrior', power: '1', toughness: '1', colors: ['R'] }, count: n, tapped: true, attacking: true }, { kind: 'delayedTrigger', event: 'beginningOfEndStep', text: 'Mobilize: sacrifice the Warriors', effects: [{ kind: 'sacrifice', what: { ref: 'lastCreated' } }], once: true }] });
+      compiledLines.push(line);
+      continue;
     }
     if ((m = line.match(/^Level up ((?:\{[^}]+\})+)$/i))) {
       abilities.push({ kind: 'activated', text: line, cost: { mana: m[1] }, effects: [{ kind: 'addCounters', counter: 'level', amount: 1, on: { ref: 'self' } }], sorcerySpeed: true });
@@ -186,8 +206,19 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       continue;
     }
     // Modal spells
+    let maxModesIf: { condition: Condition; max: number } | undefined;
+    let repeatable = false;
+    if ((m = line.match(/^Choose (one)\. If you control a commander as you cast (?:this spell|~), you may choose both instead\.?$/i))) {
+      maxModesIf = { condition: { kind: 'controlsCommander' }, max: 2 };
+      line = 'Choose one';
+    } else if ((m = line.match(/^Choose (\w+)\. You may choose the same mode more than once\.?$/i))) {
+      repeatable = true;
+      line = `Choose ${m[1]}`;
+    }
     if ((m = line.match(/^Choose (one|two|three|one or both|one or more|any number|up to two|up to three)(?: —)?$/i))) {
       modal = [];
+      if (maxModesIf) modalMaxIf = maxModesIf;
+      if (repeatable) modalRepeatable = true;
       const w = m[1].toLowerCase();
       if (w === 'one') [minModes, maxModes] = [1, 1];
       else if (w === 'two') [minModes, maxModes] = [2, 2];
@@ -274,6 +305,10 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       } else ({ effects, unhandled } = parseEffects(split.rest, ctx));
       let condition: Condition | undefined;
       if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
+      if (head.exploit) {
+        // Exploit: on entering, you may sacrifice a creature; if you do, the exploit effects happen.
+        effects = [{ kind: 'may', prompt: 'Exploit: sacrifice a creature?', effects: [{ kind: 'sacrificeChoice', who: { ref: 'controller' }, filter: { types: ['Creature'], zone: 'battlefield' }, count: 1 }, ...effects] }];
+      }
       const heads = [head, ...(head.also ?? []).map((h) => ({ ...h, rest: head.rest }))];
       for (const h of heads) {
         const ab: TriggeredAbilitySpec = { kind: 'triggered', text: line, event: h.event, filter: h.filter, effects, targets: ctx.targets.length ? ctx.targets : undefined, optional: split.optional || undefined, condition, zone: h.zone, leavesTheBattlefield: h.leaves };
@@ -316,7 +351,10 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           continue;
         }
         const isMana = effects.length > 0 && effects.every((e) => e.kind === 'addMana' || (e.kind === 'chooseMode' && e.options.every((o) => o.effects.every((x) => x.kind === 'addMana')))) && ctx.targets.length === 0;
-        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, condition: rest.yourTurn ? { kind: 'yourTurn' } : undefined };
+        const conds: Condition[] = [];
+        if (rest.yourTurn) conds.push({ kind: 'yourTurn' });
+        if (rest.condition) conds.push(rest.condition);
+        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
         if (cost.discardSelf || cost.exileSelf && /from your graveyard/i.test(costText)) ab.zone = cost.discardSelf ? 'hand' : 'graveyard';
         if (rest.unhandled) {
           ab.condition = { kind: 'manual', text: `${rest.unhandled}?` };
@@ -353,7 +391,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   // Dice result rows ("1—9 | effect") attach to the preceding roll.
   void 0;
   if (isSpell || modal || spellEffects.length) {
-    if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, effects: [], targets: [] });
+    if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, maxModesIf: modalMaxIf, modesRepeatable: modalRepeatable || undefined, effects: [], targets: [] });
     else abilities.push({ kind: 'spell', effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : undefined });
     void spellTargets;
   }

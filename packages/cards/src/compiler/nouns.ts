@@ -79,6 +79,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
   if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)$/i))) return { ...result, target: true, kind: 'activatedOrTriggered' };
 
   // Quantifiers
+  text = text.replace(/^each of /i, '');
   if ((m = text.match(/^up to (\w+) target (.+)$/i))) {
     const n = wordToNumber(m[1]);
     if (n === null) return null;
@@ -113,7 +114,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
   }
 
   // Spells
-  if ((m = text.match(/^(.*?)\s*spells?$/i))) {
+  if ((m = text.match(/^(.*?)\s*spells?(?: (you control|an opponent controls|you do not control))?$/i))) {
     result.kind = 'spell';
     const pre = m[1].trim();
     if (pre) {
@@ -121,12 +122,13 @@ export function parseNoun(raw: string): ParsedNoun | null {
       if (!f) return null;
     }
     result.filter.zone = 'stack';
+    if (m[2]) result.filter.controller = /you control/i.test(m[2]) ? 'you' : 'opponent';
     return result;
   }
 
   // Trailing qualifiers
   const quals: string[] = [];
-  const QUAL_RE = /\s+(in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control|you own|you do not control|an opponent controls|your opponents control|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
+  const QUAL_RE = /\s+(in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control|you own|you do not control|an opponent controls|your opponents control|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|with total power and toughness \d+ or less|with the greatest power among creatures (?:that player|you) controls?|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
   for (;;) {
     const q = text.match(QUAL_RE);
     if (!q) break;
@@ -336,7 +338,9 @@ function applyQualifier(q: string, r: ParsedNoun) {
     const key = m[1] === 'power' ? 'power' : m[1] === 'toughness' ? 'toughness' : 'cmc';
     if (typeof n === 'number') (r.filter as Record<string, unknown>)[m[2] === 'less than' ? `${key}LE` : `${key}GE`] = m[2] === 'less than' ? n - 1 : n + 1;
     else r.confident = false;
-  } else if ((m = q.match(/^with mana value (\d+|x)$/))) {
+  } else if ((m = q.match(/^with total power and toughness (\d+) or less$/))) r.filter.ptSumLE = parseInt(m[1], 10);
+  else if (/^with the greatest power among creatures/.test(q)) r.filter.highestPower = true;
+  else if ((m = q.match(/^with mana value (\d+|x)$/))) {
     if (m[1] === 'x') r.confident = false;
     else r.filter.cmcEQ = parseInt(m[1], 10);
   } else if ((m = q.match(/^with a (\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)$/))) r.filter.hasCounter = m[1];

@@ -33,7 +33,7 @@ import type { Amount, CardScript, Condition, Effect, Ref, TriggeredAbilitySpec, 
 import { matchesFilter, objectsMatching, legalTargets, sameTarget, type FilterContext } from './filters.js';
 import { parseTypeLine } from './typeline.js';
 import { ENFORCED_KEYWORDS } from './keywords.js';
-import { executeEffects, type EffectContext } from './effects.js';
+import { executeEffects, enterBattlefield, type EffectContext } from './effects.js';
 import { buildPriorityDecision, castSpell, activateAbility, playLand, abilitiesOf } from './casting.js';
 import { resolveTopOfStack } from './resolve.js';
 import { runCombatStep } from './combat.js';
@@ -447,8 +447,26 @@ export class Game {
       s = this.scriptProvider(card);
       this.scriptCache.set(key, s);
     }
-    if (obj.faceIndex > 0 && s.faces?.[obj.faceIndex - 1]) return s.faces[obj.faceIndex - 1];
-    return s;
+    if (obj.faceIndex > 0 && s.faces?.[obj.faceIndex - 1]) s = s.faces[obj.faceIndex - 1];
+    // Granted rules text ("gains 'When this creature dies, ...'") compiles like any other oracle text.
+    const granted: string[] = [];
+    for (const ce of this.state.continuousEffects) {
+      if (ce.modification.layer !== 6 || !ce.modification.addAbilityText?.length) continue;
+      if (ce.affected.kind === 'fixed' ? !ce.affected.ids.includes(obj.id) : !matchesFilter(this, obj, ce.affected.filter, { sourceId: ce.sourceId, controller: ce.controller })) continue;
+      granted.push(...ce.modification.addAbilityText);
+    }
+    if (!granted.length) return s;
+    const extra: CardScript['abilities'] = [];
+    for (const text of granted) {
+      const gkey = `grant:${card.name}:${text}`;
+      let gs = this.scriptCache.get(gkey);
+      if (!gs) {
+        gs = this.scriptProvider({ ...card, oracleText: text, faces: undefined });
+        this.scriptCache.set(gkey, gs);
+      }
+      extra.push(...gs.abilities.filter((ab) => ab.kind !== 'spell'));
+    }
+    return { ...s, abilities: [...s.abilities, ...extra] };
   }
 
   characteristics(id: ObjectId): Characteristics {
@@ -736,6 +754,7 @@ export class Game {
         if (toZone === 'graveyard') this.emit({ name: 'dies', ...base, playerId: snapshot.controller });
       }
       if (toZone === 'graveyard') this.emit({ name: 'putIntoGraveyard', ...base, playerId: obj.owner });
+      if (fromZone === 'graveyard') this.emit({ name: 'leftGraveyard', ...base, playerId: obj.owner });
       if (toZone === 'exile') this.emit({ name: 'exiled', ...base, playerId: obj.owner });
       if (toZone === 'hand' && fromZone !== 'library') this.emit({ name: 'returnedToHand', ...base, playerId: obj.owner });
       if (toZone === 'battlefield') this.emit({ name: 'entersBattlefield', ...base, playerId: obj.controller });
@@ -910,6 +929,7 @@ export class Game {
     if (f.yourTurn && this.state.turn.activePlayer !== controller) return false;
     if (f.notYourTurn && this.state.turn.activePlayer === controller) return false;
     if (f.fromZone && e.fromZone !== f.fromZone) return false;
+    if (f.notFromZone && e.fromZone === f.notFromZone) return false;
     if (f.toZone && e.toZone !== f.toZone) return false;
     if (f.counterType && e.counterType !== f.counterType) return false;
     if (f.minAmount !== undefined && (e.amount ?? 0) < f.minAmount) return false;
@@ -1093,6 +1113,14 @@ export class Game {
       }
       case 'not':
         return !this.checkCondition(c.c, ctx);
+      case 'turnStep': {
+        const t = this.state.turn;
+        if (!c.steps.includes(t.step) && !c.steps.includes(t.phase)) return false;
+        if (c.player === 'you' && t.activePlayer !== ctx.controller) return false;
+        if (c.player === 'opponent' && t.activePlayer === ctx.controller) return false;
+        if (c.beforeAttackers && t.attackers.length > 0) return false;
+        return true;
+      }
       case 'and':
         return c.cs.every((x) => this.checkCondition(x, ctx));
       case 'or':
@@ -1169,6 +1197,16 @@ export class Game {
         const v = ctx.memory[a.key];
         return typeof v === 'number' ? v : Array.isArray(v) ? v.length : 0;
       }
+      case 'half': {
+        const v = this.resolveAmount(a.a, ctx);
+        return a.round === 'up' ? Math.ceil(v / 2) : Math.floor(v / 2);
+      }
+      case 'librarySize':
+        return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + this.player(p).library.length, 0);
+      case 'countRef':
+        return this.resolveObjects(a.ref, ctx).filter((o) => !a.filter || matchesFilter(this, o, { ...a.filter, zone: a.filter.zone ?? o.zone }, fctx)).length;
+      case 'discardedThisWay':
+        return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + ((ctx.memory[`discarded:${p}`] as number) ?? 0), 0);
       case 'differenceLife': {
         const f = this.resolvePlayers(a.from, ctx)[0];
         const t = this.resolvePlayers(a.to, ctx)[0];
@@ -1548,6 +1586,19 @@ export class Game {
       }
     }
     this.pendingTriggers = []; // draws during mulligan don't trigger anything
+    // Leylines: "If ~ is in your opening hand, you may begin the game with it on the battlefield."
+    for (const pid of this.state.playerOrder) {
+      for (const id of [...this.player(pid).hand]) {
+        const o = this.state.objects[id];
+        if (!o || !this.scriptFor(o).abilities.some((ab) => ab.kind === 'static' && ab.rule?.kind === 'custom' && ab.rule.tag === 'leyline')) continue;
+        const r = yield* this.ask({ type: 'yesNo', player: pid, prompt: `Begin the game with ${o.card.name} on the battlefield?`, sourceId: id });
+        if (r.type === 'yesNo' && r.value) {
+          yield* enterBattlefield(this, id, pid, {});
+          this.log(`${this.player(pid).name} begins the game with ${this.nameOf(id)} on the battlefield.`);
+        }
+      }
+    }
+    this.pendingTriggers = [];
     this.state.turnStats = {};
     for (const p of Object.values(this.state.players)) p.turnStats = {};
   }
@@ -1638,6 +1689,15 @@ export class Game {
           }
         }
         this.log(`${this.player(pid).name} untaps.`);
+        // "Doesn't untap during its controller's next untap step" has now been used up.
+        this.state.continuousEffects = this.state.continuousEffects.filter((ce) => {
+          if (ce.duration !== 'untilNextUntap') return true;
+          if (ce.affected.kind !== 'fixed') return false;
+          const remaining = ce.affected.ids.filter((id) => this.state.objects[id] && this.state.objects[id].controller !== pid);
+          if (!remaining.length) return false;
+          ce.affected = { kind: 'fixed', ids: remaining };
+          return true;
+        });
         // No priority in untap step.
         return;
       }
@@ -1649,6 +1709,10 @@ export class Game {
         yield* this.priorityRound();
         return;
       case 'draw':
+        if (this.playerRules(pid).some((r) => r.kind === 'custom' && r.tag === 'skipDrawStep')) {
+          this.log(`${this.player(pid).name} skips their draw step.`);
+          return;
+        }
         // Rule 103.8: in a two-player game, the starting player skips their first draw.
         if (!(this.state.turn.number === 1 && this.state.playerOrder.length === 2)) this.drawCards(pid, 1);
         this.emit({ name: 'beginningOfDraw', playerId: pid });

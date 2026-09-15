@@ -34,7 +34,13 @@ export type Amount =
   | { kind: 'max'; a: Amount; b: Amount }
   | { kind: 'chosenNumber' }
   | { kind: 'differenceLife'; from: Ref; to: Ref }
-  | { kind: 'ctxMemory'; key: string };
+  | { kind: 'ctxMemory'; key: string }
+  | { kind: 'half'; a: Amount; round?: 'up' | 'down' }
+  | { kind: 'librarySize'; ref: Ref }
+  /** Number of objects a Ref resolves to (optionally filtered), e.g. "creature cards milled this way". */
+  | { kind: 'countRef'; ref: Ref; filter?: ObjectFilter }
+  /** Cards the given player discarded by the current effect. */
+  | { kind: 'discardedThisWay'; ref: Ref };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -128,6 +134,8 @@ export type Condition =
   | { kind: 'hasInitiative'; ref?: Ref }
   | { kind: 'eventThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; who?: Ref; op?: Comparison; value?: number }
   | { kind: 'not'; c: Condition }
+  /** The current step/phase ("Activate only during your upkeep"). */
+  | { kind: 'turnStep'; steps: string[]; player?: 'you' | 'opponent' | 'any'; beforeAttackers?: boolean }
   | { kind: 'and'; cs: Condition[] }
   | { kind: 'or'; cs: Condition[] }
   | { kind: 'manual'; text: string }; // engine asks the controller yes/no
@@ -154,7 +162,7 @@ export interface TargetSpec {
 // Effects
 // ---------------------------------------------------------------------------
 
-export type Duration = 'endOfTurn' | 'permanent' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'endOfCombat';
+export type Duration = 'endOfTurn' | 'permanent' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'endOfCombat' | 'untilNextUntap';
 
 export type Effect =
   | { kind: 'draw'; amount: Amount; who?: Ref }
@@ -245,6 +253,14 @@ export type Effect =
   | { kind: 'skipTurn'; who: Ref }
   | { kind: 'monstrosity'; amount: Amount }
   | { kind: 'plot' }
+  /** Move every card of a player's zone somewhere else ("exile target player's graveyard"). */
+  | { kind: 'moveAll'; who: Ref; from: ZoneName; to: ZoneName }
+  /** Choose a player and remember them under `key` (readable as { ref: 'chosen', key }). */
+  | { kind: 'choosePlayer'; key: string; who: 'opponent' | 'any' }
+  /** Grant rules text ("gains 'When this creature dies, ...'"). */
+  | { kind: 'grantAbility'; text: string; on: Ref; duration?: Duration }
+  | { kind: 'switchPT'; on: Ref; duration?: Duration }
+  | { kind: 'extraLandThisTurn'; who?: Ref }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
 
 // ---------------------------------------------------------------------------
@@ -285,6 +301,8 @@ export interface TriggerFilter {
   minAmount?: number;
   /** Damage dealt to a player specifically (dealtDamage events). */
   toPlayer?: boolean;
+  /** For zone-change events: the object must not have come from this zone. */
+  notFromZone?: ZoneName;
   /** Custom */
   custom?: string;
 }
@@ -369,11 +387,15 @@ export interface SpellAbilitySpec {
   modes?: { text: string; targets?: TargetSpec[]; effects: Effect[] }[];
   minModes?: number;
   maxModes?: number;
+  /** "If you control a commander as you cast this spell, you may choose both instead." */
+  maxModesIf?: { condition: Condition; max: number };
+  /** "You may choose the same mode more than once." */
+  modesRepeatable?: boolean;
 }
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }

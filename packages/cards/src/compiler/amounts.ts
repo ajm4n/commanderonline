@@ -6,6 +6,13 @@ export interface RefCtx {
   self: Ref;
   lastObj: Ref | null;
   triggerHasObject: boolean;
+  lastPlayer?: Ref | null;
+  triggerHasPlayer?: boolean;
+}
+
+/** "their"/"that player's" inside an amount: the player the sentence is about. */
+function thatPlayer(ctx: RefCtx): Ref {
+  return ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : { ref: 'controller' });
 }
 
 /** Parse an amount phrase. Returns null if not understood. */
@@ -24,11 +31,27 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the life lost this way' || t === 'the total life lost this way' || t === 'the total amount of life lost this way' || t === 'the amount of life lost this way') return { kind: 'ctxMemory', key: 'lifeLostThisWay' };
   if (t === 'the number of cards milled this way' || t === 'the number of cards put into your graveyard this way') return { kind: 'ctxMemory', key: 'lastMoved' };
   if (t === 'twice that much' || t === 'twice that many') return { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 };
+  if (t === 'that many cards minus one' || t === 'that many minus one') return { kind: 'sum', parts: [{ kind: 'discardedThisWay', ref: { ref: 'iter' } }, -1] };
+  if (t === 'the greatest number of cards a player discarded this way') return { kind: 'ctxMemory', key: 'maxDiscarded' };
+  if (t === 'the number of cards discarded this way') return { kind: 'ctxMemory', key: 'discardedCount' };
+  if ((m = t.match(/^half (.+?)(?:, rounded (up|down))?$/))) {
+    const inner = parseAmount(oc(m, 1), ctx);
+    if (inner !== null) return { kind: 'half', a: inner, round: m[2] === 'up' ? 'up' : 'down' };
+  }
+  if ((m = t.match(/^the number of cards in (your|their|that player's) library$/))) return { kind: 'librarySize', ref: m[1] === 'your' ? { ref: 'controller' } : thatPlayer(ctx) };
+  if (t === 'their life total' || t === "that player's life total") return { kind: 'life', ref: thatPlayer(ctx) };
+  if (t === 'the number of cards in their library') return { kind: 'librarySize', ref: thatPlayer(ctx) };
+  if ((m = t.match(/^the number of (.+?) cards? put into (?:a|your|their) graveyard this way$/)) || (m = t.match(/^the number of (.+?) cards? milled this way$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)} card`);
+    if (noun) return { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: noun.filter };
+  }
   if ((m = t.match(/^(?:its|that creature's|~'s|this creature's) (power|toughness)$/))) {
     const ref = /~|this/.test(m[0]) ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.self);
     return { kind: m[1] as 'power' | 'toughness', ref };
   }
-  if ((m = t.match(/^(?:its|that card's|that spell's|~'s) mana value$/))) return { kind: 'manaValue', ref: /~/.test(m[0]) ? ctx.self : ctx.lastObj ?? { ref: 'triggerObject' } };
+  if ((m = t.match(/^(?:its|that card's|that spell's|that permanent's|that creature's|the sacrificed creature's|the exiled card's|~'s) mana value$/))) return { kind: 'manaValue', ref: /~/.test(m[0]) ? ctx.self : ctx.lastObj ?? { ref: 'triggerObject' } };
+  if ((m = t.match(/^the sacrificed (?:creature|permanent)'s (power|toughness)$/))) return { kind: m[1] as 'power', ref: ctx.lastObj ?? { ref: 'triggerObject' } };
+  if ((m = t.match(/^the number of cards in (that player's|their) hand$/))) return { kind: 'handSize', ref: thatPlayer(ctx) };
   if (t === 'your life total') return { kind: 'life', ref: { ref: 'controller' } };
   if (t === 'the number of cards in your hand' || t === 'the number of cards in hand') return { kind: 'handSize', ref: { ref: 'controller' } };
   if (t === 'the number of cards in that player\'s hand' || t === "the number of cards in their hand") return { kind: 'handSize', ref: { ref: 'triggerPlayer' } };

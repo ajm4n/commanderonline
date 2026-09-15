@@ -721,14 +721,28 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   const spell = script.abilities.find((a) => a.kind === 'spell');
   if (spell && spell.kind === 'spell' && spell.modes && spell.modes.length) {
     const min = spell.minModes ?? 1;
-    const max = spell.maxModes ?? 1;
+    let max = spell.maxModes ?? 1;
+    if (spell.maxModesIf && g.checkCondition(spell.maxModesIf.condition, { sourceId: id, controller: p })) max = Math.max(max, spell.maxModesIf.max);
     if (modes.length < min || modes.length > max) {
-      const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: `${face.name}: choose ${min === max ? min : `${min}-${max}`} mode${max > 1 ? 's' : ''}`, options: spell.modes.map((m, i) => ({ id: String(i), label: m.text })), min, max, sourceId: id });
-      if (r.type !== 'options') {
-        revert();
-        return false;
+      if (spell.modesRepeatable) {
+        // Pick one mode at a time so the same mode can be chosen repeatedly.
+        modes = [];
+        for (let k = 0; k < max; k++) {
+          const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: `${face.name}: choose mode ${k + 1} of ${max}`, options: spell.modes.map((m, i) => ({ id: String(i), label: m.text })), min: 1, max: 1, sourceId: id });
+          if (r.type !== 'options') {
+            revert();
+            return false;
+          }
+          modes.push(Number(r.ids[0]));
+        }
+      } else {
+        const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: `${face.name}: choose ${min === max ? min : `${min}-${max}`} mode${max > 1 ? 's' : ''}`, options: spell.modes.map((m, i) => ({ id: String(i), label: m.text })), min, max, sourceId: id });
+        if (r.type !== 'options') {
+          revert();
+          return false;
+        }
+        modes = r.ids.map(Number);
       }
-      modes = r.ids.map(Number);
     }
   }
   obj.modes = modes;

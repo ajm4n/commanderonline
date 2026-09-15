@@ -274,7 +274,7 @@ export interface ContinuousEffect {
   fromStatic: boolean;
   /** Which objects it affects: fixed set (locked in at creation) or a filter. */
   affected: { kind: 'fixed'; ids: ObjectId[] } | { kind: 'filter'; filter: ObjectFilter };
-  duration: 'permanent' | 'endOfTurn' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'thisTurn' | 'endOfCombat';
+  duration: 'permanent' | 'endOfTurn' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'thisTurn' | 'endOfCombat' | 'untilNextUntap';
   modification: Modification;
 }
 
@@ -357,6 +357,10 @@ export interface ObjectFilter {
   fromLibraryThisTurn?: boolean;
   /** Was put into its current zone this turn. */
   enteredZoneThisTurn?: boolean;
+  /** Power + toughness at most this ("total power and toughness 5 or less"). */
+  ptSumLE?: number;
+  /** Power equal to the greatest power among objects matching the rest of the filter for the same controller. */
+  highestPower?: boolean;
   custom?: string;
 }
 
@@ -387,6 +391,7 @@ export type GameEventName =
   | 'leavesBattlefield'
   | 'dies'
   | 'putIntoGraveyard'
+  | 'leftGraveyard'
   | 'exiled'
   | 'returnedToHand'
   | 'cast'

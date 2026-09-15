@@ -39,6 +39,24 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (inner) return inner.map((a) => (a.kind === 'static' ? { ...a, condition: { kind: 'yourTurn' as const } } : a));
   }
   if (/^~'s power and toughness are each equal to /i.test(L)) return [{ kind: 'static', text: line }];
+  // Compound: "Equipped creature cannot be blocked and has shroud."
+  if ((m = L.match(/^(.+?) (cannot be blocked|cannot block|cannot attack|cannot attack or block) and (?:has|have) (.+)$/i))) {
+    const a = parseStatic(`${m[1]} ${m[2]}`, isCreatureOrPermanent);
+    const b = parseStatic(`${m[1]} has ${m[3]}`, isCreatureOrPermanent);
+    if (a && b) return [...a, ...b];
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) not (?:a|an) (creature|artifact|enchantment|land|planeswalker)$/i))) {
+    const a = affectsOf(m[1]);
+    if (!a.ok) return null;
+    return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, removeTypes: [m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase()] } }];
+  }
+  if (/^Players cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'cantGainLife' } }];
+  if (/^Skip your draw step$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'skipDrawStep' } }];
+  if (/^If ~ is in your opening hand, you may begin the game with it on the battlefield$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'leyline' }, zone: 'hand' }];
+  if ((m = L.match(/^~ enters tapped unless (.+)$/i))) {
+    const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond && cond.kind !== 'manual') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, unless: cond }];
+  }
   if (/^You control (?:enchanted|equipped) (?:creature|permanent|artifact|land|planeswalker)$/i.test(L)) return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }];
   // Self replacements on dying / leaving
   if (/^If ~ would (?:die|be put into a graveyard from anywhere|be put into a graveyard), exile it instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'putIntoGraveyard', self: true, instead: 'exile' }];
@@ -65,7 +83,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } }];
     }
   }
-  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) in addition to (?:its|their) other (?:types|colors)$/i))) {
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) in addition to (?:its|their) other (?:types|colors|land types|creature types)$/i))) {
     const a = affectsOf(m[1]);
     if (!a.ok) return null;
     const words = m[2].split(/\s+/);

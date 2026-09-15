@@ -13,6 +13,8 @@ export interface TriggerHead {
   rest: string;
   /** Extra trigger heads for "attacks or blocks". */
   also?: Omit<TriggerHead, 'rest' | 'also'>[];
+  /** "When ~ exploits a creature": the effects run only if a creature was sacrificed on entering. */
+  exploit?: boolean;
 }
 
 function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
@@ -34,12 +36,14 @@ function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
 
 export function parseTriggerHead(line: string): TriggerHead | null {
   let m: RegExpMatchArray | null;
-  const L = line;
+  let L = line;
 
   // ETB
   if ((m = L.match(/^Whenever ~ enters or attacks, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true }] };
   if ((m = L.match(/^Whenever ~ enters or dies, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'dies', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false }] };
   if ((m = L.match(/^When(?:ever)? ~ enters(?: under your control)?, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When ~ exploits a creature, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], exploit: true };
+  if ((m = L.match(/^When(?:ever)? ~ enters (un)?tapped, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: `if ~ is ${m[1] ? 'untapped' : 'tapped'}, ${m[2]}` };
   if ((m = L.match(/^Whenever ~ or another (.+?) enters(?: under your control)?, (.+)$/i))) {
     const tf = nounFilter(m[1], { defaultYou: / under your control/i.test(m[0]) });
     if (!tf) return null;
@@ -63,6 +67,20 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     if (!tf) return null;
     delete tf.object!.other;
     return { event: 'dies', filter: tf, leaves: true, hasObject: true, hasPlayer: false, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever another creature dies, or a creature card is put into a graveyard from anywhere other than the battlefield, or a creature card leaves your graveyard, (.+)$/i))) {
+    return {
+      event: 'dies',
+      filter: { object: { types: ['Creature'], other: true } },
+      leaves: true,
+      hasObject: true,
+      hasPlayer: false,
+      rest: m[1],
+      also: [
+        { event: 'putIntoGraveyard', filter: { object: { types: ['Creature'] }, notFromZone: 'battlefield' }, hasObject: true, hasPlayer: false },
+        { event: 'leftGraveyard', filter: { object: { types: ['Creature'] }, player: 'you' }, hasObject: true, hasPlayer: false },
+      ],
+    };
   }
   if ((m = L.match(/^Whenever (?:a|an|another|one or more) (.+?) (?:dies|die), (.+)$/i))) {
     const tf = nounFilter(`${/^Whenever another/i.test(m[0]) ? 'another ' : 'a '}${m[1]}`);
@@ -141,8 +159,10 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     return { event, filter: tf, hasObject: false, hasPlayer: true, rest: m[3] };
   }
   if ((m = L.match(/^At the beginning of your turn, (.+)$/i))) return { event: 'beginningOfUpkeep', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^At the beginning of combat on (your|each) turn, (.+)$/i)) || (m = L.match(/^At the beginning of (each) combat, (.+)$/i))) return { event: 'beginningOfCombat', filter: { player: m[1] === 'your' ? 'you' : 'any' }, hasObject: false, hasPlayer: true, rest: m[2] };
   // Casting
   if ((m = L.match(/^When you cast ~, (.+)$/i)) || (m = L.match(/^When you cast this spell, (.+)$/i))) return { event: 'cast', filter: { self: true }, zone: 'stack', hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast or copy (?:a|an) (.+?) spell, (.+)$/i))) L = `Whenever you cast a ${m[1]} spell, ${m[2]}`; // copies are approximated by casts
   if ((m = L.match(/^Whenever you cast (?:a|an|your first) (.+?)(?: spell)?(?: each turn| during an opponent's turn| from your hand| from anywhere other than your hand)?, (.+)$/i))) {
     const nounText = m[1].replace(/ spell$/, '');
     const tf: TriggerFilter = { player: 'you' };
@@ -180,6 +200,21 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever (an opponent|a player) draws a card, (.+)$/i))) return { event: 'drawCard', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[2] };
   if ((m = L.match(/^Whenever you discard (a card|one or more cards), (.+)$/i))) return { event: /one or more/i.test(m[1]) ? 'discardBatch' : 'discard', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[2] };
   if ((m = L.match(/^Whenever (an opponent|a player) discards (a card|one or more cards), (.+)$/i))) return { event: /one or more/i.test(m[2]) ? 'discardBatch' : 'discard', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[3] };
+  if ((m = L.match(/^Whenever (you|an opponent|a player) (?:cycle or )?discards? (?:a|an|another) (.+? card), (.+)$/i))) {
+    const tf = nounFilter(`a ${m[2]}`);
+    if (!tf) return null;
+    tf.player = m[1].toLowerCase() === 'you' ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+    return { event: 'discard', filter: tf, hasObject: true, hasPlayer: true, rest: m[3] };
+  }
+  if ((m = L.match(/^Whenever you cycle or discard (?:a|another) card, (.+)$/i))) return { event: 'discard', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever a card is put into an opponent's graveyard from anywhere, (.+)$/i))) return { event: 'putIntoGraveyard', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) card leaves your graveyard, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1]} card`);
+    if (!tf) return null;
+    tf.player = 'you';
+    return { event: 'leftGraveyard', filter: tf, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+
   if ((m = L.match(/^Whenever you mill (?:a card|one or more cards), (.+)$/i))) return { event: 'putIntoGraveyard', filter: { player: 'you', fromZone: 'library' }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever (?:a|an|one or more) (.+?) (?:is|are) put into your graveyard from your library, (.+)$/i))) {
     const tf = nounFilter(`a ${m[1]}`);

@@ -11,6 +11,27 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     return idx >= 0 ? orig.slice(idx, idx + m[g].length) : m[g];
   };
   let m: RegExpMatchArray | null;
+  // Conjunctions: "X and Y"
+  if ((m = orig.match(/^(.+?) and (.+)$/i))) {
+    const a = parseCondition(m[1], ctx);
+    const b = parseCondition(m[2], ctx);
+    if (a && b && a.kind !== 'manual' && b.kind !== 'manual') return { kind: 'and', cs: [a, b] };
+  }
+  const thatPlayer: import('@commander/engine').Ref = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : { ref: 'controller' });
+  if (t === 'that player has no cards in hand' || t === 'they have no cards in hand') return { kind: 'handSize', ref: thatPlayer, op: '==', value: 0 };
+  if ((m = t.match(/^that player has (\w+) or more cards in hand$/))) return { kind: 'handSize', ref: thatPlayer, op: '>=', value: wordToNumber(m[1]) ?? 1 };
+  if ((m = t.match(/^you have (\w+) or more opponents$/))) return { kind: 'amount', a: { kind: 'opponents' }, op: '>=', b: wordToNumber(m[1]) ?? 2 };
+  if ((m = t.match(/^a player has (\d+) or (less|more) life$/))) return { kind: 'or', cs: [{ kind: 'life', ref: { ref: 'controller' }, op: m[2] === 'less' ? '<=' : '>=', value: parseInt(m[1], 10) }, { kind: 'life', ref: { ref: 'eachOpponent' }, op: m[2] === 'less' ? '<=' : '>=', value: parseInt(m[1], 10) }] };
+  if ((m = t.match(/^(.+?) is (less than|greater than|fewer than|more than) (\w+)$/))) {
+    const a = parseAmount(oc(m, 1), ctx);
+    const n = wordToNumber(m[3]);
+    if (a !== null && typeof n === 'number') return { kind: 'amount', a, op: /less|fewer/.test(m[2]) ? '<' : '>', b: n };
+  }
+  if ((m = t.match(/^(.+?) is (\w+) or (more|greater|less|fewer)$/))) {
+    const a = parseAmount(oc(m, 1), ctx);
+    const n = wordToNumber(m[2]);
+    if (a !== null && typeof n === 'number') return { kind: 'amount', a, op: /more|greater/.test(m[3]) ? '>=' : '<=', b: n };
+  }
   if (t === 'it is your turn' || t === "it's your turn") return { kind: 'yourTurn' };
   if (t === 'it is not your turn') return { kind: 'notYourTurn' };
   if (t === 'you control your commander' || t === 'you control a commander') return { kind: 'controlsCommander' };

@@ -57,7 +57,20 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   return t
     .split('\n')
     .map((l) => l.replace(ABILITY_WORDS, (m) => (/^Choose/i.test(m) ? m : '')).trim())
+    .map(stripAbilityWord)
     .filter(Boolean);
+}
+
+/** Keyword abilities that also use an em dash and must keep their prefix. */
+const DASH_KEYWORDS = /^(Choose|Companion|Boast|Escape|Suspend|Awaken|Reinforce|Impending|Ward|Flashback|Prototype|Cleave|Cycling|Equip|Level up|Splice|Spree|Champion|Gift|Emerge|Casualty|Offspring|Squad|Kicker|Multikicker|Madness|Morph|Disguise|Foretell|Blitz|Dash|Bestow|Embalm|Eternalize|Unearth|Encore|Mutate|Surge|Evoke|Ninjutsu|Buyback|Entwine|Transmute|Recover|Miracle|Outlast|Prowl|Fortify|Aura swap|Freerunning|Escalate|Overload|Emerge|Scavenge|Adapt|Amass|Craft|Umbra armor|Exhaust|Max speed|Start your engines!|Tiered|Saddle|Crew|Station|Warp|Plot|Ravenous|Backup|Class|LEVEL|STATION)\b/i;
+
+/** Custom ability words ("Mystic Arcanum — At the beginning of ...") are flavor labels: drop them. */
+export function stripAbilityWord(line: string): string {
+  const m = line.match(/^([A-Z][A-Za-z']*(?: [A-Za-z']+){0,3}) — (?=[A-Z{~•])/);
+  if (!m) return line;
+  if (DASH_KEYWORDS.test(m[1])) return line;
+  if (/^(?:I|II|III|IV|V|VI)(?:, (?:I|II|III|IV|V|VI))*$/.test(m[1])) return line; // Saga chapters
+  return line.slice(m[0].length);
 }
 
 /** Split a line into sentences on ". " boundaries, keeping mana symbols intact. */
