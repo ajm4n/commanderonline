@@ -466,11 +466,11 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'returnToHand', what: ref }] : null;
   }],
-  [/^return (.+?) to the battlefield(?: under (your|its owner's) control)?( tapped)?(?: with (?:a|an|\w+) ([+-]\d\/[+-]\d|\w+) counters? on it)?$/i, (m, ctx) => {
+  [/^return (.+?) to the battlefield( tapped)?(?: under (your|its owner's|their owner's|their owners') control)?( tapped)?(?: with (?:a|an|\w+) ([+-]\d\/[+-]\d|\w+) counters? on (?:it|them))?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
-    const e: Effect = { kind: 'returnToBattlefield', what: ref, tapped: !!m[3], controller: m[2] === "its owner's" ? 'owner' : 'you' };
-    if (m[4]) e.counters = { counter: m[4], amount: 1 };
+    const e: Effect = { kind: 'returnToBattlefield', what: ref, tapped: !!(m[2] || m[4]), controller: m[3] && /owner/.test(m[3]) ? 'owner' : 'you' };
+    if (m[5]) e.counters = { counter: m[5], amount: 1 };
     return [e];
   }],
   [/^put (.+?) (?:into (?:its|their) owner'?s'? hands?|into your hand)$/i, (m, ctx) => {

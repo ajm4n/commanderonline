@@ -461,7 +461,8 @@ export class Game {
       const gkey = `grant:${card.name}:${text}`;
       let gs = this.scriptCache.get(gkey);
       if (!gs) {
-        gs = this.scriptProvider({ ...card, oracleText: text, faces: undefined });
+        // A distinct identity so the provider compiles the granted text instead of returning the card's own cached script.
+        gs = this.scriptProvider({ ...card, name: `${card.name} (granted)`, oracleId: gkey, oracleText: text, faces: undefined });
         this.scriptCache.set(gkey, gs);
       }
       extra.push(...gs.abilities.filter((ab) => ab.kind !== 'spell'));
@@ -675,14 +676,18 @@ export class Game {
       // Effects that last until the source leaves end now.
       this.state.continuousEffects = this.state.continuousEffects.filter((ce) => !(ce.duration === 'untilSourceLeaves' && ce.sourceId === id));
     }
-    // A zone change makes a new object: effects locked onto the old one end (rule 400.7).
     if (fromZone !== toZone) {
-      this.state.continuousEffects = this.state.continuousEffects
-        .map((ce) => (ce.affected.kind === 'fixed' && ce.affected.ids.includes(id) ? { ...ce, affected: { kind: 'fixed' as const, ids: ce.affected.ids.filter((x) => x !== id) } } : ce))
-        .filter((ce) => !(ce.affected.kind === 'fixed' && ce.affected.ids.length === 0));
       const exiled = obj.memory['exiledUntilLeaves'] as ObjectId[] | undefined;
       if (exiled?.length) this.pendingReturns.push(...exiled);
     }
+    // A zone change makes a new object: effects locked onto the old one end (rule 400.7). This happens after the
+    // leave events below have fired, so granted "when this dies" abilities still see the object (rule 603.10).
+    const pruneFixed = () => {
+      if (fromZone === toZone) return;
+      this.state.continuousEffects = this.state.continuousEffects
+        .map((ce) => (ce.affected.kind === 'fixed' && ce.affected.ids.includes(id) ? { ...ce, affected: { kind: 'fixed' as const, ids: ce.affected.ids.filter((x) => x !== id) } } : ce))
+        .filter((ce) => !(ce.affected.kind === 'fixed' && ce.affected.ids.length === 0));
+    };
     // Tokens cease to exist outside the battlefield (after events fire).
     const willCease = obj.card.isToken && toZone !== 'battlefield' && toZone !== 'stack';
 
@@ -762,6 +767,7 @@ export class Game {
       if (opts.cause === 'discard') this.emit({ name: 'discard', ...base, playerId: obj.owner });
       if (opts.cause === 'mill') this.emit({ name: 'mill', ...base, playerId: obj.owner });
     }
+    pruneFixed();
 
     if (willCease) {
       // Remove after triggers were collected (they hold a snapshot).

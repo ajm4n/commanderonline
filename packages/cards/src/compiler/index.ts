@@ -304,7 +304,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         effects = [{ kind: 'chooseMode', options, count: w === 'two' ? 2 : 1 }];
       } else ({ effects, unhandled } = parseEffects(split.rest, ctx));
       let condition: Condition | undefined;
-      if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
+      if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
       if (head.exploit) {
         // Exploit: on entering, you may sacrifice a creature; if you do, the exploit effects happen.
         effects = [{ kind: 'may', prompt: 'Exploit: sacrifice a creature?', effects: [{ kind: 'sacrificeChoice', who: { ref: 'controller' }, filter: { types: ['Creature'], zone: 'battlefield' }, count: 1 }, ...effects] }];
