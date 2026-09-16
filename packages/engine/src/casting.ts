@@ -343,13 +343,14 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.tap && (obj.tapped || (g.characteristics(obj.id).types.includes('Creature') && summoningSick(g, obj)))) return false;
   if (cost.untap && !obj.tapped) return false;
   const nx = (v: number | 'X' | 'all' | undefined): number => (v === 'X' ? x : v === 'all' ? (cost.removeCounters ? obj.counters[cost.removeCounters.counter] ?? 0 : 0) : (v ?? 0));
+  const cnt = (v: number | 'X' | 'any' | undefined, avail: number, dflt = 1): number => (v === 'X' ? x : v === 'any' ? avail : (v ?? dflt));
   if (cost.payLife !== undefined && g.player(p).life < nx(cost.payLife)) return false;
   if (cost.energy !== undefined && g.player(p).energy < cost.energy) return false;
   if (cost.removeCounters && (obj.counters[cost.removeCounters.counter] ?? 0) < nx(cost.removeCounters.amount)) return false;
   if (cost.loyalty !== undefined && cost.loyalty < 0 && (obj.counters['loyalty'] ?? 0) < -cost.loyalty) return false;
   if (cost.sacrifice) {
     const cands = objectsMatching(g, { ...cost.sacrifice.filter, controller: 'you' }, ctx);
-    if (cands.length < (cost.sacrifice.count ?? 1)) return false;
+    if (cost.sacrifice.count !== 'any' && cands.length < cnt(cost.sacrifice.count, cands.length)) return false;
   }
   if (cost.discard) {
     const hand = g.player(p).hand;
@@ -360,6 +361,56 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.tapUntappedTotalPower) {
     const cands = objectsMatching(g, { ...cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, ctx);
     if (cands.reduce((s, o) => s + (g.characteristics(o.id).power ?? 0), 0) < cost.tapUntappedTotalPower.power) return false;
+  }
+  if (cost.collectEvidence && !cost.collectEvidence.optional) {
+    const total = g.player(p).graveyard.reduce((s, id) => s + g.characteristics(id).manaValue, 0);
+    if (total < cost.collectEvidence.n) return false;
+  }
+  if (cost.behold) {
+    const inHand = g.player(p).hand.some((id) => matchesFilter(g, g.obj(id), { ...cost.behold, zone: 'hand' }, ctx));
+    const onField = objectsMatching(g, { ...cost.behold, controller: 'you', zone: 'battlefield' }, ctx).length > 0;
+    if (!inHand && !onField) return false;
+  }
+  if (cost.revealFromHand && !g.player(p).hand.some((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHand, zone: 'hand' }, ctx))) return false;
+  if (cost.collectEvidence) {
+    const cands = [...g.player(p).graveyard];
+    const need = cost.collectEvidence.n;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Collect evidence ${need}: exile cards with total mana value ${need} or more from your graveyard${cost.collectEvidence.optional ? ' (or choose none)' : ''}`, candidates: cands, min: 0, max: cands.length, sourceId: obj.id });
+      if (resp.type !== 'objects') return false;
+      if (!resp.ids.length) {
+        if (cost.collectEvidence.optional) break;
+        continue;
+      }
+      const total = resp.ids.reduce((s, id) => s + g.characteristics(id).manaValue, 0);
+      if (total < need) continue;
+      for (const id of resp.ids) g.moveObject(id, 'exile', { cause: 'exile' });
+      obj.memory['evidenceCollected'] = true;
+      break;
+    }
+  }
+  if (cost.behold) {
+    const hand = g.player(p).hand.filter((id) => matchesFilter(g, g.obj(id), { ...cost.behold, zone: 'hand' }, ctx));
+    const field = objectsMatching(g, { ...cost.behold, controller: 'you', zone: 'battlefield' }, ctx).map((o) => o.id);
+    const cands = [...hand, ...field];
+    if (cands.length) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Behold: reveal a card from your hand or choose a creature you control', candidates: cands, min: 1, max: 1, revealToChooser: true, sourceId: obj.id });
+      if (resp.type !== 'objects' || !resp.ids.length) return false;
+      obj.memory['beheld'] = resp.ids[0];
+      g.log(`${g.player(p).name} beholds ${g.nameOf(resp.ids[0])}.`);
+    }
+  }
+  if (cost.revealFromHand) {
+    const cands = g.player(p).hand.filter((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHand, zone: 'hand' }, ctx));
+    const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Reveal a card from your hand', candidates: cands, min: 1, max: 1, revealToChooser: true, sourceId: obj.id });
+    if (resp.type !== 'objects' || !resp.ids.length) return false;
+    obj.memory['revealed'] = resp.ids[0];
+    g.log(`${g.player(p).name} reveals ${g.nameOf(resp.ids[0])}.`);
+  }
+  if (cost.chooseCreatureType) {
+    const resp = yield* g.ask({ type: 'chooseOption', player: p, prompt: 'Choose a creature type', options: g.creatureTypeOptions().map((t) => ({ id: t, label: t })), min: 1, max: 1, sourceId: obj.id });
+    if (resp.type !== 'options' || !resp.ids.length) return false;
+    obj.memory['creatureType'] = resp.ids[0];
   }
   if (cost.waterbend !== undefined) {
     // Choose helpers to tap (each pays {1}), then pay the rest with mana.
@@ -379,11 +430,11 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   }
   if (cost.exileFromGraveyard) {
     const cands = g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...cost.exileFromGraveyard!.filter, zone: 'graveyard' }, ctx));
-    if (cands.length < cost.exileFromGraveyard.count) return false;
+    if (cands.length < cnt(cost.exileFromGraveyard.count, cands.length)) return false;
   }
   if (cost.tapUntapped) {
     const cands = objectsMatching(g, { ...cost.tapUntapped.filter, controller: 'you', untapped: true }, ctx);
-    if (cands.length < cost.tapUntapped.count) return false;
+    if (cost.tapUntapped.count !== 'any' && cands.length < cnt(cost.tapUntapped.count, cands.length)) return false;
   }
   if (cost.returnToHand) {
     const cands = objectsMatching(g, { ...cost.returnToHand.filter, controller: 'you' }, ctx);
@@ -408,10 +459,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   }
   if (cost.sacrifice) {
     const cands = objectsMatching(g, { ...cost.sacrifice.filter, controller: 'you' }, ctx).map((o) => o.id);
-    const n = cost.sacrifice.count ?? 1;
+    const n = cnt(cost.sacrifice.count, cands.length);
     let ids = cands;
-    if (cands.length > n) {
-      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Sacrifice ${n}`, candidates: cands, min: n, max: n, sourceId: obj.id });
+    if (cost.sacrifice.count === 'any' || cands.length > n) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: cost.sacrifice.count === 'any' ? 'Sacrifice any number' : `Sacrifice ${n}`, candidates: cands, min: cost.sacrifice.count === 'any' ? 0 : n, max: cost.sacrifice.count === 'any' ? cands.length : n, sourceId: obj.id });
       if (resp.type !== 'objects') return false;
       ids = resp.ids;
     }
@@ -445,8 +496,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.exileFromGraveyard) {
     const cands = g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...cost.exileFromGraveyard!.filter, zone: 'graveyard' }, ctx));
     let ids = cands;
-    if (cands.length > cost.exileFromGraveyard.count) {
-      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Exile ${cost.exileFromGraveyard.count} from your graveyard`, candidates: cands, min: cost.exileFromGraveyard.count, max: cost.exileFromGraveyard.count, sourceId: obj.id });
+    const en = cnt(cost.exileFromGraveyard.count, cands.length);
+    ids = cands.slice(0, en);
+    if (cands.length > en) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Exile ${en} from your graveyard`, candidates: cands, min: en, max: en, sourceId: obj.id });
       if (resp.type !== 'objects') return false;
       ids = resp.ids;
     }
@@ -466,9 +519,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   }
   if (cost.tapUntapped) {
     const cands = objectsMatching(g, { ...cost.tapUntapped.filter, controller: 'you', untapped: true }, ctx).map((o) => o.id);
-    let ids = cands.slice(0, cost.tapUntapped.count);
-    if (cands.length > cost.tapUntapped.count) {
-      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Tap ${cost.tapUntapped.count}`, candidates: cands, min: cost.tapUntapped.count, max: cost.tapUntapped.count, sourceId: obj.id });
+    const tn = cnt(cost.tapUntapped.count, cands.length);
+    let ids = cands.slice(0, tn);
+    if (cost.tapUntapped.count === 'any' || cands.length > tn) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: cost.tapUntapped.count === 'any' ? 'Tap any number' : `Tap ${tn}`, candidates: cands, min: cost.tapUntapped.count === 'any' ? 0 : tn, max: cost.tapUntapped.count === 'any' ? cands.length : tn, sourceId: obj.id });
       if (resp.type !== 'objects') return false;
       ids = resp.ids;
     }
@@ -745,10 +799,10 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
   if (spec.cost.removeCounters && typeof spec.cost.removeCounters.amount !== 'number' && !(obj.counters[spec.cost.removeCounters.counter] ?? 0)) return false;
   if (spec.cost.tapUntappedTotalPower && objectsMatching(g, { ...spec.cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, { sourceId: obj.id, controller: p }).reduce((s, o) => s + (g.characteristics(o.id).power ?? 0), 0) < spec.cost.tapUntappedTotalPower.power) return false;
   if (spec.cost.sacrifice) {
-    if (objectsMatching(g, { ...spec.cost.sacrifice.filter, controller: 'you' }, { sourceId: obj.id, controller: p }).length < (spec.cost.sacrifice.count ?? 1)) return false;
+    if (objectsMatching(g, { ...spec.cost.sacrifice.filter, controller: 'you' }, { sourceId: obj.id, controller: p }).length < (typeof spec.cost.sacrifice.count === 'number' ? spec.cost.sacrifice.count : spec.cost.sacrifice.count === undefined ? 1 : 0)) return false;
   }
   if (spec.cost.discard && spec.cost.discard !== 'hand' && g.player(p).hand.length < (spec.cost.discard.count === 'X' ? 1 : spec.cost.discard.count)) return false;
-  if (spec.cost.exileFromGraveyard && g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...spec.cost.exileFromGraveyard!.filter, zone: 'graveyard' }, { sourceId: obj.id, controller: p })).length < spec.cost.exileFromGraveyard.count) return false;
+  if (spec.cost.exileFromGraveyard && g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...spec.cost.exileFromGraveyard!.filter, zone: 'graveyard' }, { sourceId: obj.id, controller: p })).length < (typeof spec.cost.exileFromGraveyard.count === 'number' ? spec.cost.exileFromGraveyard.count : 1)) return false;
   if (spec.cost.mana) {
     const cost = parseManaCost(spec.cost.mana);
     if (!solvePayment(cost, 0, g.player(p).manaPool, manaSourcesFor(g, p).filter((s) => s.id !== obj.id || !spec.cost.tap))) return false;

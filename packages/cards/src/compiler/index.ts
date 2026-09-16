@@ -43,6 +43,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if (cm) return [`${cm[1]}${cm[2]}.`, `${cm[1]}${cm[3]}.`];
     const also = l.match(/^(~ costs? .+?)\. It also (costs? .+?)\.?$/i);
     if (/^You may exert ~ as it attacks\./i.test(l)) return [l.replace(/^You may exert ~ as it attacks\./i, 'Whenever ~ attacks, you may exert ~.')];
+    const ac = l.match(/^(As an additional cost to cast (?:~|this spell), .+?)\. ((?:~|This spell) costs? .+)$/i);
+    if (ac) return [`${ac[1]}.`, ac[2]];
     if (also) return [`${also[1]}.`, `~ ${also[2]}.`];
     // "If you have 3 or less life, ~ costs {6} less to cast." → "~ costs {6} less to cast if you have 3 or less life."
     const im = l.match(/^If (.+?), ((?:~|this spell) costs? \{[^}]+\} (?:less|more) to cast)\.?$/i);
@@ -413,7 +415,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     // Additional costs
     if ((m = line.match(/^As an additional cost to cast (?:this spell|~), (.+?)\.?$/i))) {
-      const c = parseCost(m[1].replace(/^sacrifice/i, 'Sacrifice').replace(/^discard/i, 'Discard').replace(/^pay/i, 'Pay').replace(/^exile/i, 'Exile').replace(/^tap/i, 'Tap'));
+      const c = parseCost(m[1].replace(/^[a-z]/, (ch) => ch.toUpperCase()));
       if (c) {
         additionalCost = c;
         compiledLines.push(line);

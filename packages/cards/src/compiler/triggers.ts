@@ -98,6 +98,17 @@ export function parseTriggerHead(line: string): TriggerHead | null {
       const noun = parseNoun(`a ${lv[1]}`);
       if (noun) return { event: 'leavesBattlefield', filter: { object: { ...noun.filter, zone: undefined }, notToZone: 'graveyard' }, hasObject: true, hasPlayer: false, rest: lv[2] };
     }
+    const pg = line.match(/^When(?:ever)? (?:enchanted|equipped) (?:artifact|permanent|creature|land|enchantment) (?:is put into a graveyard|dies|is put into a graveyard from the battlefield), (.+)$/i);
+    if (pg) return { event: /dies|from the battlefield/i.test(pg[0]) ? 'dies' : 'putIntoGraveyard', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, leaves: true, rest: pg[1] };
+    const es = line.match(/^At the beginning of the (end step|upkeep) of (?:enchanted|equipped) \w+'s controller, (.+)$/i);
+    if (es) return { event: es[1].toLowerCase() === 'upkeep' ? 'beginningOfUpkeep' : 'beginningOfEndStep', filter: { custom: 'attachedControllersUpkeep' }, hasObject: false, hasPlayer: true, rest: es[2] };
+    const ns = line.match(/^Whenever (a player|an opponent|you) casts? (?:their|your) (second|third|fourth) spell each turn, (.+)$/i);
+    if (ns) return { event: 'cast', filter: { player: ns[1] === 'you' ? 'you' : /opponent/i.test(ns[1]) ? 'opponent' : 'any', nthThisTurn: ns[2].toLowerCase() === 'second' ? 2 : ns[2].toLowerCase() === 'third' ? 3 : 4 }, hasObject: true, hasPlayer: true, rest: ns[3] };
+    const sd = line.match(/^Whenever (?:a|an|one or more) (.+?) (?:is|are) sacrificed or destroyed, (.+)$/i);
+    if (sd) {
+      const noun = parseNoun(`a ${sd[1]}`);
+      if (noun) return { event: 'sacrifice', filter: { object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: sd[2], also: [{ event: 'dies', filter: { object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true }] };
+    }
     const rm = line.match(/^Whenever (?:a|an|one or more) (.+?) (?:is|are) returned to your hand, (.+)$/i);
     if (rm) {
       const noun = parseNoun(`a ${rm[1]}`);

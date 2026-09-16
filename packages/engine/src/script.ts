@@ -58,7 +58,11 @@ export type Amount =
   /** A per-player turn statistic ("life you gained this turn"). */
   | { kind: 'playerTurnStat'; key: string; ref?: Ref }
   /** Number of distinct values of a stat among matching objects ("creatures with different powers"). */
-  | { kind: 'distinctValues'; stat: 'power' | 'toughness' | 'manaValue' | 'name'; filter: ObjectFilter };
+  | { kind: 'distinctValues'; stat: 'power' | 'toughness' | 'manaValue' | 'name'; filter: ObjectFilter }
+  /** Domain: basic land types among lands you control. */
+  | { kind: 'domain' }
+  /** Number of card types among matching objects. */
+  | { kind: 'cardTypesAmong'; filter: ObjectFilter };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -87,7 +91,9 @@ export type Ref =
   | { ref: 'ringBearer' }
   | { ref: 'player'; id: PlayerId }
   /** Opponents of the controller other than the trigger's player ("each other opponent"). */
-  | { ref: 'eachOtherOpponent' };
+  | { ref: 'eachOtherOpponent' }
+  /** The player or planeswalker the referenced creature is attacking. */
+  | { ref: 'defenderOf'; of: Ref };
 
 export const R = {
   target: (slot = 0): Ref => ({ ref: 'target', slot }),
@@ -372,13 +378,13 @@ export interface AbilityCost {
   tap?: boolean;
   untap?: boolean;
   sacrificeSelf?: boolean;
-  sacrifice?: { filter: ObjectFilter; count?: number };
+  sacrifice?: { filter: ObjectFilter; count?: number | 'any' | 'X' };
   payLife?: number | 'X';
   discard?: { count: number | 'X'; filter?: ObjectFilter; random?: boolean } | 'hand';
   /** amount 'X' = the chosen X ("Remove X counters", "Remove any number of counters"). */
   removeCounters?: { counter: CounterType; amount: number | 'X' | 'all' };
   addCounters?: { counter: CounterType; amount: number };
-  exileFromGraveyard?: { filter: ObjectFilter; count: number };
+  exileFromGraveyard?: { filter: ObjectFilter; count: number | 'X' };
   exileSelf?: boolean;
   /** Discard this card (cycling, channel). */
   discardSelf?: boolean;
@@ -388,7 +394,15 @@ export interface AbilityCost {
   revealSelf?: boolean;
   /** Waterbend {N}: pay {N}, tapping untapped artifacts and creatures you control for {1} each. */
   waterbend?: number;
-  tapUntapped?: { filter: ObjectFilter; count: number };
+  /** Collect evidence N: exile cards with total mana value N or more from your graveyard (optional when "you may"). */
+  collectEvidence?: { n: number; optional?: boolean };
+  /** Behold a Dragon: reveal a matching creature card from your hand or choose one you control (free). */
+  behold?: ObjectFilter;
+  /** Reveal a matching card from your hand (free). */
+  revealFromHand?: ObjectFilter;
+  /** "As an additional cost, choose a creature type" (stored as memory `creatureType`). */
+  chooseCreatureType?: boolean;
+  tapUntapped?: { filter: ObjectFilter; count: number | 'any' | 'X' };
   /** Crew / saddle: tap any number of untapped matching creatures with total power N or more. */
   tapUntappedTotalPower?: { filter: ObjectFilter; power: number };
   returnToHand?: { filter: ObjectFilter; count: number };

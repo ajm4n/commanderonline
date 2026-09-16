@@ -92,6 +92,12 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
   if (t === "you have the city's blessing") return { kind: 'cityBlessing' };
   if (t === 'it was kicked' || t === 'this spell was kicked') return { kind: 'wasKicked' };
+  if (t === 'evidence was collected' || t === 'you collected evidence') return { kind: 'memoryFlag', key: 'evidenceCollected' };
+  if ((m = t.match(/^you have (\w+) or more (.+?) in your graveyard$/))) {
+    const noun = parseNoun(oc(m, 2).replace(/ cards$/i, ' card'));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'graveyard', ref: { ref: 'controller' }, op: '>=', value: n, filter: noun.filter };
+  }
   if (t === 'you search your library this way' || t === 'you searched your library this way') return { kind: 'ctxFlag', key: 'searched' };
   if (t === 'you win the flip' || t === 'you won the flip') return { kind: 'ctxFlag', key: 'flipWon' };
   if (t === 'you lose the flip' || t === 'you lost the flip') return { kind: 'not', c: { kind: 'ctxFlag', key: 'flipWon' } };

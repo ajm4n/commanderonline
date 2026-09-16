@@ -35,6 +35,15 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   }
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
   if (/^(?:the number of )?times? (?:it|~|this spell) was kicked$/i.test(text.trim())) return { kind: 'kickCount' };
+  if (/^(?:the number of )?basic land types? among lands you control$/i.test(text.trim()) || /^your domain count$/i.test(text.trim())) return { kind: 'domain' };
+  {
+    const ct = text.trim().match(/^(?:the number of )?card types? among (.+)$/i);
+    if (ct) {
+      const noun = parseNoun(ct[1].replace(/ cards$/i, ' card'));
+      if (noun) return { kind: 'cardTypesAmong', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
+    }
+    if (/^(?:the number of )?(?:1 )?life you (?:have )?gained this turn$/i.test(text.trim())) return { kind: 'playerTurnStat', key: 'lifeGainedAmount' };
+  }
   if (/^(?:the number of )?(?:(?:1 )?life (?:you |they )?(?:gained|lost)(?: this way)?|cards? (?:looked at while scrying|scried) this way|cards? (?:you )?(?:drew|discarded|milled) this way)$/i.test(text.trim())) return { kind: 'triggerAmount' };
   if (/^(?:the number of )?(?:\w+ )?(?:permanents?|creatures?|artifacts?|enchantments?|lands?|cards?|planeswalkers?) destroyed this way$/i.test(text.trim())) return { kind: 'ctxMemory', key: 'destroyedThisWay' };
   {

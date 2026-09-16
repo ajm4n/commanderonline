@@ -24,6 +24,25 @@ export function parseCost(text: string): AbilityCost | null {
     let m: RegExpMatchArray | null;
     if (p === '{T}') cost.tap = true;
     else if ((m = p.match(/^Waterbend \{(\d+)\}$/i))) cost.waterbend = parseInt(m[1], 10);
+    else if ((m = p.match(/^(you may )?collect evidence (\d+)$/i))) cost.collectEvidence = { n: parseInt(m[2], 10), optional: !!m[1] || undefined };
+    else if ((m = p.match(/^Behold (?:a|an) (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1]}`);
+      if (!noun) return null;
+      cost.behold = { ...noun.filter, types: ['Creature'] };
+    } else if ((m = p.match(/^Reveal (?:a|an) (.+?) card from your hand$/i))) {
+      const noun = parseNoun(`a ${m[1]} card`);
+      if (!noun) return null;
+      cost.revealFromHand = noun.filter;
+    } else if (/^Choose a creature type$/i.test(p)) cost.chooseCreatureType = true;
+    else if ((m = p.match(/^Tap any number of untapped (.+?) you control$/i))) {
+      const noun = parseNoun(`a ${m[1].replace(/s$/, '')}`);
+      if (!noun) return null;
+      cost.tapUntapped = { filter: noun.filter, count: 'any' };
+    } else if ((m = p.match(/^Sacrifice any number of (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1].replace(/s$/, '')}`);
+      if (!noun) return null;
+      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: 'any' };
+    }
     else if (/^Forage$/i.test(p)) cost.choice = [{ exileFromGraveyard: { filter: {}, count: 3 } }, { sacrifice: { filter: { subtypes: ['Food'], zone: 'battlefield' }, count: 1 } }];
     else if (p === '{Q}') cost.untap = true;
     else if (MANA_RE.test(p)) {
@@ -70,7 +89,7 @@ export function parseCost(text: string): AbilityCost | null {
     else if ((m = p.match(/^Exile (?:a|an|(\w+)) (.+?) cards? from your graveyard$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       const noun = m[2] ? parseNoun(`a ${m[2]} card`) : { filter: {} };
-      if (n === null || n === 'X' || !noun) return null;
+      if (n === null || !noun) return null;
       cost.exileFromGraveyard = { filter: noun.filter, count: n };
     } else if ((m = p.match(/^Exile (?:a|an|(\w+)) cards? from your graveyard$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;

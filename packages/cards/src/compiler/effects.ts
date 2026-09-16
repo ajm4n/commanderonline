@@ -61,11 +61,13 @@ function duration(text: string): { rest: string; duration: Duration | undefined 
 export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   const t = phrase.trim().replace(/[.,]$/, '');
   const l = t.toLowerCase();
+  let m0: RegExpMatchArray | null;
   if (l === '~' || l === 'this') {
     ctx.lastObj = SELF;
     return SELF;
   }
   if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l) && ctx.lastObj) return ctx.lastObj;
+  if ((m0 = l.match(/^the player or planeswalker (it|that creature|~) is attacking$/))) return { ref: 'defenderOf', of: m0[1] === '~' ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
@@ -133,11 +135,13 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'each other opponent' || l === 'each of their opponents' || l === 'each other player who is an opponent') return { ref: 'eachOtherOpponent' };
   if (l === 'its controller' || /^(?:that|the) [\w ]+'s controller$/.test(l) || l === 'the controller of that creature' || l === 'the controller of that permanent') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (l === "~'s controller") return { ref: 'controllerOf', of: SELF };
+  if (/^(?:enchanted|equipped) \w+'s controller$/.test(l)) return { ref: 'controllerOf', of: { ref: 'attachedTo' } };
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
   if (l === 'the active player') return { ref: 'activePlayer' };
   if (l === "enchanted player" || l === "that player's controller") return { ref: 'attachedTo' };
   if (l === 'the chosen player' || l === 'the chosen opponent') return { ref: 'chosen', key: 'opponent' };
+  if (/^the player or planeswalker (?:it|that creature|~) is attacking$/.test(l)) return { ref: 'defenderOf', of: /~ is attacking$/.test(l) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   const noun = parseNoun(phrase);
   if (noun && noun.kind === 'player' && noun.target) {
     ctx.targets.push(toTargetSpec(noun));

@@ -1358,6 +1358,22 @@ export class Game {
         }
         return vals.size;
       }
+      case 'domain': {
+        const types = new Set<string>();
+        for (const id of this.state.battlefield) {
+          const o = this.state.objects[id];
+          if (!o || o.controller !== ctx.controller) continue;
+          const ch = this.characteristics(id);
+          if (!ch.types.includes('Land')) continue;
+          for (const t of ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest']) if (ch.subtypes.includes(t)) types.add(t);
+        }
+        return types.size;
+      }
+      case 'cardTypesAmong': {
+        const types = new Set<string>();
+        for (const o of objectsMatching(this, a.filter, fctx)) for (const t of this.characteristics(o.id).types) types.add(t);
+        return types.size;
+      }
       case 'colorCount':
         return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + this.characteristics(o.id).colors.length, 0);
       case 'totalManaValue':
@@ -1411,6 +1427,14 @@ export class Game {
         return plT([ctx.sourceId !== null ? this.state.objects[ctx.sourceId]?.owner : undefined]);
       case 'eachOpponent':
         return plT(this.opponentsOf(ctx.controller));
+      case 'defenderOf': {
+        const out: Target[] = [];
+        for (const o of this.resolveObjects(ref.of, ctx)) {
+          if (o.attacking === null || o.attacking === undefined) continue;
+          out.push(typeof o.attacking === 'string' ? { kind: 'player', id: o.attacking } : { kind: 'object', id: o.attacking as ObjectId });
+        }
+        return out;
+      }
       case 'eachOtherOpponent': {
         const tp = (ctx.triggerContext.triggerPlayer ?? ctx.triggerContext.playerId) as PlayerId | undefined;
         return plT(this.opponentsOf(ctx.controller).filter((p) => p !== tp));
@@ -1501,6 +1525,14 @@ export class Game {
     this.state.continuousEffects = this.state.continuousEffects.filter((ce) => ce.duration !== duration);
     if (duration === 'thisTurn' && this.state.delayedTriggers.some((dt) => dt.thisTurn)) this.state.delayedTriggers = this.state.delayedTriggers.filter((dt) => !dt.thisTurn);
     if (this.state.continuousEffects.length !== before) this.touch();
+  }
+
+  /** Creature types present in the game (for "choose a creature type" prompts). */
+  creatureTypeOptions(): string[] {
+    const types = new Set<string>();
+    for (const o of Object.values(this.state.objects)) if (this.characteristics(o.id).types.includes('Creature')) this.characteristics(o.id).subtypes.forEach((s) => types.add(s));
+    const out = [...types].sort();
+    return out.length ? out : ['Human'];
   }
 
   /** Drop effects whose duration is tied to the source staying tapped / under its controller's control. */
