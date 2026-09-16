@@ -91,6 +91,48 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^(?:it|~) (?:is|remains) exiled$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'exile' };
   if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
   if (t === "you have the city's blessing") return { kind: 'cityBlessing' };
+  if (t === 'it was kicked' || t === 'this spell was kicked') return { kind: 'wasKicked' };
+  if (t === 'you search your library this way' || t === 'you searched your library this way') return { kind: 'ctxFlag', key: 'searched' };
+  if (t === 'you win the flip' || t === 'you won the flip') return { kind: 'ctxFlag', key: 'flipWon' };
+  if (t === 'you lose the flip' || t === 'you lost the flip') return { kind: 'not', c: { kind: 'ctxFlag', key: 'flipWon' } };
+  if ((m = t.match(/^(a player|an opponent|you|each player|any player) cast (\w+) or more spells last turn$/))) { const n = wordToNumber(m[2]); if (typeof n === 'number') return { kind: 'eventLastTurn', event: 'cast', player: m[1] === 'you' ? 'you' : /opponent/.test(m[1]) ? 'opponent' : 'any', op: '>=', value: n }; }
+  if (t === 'no spells were cast last turn' || t === 'no player cast a spell last turn') return { kind: 'eventLastTurn', event: 'cast', player: 'any', op: '==', value: 0 };
+  if ((m = t.match(/^(?:a|one or more) (?:nonland )?permanents? left the battlefield under your control this turn$/))) return { kind: 'eventThisTurn', event: 'leavesBattlefield', player: 'you' };
+  if (t === 'you cast it' || t === 'you cast ~' || t === 'it was cast' || t === '~ was cast' || t === 'you cast this spell') return { kind: 'memoryFlag', key: 'wasCast' };
+  if ((m = t.match(/^you control (\w+) or more (.+?) with different (powers|toughnesses|names|mana values)$/))) {
+    const noun = parseNoun(oc(m, 2));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'amount', a: { kind: 'distinctValues', stat: m[3] === 'powers' ? 'power' : m[3] === 'toughnesses' ? 'toughness' : m[3] === 'names' ? 'name' : 'manaValue', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' } }, op: '>=', b: n };
+  }
+  if ((m = t.match(/^(?:it|that creature|that card) shares a creature type with ~$/))) return { kind: 'objectMatches', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }), filter: { sharesCreatureTypeWithSource: true } };
+  if ((m = t.match(/^you gained (\w+) or more life this turn$/))) { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'amount', a: { kind: 'playerTurnStat', key: 'lifeGainedAmount' }, op: '>=', b: n }; }
+  if ((m = t.match(/^an opponent controls more (.+?) than you$/))) {
+    const noun = parseNoun(oc(m, 1));
+    if (noun) return { kind: 'opponentCompare', what: { ...noun.filter, zone: 'battlefield' }, op: '>' };
+  }
+  if ((m = t.match(/^you control more (.+?) than (?:each|any) (?:opponent|other player)$/))) {
+    const noun = parseNoun(oc(m, 1));
+    if (noun) return { kind: 'not', c: { kind: 'opponentCompare', what: { ...noun.filter, zone: 'battlefield' }, op: '>=' } };
+  }
+  if (t === 'an opponent has more life than you') return { kind: 'opponentCompare', what: 'life', op: '>' };
+  if (t === 'you have more life than each opponent' || t === 'you have the most life' || t === 'you have more life than each other player') return { kind: 'not', c: { kind: 'opponentCompare', what: 'life', op: '>=' } };
+  if (t === 'you descended this turn') return { kind: 'eventThisTurn', event: 'putIntoGraveyard', player: 'you' };
+  if ((m = t.match(/^at least (\w+) mana was spent to cast (?:it|~|this spell)$/))) { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'amount', a: { kind: 'memory', key: 'manaSpent' }, op: '>=', b: n }; }
+  if ((m = t.match(/^(?:its|that (?:creature|card|spell|permanent)'s) mana value (?:was|is) (\d+) or (less|greater)$/))) return { kind: 'objectMatches', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }), filter: m[2] === 'less' ? { cmcLE: parseInt(m[1], 10) } : { cmcGE: parseInt(m[1], 10) } };
+  if ((m = t.match(/^(?:it|that card|that permanent) was (?:a|an) (.+?)(?: card)?$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'objectMatches', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }), filter: noun.filter };
+  }
+  if ((m = t.match(/^you control (?:a|an) (\w+) and (?:a|an) (\w+)$/))) {
+    const a = parseNoun(`a ${oc(m, 1)}`);
+    const b = parseNoun(`a ${oc(m, 2)}`);
+    if (a && b) return { kind: 'and', cs: [{ kind: 'count', filter: { ...a.filter, controller: 'you', zone: 'battlefield' }, op: '>=', value: 1 }, { kind: 'count', filter: { ...b.filter, controller: 'you', zone: 'battlefield' }, op: '>=', value: 1 }] };
+  }
+  if ((m = t.match(/^(?:a|an|one or more) (.+?) (?:is|are|was|were) (?:exiled|destroyed|put into a graveyard|discarded|milled|revealed|returned) this way$/))) {
+    const noun = parseNoun(`a ${oc(m, 1).replace(/ cards?$/, ' card')}`);
+    if (noun) return { kind: 'amount', a: { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 };
+  }
+  if ((m = t.match(/^(\w+) or more (.+?) entered the battlefield under your control this turn$/))) { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'amount', a: { kind: 'eventsThisTurn', event: 'entersBattlefield', player: 'you' }, op: '>=', b: n }; }
   if (t === 'you cast it from your hand' || t === 'you cast ~ from your hand' || t === 'it was cast from your hand') return { kind: 'castFrom', zone: 'hand' };
   if ((m = t.match(/^defending player controls (\w+) or more (.+)$/))) {
     const noun = parseNoun(oc(m, 2));

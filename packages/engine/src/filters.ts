@@ -101,6 +101,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.historic && !(ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga'))) return false;
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;
+  if (filter.sharesCreatureTypeWithSource) {
+    const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
+    const sch = src ? g.characteristics(src.id) : undefined;
+    if (!sch || !(ch.keywords.has('Changeling') || sch.keywords.has('Changeling') || ch.subtypes.some((t) => sch.subtypes.includes(t)))) return false;
+  }
   if (filter.hasAdventure && !(obj.card.layout === 'adventure' || obj.card.faces?.some((f) => /Adventure/.test(f.typeLine)))) return false;
   if (filter.permanentCard && !ch.types.some((t) => ['Artifact', 'Creature', 'Enchantment', 'Land', 'Planeswalker', 'Battle'].includes(t))) return false;
   if (filter.modified && !(Object.values(obj.counters).some((n) => n > 0) || g.state.battlefield.some((id) => { const a = g.state.objects[id]; return !!a && a.attachedTo === obj.id && a.controller === obj.controller && ['Equipment', 'Aura'].some((t) => g.characteristics(a.id).subtypes.includes(t)); }))) return false;

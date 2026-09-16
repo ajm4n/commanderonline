@@ -361,6 +361,8 @@ export interface ObjectFilter {
   permanentCard?: boolean;
   /** The card has an Adventure half. */
   hasAdventure?: boolean;
+  /** Shares a creature type with the effect's source. */
+  sharesCreatureTypeWithSource?: boolean;
   /** Only objects attached to / attached by. */
   attachedToSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */

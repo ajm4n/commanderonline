@@ -934,6 +934,10 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (obj.memory['anyManaType'] || opts.anyMana) cost = { symbols: cost.symbols.map((sy) => (sy.kind === 'color' || sy.kind === 'hybrid' || sy.kind === 'phyrexian' ? { kind: 'generic' as const, amount: 1 } : sy.kind === 'monoHybrid' ? { kind: 'generic' as const, amount: 2 } : sy)), xCount: cost.xCount };
   if (!opts.free) {
     const paid = yield* payCost(g, p, cost, x, id, keywords, !!resp.manualMana);
+    if (paid) {
+      obj.memory['wasCast'] = true;
+      obj.memory['manaSpent'] = cost.symbols.reduce((acc, sym) => acc + (sym.kind === 'generic' ? sym.amount : sym.kind === 'x' ? 0 : 1), 0) + x * cost.xCount;
+    }
     if (!paid) {
       revert();
       g.log(`${player.name} can't pay for ${face.name}.`);

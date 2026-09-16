@@ -54,7 +54,11 @@ export type Amount =
   /** Sum of mana values of matching objects. */
   | { kind: 'totalManaValue'; filter: ObjectFilter }
   /** Number of colors of the referenced object(s). */
-  | { kind: 'colorCount'; ref: Ref };
+  | { kind: 'colorCount'; ref: Ref }
+  /** A per-player turn statistic ("life you gained this turn"). */
+  | { kind: 'playerTurnStat'; key: string; ref?: Ref }
+  /** Number of distinct values of a stat among matching objects ("creatures with different powers"). */
+  | { kind: 'distinctValues'; stat: 'power' | 'toughness' | 'manaValue' | 'name'; filter: ObjectFilter };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -156,6 +160,12 @@ export type Condition =
   | { kind: 'or'; cs: Condition[] }
   /** Ascend: the controller has the city's blessing (ten or more permanents at some point while controlling an Ascend source). */
   | { kind: 'cityBlessing'; ref?: Ref }
+  /** A flag the current effect set earlier ("if you search your library this way", "if you win the flip"). */
+  | { kind: 'ctxFlag'; key: string }
+  /** Count of events during the previous turn ("if a player cast two or more spells last turn"). */
+  | { kind: 'eventLastTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; op?: Comparison; value?: number }
+  /** Some opponent compares to you ("an opponent controls more lands than you", "an opponent has more life than you"). */
+  | { kind: 'opponentCompare'; what: 'life' | ObjectFilter; op: Comparison }
   | { kind: 'manual'; text: string }; // engine asks the controller yes/no
 
 // ---------------------------------------------------------------------------
@@ -254,7 +264,7 @@ export type Effect =
   | { kind: 'conditional'; if: Condition; then: Effect[]; else?: Effect[] }
   | { kind: 'forEach'; over: Ref; effects: Effect[]; /** Only iterate objects matching this filter ("for each creature card exiled this way"). */ filter?: ObjectFilter }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
-  | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref }
+  | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
   | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }

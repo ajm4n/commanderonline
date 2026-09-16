@@ -500,6 +500,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'searchLibrary': {
+      ctx.memory['searched'] = 1;
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         const n = amt(e.count);
@@ -634,6 +635,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'flipCoin': {
       const win = g.rng.coin();
       g.log(`${g.player(ctx.controller).name} flips a coin and ${win ? 'wins' : 'loses'}.`);
+      ctx.memory['flipWon'] = win ? 1 : 0;
       g.emit({ name: 'coinFlipped', playerId: ctx.controller, data: { won: win } });
       yield* executeEffects(g, win ? e.win : e.lose ?? [], ctx);
       return;
@@ -1000,6 +1002,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
       const resp = yield* g.ask({ type: 'yesNo', player: who, prompt: e.prompt ?? `${ctx.sourceId !== null ? g.nameOf(ctx.sourceId) : 'Effect'}: ${describe(e.effects)}?`, sourceId: ctx.sourceId ?? undefined });
       if (resp.type === 'yesNo' && resp.value) yield* executeEffects(g, e.effects, ctx);
+      else if (e.else?.length) yield* executeEffects(g, e.else, ctx);
       return;
     }
     case 'unlessPays': {

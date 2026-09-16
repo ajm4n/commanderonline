@@ -331,6 +331,7 @@ function applyQualifier(q: string, r: ParsedNoun) {
   else if (/^that (?:is|are) equipped$/.test(q)) r.filter.hasAttachment = 'Equipment';
   else if (/^that (?:is|are) modified$/.test(q)) r.filter.modified = true;
   else if (/^(?:that (?:has|have)|with) an adventure$/i.test(q)) r.filter.hasAdventure = true;
+  else if (/^that shares? a creature type with ~$/i.test(q)) r.filter.sharesCreatureTypeWithSource = true;
   else if (/^with \{x\} in (?:its|their) mana costs?$/i.test(q)) r.filter.custom = 'hasX';
   else if (q === 'you do not own' || q === 'an opponent owns') r.filter.owner = 'opponent';
   else if (q === 'that player controls' || q === 'defending player controls' || q === 'target player controls' || q === 'target opponent controls' || q === 'its controller controls' || q === 'that opponent controls' || q === 'they control') r.controllerPhrase = q === 'they control' ? 'they' : q.replace(/ controls$/, '');

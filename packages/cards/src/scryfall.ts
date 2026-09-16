@@ -55,6 +55,8 @@ export interface ScryfallCard {
   set?: string;
   set_name?: string;
   set_type?: string;
+  border_color?: string;
+  security_stamp?: string;
   collector_number?: string;
   rarity?: string;
   games?: string[];
@@ -219,6 +221,9 @@ export function isPlayableCard(c: ScryfallCard): boolean {
   if (!hasPaperPrinting(c)) return false;
   if (c.set_type === 'memorabilia' || c.set_type === 'token' || c.set_type === 'minigame') return false;
   if (c.type_line && /^(Token|Card|Emblem|Stickers?|Attraction|Hero|Conspiracy|Dungeon|Phenomenon|Plane|Scheme|Vanguard)\b/.test(c.type_line)) return false;
+  // Commander Online only plays Commander: silver-bordered / acorn "Un-" cards can never be played here.
+  // (Legality itself is not used: previewed cards are "not_legal" until their set releases.)
+  if (c.set_type === 'funny' || c.border_color === 'silver' || c.security_stamp === 'acorn') return false;
   return true;
 }
 

@@ -85,6 +85,8 @@ export interface GameState {
   /** Turn-wide damage prevention (Fog effects); cleared at cleanup. */
   /** objectId -> sources that dealt damage to it this turn. */
   damagedBy: Record<number, ObjectId[]>;
+  /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
+  lastTurnStats: Record<string, number>;
   preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean }[];
   log: LogEntry[];
   monarch: PlayerId | null;
@@ -192,6 +194,7 @@ export class Game {
       delayedTriggers: [],
       preventions: [],
       damagedBy: {},
+      lastTurnStats: {},
       log: [],
       monarch: null,
       initiative: null,
@@ -1209,6 +1212,21 @@ export class Game {
         if (c.beforeAttackers && t.attackers.length > 0) return false;
         return true;
       }
+      case 'ctxFlag':
+        return !!((ctx as { memory?: Record<string, unknown> }).memory ?? ectx.memory)[c.key];
+      case 'eventLastTurn': {
+        const who = c.player ?? 'any';
+        const players = who === 'you' ? [ctx.controller] : who === 'opponent' ? this.opponentsOf(ctx.controller) : this.state.playerOrder;
+        const n = players.reduce((s, p) => s + (this.state.lastTurnStats[`${c.event}:${p}`] ?? 0), 0);
+        return cmp(n, c.op ?? '>=', c.value ?? 1);
+      }
+      case 'opponentCompare': {
+        const mine = c.what === 'life' ? this.player(ctx.controller).life : objectsMatching(this, { ...c.what, controller: 'you', zone: (c.what as import('./types.js').ObjectFilter).zone ?? 'battlefield' }, { sourceId: ctx.sourceId, controller: ctx.controller }).length;
+        return this.opponentsOf(ctx.controller).some((o) => {
+          const theirs = c.what === 'life' ? this.player(o).life : objectsMatching(this, { ...(c.what as import('./types.js').ObjectFilter), controller: 'you', zone: (c.what as import('./types.js').ObjectFilter).zone ?? 'battlefield' }, { sourceId: ctx.sourceId, controller: o }).length;
+          return cmp(theirs, c.op, mine);
+        });
+      }
       case 'cityBlessing': {
         const pid = c.ref ? this.resolvePlayers(c.ref, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0] : ctx.controller;
         const pl = pid !== undefined ? this.state.players[pid] : undefined;
@@ -1328,6 +1346,18 @@ export class Game {
       }
       case 'totalPower':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
+      case 'playerTurnStat': {
+        const pid = a.ref ? this.resolvePlayers(a.ref, ctx)[0] : ctx.controller;
+        return pid !== undefined ? (this.state.players[pid]?.turnStats[a.key] ?? 0) : 0;
+      }
+      case 'distinctValues': {
+        const vals = new Set<string | number>();
+        for (const o of objectsMatching(this, a.filter, fctx)) {
+          const ch = this.characteristics(o.id);
+          vals.add(a.stat === 'name' ? ch.name : a.stat === 'manaValue' ? ch.manaValue : (ch[a.stat] ?? 0));
+        }
+        return vals.size;
+      }
       case 'colorCount':
         return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + this.characteristics(o.id).colors.length, 0);
       case 'totalManaValue':
@@ -1532,6 +1562,8 @@ export class Game {
     p.life += amount;
     this.touch();
     this.log(`${p.name} gains ${amount} life (${p.life}).`, { kind: 'life', data: { player: pid, delta: amount, life: p.life } });
+    this.state.turnStats[`lifeGainedAmount:${pid}`] = (this.state.turnStats[`lifeGainedAmount:${pid}`] ?? 0) + amount;
+    this.player(pid).turnStats['lifeGainedAmount'] = (this.player(pid).turnStats['lifeGainedAmount'] ?? 0) + amount;
     this.emit({ name: 'lifeGained', playerId: pid, amount, sourceId });
   }
 
@@ -2014,6 +2046,7 @@ export class Game {
         o.deathtouchDamage = false;
       }
       this.state.damagedBy = {};
+      this.state.lastTurnStats = { ...this.state.turnStats };
       for (const o of Object.values(this.state.objects)) if (o.memory['discardedThisTurn']) delete o.memory['discardedThisTurn'];
       this.expireEffects('endOfTurn');
       this.expireEffects('thisTurn');

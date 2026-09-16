@@ -2005,9 +2005,18 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
     }
+    // "If you don't, X" after a "you may ..." sentence is the optional block's else branch.
+    if (/^if (?:you|they) (?:do not|don't), /i.test(s) && effects.length) {
+      const last = effects[effects.length - 1];
+      const inner = last && last.kind === 'may' ? parseSentence(s.replace(/^if (?:you|they) (?:do not|don't), /i, ''), ctx) : null;
+      if (inner && last && last.kind === 'may') {
+        last.else = [...(last.else ?? []), ...inner];
+        continue;
+      }
+    }
     // "If you do, X" / "When you do, X" after a "you may ..." sentence belongs inside the optional block.
-    if (/^(?:if|when) you do, /i.test(s) && effects.length) {
-      const inner = parseSentence(s.replace(/^(?:if|when) you do, /i, ''), ctx);
+    if (/^(?:if|when) (?:you|they) do, /i.test(s) && effects.length) {
+      const inner = parseSentence(s.replace(/^(?:if|when) (?:you|they) do, /i, ''), ctx);
       if (inner) {
         const last = effects[effects.length - 1];
         if (last && last.kind === 'may') last.effects.push(...inner);
