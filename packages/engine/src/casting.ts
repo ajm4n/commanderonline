@@ -361,6 +361,22 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = objectsMatching(g, { ...cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, ctx);
     if (cands.reduce((s, o) => s + (g.characteristics(o.id).power ?? 0), 0) < cost.tapUntappedTotalPower.power) return false;
   }
+  if (cost.waterbend !== undefined) {
+    // Choose helpers to tap (each pays {1}), then pay the rest with mana.
+    const cands = objectsMatching(g, { types: ['Artifact', 'Creature'], controller: 'you', untapped: true, zone: 'battlefield' }, ctx).map((o) => o.id);
+    let helpers: ObjectId[] = [];
+    if (cands.length) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Waterbend {${cost.waterbend}}: tap artifacts and creatures to pay {1} each (choose none to pay with mana)`, candidates: cands, min: 0, max: Math.min(cands.length, cost.waterbend), sourceId: obj.id });
+      if (resp.type !== 'objects') return false;
+      helpers = resp.ids;
+    }
+    const rest = cost.waterbend - helpers.length;
+    if (rest > 0) {
+      const paid = yield* payCost(g, p, parseManaCost(`{${rest}}`), 0, obj.id);
+      if (!paid) return false;
+    }
+    for (const id of helpers) g.tap(id);
+  }
   if (cost.exileFromGraveyard) {
     const cands = g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...cost.exileFromGraveyard!.filter, zone: 'graveyard' }, ctx));
     if (cands.length < cost.exileFromGraveyard.count) return false;

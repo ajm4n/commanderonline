@@ -1375,7 +1375,7 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
 /** "except it has haste and it is a Nightmare in addition to its other types" → token copy exceptions. */
 export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
   const ex: NonNullable<TokenSpec['exceptions']> = {};
-  for (const part of text.split(/,? and (?=it|they|its)|, /i)) {
+  for (const part of text.split(/,? and (?=(?:it|they|its|is|has|have|are)\b)|, /i)) {
     const p = part.trim();
     let m: RegExpMatchArray | null;
     const p2 = p.replace(/^and /i, '').replace(/^(?:the token|the copy|that token|those tokens) /i, 'it ').replace(/^(?=(?:is|has|have|are) )/i, 'it ');
@@ -1400,7 +1400,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
     } else if ((m = p2.match(/^(?:it|they) (?:is|are) (\d+)\/(\d+)$/i))) {
       ex.power = m[1];
       ex.toughness = m[2];
-    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?)(?: creatures?)?(?: in addition to its other types)?$/i))) {
+    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?)(?: creatures?)?(?: in addition to its other (?:types|colors|colors and types))?$/i))) {
       ex.power = m[1];
       ex.toughness = m[2];
       for (const w of m[3].split(/\s+/)) {
@@ -1497,7 +1497,31 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^exert (~|it|that creature)$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilNextUntap' }] : null;
+    return ref ? [{ kind: 'exert', what: ref }] : null;
+  }
+  // Earthbend N: target land you control becomes a 0/0 creature with haste (still a land) with N +1/+1 counters; it comes back tapped if it dies or is exiled.
+  if ((m = text.match(/^earthbend (\d+|X)$/i))) {
+    const n: Amount = m[1] === 'X' ? 'X' : parseInt(m[1], 10);
+    const ref = objRef('target land you control', ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'addTypes', types: ['Creature'], on: ref, duration: 'permanent' },
+      { kind: 'setPT', power: 0, toughness: 0, on: ref, duration: 'permanent' },
+      { kind: 'grantKeywords', keywords: ['Haste'], on: ref, duration: 'permanent' },
+      { kind: 'addCounters', counter: '+1/+1', amount: n, on: ref },
+      { kind: 'delayedTrigger', event: 'dies', filter: { objectRef: ref }, effects: [{ kind: 'returnToBattlefield', what: { ref: 'triggerObject' }, tapped: true, controller: 'owner' }], text: 'Earthbend: when it dies, return it to the battlefield tapped.', once: true },
+      { kind: 'delayedTrigger', event: 'exiled', filter: { objectRef: ref }, effects: [{ kind: 'returnToBattlefield', what: { ref: 'triggerObject' }, tapped: true, controller: 'owner' }], text: 'Earthbend: when it is exiled, return it to the battlefield tapped.', once: true },
+    ];
+  }
+  // "~ becomes a Construct artifact creature with "..." until end of turn"
+  if ((m = text.match(/^(.+?) becomes? (?:a|an) (.+?) (artifact creature|creature|artifact|enchantment creature) with "(.+)"(?: until end of turn)?$/i))) {
+    const ref = objRef(m[1], ctx);
+    if (ref) {
+      const dur: Duration = / until end of turn"?$/i.test(text) || / until end of turn$/i.test(text) ? 'endOfTurn' : 'permanent';
+      const types = m[3].split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+      const subtypes = m[2].split(/\s+/).filter((w) => /^[A-Z]/.test(w));
+      return [{ kind: 'addTypes', types, subtypes, on: ref, duration: dur }, { kind: 'grantAbility', text: m[4], on: ref, duration: dur }];
+    }
   }
   // "~ deals damage equal to the discarded card's mana value to that permanent or player" → "~ deals X damage to ..., where X is ..."
   if ((m = text.match(/^(.+?) deals damage equal to (.+?) to (.+)$/i)) && !/\bwhere X is\b/i.test(text)) {

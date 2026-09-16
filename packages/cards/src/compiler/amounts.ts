@@ -44,6 +44,12 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
       const n = wordToNumber(pm[3]);
       if (a !== null && typeof n === 'number') return { kind: 'sum', parts: [a, pm[2].toLowerCase() === 'plus' ? n : -n] };
     }
+    const pm2 = text.trim().match(/^(the number of .+?) (plus|minus) (the number of .+)$/i);
+    if (pm2) {
+      const a = parseAmount(pm2[1], ctx);
+      const b = parseAmount(pm2[3], ctx);
+      if (a !== null && b !== null) return pm2[2].toLowerCase() === 'plus' ? { kind: 'sum', parts: [a, b] } : { kind: 'sum', parts: [a, { kind: 'times', a: b, b: -1 }] };
+    }
   }
   {
     const cc = text.trim().toLowerCase().match(/^(?:the number of )?(?:its|~'s|that (?:creature|permanent|card|spell)'s) colors?$/) || text.trim().toLowerCase().match(/^(?:the number of )?colors? (?:of|among) (it|~|that (?:creature|permanent|card|spell))$/);

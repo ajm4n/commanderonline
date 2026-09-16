@@ -42,6 +42,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   // "When a Dragon you control enters" behaves like "Whenever ..."; "attacks while saddled" is an attack trigger with a condition.
   line = line
     .replace(/^When (a|an|another|one or more) /, 'Whenever $1 ')
+    .replace(/^Whenever ~ attack, /, 'Whenever ~ attacks, ')
     .replace(/^Whenever ~ attacks while saddled, /i, 'Whenever ~ attacks, if ~ is saddled, ')
     .replace(/^Whenever ~ attacks for the first time each turn, /i, 'Whenever ~ attacks, ')
     .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ')
@@ -83,6 +84,8 @@ export function parseTriggerHead(line: string): TriggerHead | null {
       const headB = cm[4] !== undefined ? `${cm[1]} ${cm[3]}, ${rest}` : `${cm[2].charAt(0).toUpperCase()}${cm[2].slice(1)}, ${rest}`;
       const a = parseTriggerHead(headA);
       const b = a ? parseTriggerHead(headB) : null;
+      // Rooms are not implemented: "and whenever you fully unlock a Room" can never fire here, so keep the other half.
+      if (a && !b && /unlock/i.test(headB)) return a;
       if (a && b) {
         const { rest: _r, also: _a, ...bHead } = b;
         void _r;
@@ -99,6 +102,11 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     if (rm) {
       const noun = parseNoun(`a ${rm[1]}`);
       if (noun) return { event: 'returnedToHand', filter: { player: 'you', object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: rm[2] };
+    }
+    const xe = line.match(/^Whenever you exert (?:a|an) (.+?), (.+)$/i);
+    if (xe) {
+      const noun = parseNoun(`a ${xe[1]}`);
+      if (noun) return { event: 'exerted', filter: { player: 'you', object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: xe[2] };
     }
     const em = line.match(/^Whenever you expend (\d+), (.+)$/i);
     if (em) return { event: 'expend', filter: { player: 'you', custom: `expend:${em[1]}` }, hasObject: false, hasPlayer: true, rest: em[2] };
@@ -370,7 +378,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^Whenever you cast an instant or sorcery spell that targets only ~, (.+)$/i))) return { event: 'cast', filter: { player: 'you', targetsSource: true, object: { types: ['Instant', 'Sorcery'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you cast a spell that is one or more colors, (.+)$/i))) return { event: 'cast', filter: { player: 'you', object: { custom: 'colored' } }, hasObject: true, hasPlayer: true, rest: m[1] };
-  if ((m = L.match(/^Whenever (you|a player|an opponent|each opponent|another player) casts? (?:a|an) (.+?), (.+)$/i)) && !/^Whenever you cast (?:a|an) (.+?) spell with mana value/i.test(L)) {
+  if ((m = L.match(/^Whenever (you|a player|an opponent|each opponent|another player) casts? (?:a|an) (.+?), (.+)$/i))) {
     const noun = parseNoun(`a ${/\bspells?\b/i.test(m[2]) ? m[2] : `${m[2]} spell`}`);
     if (noun) {
       const f: TriggerFilter = { player: m[1] === 'you' ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : m[1] === 'another player' ? 'notYou' : 'any' };

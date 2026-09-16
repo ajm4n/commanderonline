@@ -23,6 +23,7 @@ export function parseCost(text: string): AbilityCost | null {
   for (const p of parts) {
     let m: RegExpMatchArray | null;
     if (p === '{T}') cost.tap = true;
+    else if ((m = p.match(/^Waterbend \{(\d+)\}$/i))) cost.waterbend = parseInt(m[1], 10);
     else if (/^Forage$/i.test(p)) cost.choice = [{ exileFromGraveyard: { filter: {}, count: 3 } }, { sacrifice: { filter: { subtypes: ['Food'], zone: 'battlefield' }, count: 1 } }];
     else if (p === '{Q}') cost.untap = true;
     else if (MANA_RE.test(p)) {

@@ -195,6 +195,8 @@ export type Effect =
   | { kind: 'returnToHand'; what: Ref }
   | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean; /** Return attached to this object (Auras/Equipment). */ attachTo?: Ref }
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' | 'ownerChoice' }
+  /** Exert: the object won't untap during its controller's next untap step. */
+  | { kind: 'exert'; what: Ref }
   /** "When ~ leaves the battlefield, put its counters on target creature you control." */
   | { kind: 'moveCounters'; from: Ref; to: Ref }
   /** "~ becomes a copy of that creature" (permanently). */
@@ -374,6 +376,8 @@ export interface AbilityCost {
   returnSelf?: boolean;
   /** Reveal this card from your hand (free; the ability works from the hand). */
   revealSelf?: boolean;
+  /** Waterbend {N}: pay {N}, tapping untapped artifacts and creatures you control for {1} each. */
+  waterbend?: number;
   tapUntapped?: { filter: ObjectFilter; count: number };
   /** Crew / saddle: tap any number of untapped matching creatures with total power N or more. */
   tapUntappedTotalPower?: { filter: ObjectFilter; power: number };

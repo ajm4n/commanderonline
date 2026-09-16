@@ -484,6 +484,7 @@ export type GameEventName =
   | 'becomesMonarch'
   | 'becomesMonstrous'
   | 'expend'
+  | 'exerted'
   | 'takesInitiative'
   | 'ventures'
   | 'dungeonCompleted'

@@ -229,6 +229,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         g.moveObject(o.id, 'library', { position: pos });
       }
       return;
+    case 'exert': {
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: 'untilNextUntap', modification: { layer: 'rule', rule: { kind: 'cantUntap' } } });
+        g.log(`${g.nameOf(o.id)} is exerted.`);
+        g.emit({ name: 'exerted', objectId: o.id, playerId: o.controller });
+      }
+      return;
+    }
     case 'moveCounters': {
       const from = g.resolveObjects(e.from, ctx)[0];
       const snapshot = (ctx.triggerContext.snapshot as { counters?: Record<string, number> } | undefined)?.counters;

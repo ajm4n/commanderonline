@@ -1619,12 +1619,18 @@ export class Game {
       const holder = this.state.objects[id];
       if (!holder) continue;
       for (const r of this.characteristics(id).rules) {
-        if (r.kind !== 'custom' || r.tag !== 'damageMultiplier') continue;
-        const d = r.data as { filter?: import('./types.js').ObjectFilter; times: number; combatOnly?: boolean } | undefined;
+        if (r.kind !== 'custom' || (r.tag !== 'damageMultiplier' && r.tag !== 'damagePlus')) continue;
+        const d = r.data as { filter?: import('./types.js').ObjectFilter; times?: number; plus?: number; combatOnly?: boolean; noncombatOnly?: boolean; toOpponents?: boolean } | undefined;
         if (!d) continue;
         if (d.combatOnly && !combat) continue;
+        if (d.noncombatOnly && combat) continue;
+        if (d.toOpponents) {
+          const tc = target.kind === 'player' ? target.id : target.kind === 'object' ? this.state.objects[target.id]?.controller : undefined;
+          if (tc === undefined || tc === holder.controller) continue;
+        }
         if (d.filter && (!src || !matchesFilter(this, src, { ...d.filter, zone: undefined }, { sourceId: id, controller: holder.controller }))) continue;
-        dealt *= d.times;
+        if (r.tag === 'damageMultiplier') dealt *= d.times ?? 1;
+        else dealt += d.plus ?? 0;
       }
     }
     if (target.kind === 'player') {
