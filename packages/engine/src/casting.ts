@@ -563,6 +563,8 @@ export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
   const anyFaceInstant = obj.card.faces?.some((f) => /Instant/.test(f.typeLine) || /^Flash\b/m.test(f.oracleText));
   if (ch.types.includes('Land') && !(obj.card.faces?.some((f) => !/Land/.test(f.typeLine)))) return false; // lands are played, not cast
   const sorceryOnly = obj.memory['sorceryOnly'] === true;
+  const castCond = g.scriptFor(obj).castCondition;
+  if (castCond && !g.checkCondition(castCond, { sourceId: obj.id, controller: p })) return false;
   if ((sorceryOnly || (!isInstant && !anyFaceInstant)) && !canCastSorcerySpeed(g, p)) return false;
   // Can we afford it?
   const cost = computeCastCost(g, p, obj, 0);

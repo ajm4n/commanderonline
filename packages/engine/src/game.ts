@@ -1495,8 +1495,14 @@ export class Game {
   /** Deal damage from a source to a target (object or player). Handles infect, wither, lifelink, deathtouch, prevention. */
   /** Does a turn-wide prevention effect stop this damage? */
   private preventedByFog(sourceId: ObjectId | null, target: Target, combat: boolean): boolean {
-    if (this.state.turnStats['noPrevention'] || !this.state.preventions.length) return false;
+    if (this.state.turnStats['noPrevention']) return false;
     const src = sourceId !== null ? this.state.objects[sourceId] : null;
+    // "Prevent all (combat) damage that would be dealt by [this source] this turn."
+    if (src && src.zone === 'battlefield') {
+      const noDmg = this.characteristics(src.id).rules.find((r) => r.kind === 'custom' && r.tag === 'dealsNoDamage') as { data?: string } | undefined;
+      if (noDmg && (noDmg.data !== 'combat' || combat)) return true;
+    }
+    if (!this.state.preventions.length) return false;
     for (const pv of this.state.preventions) {
       if (pv.combat && !combat) continue;
       if (pv.source && (!src || !matchesFilter(this, src, { ...pv.source, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller }))) continue;

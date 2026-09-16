@@ -170,9 +170,11 @@ export function parseTokenPhrase(text: string): { count: number | 'X'; token: To
     tapped = true;
   }
   // Copy tokens
-  if ((m = t.match(/^(a|an|\w+|X) tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+)$/i))) {
+  if ((m = t.match(/^(a|an|\w+|X) (?:tapped and attacking |tapped )?tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+)$/i))) {
     const n = wordToNumber(m[1]);
     if (n === null) return null;
+    if (/^(?:a|an|\w+|X) tapped/i.test(t)) tapped = true;
+    if (/^(?:a|an|\w+|X) tapped and attacking/i.test(t)) attacking = true;
     const ctx = newCtx({ triggerHasObject: true });
     const ref = objRef(m[2], ctx);
     if (!ref || ctx.targets.length) return null; // copy targets are handled by the caller pattern
@@ -472,6 +474,20 @@ const PATTERNS: Pattern[] = [
     const who = subjectPlayer(m[1], ctx);
     return who ? [{ kind: 'moveAll', who, from: 'graveyard', to: 'exile' }] : null;
   }],
+  [/^(.+?) gains? control of (.+?)( until end of turn)?$/i, (m, ctx) => {
+    if (/^(?:you|an opponent)$/i.test(m[1])) return null;
+    const who = playerRef(m[1], ctx);
+    const ref = who ? objRef(m[2], ctx) : null;
+    return who && ref ? [{ kind: 'gainControl', what: ref, who, duration: m[3] ? 'endOfTurn' : 'permanent' }] : null;
+  }],
+  [/^(.+?) chooses? (?:a|an) (.+?) (?:they|that player) controls?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = who ? parseNoun(`a ${m[2]}`) : null;
+    if (!who || !noun) return null;
+    const key = `chosen${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'battlefield', controllerRef: who }, count: 1, key }];
+  }],
   [/^an opponent gains control of (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }, { kind: 'gainControl', what: ref, who: { ref: 'chosen', key: 'opponent' } }] : null;
@@ -679,20 +695,26 @@ const PATTERNS: Pattern[] = [
   // Tokens
   [/^create (.+)$/i, (m, ctx) => {
     // copies of a target
-    const copy = m[1].match(/^(a|an|\w+|X) tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+?)(?:, except (.+))?$/i);
+    const copy = m[1].match(/^(a|an|\w+|X) ((?:tapped and attacking |tapped )?)tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+?)(?:, except (.+))?$/i);
     if (copy) {
       const n = wordToNumber(copy[1]);
-      const ref = objRef(copy[2], ctx);
+      const ref = objRef(copy[3], ctx);
       if (n === null || !ref) return null;
       const token: TokenSpec = { name: 'Copy', typeLine: '', colors: [], copyOf: ref };
-      if (copy[3]) {
-        const kw = copy[3].match(/^(?:it|they) (?:has|have) (.+)$/i);
-        const kws = kw ? parseKeywordList(kw[1]) : null;
-        if (!kws) return null;
-        token.exceptions = { keywords: kws };
+      if (copy[4]) {
+        const ex = parseCopyExceptions(copy[4]);
+        if (!ex) return null;
+        token.exceptions = ex;
       }
       ctx.lastObj = { ref: 'lastCreated' };
-      return [{ kind: 'createToken', token, count: n }];
+      return [{ kind: 'createToken', token, count: n, tapped: /tapped/i.test(copy[2]), attacking: /attacking/i.test(copy[2]) }];
+    }
+    // Role tokens attached to something
+    const role = m[1].match(/^(?:a|an) ((?:Wicked|Monster|Royal|Sorcerer|Cursed|Virtuous|Young Hero) Role) token attached to (.+)$/i);
+    if (role) {
+      const host = objRef(role[2], ctx);
+      if (!host) return null;
+      return [{ kind: 'createToken', token: { name: role[1].replace(/ Role$/, ''), typeLine: '', colors: [], preset: role[1] }, count: 1, attachTo: host }];
     }
     const t = parseTokenPhrase(m[1]);
     if (!t) return null;
@@ -711,7 +733,7 @@ const PATTERNS: Pattern[] = [
     const t = parseTokenPhrase(m[1]);
     if (!t || t.count !== 1) return null;
     const noun = parseNoun(m[2]);
-    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[2]}`, ctx);
+    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : (amt(`the number of ${m[2]}`, ctx) ?? amt(`the number of ${m[2].replace(/^(\w+) /, (w) => (/s$/.test(w.trim()) ? w : `${w.trim()}s `))}`, ctx));
     if (a === null) return null;
     ctx.lastObj = { ref: 'lastCreated' };
     return [{ kind: 'createToken', token: t.token, count: a, tapped: t.tapped, attacking: t.attacking }];
@@ -1012,6 +1034,10 @@ const PATTERNS: Pattern[] = [
     return inner.map((e) => (e.kind === 'addMana' ? { ...e, who } : e));
   }],
   [/^add an additional (.+)$/i, (m, ctx) => parseSentence(`add ${m[1]}`, ctx)],
+  [/^(.+?) adds? (?:an additional )?one mana of any type that land produced$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'addMana', mana: 'triggerMana', who }] : null;
+  }],
   // Mana
   [/^add (.+)$/i, (m) => {
     const body = m[1];
@@ -1051,12 +1077,12 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'counterSpell', what: ref, unlessPays: pays }];
   }],
   // Search
-  [/^search (your|their|that player's|target player's|target opponent's) library for (?:a|an|up to (\w+)) ([^,]+?)(?:, reveal (?:it|them|that card|those cards))?,?(?: and| then)? (?:reveal (?:it|them),? (?:then )?shuffle,? and )?(?:put (?:it|them|that card|those cards|the rest) (into (?:your|their) hand|onto the battlefield(?: under your control)?( tapped)?|on top(?: of (?:your|their) library)?|into (?:your|their) graveyard)|(exile) (?:it|them|that card|those cards)(?: face down)?)(?:, then shuffle| and shuffle|, then shuffle (?:your|their) library)?(?:\. then shuffle)?$/i, (m, ctx) => {
+  [/^search (your|their|that player's|target player's|target opponent's) library for (?:a|an|up to (\w+)|(?:any number of)) ([^,]+?)(?:, reveal (?:it|them|that card|those cards))?,?(?: and| then)? (?:(?:reveal (?:it|them),? )?(?:then )?shuffle,? and )?(?:put (?:it|them|that card|those cards|the rest) (into (?:your|their) hand|onto the battlefield(?: under your control)?( tapped)?|on top(?: of (?:your|their) library)?|into (?:your|their) graveyard)|(exile) (?:it|them|that card|those cards)(?: face down)?)(?:, then shuffle| and shuffle|, then shuffle (?:your|their) library)?(?:\. then shuffle)?$/i, (m, ctx) => {
     const nounText = m[3].replace(/ cards$/i, ' card');
     const noun = /^cards?$/i.test(m[3]) ? { filter: {} as ObjectFilter } : parseNoun(/\bcards?\b/i.test(nounText) ? nounText : `${nounText} card`);
     ctx.lastObj = { ref: 'lastMoved' };
     if (!noun) return null;
-    const n = m[2] ? wordToNumber(m[2]) : 1;
+    const n = m[2] ? wordToNumber(m[2]) : /any number of/i.test(m[0]) ? 20 : 1;
     if (n === null) return null;
     const whose = m[1].toLowerCase();
     let who: Ref | undefined;
@@ -1332,6 +1358,32 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
   return ref ? [mk(ref)] : null;
 }
 
+/** "except it has haste and it is a Nightmare in addition to its other types" → token copy exceptions. */
+function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
+  const ex: NonNullable<TokenSpec['exceptions']> = {};
+  for (const part of text.split(/,? and (?=it|they|its)|, /i)) {
+    const p = part.trim();
+    let m: RegExpMatchArray | null;
+    if ((m = p.match(/^(?:it|they) (?:has|have) (.+)$/i))) {
+      const kws = parseKeywordList(m[1].replace(/^"|"$/g, ''));
+      if (!kws) return null;
+      ex.keywords = [...(ex.keywords ?? []), ...kws];
+    } else if (/^(?:it|they) (?:is|are) not legendary$/i.test(p)) ex.notLegendary = true;
+    else if ((m = p.match(/^(?:it|they) (?:is|are) (?:a|an) (.+?) in addition to its other types$/i))) {
+      const words = m[1].split(/\s+/);
+      ex.addTypes = [...(ex.addTypes ?? []), ...words.filter((w) => /^(artifact|creature|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+      ex.addSubtypes = [...(ex.addSubtypes ?? []), ...words.filter((w) => /^[A-Z]/.test(w))];
+    } else if ((m = p.match(/^(?:it|they) (?:is|are) (\d+)\/(\d+)$/i))) {
+      ex.power = m[1];
+      ex.toughness = m[2];
+    } else if ((m = p.match(/^(?:it|they) (?:is|are) (white|blue|black|red|green|colorless)$/i))) {
+      const c = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1].toLowerCase() as 'white'];
+      ex.colors = c ? [c] : [];
+    } else return null;
+  }
+  return ex;
+}
+
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
   return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered)\.?$/i.test(text.trim());
@@ -1357,6 +1409,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (inner) {
       const upkeep = /upkeep/i.test(m[1]);
       return [{ kind: 'delayedTrigger', event: upkeep ? 'beginningOfUpkeep' : /cleanup/i.test(m[1]) ? 'cleanup' : 'beginningOfEndStep', filter: /your next/i.test(m[1]) ? { player: 'you' } : undefined, effects: inner, text, once: true }];
+    }
+  }
+  if ((m = text.match(/^when you next cast (an instant or sorcery spell|a spell|a creature spell|an instant spell|a sorcery spell) this turn, (.+)$/i))) {
+    const sub = newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: true });
+    const inner = parseSentence(m[2].replace(/\bcopy it\b/i, 'copy that spell'), sub);
+    if (inner) {
+      const types = /instant or sorcery/i.test(m[1]) ? ['Instant', 'Sorcery'] : /creature/i.test(m[1]) ? ['Creature'] : /instant/i.test(m[1]) ? ['Instant'] : /sorcery/i.test(m[1]) ? ['Sorcery'] : undefined;
+      return [{ kind: 'delayedTrigger', event: 'cast', filter: { player: 'you', object: types ? { types } : undefined }, effects: inner, text, once: true }];
     }
   }
   if ((m = text.match(/^when (that creature|that permanent|it|that token|those creatures) (dies|die|leaves the battlefield|is put into a graveyard) this turn, (.+)$/i))) {
@@ -1424,6 +1484,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   text = text.replace(/^((?:any number of |up to \w+ |\w+ )?target [^,]+?) each (gets?|gains?|deals?|loses?|has|have|becomes?|cannot|can't|draws?|discards?|sacrifices?|mills?)\b/i, '$1 $2');
   text = text.replace(/^until end of turn, (.+?)$/i, (_m, rest: string) => (/ until end of turn$/i.test(rest) ? rest : `${rest} until end of turn`));
+  if ((m = text.match(/^(.+?), where X is ([^,]+?), (.+)$/i)) && /\bX\b/.test(m[1])) {
+    const a = amt(m[2], ctx);
+    const inner = a !== null ? parseSentence(`${m[1]}, ${m[3]}`, ctx) : null;
+    if (inner) return inner.map((e) => substituteX(e, a!));
+  }
   if ((m = text.match(/^(.+), where X is (.+)$/i))) {
     // "…deals X damage…, where X is the number of…" → substitute amount
     const a = amt(m[2], ctx);

@@ -389,6 +389,9 @@ export interface ObjectFilter {
   monstrous?: boolean;
   /** Mana value at most an amount ("with mana value less than or equal to the number of lands you control"). */
   cmcLEAmount?: import('./script.js').Amount;
+  cmcEQAmount?: import('./script.js').Amount;
+  /** For spells on the stack: targets an object matching / you ("spell that targets a creature you control"). */
+  spellTargets?: ObjectFilter | 'you' | 'opponent';
   custom?: string;
 }
 
@@ -423,6 +426,7 @@ export type GameEventName =
   | 'attacksUnblocked'
   | 'cycled'
   | 'tappedForMana'
+  | 'surveil'
   | 'exiled'
   | 'returnedToHand'
   | 'cast'

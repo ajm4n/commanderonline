@@ -38,7 +38,13 @@ export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardDat
     if (src) {
       const ch = g.characteristics(src.id);
       const base = src.copyOf ?? src.card;
-      return { ...base, isToken: true, oracleId: base.oracleId, name: ch.name || base.name, keywords: [...ch.keywords, ...(spec.exceptions?.keywords ?? [])] };
+      const ex = spec.exceptions;
+      let typeLine = base.typeLine;
+      if (ex?.notLegendary) typeLine = typeLine.replace(/^Legendary /, '');
+      if (ex?.addTypes?.length) typeLine = `${ex.addTypes.filter((t) => !typeLine.includes(t)).join(' ')} ${typeLine}`.trim();
+      if (ex?.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
+      const extraText = ex?.keywords?.length ? `\n${ex.keywords.join('\n')}` : '';
+      return { ...base, isToken: true, oracleId: `${base.oracleId}${ex ? ':x' : ''}`, name: ch.name || base.name, typeLine, oracleText: `${base.oracleText}${extraText}`, power: ex?.power ?? base.power, toughness: ex?.toughness ?? base.toughness, colors: ex?.colors ?? base.colors, keywords: [...ch.keywords, ...(ex?.keywords ?? [])] };
     }
   }
   const text = [merged.oracleText, ...(merged.keywords ?? [])].filter(Boolean).join('\n');
@@ -213,6 +219,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           }
           const o = g.createObject(card, p, 'battlefield', { tapped: e.tapped, attacking });
           created.push(o.id);
+          if (e.attachTo) {
+            const host = g.resolveObjects(e.attachTo, ctx)[0];
+            if (host) attach(g, o.id, host.id);
+            else g.moveObject(o.id, 'graveyard', { skipEvents: true });
+          }
         }
         if (count > 0) g.log(`${g.player(p).name} creates ${count} ${card_name(e.token)} token${count === 1 ? '' : 's'}.`, { kind: 'token', data: { player: p, count, name: card_name(e.token) } });
       }
@@ -304,7 +315,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) yield* scry(g, p, amt(e.amount));
       return;
     case 'surveil':
-      for (const p of playersOf(g, e.who, ctx)) yield* surveil(g, p, amt(e.amount));
+      for (const p of playersOf(g, e.who, ctx)) {
+        yield* surveil(g, p, amt(e.amount));
+        g.emit({ name: 'surveil', playerId: p, amount: amt(e.amount) });
+      }
       return;
     case 'mill':
       for (const p of playersOf(g, e.who, ctx)) {
@@ -363,6 +377,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
           const c = (src?.memory['color'] ?? src?.chosen['color'] ?? 'W') as ManaColor;
           pool[c] += n;
+          g.touch();
+          continue;
+        }
+        if (e.mana === 'triggerMana') {
+          const produced = ((ctx.triggerContext['triggerData'] as { mana?: ManaColor[] } | undefined)?.mana ?? []) as ManaColor[];
+          for (let k = 0; k < n; k++) for (const c of produced) pool[c]++;
           g.touch();
           continue;
         }

@@ -108,7 +108,7 @@ export interface TokenSpec {
   legendary?: boolean;
   /** Copy of another object (for "create a token that's a copy of ~"). */
   copyOf?: Ref;
-  exceptions?: { keywords?: string[]; haste?: boolean };
+  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; power?: string; toughness?: string; colors?: Color[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ export type Effect =
   | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean }
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
-  | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref }
+  | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref }
   | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean }
   | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
@@ -203,7 +203,7 @@ export type Effect =
   | { kind: 'surveil'; amount: Amount; who?: Ref }
   | { kind: 'mill'; amount: Amount; who?: Ref }
   | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter }
-  | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor'; amount?: Amount; who?: Ref }
+  | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor' | 'triggerMana'; amount?: Amount; who?: Ref }
   | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
   | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile'; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your library and/or graveyard" */ zones?: ('library' | 'graveyard')[] }
   | { kind: 'shuffle'; who?: Ref }
@@ -468,6 +468,8 @@ export interface CardScript {
   keywords?: KeywordSpec[];
   /** Additional costs "As an additional cost to cast this spell, ..." */
   additionalCost?: AbilityCost;
+  /** "Cast ~ only during combat" / "only if you control a snow land": must hold to cast. */
+  castCondition?: Condition;
   /** Alternative costs (e.g. warp, "You may pay {W} rather than pay this spell's mana cost if ..."). */
   alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition; zone?: ZoneName }[];
   /** Cost changes the spell applies to itself ("costs {1} less to cast for each artifact you control", affinity). */

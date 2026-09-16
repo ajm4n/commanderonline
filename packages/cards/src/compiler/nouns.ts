@@ -135,7 +135,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
 
   // Trailing qualifiers
   const quals: string[] = [];
-  const QUAL_RE = /\s+(in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control|you own|you do not control|on the battlefield|attached to (?:it|~)|that was dealt damage this turn|dealt damage this turn|attached to a creature|attached to a permanent|with mana value less than or equal to [^,]+?|an opponent controls|your opponents control|target player controls|target opponent controls|its controller controls|they control|that is (?:a|an) [A-Z][a-z]+(?: or (?:a|an) [A-Z][a-z]+)*|named ~|named [A-Z][\w' ,-]+?|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|with total power and toughness \d+ or less|of the chosen type|of the chosen creature type|with the greatest power among creatures (?:that player|you) controls?|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
+  const QUAL_RE = /\s+(in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control|you own|you do not control|on the battlefield|attached to (?:it|~)|that targets (?:a|an) [^,]+?|that targets you|that targets an opponent|with mana value equal to [^,]+?|that was dealt damage this turn|dealt damage this turn|attached to a creature|attached to a permanent|with mana value less than or equal to [^,]+?|an opponent controls|your opponents control|target player controls|target opponent controls|its controller controls|they control|that is (?:a|an) [A-Z][a-z]+(?: or (?:a|an) [A-Z][a-z]+)*|named ~|named [A-Z][\w' ,-]+?|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash)|without flying|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|with total power and toughness \d+ or less|of the chosen type|of the chosen creature type|with the greatest power among creatures (?:that player|you) controls?|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|other than ~|not named ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
   for (;;) {
     const q = text.match(QUAL_RE);
     if (!q) break;
@@ -232,10 +232,10 @@ export function parseNoun(raw: string): ParsedNoun | null {
       else return false;
       return true;
     };
-    // "artifact, creature, or enchantment"
+    // "artifact, creature, or enchantment" (adjectives such as "basic" in "basic land or Gate cards" apply to the whole)
     const listHeads = left.filter((w) => w !== 'or');
     let ok = true;
-    for (const h of listHeads) if (!addHead(h)) ok = false;
+    for (const h of listHeads) if (!addHead(h) && !parseAdjectives([h], result)) ok = false;
     if (!ok) return null;
     for (const h of right.slice(0, -0)) void h; // right side words are adjectives for the final head, already applied
     if (types.size) result.filter.types = [...types];
@@ -324,6 +324,17 @@ function applyQualifier(q: string, r: ParsedNoun) {
   else if (q === 'that player controls' || q === 'defending player controls' || q === 'target player controls' || q === 'target opponent controls' || q === 'its controller controls' || q === 'that opponent controls' || q === 'they control') r.controllerPhrase = q === 'they control' ? 'they' : q.replace(/ controls$/, '');
   else if (q === 'on the battlefield') r.filter.zone = 'battlefield';
   else if (q === 'attached to it' || q === 'attached to ~') r.filter.attachedToSource = true;
+  else if (q === 'that targets you') r.filter.spellTargets = 'you';
+  else if (q === 'that targets an opponent') r.filter.spellTargets = 'opponent';
+  else if ((m = q.match(/^that targets (?:a|an) (.+)$/))) {
+    const inner = parseNoun(`a ${m[1]}`);
+    if (inner) r.filter.spellTargets = inner.filter.zone ? inner.filter : { ...inner.filter, zone: 'battlefield' };
+    else r.confident = false;
+  } else if ((m = q.match(/^with mana value equal to (.+)$/))) {
+    const a = parseAmount(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (a !== null) r.filter.cmcEQAmount = a;
+    else r.confident = false;
+  }
   else if (q === 'that was dealt damage this turn' || q === 'dealt damage this turn') r.filter.damaged = true;
   else if (q === 'attached to a creature' || q === 'attached to a permanent') r.filter.attached = true;
   else if ((m = q.match(/^with mana value less than or equal to (.+)$/))) {

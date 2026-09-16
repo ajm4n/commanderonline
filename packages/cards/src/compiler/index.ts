@@ -52,6 +52,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   let maxModes = 1;
   let modalMaxIf: { condition: Condition; max: number } | undefined;
   let modalRepeatable = false;
+  let castCondition: Condition | undefined;
   let additionalCost: CardScript['additionalCost'];
   const alternativeCosts: NonNullable<CardScript['alternativeCosts']> = [];
   const costModifiers: CostModifier[] = [];
@@ -209,6 +210,21 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const noun = parseNounLoose(m[3]);
       if (noun) {
         costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', per: noun, text: line });
+        compiledLines.push(line);
+        continue;
+      }
+      const amt = parseAmount(`the number of ${m[3]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (amt !== null) {
+        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', perAmount: amt, text: line });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    // Casting restrictions: "Cast ~ only during combat" / "only if you control a snow land"
+    if ((m = line.match(/^Cast (?:~|this spell) only (.+?)\.?$/i))) {
+      const cond = parseCastRestriction(m[1]);
+      if (cond) {
+        castCondition = castCondition ? { kind: 'and', cs: [castCondition, cond] } : cond;
         compiledLines.push(line);
         continue;
       }
@@ -477,7 +493,34 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     return true;
   });
   const coverage: CardScript['coverage'] = meaningful.length === 0 || unhandledLines.length === 0 ? 'full' : automatedAbilities.length === 0 ? 'none' : 'partial';
-  return { script: { name: faceName, abilities, additionalCost, alternativeCosts: alternativeCosts.length ? alternativeCosts : undefined, costModifiers: costModifiers.length ? costModifiers : undefined, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined }, compiledLines, unhandledLines };
+  return { script: { name: faceName, abilities, additionalCost, castCondition, alternativeCosts: alternativeCosts.length ? alternativeCosts : undefined, costModifiers: costModifiers.length ? costModifiers : undefined, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined }, compiledLines, unhandledLines };
+}
+
+/** "Cast ~ only during combat [before blockers are declared] [and only if ...]" → a condition checked when casting. */
+function parseCastRestriction(text: string): Condition | null {
+  const parts = text.split(/ and only /i);
+  const conds: Condition[] = [];
+  for (const raw of parts) {
+    const p = raw.replace(/^(?:during|if) /i, (w) => w.toLowerCase());
+    let m: RegExpMatchArray | null;
+    if ((m = p.match(/^during (?:the )?(declare attackers|declare blockers|combat damage|end|upkeep|draw) step$/i))) conds.push({ kind: 'turnStep', steps: [({ 'declare attackers': 'declareAttackers', 'declare blockers': 'declareBlockers', 'combat damage': 'combatDamage', end: 'end', upkeep: 'upkeep', draw: 'draw' } as Record<string, string>)[m[1].toLowerCase()]] });
+    else if ((m = p.match(/^during combat(?: on your turn)?( before blockers are declared| after blockers are declared| before the combat damage step)?$/i))) {
+      const before = / before blockers/i.test(m[1] ?? '');
+      const after = / after blockers/i.test(m[1] ?? '');
+      const steps = before ? ['beginCombat', 'declareAttackers'] : after ? ['declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'] : /before the combat damage/i.test(m[1] ?? '') ? ['beginCombat', 'declareAttackers', 'declareBlockers'] : ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'];
+      conds.push({ kind: 'turnStep', steps, player: / on your turn/i.test(p) ? 'you' : undefined });
+    } else if (/^during an opponent's turn$/i.test(p)) conds.push({ kind: 'notYourTurn' });
+    else if (/^during your turn$/i.test(p)) conds.push({ kind: 'yourTurn' });
+    else if (/^before the combat damage step$/i.test(p)) conds.push({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers', 'declareBlockers'] });
+    else if (/^before attackers are declared$/i.test(p)) conds.push({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers'], beforeAttackers: true });
+    else if (/^if you've been attacked this step$/i.test(p) || /^if you have been attacked this step$/i.test(p)) conds.push({ kind: 'eventThisTurn', event: 'attacked', player: 'you' });
+    else if ((m = p.match(/^if (.+)$/i))) {
+      const c = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (!c || c.kind === 'manual') return null;
+      conds.push(c);
+    } else return null;
+  }
+  return conds.length === 1 ? conds[0] : { kind: 'and', cs: conds };
 }
 
 /** Noun phrase → filter for cost modifiers ("creature on the battlefield", "artifacts", "Equipment you control"). */

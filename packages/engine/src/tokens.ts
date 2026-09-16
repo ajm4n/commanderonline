@@ -82,4 +82,11 @@ export const TOKEN_PRESETS: Record<string, TokenSpec> = {
   Illusion: { name: 'Illusion', typeLine: 'Creature — Illusion', power: '1', toughness: '1', colors: ['U'] },
   Shard: { name: 'Shard', typeLine: 'Enchantment — Shard', colors: [], oracleText: '{2}, Sacrifice this enchantment: Scry 1, then draw a card.' },
   Incubator: { name: 'Incubator', typeLine: 'Artifact — Incubator', colors: [] },
+  'Wicked Role': { name: 'Wicked', typeLine: 'Enchantment — Aura Role', colors: [], oracleText: 'Enchant creature\nEnchanted creature gets +1/+1.\nWhen this Aura is put into a graveyard from the battlefield, each opponent loses 1 life.' },
+  'Monster Role': { name: 'Monster', typeLine: 'Enchantment — Aura Role', colors: [], oracleText: 'Enchant creature\nEnchanted creature gets +1/+1 and has trample.' },
+  'Royal Role': { name: 'Royal', typeLine: 'Enchantment — Aura Role', colors: [], oracleText: 'Enchant creature\nEnchanted creature gets +1/+1 and has ward {1}.' },
+  'Sorcerer Role': { name: 'Sorcerer', typeLine: 'Enchantment — Aura Role', colors: [], oracleText: 'Enchant creature\nEnchanted creature gets +1/+1 and has "{T}: Scry 1."' },
+  'Cursed Role': { name: 'Cursed', typeLine: 'Enchantment — Aura Role', colors: [], oracleText: 'Enchant creature\nEnchanted creature has base power and toughness 1/1.' },
+  'Virtuous Role': { name: 'Virtuous', typeLine: 'Enchantment — Aura Role', colors: [], oracleText: 'Enchant creature\nEnchanted creature gets +1/+1 for each enchantment you control.' },
+  'Young Hero Role': { name: 'Young Hero', typeLine: 'Enchantment — Aura Role', colors: [], oracleText: 'Enchant creature\nEnchanted creature has "Whenever this creature attacks, if its toughness is 3 or less, put a +1/+1 counter on it."' },
 };

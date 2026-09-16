@@ -67,6 +67,18 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.cmcLE !== undefined && !(ch.manaValue <= num(filter.cmcLE))) return false;
   if (filter.cmcLEAmount !== undefined && !(ch.manaValue <= g.resolveAmount(filter.cmcLEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.damaged !== undefined && (obj.damage > 0) !== filter.damaged) return false;
+  if (filter.cmcEQAmount !== undefined && ch.manaValue !== g.resolveAmount(filter.cmcEQAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} })) return false;
+  if (filter.spellTargets !== undefined) {
+    const item = g.state.stack.find((s) => s.sourceId === obj.id);
+    if (!item) return false;
+    const st = filter.spellTargets;
+    const ok = item.targets.some((t) => {
+      if (st === 'you') return t.kind === 'player' && t.id === ctx.controller;
+      if (st === 'opponent') return t.kind === 'player' && t.id !== ctx.controller;
+      return t.kind === 'object' && !!g.state.objects[t.id] && matchesFilter(g, g.state.objects[t.id], { ...st, zone: undefined }, ctx);
+    });
+    if (!ok) return false;
+  }
   if (filter.hasAttachment) {
     const has = Object.values(g.state.objects).some((a) => a.attachedTo === obj.id && (filter.hasAttachment === 'any' || g.characteristics(a.id).subtypes.includes(filter.hasAttachment!)));
     if (!has) return false;

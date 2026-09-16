@@ -55,7 +55,23 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^Whenever you attack with (\w+) or more creatures, (.+)$/i))) return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking creatures, ${m[2]}` };
   if ((m = L.match(/^Whenever ~ attacks while you control (.+?), (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]}, ${m[2]}` };
-  if ((m = L.match(/^Whenever ~ enters or dies, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'dies', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^When ~ enters or is turned face up, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:enchanted|equipped) creature attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^When(?:ever)? (?:enchanted|equipped) creature becomes the target of a spell or ability, (.+)$/i))) return { event: 'becomesTarget', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? ~ becomes the target of a spell, (.+)$/i))) return { event: 'becomesTarget', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast an instant or sorcery spell that targets only ~ or activate an ability that targets only ~, (.+)$/i))) return { event: 'cast', filter: { player: 'you', targetsSource: true, object: { types: ['Instant', 'Sorcery'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast a creature spell with power (\d+) or greater, (.+)$/i))) return { event: 'cast', filter: { player: 'you', object: { types: ['Creature'], powerGE: parseInt(m[1], 10) } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever an opponent draws their second card each turn, (.+)$/i))) return { event: 'drawCard', filter: { player: 'opponent', nthThisTurn: 2 }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you surveil, (.+)$/i))) return { event: 'surveil', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you scry or surveil, (.+)$/i))) return { event: 'scry', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1], also: [{ event: 'surveil', filter: { player: 'you' }, hasObject: false, hasPlayer: true }] };
+  if ((m = L.match(/^Whenever you play a land or cast a spell, (.+)$/i))) return { event: 'landPlayed', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'cast', filter: { player: 'you' }, hasObject: true, hasPlayer: true }] };
+  if ((m = L.match(/^Whenever a creature an opponent controls becomes tapped, (.+)$/i))) return { event: 'tapped', filter: { object: { types: ['Creature'] }, objectController: 'opponent' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) you control becomes tapped, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1]} you control`);
+    if (!tf) return null;
+    return { event: 'tapped', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
+  }
+  if ((m = L.match(/^When(?:ever)? ~ enters or dies, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'dies', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false }] };
   if ((m = L.match(/^When(?:ever)? ~ enters(?: under your control)?, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^When ~ exploits a creature, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], exploit: true };
   if ((m = L.match(/^When(?:ever)? ~ enters (un)?tapped, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: `if ~ is ${m[1] ? 'untapped' : 'tapped'}, ${m[2]}` };
