@@ -99,6 +99,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const b = parseStatic(`As ~ enters, choose ${m[2]}`, isCreatureOrPermanent);
     if (a && b) return [...a, ...b];
   }
+  if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
   if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) return objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' });
   // Static damage prevention: "Prevent all damage that would be dealt to ~ by artifact creatures." / "Prevent all combat damage that would be dealt by enchanted creature."
   if ((m = L.match(/^Prevent all (combat |noncombat )?damage that would be dealt(?: to (.+?))?(?: by (.+?))?$/i)) && (m[2] || m[3])) {

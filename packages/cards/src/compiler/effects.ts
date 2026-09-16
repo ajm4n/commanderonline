@@ -16,6 +16,8 @@ export interface ParseCtx {
   triggerHasPlayer: boolean;
   /** The line is on an instant/sorcery (affects "~" meaning for return-to-hand etc.). */
   isSpell: boolean;
+  /** Inside a trigger whose subject is the event's source (damage dealer) rather than its object. */
+  triggerObjectIsSource?: boolean;
 }
 
 export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
@@ -68,7 +70,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
-    return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : l === 'it' ? SELF : null);
+    return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : null);
   }
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker)$/.test(l)) return { ref: 'attachedTo' };
   if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
@@ -128,6 +130,7 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'each player' || l === 'all players') return { ref: 'eachPlayer' };
   if (l === 'that player' || l === 'that opponent' || l === 'they' || l === 'the player') return ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : ctx.triggerHasObject ? { ref: 'triggerController' } : null);
   if (l === 'each other player' || l === 'all other players' || l === 'each of your opponents') return { ref: 'eachOpponent' };
+  if (l === 'each other opponent' || l === 'each of their opponents' || l === 'each other player who is an opponent') return { ref: 'eachOtherOpponent' };
   if (l === 'its controller' || /^(?:that|the) [\w ]+'s controller$/.test(l) || l === 'the controller of that creature' || l === 'the controller of that permanent') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (l === "~'s controller") return { ref: 'controllerOf', of: SELF };
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
@@ -797,9 +800,11 @@ const PATTERNS: Pattern[] = [
   }],
   [/^(?:(.+?) )?draws? a card for each (.+)$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
+    if (!who) return null;
     const noun = parseNoun(m[2]);
-    if (!who || !noun) return null;
-    return [{ kind: 'draw', amount: { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } }, who }];
+    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[2]}`, ctx);
+    if (a === null) return null;
+    return [{ kind: 'draw', amount: a, who }];
   }],
   [/^put (?:a|an|(\w+|X)) ([+-]\d+\/[+-]\d+|\w+) counters? on (.+?) for each (.+)$/i, (m, ctx) => {
     const n = m[1] ? wordToNumber(m[1]) : 1;
@@ -841,12 +846,13 @@ const PATTERNS: Pattern[] = [
   }],
   [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+) for each (.+?)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
+    if (!ref) return null;
     const noun = parseNoun(m[4]);
-    if (!ref || !noun) return null;
-    const f = noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' as const };
+    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' as const } } : amt(`the number of ${m[4]}`, ctx);
+    if (a === null) return null;
     const p = parseInt(m[2], 10);
     const t = parseInt(m[3], 10);
-    return [{ kind: 'pump', power: { kind: 'times', a: p, b: { kind: 'count', filter: f } }, toughness: { kind: 'times', a: t, b: { kind: 'count', filter: f } }, on: ref, duration: 'endOfTurn' }];
+    return [{ kind: 'pump', power: { kind: 'times', a: p, b: a }, toughness: { kind: 'times', a: t, b: a }, on: ref, duration: 'endOfTurn' }];
   }],
   [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+) until end of turn for each (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -1151,9 +1157,9 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'copySpell', what: ref }] : null;
   }],
   // Attach
-  [/^attach (.+?) to (.+)$/i, (m, ctx) => {
+  [/^attach (.+) to (.+?)$/i, (m, ctx) => {
     const a = objRef(m[1], ctx);
-    const b = objRef(m[2], ctx);
+    const b = a ? objRef(m[2], ctx) : null;
     return a && b ? [{ kind: 'attach', what: a, to: b }] : null;
   }],
   [/^transform (.+)$/i, (m, ctx) => {
@@ -1372,7 +1378,11 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
   for (const part of text.split(/,? and (?=it|they|its)|, /i)) {
     const p = part.trim();
     let m: RegExpMatchArray | null;
-    const p2 = p.replace(/^(?:the token|the copy|that token|those tokens) /i, 'it ');
+    const p2 = p.replace(/^and /i, '').replace(/^(?:the token|the copy|that token|those tokens) /i, 'it ').replace(/^(?=(?:is|has|have|are) )/i, 'it ');
+    if (/^(?:it|they) (?:has|have) this ability$/i.test(p2)) {
+      ex.thisAbility = true;
+      continue;
+    }
     if ((m = p2.match(/^its name is (.+)$/i))) {
       ex.name = m[1].replace(/^~'s /, '');
       continue;
@@ -1507,6 +1517,32 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       const inner = parseSentence(m[3].replace(/\b(?:that|this) (?:creature|permanent|card|land|token)\b/gi, 'it'), sub);
       if (inner) return [{ kind: 'forEach', over: { ref: 'lastMoved' }, effects: inner, filter: { ...noun.filter, zone: undefined } } as Effect];
     }
+  }
+  if ((m = text.match(/^(.+?) can attack this turn as though (?:it|they) didn't have defender$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'canAttackWithDefender' }, on: ref, duration: 'endOfTurn' }] : null;
+  }
+  if ((m = text.match(/^(target (?:creature|permanent|artifact|nonland permanent)[^']*?)'s owner puts it on their choice of the top or bottom of their library$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'putOnLibrary', what: ref, position: 'ownerChoice' }] : null;
+  }
+  if ((m = text.match(/^(.+?) becomes? a copy of (.+?)(?:, except (.+))?$/i)) && !/until end of turn/i.test(text)) {
+    const what = objRef(m[1], ctx);
+    const of = what ? objRef(m[2], ctx) : null;
+    const ex = m[3] ? parseCopyExceptions(m[3]) : undefined;
+    if (what && of && (!m[3] || ex)) return [{ kind: 'becomeCopy', what, of, exceptions: ex ?? undefined }];
+  }
+  if ((m = text.match(/^put (it|that card|them|those cards|~) into (?:your|its owner's|their owner's|their owners') graveyards?$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] : null;
+  }
+  if ((m = text.match(/^return ~ from your graveyard to the battlefield attached to (.+)$/i))) {
+    const host = objRef(m[1], ctx);
+    return host ? [{ kind: 'returnToBattlefield', what: SELF, attachTo: host }] : null;
+  }
+  if ((m = text.match(/^put (?:its|~'s) counters on (.+)$/i))) {
+    const to = objRef(m[1], ctx);
+    return to ? [{ kind: 'moveCounters', from: ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF, to }] : null;
   }
   if (/^~ assigns no combat damage this turn$/i.test(text)) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: 'combat' }, on: SELF, duration: 'endOfTurn' }];
   if (/^until end of turn, you (?:do not|don't) lose this mana as steps and phases end$/i.test(text) || /^you (?:do not|don't) lose this mana as steps and phases end(?: this turn)?$/i.test(text)) return [{ kind: 'turnFlag', flag: 'keepMana' }];

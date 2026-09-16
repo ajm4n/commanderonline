@@ -359,6 +359,8 @@ export interface ObjectFilter {
   nonland?: boolean;
   /** A permanent card/spell (artifact, creature, enchantment, land, planeswalker, battle). */
   permanentCard?: boolean;
+  /** The card has an Adventure half. */
+  hasAdventure?: boolean;
   /** Only objects attached to / attached by. */
   attachedToSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */

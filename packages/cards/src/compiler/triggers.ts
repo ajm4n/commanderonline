@@ -17,6 +17,8 @@ export interface TriggerHead {
   also?: Omit<TriggerHead, 'rest' | 'also'>[];
   /** "When ~ exploits a creature": the effects run only if a creature was sacrificed on entering. */
   exploit?: boolean;
+  /** "Whenever a Knight you control deals combat damage to a player": "that creature" is the damage source, not the event object. */
+  objectIsSource?: boolean;
 }
 
 function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
@@ -49,7 +51,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     const sm = line.match(/^Whenever (?:a|an|one or more) (.+?) you control deals? (combat )?damage to (an opponent|a player), (.+)$/i);
     if (sm) {
       const noun = parseNoun(`a ${sm[1]}`);
-      if (noun) return { event: 'dealtDamage', filter: { player: /opponent/i.test(sm[3]) ? 'opponent' : 'any', toPlayer: true, combat: sm[2] ? true : undefined, source: { ...noun.filter, controller: 'you' } }, hasObject: false, hasPlayer: true, rest: sm[4] };
+      if (noun) return { event: 'dealtDamage', filter: { player: /opponent/i.test(sm[3]) ? 'opponent' : 'any', toPlayer: true, combat: sm[2] ? true : undefined, source: { ...noun.filter, controller: 'you' } }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: sm[4] };
     }
     const nm = line.match(/^Whenever you cast a spell other than your first spell each turn, (.+)$/i);
     if (nm) return { event: 'cast', filter: { player: 'you', minNthThisTurn: 2 }, hasObject: true, hasPlayer: true, rest: nm[1] };
@@ -92,6 +94,11 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     if (lv) {
       const noun = parseNoun(`a ${lv[1]}`);
       if (noun) return { event: 'leavesBattlefield', filter: { object: { ...noun.filter, zone: undefined }, notToZone: 'graveyard' }, hasObject: true, hasPlayer: false, rest: lv[2] };
+    }
+    const rm = line.match(/^Whenever (?:a|an|one or more) (.+?) (?:is|are) returned to your hand, (.+)$/i);
+    if (rm) {
+      const noun = parseNoun(`a ${rm[1]}`);
+      if (noun) return { event: 'returnedToHand', filter: { player: 'you', object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: rm[2] };
     }
     const em = line.match(/^Whenever you expend (\d+), (.+)$/i);
     if (em) return { event: 'expend', filter: { player: 'you', custom: `expend:${em[1]}` }, hasObject: false, hasPlayer: true, rest: em[2] };

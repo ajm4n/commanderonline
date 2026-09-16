@@ -66,6 +66,8 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   t = t.replace(/\bThey're\b/g, 'They are').replace(/\bthey're\b/g, 'they are');
   t = t.replace(/\b(?:He|She) (deals|gets|gains|has|is|becomes|cannot|can't|attacks|blocks|fights|enters)\b/g, '~ $1').replace(/\b(?:he|she) (deals|gets|gains|has|is|becomes|cannot|can't|attacks|blocks|fights|enters)\b/g, '~ $1');
   t = t.replace(/\b(counters? on) (?:her|him)\b/g, '$1 it');
+  t = t.replace(/\b(transform|untap|tap|exile|sacrifice|return|destroy) (?:her|him)\b/g, '$1 ~');
+  t = t.replace(/\b(to|on) (?:her|him)\b(?! (?:power|toughness|controller|owner|hand|library|graveyard))/g, '$1 ~');
   t = t.replace(/\bhis or her\b/g, 'their');
   t = t.replace(/\bhe or she\b/g, 'they');
   t = t.replace(/\bhim or her\b/g, 'them');

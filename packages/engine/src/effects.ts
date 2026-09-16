@@ -4,7 +4,7 @@
 import type { Game, Gen } from './game.js';
 import type { CardData, GameObject, ObjectId, PlayerId, Target, ZoneName, ManaColor, Color, ContinuousEffect } from './types.js';
 import { COLORS } from './types.js';
-import type { Effect, Ref, TokenSpec, Duration, Amount } from './script.js';
+import type { Effect, Ref, TokenSpec, Duration, Amount, AbilitySpec } from './script.js';
 import { TOKEN_PRESETS } from './tokens.js';
 import { matchesFilter, objectsMatching, legalTargets } from './filters.js';
 import { parseManaCost, solvePayment } from './mana.js';
@@ -210,14 +210,50 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             r.faceIndex = 1;
             g.touch();
           }
+          if (e.attachTo) {
+            const host = g.resolveObjects(e.attachTo, ctx)[0];
+            if (host) attach(g, r.id, host.id);
+          }
         }
       }
       ctx.memory['lastMoved'] = moved;
       return;
     }
     case 'putOnLibrary':
-      for (const o of g.resolveObjects(e.what, ctx)) g.moveObject(o.id, 'library', { position: e.position === 'bottom' ? 'bottom' : e.position === 'secondFromTop' ? 1 : 'top' });
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        let pos: 'top' | 'bottom' | number = e.position === 'bottom' ? 'bottom' : e.position === 'secondFromTop' ? 1 : 'top';
+        if (e.position === 'ownerChoice') {
+          const r = yield* g.ask({ type: 'chooseOption', player: o.owner, prompt: `Put ${g.nameOf(o.id)} on the top or bottom of your library?`, options: [{ id: 'top', label: 'Top' }, { id: 'bottom', label: 'Bottom' }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+          pos = r.type === 'options' && r.ids[0] === 'bottom' ? 'bottom' : 'top';
+        }
+        g.moveObject(o.id, 'library', { position: pos });
+      }
       return;
+    case 'moveCounters': {
+      const from = g.resolveObjects(e.from, ctx)[0];
+      const snapshot = (ctx.triggerContext.snapshot as { counters?: Record<string, number> } | undefined)?.counters;
+      const counters = from && Object.keys(from.counters).length ? from.counters : snapshot ?? {};
+      const to = g.resolveObjects(e.to, ctx)[0];
+      if (!to) return;
+      for (const [k, n] of Object.entries(counters)) if (n > 0) g.addCounters(to.id, k, n, ctx.sourceId ?? undefined);
+      return;
+    }
+    case 'becomeCopy': {
+      const src = g.resolveObjects(e.of, ctx)[0];
+      if (!src) return;
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        let ex = e.exceptions;
+        if (ex?.thisAbility) {
+          const own = g.scriptFor(o).abilities.find((a): a is Extract<AbilitySpec, { kind: 'triggered' | 'activated' }> => (a.kind === 'triggered' || a.kind === 'activated') && /becomes? a copy of/i.test(a.text));
+          if (own) ex = { ...ex, keywords: [...(ex.keywords ?? []), own.text] };
+        }
+        o.copyOf = applyCopyExceptions(src.copyOf ?? src.card, ex);
+        o.faceIndex = 0;
+        g.log(`${g.nameOf(o.id)} becomes a copy of ${g.nameOf(src.id)}.`);
+      }
+      g.touch();
+      return;
+    }
     case 'moveToZone':
       for (const o of g.resolveObjects(e.what, ctx)) {
         if (e.zone === 'battlefield') yield* enterBattlefield(g, o.id, ctx.controller, { ctx });

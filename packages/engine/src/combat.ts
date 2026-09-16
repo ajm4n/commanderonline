@@ -264,7 +264,12 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
     if (power <= 0) continue;
     const deathtouch = ch.keywords.has('Deathtouch');
     const blockers = a.blockedBy.map((id) => g.state.objects[id]).filter((b): b is GameObject => !!b && b.zone === 'battlefield');
-    if (!a.wasBlocked) {
+    let asUnblocked = false;
+    if (a.wasBlocked && a.attacking !== null && ch.rules.some((r) => r.kind === 'custom' && r.tag === 'assignAsUnblocked')) {
+      const r = yield* g.ask({ type: 'yesNo', player: a.controller, prompt: `${g.nameOf(a.id)}: assign its combat damage as though it weren't blocked?`, sourceId: a.id });
+      asUnblocked = r.type === 'yesNo' && r.value;
+    }
+    if (!a.wasBlocked || asUnblocked) {
       const target: Target = typeof a.attacking === 'string' ? { kind: 'player', id: a.attacking } : { kind: 'object', id: a.attacking as ObjectId };
       if (target.kind === 'object' && !g.state.objects[target.id]) continue;
       assignments.push({ source: a.id, target, amount: power });

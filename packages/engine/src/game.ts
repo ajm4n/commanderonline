@@ -647,6 +647,7 @@ export class Game {
     if (!obj) return null;
     const fromZone = obj.zone;
     // "If that creature would die this turn, exile it instead" (a rule granted by a resolved effect).
+    if (opts.cause === 'discard') obj.memory['discardedThisTurn'] = true;
     if (!opts.skipEvents && toZone === 'graveyard' && fromZone === 'battlefield' && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'exileIfDies')) {
       return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
     }
@@ -1380,6 +1381,10 @@ export class Game {
         return plT([ctx.sourceId !== null ? this.state.objects[ctx.sourceId]?.owner : undefined]);
       case 'eachOpponent':
         return plT(this.opponentsOf(ctx.controller));
+      case 'eachOtherOpponent': {
+        const tp = (ctx.triggerContext.triggerPlayer ?? ctx.triggerContext.playerId) as PlayerId | undefined;
+        return plT(this.opponentsOf(ctx.controller).filter((p) => p !== tp));
+      }
       case 'eachPlayer':
         return plT(this.apnap());
       case 'triggerObject':
@@ -2003,6 +2008,7 @@ export class Game {
         o.deathtouchDamage = false;
       }
       this.state.damagedBy = {};
+      for (const o of Object.values(this.state.objects)) if (o.memory['discardedThisTurn']) delete o.memory['discardedThisTurn'];
       this.expireEffects('endOfTurn');
       this.expireEffects('thisTurn');
       this.touch();

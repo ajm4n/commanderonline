@@ -35,6 +35,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   }
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
   if (/^(?:the number of )?times? (?:it|~|this spell) was kicked$/i.test(text.trim())) return { kind: 'kickCount' };
+  if (/^(?:the number of )?(?:(?:1 )?life (?:you |they )?(?:gained|lost)(?: this way)?|cards? (?:looked at while scrying|scried) this way|cards? (?:you )?(?:drew|discarded|milled) this way)$/i.test(text.trim())) return { kind: 'triggerAmount' };
   if (/^(?:the number of )?(?:\w+ )?(?:permanents?|creatures?|artifacts?|enchantments?|lands?|cards?|planeswalkers?) destroyed this way$/i.test(text.trim())) return { kind: 'ctxMemory', key: 'destroyedThisWay' };
   {
     const pm = text.trim().match(/^(.+?) (plus|minus) (\d+|one|two|three|four|five)$/i);
@@ -116,6 +117,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   }
   if (t === 'the number of creatures in your party') return { kind: 'partySize' };
   if (t === 'the number of times it was kicked' || t === 'the number of times ~ was kicked') return { kind: 'kickCount' };
+  if (t === 'the number of creature in your party' || t === 'creature in your party' || t === 'creatures in your party' || t === 'the number of creatures in your party') return { kind: 'partySize' };
   if (t === 'the number of opponents you have' || t === 'the number of your opponents' || t === 'opponents you have' || t === 'your opponents' || t === 'the number of opponents') return { kind: 'opponents' };
   if (t === 'the number of spells you have cast this turn' || t === 'spells you have cast this turn' || t === 'spell you have cast this turn' || t === 'the number of spell you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
   if (t === 'the number of cards you have drawn this turn' || t === 'cards you have drawn this turn' || t === 'card you have drawn this turn' || t === 'the number of card you have drawn this turn') return { kind: 'cardsDrawnThisTurn' };

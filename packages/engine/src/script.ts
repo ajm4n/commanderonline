@@ -81,7 +81,9 @@ export type Ref =
   | { ref: 'ownerOf'; of: Ref }
   | { ref: 'blockersOf'; of: Ref }
   | { ref: 'ringBearer' }
-  | { ref: 'player'; id: PlayerId };
+  | { ref: 'player'; id: PlayerId }
+  /** Opponents of the controller other than the trigger's player ("each other opponent"). */
+  | { ref: 'eachOtherOpponent' };
 
 export const R = {
   target: (slot = 0): Ref => ({ ref: 'target', slot }),
@@ -114,7 +116,7 @@ export interface TokenSpec {
   legendary?: boolean;
   /** Copy of another object (for "create a token that's a copy of ~"). */
   copyOf?: Ref;
-  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[]; name?: string };
+  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[]; name?: string; /** "except it has this ability": the copying object's own copy ability is kept. */ thisAbility?: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -191,8 +193,12 @@ export type Effect =
   | { kind: 'sacrifice'; what: Ref }
   | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; unlessAlso?: never }
   | { kind: 'returnToHand'; what: Ref }
-  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean }
-  | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' }
+  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean; /** Return attached to this object (Auras/Equipment). */ attachTo?: Ref }
+  | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' | 'ownerChoice' }
+  /** "When ~ leaves the battlefield, put its counters on target creature you control." */
+  | { kind: 'moveCounters'; from: Ref; to: Ref }
+  /** "~ becomes a copy of that creature" (permanently). */
+  | { kind: 'becomeCopy'; what: Ref; of: Ref; exceptions?: TokenSpec['exceptions'] }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
   | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref }
   | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean ; /** "your choice of a +1/+1, first strike, or trample counter" */ counterOptions?: string[] }

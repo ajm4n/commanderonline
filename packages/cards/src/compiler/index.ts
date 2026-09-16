@@ -153,6 +153,11 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
+    if ((m = line.match(/^Mayhem ((?:\{[^}]+\})+)$/i))) {
+      alternativeCosts.push({ id: 'mayhem', text: line, cost: { mana: m[1] }, zone: 'graveyard', condition: { kind: 'memoryFlag', key: 'discardedThisTurn' } });
+      compiledLines.push(line);
+      continue;
+    }
     if ((m = line.match(/^Sneak ((?:\{[^}]+\})+)$/i))) {
       alternativeCosts.push({ id: 'sneak', text: line, cost: { mana: m[1] }, zone: 'hand', condition: { kind: 'eventThisTurn', event: 'dealtCombatDamageToPlayer', player: 'opponent' } });
       compiledLines.push(line);
@@ -376,6 +381,9 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if ((m = line.match(/^Choose (one)\. If you control a commander as you cast (?:this spell|~), you may choose both instead\.?$/i))) {
       maxModesIf = { condition: { kind: 'controlsCommander' }, max: 2 };
       line = 'Choose one';
+    } else if ((m = line.match(/^Choose (one|two)\. If (.+?) as you cast (?:this spell|~), you may choose (both|two|three) instead\.?$/i)) && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })?.kind !== 'manual' && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })) {
+      maxModesIf = { condition: parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })!, max: m[3].toLowerCase() === 'three' ? 3 : 2 };
+      line = `Choose ${m[1]}`;
     } else if ((m = line.match(/^Choose (\w+)\. You may choose the same mode more than once\.?$/i))) {
       repeatable = true;
       line = `Choose ${m[1]}`;
@@ -482,7 +490,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
       const split = splitTriggerRest(head.rest);
-      const ctx = newCtx({ triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer });
+      const ctx = newCtx({ triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer, triggerObjectIsSource: head.objectIsSource });
       let effects: Effect[];
       let unhandled: string[];
       const modalHead = split.rest.match(/^choose (one|two|one or both|one or more|any number)(?: —)?$/i);
