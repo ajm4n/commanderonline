@@ -17,6 +17,7 @@ function thatPlayer(ctx: RefCtx): Ref {
 
 /** Parse an amount phrase. Returns null if not understood. */
 export function parseAmount(text: string, ctx: RefCtx): Amount | null {
+  text = text.replace(/\byou've\b/gi, 'you have').replace(/\bopponents? you have\b/i, 'opponents you have');
   const orig = text.trim().replace(/^(?:an amount of \w+ |a number of \w+ )?equal to /i, '');
   const t = orig.toLowerCase();
   /** Original-case text of a capture group (lowercasing preserves length). */
@@ -72,7 +73,9 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   }
   if (t === 'the number of creatures in your party') return { kind: 'partySize' };
   if (t === 'the number of times it was kicked' || t === 'the number of times ~ was kicked') return { kind: 'kickCount' };
-  if (t === 'the number of opponents you have' || t === 'the number of your opponents') return { kind: 'opponents' };
+  if (t === 'the number of opponents you have' || t === 'the number of your opponents' || t === 'opponents you have' || t === 'your opponents' || t === 'the number of opponents') return { kind: 'opponents' };
+  if (t === 'the number of spells you have cast this turn' || t === 'spells you have cast this turn' || t === 'spell you have cast this turn' || t === 'the number of spell you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
+  if (t === 'the number of cards you have drawn this turn' || t === 'cards you have drawn this turn' || t === 'card you have drawn this turn' || t === 'the number of card you have drawn this turn') return { kind: 'cardsDrawnThisTurn' };
   if (t === 'the number of experience counters you have') return { kind: 'turnStat', key: 'experience' };
   if ((m = t.match(/^the number of (\+1\/\+1|-1\/-1|charge|loyalty|lore|\w+) counters on (~|it|that creature|this creature)$/))) return { kind: 'countersOn', ref: /~|this/.test(m[2]) ? ctx.self : ctx.lastObj ?? ctx.self, counter: m[1] };
   if ((m = t.match(/^the number of (.+?)(?: on the battlefield)?$/))) {

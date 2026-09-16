@@ -32,6 +32,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(?:As long as|While) (.+?), (.+)$/i))) [condText, innerText] = [m[1], m[2]];
   else if ((m = L.match(/^(.+?) (?:as long as|while) (.+)$/i))) [condText, innerText] = [m[2], m[1]];
   if (condText && innerText) {
+    // "As long as ~ is attacking, it gets +2/+0": "it" is this permanent.
+    if (/^it (gets|has|is|can|cannot|assigns|must|does|loses|gains|deals)\b/i.test(innerText) && /^(?:~|it)\b/i.test(condText)) innerText = innerText.replace(/^it /i, '~ ');
+    else if (/^it (gets|has|is|can|cannot|assigns|must|does|loses|gains|deals)\b/i.test(innerText) && /^(?:enchanted|equipped) (creature|permanent)/i.test(condText)) innerText = innerText.replace(/^it /i, condText.match(/^(?:enchanted|equipped) (?:creature|permanent)/i)![0] + ' ');
+    else if (/^it (gets|has|is|can|cannot|assigns|must|does|loses|gains|deals)\b/i.test(innerText)) innerText = innerText.replace(/^it /i, '~ ');
     const inner = parseStatic(innerText, isCreatureOrPermanent);
     if (inner) {
       const cond = parseCondition(condText, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false }) ?? { kind: 'manual' as const, text: condText };
@@ -65,6 +69,30 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       }
       if (ok) return out;
     }
+  }
+  if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) return objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' });
+  // Static damage prevention: "Prevent all damage that would be dealt to ~ by artifact creatures." / "Prevent all combat damage that would be dealt by enchanted creature."
+  if ((m = L.match(/^Prevent all (combat |noncombat )?damage that would be dealt(?: to (.+?))?(?: by (.+?))?$/i)) && (m[2] || m[3])) {
+    const combat = m[1] ? (m[1].trim().toLowerCase() as 'combat' | 'noncombat') : undefined;
+    if (!m[2]) {
+      // "...dealt by enchanted creature": the source deals no damage.
+      return objRule(m[3], { kind: 'custom', tag: 'dealsNoDamage', data: combat ?? 'all' });
+    }
+    let source: ObjectFilter | undefined;
+    if (m[3]) {
+      const sn = parseNoun(m[3].replace(/ sources?$/i, ' permanents').replace(/^(white|blue|black|red|green|colorless|colored|artifact|noncreature|nonblack|nonwhite|nonred|nongreen|nonblue) permanents$/i, '$1 permanent').replace(/^permanents$/i, 'permanent'));
+      if (!sn) return null;
+      source = { ...sn.filter, zone: undefined };
+    }
+    const rule: RuleModification = { kind: 'custom', tag: 'preventDamageTo', data: { combat, source } };
+    const who = m[2].trim();
+    if (/^you$/i.test(who)) return [{ kind: 'static', text: line, rule, ruleAffects: 'controller' }];
+    if (/^you and (creatures|permanents) you control$/i.test(who)) {
+      const a = affectsOf(who.replace(/^you and /i, ''));
+      return a.ok ? [{ kind: 'static', text: line, rule, ruleAffects: 'controller' }, { kind: 'static', text: line, affects: a.affects, rule }] : null;
+    }
+    if (/^(you and )?(?:your )?planeswalkers you control$/i.test(who)) return null;
+    return objRule(who, rule);
   }
   if ((m = L.match(/^(.+?) (?:is|are) goaded$/i))) return objRule(m[1], { kind: 'custom', tag: 'goaded', data: '__controller__' });
   if ((m = L.match(/^(.+?) loses? all abilities$/i))) {

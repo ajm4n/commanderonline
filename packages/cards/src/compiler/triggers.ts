@@ -37,6 +37,13 @@ function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
 }
 
 export function parseTriggerHead(line: string): TriggerHead | null {
+  {
+    const dm = line.match(/^Whenever (?:a|an) (.+?) dealt damage by ~ this turn (dies|is put into a graveyard), (.+)$/i);
+    if (dm) {
+      const noun = parseNoun(`a ${dm[1]}`);
+      if (noun) return { event: 'dies', filter: { object: { ...noun.filter, damagedBySource: true } }, hasObject: true, hasPlayer: false, rest: dm[3] };
+    }
+  }
   let m: RegExpMatchArray | null;
   let L = line;
 

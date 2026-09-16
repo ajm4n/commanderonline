@@ -274,7 +274,7 @@ export interface ContinuousEffect {
   fromStatic: boolean;
   /** Which objects it affects: fixed set (locked in at creation) or a filter. */
   affected: { kind: 'fixed'; ids: ObjectId[] } | { kind: 'filter'; filter: ObjectFilter };
-  duration: 'permanent' | 'endOfTurn' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'thisTurn' | 'endOfCombat' | 'untilNextUntap';
+  duration: 'permanent' | 'endOfTurn' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'thisTurn' | 'endOfCombat' | 'untilNextUntap' | 'whileSourceTapped' | 'whileYouControlSource';
   modification: Modification;
 }
 
@@ -359,6 +359,8 @@ export interface ObjectFilter {
   nonland?: boolean;
   /** Only objects attached to / attached by. */
   attachedToSource?: boolean;
+  /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
+  damagedBySource?: boolean;
   nameIs?: string;
   historic?: boolean;
   /** Was cast this turn / entered this turn etc. */

@@ -15,6 +15,7 @@ export function* checkStateBasedActions(g: Game): Gen {
   for (let iter = 0; iter < 50; iter++) {
     if (g.state.over) return;
     let changed = false;
+    g.pruneConditionalDurations();
 
     // "When you control no Islands, sacrifice ~." (a state trigger, handled like an SBA)
     for (const id of [...g.state.battlefield]) {

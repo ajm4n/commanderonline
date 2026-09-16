@@ -38,7 +38,17 @@ function isKeywordLine(line: string): boolean {
 const ROMAN: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
 
 function compileFace(card: CardData, faceName: string, text: string, typeLine: string): CompileResult {
-  const lines = normalizeOracle(card, faceName, text);
+  const lines = normalizeOracle(card, faceName, text).flatMap((l) => {
+    const cm = l.match(/^((?:~|This spell) costs? )(\{\d+\} (?:less|more) to cast (?:if|as long as) .+?) and (\{\d+\} (?:less|more) to cast (?:if|as long as) .+?)\.?$/i);
+    if (cm) return [`${cm[1]}${cm[2]}.`, `${cm[1]}${cm[3]}.`];
+    // "If you have 3 or less life, ~ costs {6} less to cast." → "~ costs {6} less to cast if you have 3 or less life."
+    const im = l.match(/^If (.+?), ((?:~|this spell) costs? \{[^}]+\} (?:less|more) to cast)\.?$/i);
+    if (im) return [`${im[2].charAt(0).toUpperCase()}${im[2].slice(1)} if ${im[1]}.`];
+    // "If you attacked this turn, you may pay {U} rather than pay ~'s mana cost." → "You may pay {U} rather than pay ~'s mana cost if you attacked this turn."
+    const am = l.match(/^If (.+?), you may (pay .+? rather than pay (?:~'s|this spell's) mana cost)\.?$/i);
+    if (am) return [`You may ${am[2]} if ${am[1]}.`];
+    return [l];
+  });
   const parsed = parseTypeLine(typeLine);
   const isSpell = parsed.types.includes('Instant') || parsed.types.includes('Sorcery');
   const abilities: AbilitySpec[] = [];
@@ -229,6 +239,14 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast during (your|an opponent's|each|the) (upkeep|draw step|end step|combat|main phase|precombat main phase|postcombat main phase|declare attackers step|declare blockers step|turn)\.?$/i))) {
+      const steps: Record<string, string[]> = { upkeep: ['upkeep'], 'draw step': ['draw'], 'end step': ['end'], combat: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'], 'main phase': ['main1', 'main2'], 'precombat main phase': ['main1'], 'postcombat main phase': ['main2'], 'declare attackers step': ['declareAttackers'], 'declare blockers step': ['declareBlockers'] };
+      const who = m[3].toLowerCase() === 'your' ? 'you' : /opponent/i.test(m[3]) ? 'opponent' : 'any';
+      const cond: Condition = m[4].toLowerCase() === 'turn' ? (who === 'you' ? { kind: 'yourTurn' } : { kind: 'notYourTurn' }) : { kind: 'turnStep', steps: steps[m[4].toLowerCase()], player: who };
+      costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
+      compiledLines.push(line);
+      continue;
+    }
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast if (.+?)\.?$/i))) {
       const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
       if (cond && cond.kind !== 'manual') {
@@ -341,6 +359,22 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       else compiledLines.push(line);
       continue;
     }
+    // Reflexive trigger on its own line: "When you do, X" attaches to the previous ability's optional block.
+    if ((m = line.match(/^When you do, (.+?)\.?$/i)) && abilities.length) {
+      const prev = abilities[abilities.length - 1];
+      const prevEffects = prev.kind === 'triggered' || prev.kind === 'activated' || prev.kind === 'spell' ? prev.effects : null;
+      const last = prevEffects?.[prevEffects.length - 1];
+      if (last && (last.kind === 'may' || last.kind === 'ifPays')) {
+        const ctx = newCtx({ triggerHasObject: true, triggerHasPlayer: true, isSpell: prev.kind === 'spell' });
+        const { effects, unhandled } = parseEffects(m[1], ctx);
+        if (!unhandled.length) {
+          last.effects.push(...effects);
+          if (ctx.targets.length && 'targets' in prev) prev.targets = [...(prev.targets ?? []), ...ctx.targets];
+          compiledLines.push(line);
+          continue;
+        }
+      }
+    }
     // Triggered
     if (/^(When|Whenever|At the beginning)/i.test(line)) {
       const head = parseTriggerHead(line);
@@ -384,7 +418,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       }
       const heads = [head, ...(head.also ?? []).map((h) => ({ ...h, rest: head.rest }))];
       for (const h of heads) {
-        const ab: TriggeredAbilitySpec = { kind: 'triggered', text: line, event: h.event, filter: h.filter, effects, targets: ctx.targets.length ? ctx.targets : undefined, optional: split.optional || undefined, condition, zone: h.zone, leavesTheBattlefield: h.leaves };
+        const ab: TriggeredAbilitySpec = { kind: 'triggered', text: line, event: h.event, filter: h.filter, effects, targets: ctx.targets.length ? ctx.targets : undefined, optional: split.optional || undefined, condition, zone: h.zone, leavesTheBattlefield: h.leaves, oncePerTurn: /this ability triggers only once each turn|do this only once each turn/i.test(line) || undefined };
         abilities.push(...withBlock([ab]));
       }
       if (unhandled.length) unhandledLines.push(...unhandled.map((u) => `${line.slice(0, line.indexOf(',') + 1)} ${u}`));

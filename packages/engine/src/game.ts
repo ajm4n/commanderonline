@@ -68,6 +68,8 @@ export interface DelayedTrigger {
   context: Record<string, unknown>;
   /** When set, the trigger refers to that specific object: it only fires while the source is still in this zone (rule 400.7). */
   sourceZone?: ZoneName;
+  /** Removed at cleanup of the turn it was created. */
+  thisTurn?: boolean;
 }
 
 export interface GameState {
@@ -81,6 +83,8 @@ export interface GameState {
   continuousEffects: ContinuousEffect[];
   delayedTriggers: DelayedTrigger[];
   /** Turn-wide damage prevention (Fog effects); cleared at cleanup. */
+  /** objectId -> sources that dealt damage to it this turn. */
+  damagedBy: Record<number, ObjectId[]>;
   preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean }[];
   log: LogEntry[];
   monarch: PlayerId | null;
@@ -187,6 +191,7 @@ export class Game {
       continuousEffects: [],
       delayedTriggers: [],
       preventions: [],
+      damagedBy: {},
       log: [],
       monarch: null,
       initiative: null,
@@ -1432,6 +1437,21 @@ export class Game {
   expireEffects(duration: ContinuousEffect['duration']) {
     const before = this.state.continuousEffects.length;
     this.state.continuousEffects = this.state.continuousEffects.filter((ce) => ce.duration !== duration);
+    if (duration === 'thisTurn' && this.state.delayedTriggers.some((dt) => dt.thisTurn)) this.state.delayedTriggers = this.state.delayedTriggers.filter((dt) => !dt.thisTurn);
+    if (this.state.continuousEffects.length !== before) this.touch();
+  }
+
+  /** Drop effects whose duration is tied to the source staying tapped / under its controller's control. */
+  pruneConditionalDurations() {
+    const before = this.state.continuousEffects.length;
+    this.state.continuousEffects = this.state.continuousEffects.filter((ce) => {
+      if (ce.duration !== 'whileSourceTapped' && ce.duration !== 'whileYouControlSource') return true;
+      const src = ce.sourceId !== null ? this.state.objects[ce.sourceId] : undefined;
+      if (!src || src.zone !== 'battlefield') return false;
+      // Both flavours end when the source leaves or changes control; "remains tapped" also ends when it untaps.
+      if (src.controller !== ce.controller) return false;
+      return ce.duration === 'whileSourceTapped' ? src.tapped : true;
+    });
     if (this.state.continuousEffects.length !== before) this.touch();
   }
 
@@ -1500,7 +1520,20 @@ export class Game {
     // "Prevent all (combat) damage that would be dealt by [this source] this turn."
     if (src && src.zone === 'battlefield') {
       const noDmg = this.characteristics(src.id).rules.find((r) => r.kind === 'custom' && r.tag === 'dealsNoDamage') as { data?: string } | undefined;
-      if (noDmg && (noDmg.data !== 'combat' || combat)) return true;
+      if (noDmg && (noDmg.data === 'combat' ? combat : noDmg.data === 'noncombat' ? !combat : true)) return true;
+    }
+    // "Prevent all damage that would be dealt to ~ by artifact creatures." (a static on the recipient)
+    {
+      type PD = { data?: { combat?: 'combat' | 'noncombat'; source?: import('./types.js').ObjectFilter } };
+      const rules = target.kind === 'object' && this.state.objects[target.id]?.zone === 'battlefield' ? this.characteristics(target.id).rules : target.kind === 'player' ? this.playerRules(target.id) : [];
+      for (const r of rules) {
+        if (r.kind !== 'custom' || r.tag !== 'preventDamageTo') continue;
+        const d = (r as PD).data ?? {};
+        if (d.combat === 'combat' && !combat) continue;
+        if (d.combat === 'noncombat' && combat) continue;
+        if (d.source && (!src || !matchesFilter(this, src, { ...d.source, zone: undefined }, { sourceId: src.id, controller: src.controller }))) continue;
+        return true;
+      }
     }
     if (!this.state.preventions.length) return false;
     for (const pv of this.state.preventions) {
@@ -1598,6 +1631,7 @@ export class Game {
         obj.damage += dealt;
         if (sch?.keywords.has('Deathtouch')) obj.deathtouchDamage = true;
       }
+      if (src) (this.state.damagedBy[obj.id] ??= []).push(src.id);
       this.touch();
       this.log(`${src ? this.nameOf(src.id) : 'Something'} deals ${dealt} damage to ${this.nameOf(obj.id)}.`, { kind: 'damage', data: { objectId: obj.id, amount: dealt, sourceId } });
       this.emit({ name: 'dealsDamage', sourceId: sourceId ?? undefined, objectId: obj.id, amount: dealt, combat, otherPlayerId: controller });
@@ -1806,7 +1840,7 @@ export class Game {
       this.touch();
       yield* this.doStep(step);
       // Mana empties between steps.
-      for (const p of Object.values(this.state.players)) p.manaPool = emptyPool();
+      for (const p of Object.values(this.state.players)) if (!this.state.turnStats[`keepMana:${p.id}`]) p.manaPool = emptyPool();
       // Extra combat handling: scripts can request an additional combat phase via memory.
       if (step === 'main2' && this.state.turnStats['extraCombat']) {
         this.state.turnStats['extraCombat'] = 0;
@@ -1927,6 +1961,7 @@ export class Game {
         o.damage = 0;
         o.deathtouchDamage = false;
       }
+      this.state.damagedBy = {};
       this.expireEffects('endOfTurn');
       this.expireEffects('thisTurn');
       this.touch();

@@ -170,7 +170,7 @@ export interface TargetSpec {
 // Effects
 // ---------------------------------------------------------------------------
 
-export type Duration = 'endOfTurn' | 'permanent' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'endOfCombat' | 'untilNextUntap';
+export type Duration = 'endOfTurn' | 'permanent' | 'untilSourceLeaves' | 'untilYourNextTurn' | 'endOfCombat' | 'untilNextUntap' | 'whileSourceTapped' | 'whileYouControlSource';
 
 export type Effect =
   | { kind: 'draw'; amount: Amount; who?: Ref }
@@ -239,7 +239,7 @@ export type Effect =
   | { kind: 'forEach'; over: Ref; effects: Effect[] }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref }
-  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number } | { sacrifice: ObjectFilter } | { payLife: number }; effects: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
   | { kind: 'revealHand'; who: Ref }
@@ -248,7 +248,7 @@ export type Effect =
   | { kind: 'ringTempts'; who?: Ref }
   | { kind: 'takeInitiative'; who?: Ref }
   | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number }
-  | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter }
+  | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter; /** "Until end of turn, whenever X, Y": fires repeatedly this turn, then goes away. */ untilEndOfTurn?: boolean }
   | { kind: 'log'; text: string }
   | { kind: 'ventureIntoDungeon' }
   | { kind: 'investigate'; count?: Amount }
@@ -274,8 +274,10 @@ export type Effect =
   /** Discover N / cascade: exile from the top until a nonland card with mana value <= N; cast it free or put it in hand. */
   | { kind: 'discover'; amount: Amount }
   /** Turn-wide flags such as "Damage can't be prevented this turn". */
-  | { kind: 'turnFlag'; flag: 'noPrevention' }
+  | { kind: 'turnFlag'; flag: 'noPrevention' | 'keepMana' }
   /** Fog effects: "Prevent all (combat) damage that would be dealt this turn [by X] [to Y]". */
+  /** Clash with an opponent: each reveals the top card; the controller's source remembers whether they won (memory flag `clashWon`). */
+  | { kind: 'clash' }
   | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
   | { kind: 'revealUntil'; filter: ObjectFilter; destination: 'hand' | 'battlefield' | 'graveyard' | 'exile'; rest: 'bottom' | 'graveyard' | 'exile'; tapped?: boolean; who?: Ref }
@@ -342,7 +344,7 @@ export interface AbilityCost {
   sacrificeSelf?: boolean;
   sacrifice?: { filter: ObjectFilter; count?: number };
   payLife?: number;
-  discard?: { count: number; filter?: ObjectFilter } | 'hand';
+  discard?: { count: number; filter?: ObjectFilter; random?: boolean } | 'hand';
   removeCounters?: { counter: CounterType; amount: number };
   addCounters?: { counter: CounterType; amount: number };
   exileFromGraveyard?: { filter: ObjectFilter; count: number };
@@ -357,6 +359,8 @@ export interface AbilityCost {
   energy?: number;
   /** Cost text we cannot enforce; player confirms they paid. */
   manual?: string;
+  /** "Sacrifice a creature or pay {3}": the player picks one option to pay. */
+  choice?: AbilityCost[];
 }
 
 export interface TriggeredAbilitySpec {

@@ -4,7 +4,15 @@ import { parseAmount, type RefCtx } from './amounts.js';
 import { wordToNumber } from './text.js';
 
 export function parseCondition(text: string, ctx: RefCtx): Condition | null {
-  const orig = text.trim().replace(/[.,]$/, '');
+  const orig = text
+    .trim()
+    .replace(/[.,]$/, '')
+    .replace(/^you've (cast|drawn|discarded|sacrificed|attacked|gained|lost|milled|committed)\b/i, (_m, v: string) => `you ${({ drawn: 'drew' } as Record<string, string>)[v.toLowerCase()] ?? v}`)
+    .replace(/^you're the monarch$/i, 'you are the monarch')
+    .replace(/^(?:~|it) remains tapped$/i, '~ is tapped')
+    .replace(/^(?:~|it) remains untapped$/i, '~ is untapped')
+    .replace(/^(?:~|it) remains on the battlefield$/i, '~ is on the battlefield')
+    .replace(/^there's /i, 'there is ');
   const t = orig.toLowerCase();
   const oc = (m: RegExpMatchArray, g: number): string => {
     const idx = t.indexOf(m[g]);
@@ -45,6 +53,48 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const a = parseAmount(oc(m, 1), ctx);
     const n = wordToNumber(m[2]);
     if (a !== null && typeof n === 'number') return { kind: 'amount', a, op: /more|greater/.test(m[3]) ? '>=' : '<=', b: n };
+  }
+  // "you cast two or more spells this turn" / "you drew two or more cards this turn"
+  if ((m = t.match(/^(an opponent|you|a player|each opponent) (cast|drew|discarded|sacrificed|milled) (\w+) or more (spells|cards|creatures|permanents|instant or sorcery spells|creature spells|noncreature spells) this turn$/))) {
+    const who = m[1] === 'you' ? 'you' : m[1] === 'a player' ? 'any' : 'opponent';
+    const event: import('@commander/engine').GameEventName = m[2] === 'cast' ? 'cast' : m[2] === 'drew' ? 'drawCard' : m[2] === 'discarded' ? 'discard' : m[2] === 'sacrificed' ? 'sacrifice' : 'mill';
+    const n = wordToNumber(m[3]);
+    if (typeof n === 'number' && (m[2] !== 'cast' || m[4] === 'spells')) return { kind: 'eventThisTurn', event, player: who, op: '>=', value: n };
+  }
+  if ((m = t.match(/^(an opponent|each opponent|you|a player|that player) (?:has|have) (\w+) or more cards in (?:their|your) graveyard$/))) {
+    const n = wordToNumber(m[2]);
+    if (typeof n === 'number') return { kind: 'graveyard', ref: m[1] === 'you' ? { ref: 'controller' } : m[1] === 'that player' ? thatPlayer : { ref: 'eachOpponent' }, op: '>=', value: n };
+  }
+  if ((m = t.match(/^(an opponent|each opponent) has (\d+) or (less|fewer|more) life$/))) return { kind: 'life', ref: { ref: 'eachOpponent' }, op: m[3] === 'more' ? '>=' : '<=', value: parseInt(m[2], 10) };
+  if (t === 'your life total is less than or equal to half your starting life total' || t === 'you have half your starting life total or less') return { kind: 'life', ref: { ref: 'controller' }, op: '<=', value: 20 };
+  if (t === "an opponent's life total is less than half their starting life total" || t === 'an opponent has less than half their starting life total') return { kind: 'life', ref: { ref: 'eachOpponent' }, op: '<', value: 20 };
+  if ((m = t.match(/^(?:~|it) is (?:a|an) (creature|artifact|enchantment|land|planeswalker|token|artifact creature)$/))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) return { kind: 'objectMatches', ref: ctx.self, filter: noun.filter };
+  }
+  if ((m = t.match(/^(?:equipped|enchanted) (?:creature|permanent) is legendary$/))) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { supertypes: ['Legendary'] } };
+  if ((m = t.match(/^(?:equipped|enchanted) creature is attacking$/))) return { kind: 'isAttacking', ref: { ref: 'attachedTo' } };
+  if ((m = t.match(/^(?:equipped|enchanted) (?:creature|permanent) is (tapped|untapped)$/))) return m[1] === 'tapped' ? { kind: 'isTapped', ref: { ref: 'attachedTo' } } : { kind: 'not', c: { kind: 'isTapped', ref: { ref: 'attachedTo' } } };
+  if ((m = t.match(/^there (?:is|are) exactly (\w+) ([+\-\w\/]+) counters? on (?:~|it)$/))) return { kind: 'hasCounter', ref: ctx.self, counter: oc(m, 2), op: '==', value: wordToNumber(m[1]) as number };
+  if ((m = t.match(/^there (?:is|are) (?:a|an|one or more) ([+\-\w\/]+) counters? on (?:~|it)$/))) return { kind: 'hasCounter', ref: ctx.self, counter: oc(m, 1) };
+  if ((m = t.match(/^there (?:is|are) no ([+\-\w\/]+) counters? on (?:~|it)$/))) return { kind: 'not', c: { kind: 'hasCounter', ref: ctx.self, counter: oc(m, 1) } };
+  if ((m = t.match(/^(?:~|it) has no ([+\-\w\/]+) counters? on it$/))) return { kind: 'not', c: { kind: 'hasCounter', ref: ctx.self, counter: oc(m, 1) } };
+  if ((m = t.match(/^defending player controls (?:a|an) (.+)$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, controllerRef: { ref: 'defendingPlayer' }, zone: 'battlefield' }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^(?:~|it) is (?:a|an) (.+?) (?:in addition to its other types)?$/)) && /^(creature|artifact|enchantment|land)$/.test(m[1])) return { kind: 'objectMatches', ref: ctx.self, filter: { types: [m[1].charAt(0).toUpperCase() + m[1].slice(1)] as never } };
+  if (t === '~ is untapped' || t === 'it is untapped') return { kind: 'not', c: { kind: 'isTapped', ref: ctx.self } };
+  if (t === 'you control ~') return { kind: 'and', cs: [{ kind: 'inZone', ref: ctx.self, zone: 'battlefield' }, { kind: 'count', filter: { controller: 'you', zone: 'battlefield', nameIs: '~' }, op: '>=', value: 1 }] };
+  if ((m = t.match(/^(?:it|that creature|that permanent) is (?:still )?on the battlefield$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'battlefield' };
+  if ((m = t.match(/^(?:it|~) (?:is|remains) exiled$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'exile' };
+  if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
+  if (t === 'an opponent has no cards in hand') return { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '==', value: 0 };
+  if ((m = t.match(/^you cast (?:another|a|one or more) spells? this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '>=', value: 1 };
+  if ((m = t.match(/^there are (\w+) or more (.+?) (?:total )?in all graveyards$/))) {
+    const noun = parseNoun(oc(m, 2).replace(/ cards$/i, ' card'));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, zone: 'graveyard', controller: undefined }, op: '>=', value: n };
   }
   if (t === 'it is your turn' || t === "it's your turn") return { kind: 'yourTurn' };
   if (t === 'it is not your turn') return { kind: 'notYourTurn' };

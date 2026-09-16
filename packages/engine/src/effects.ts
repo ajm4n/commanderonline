@@ -810,8 +810,35 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.state.preventions.push({ combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId, once: e.once });
       return;
     case 'turnFlag':
-      g.state.turnStats[e.flag] = 1;
+      g.state.turnStats[e.flag === 'keepMana' ? `keepMana:${ctx.controller}` : e.flag] = 1;
       return;
+    case 'clash': {
+      const opps = g.activePlayers().filter((x) => x !== ctx.controller);
+      if (!opps.length) return;
+      let opp = opps[0];
+      if (opps.length > 1) {
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Clash with which opponent?', options: opps.map((p) => ({ id: p, label: g.player(p).name })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        if (r.type === 'options' && r.ids[0]) opp = r.ids[0] as typeof opp;
+      }
+      const mv: Record<string, number> = {};
+      for (const p of [ctx.controller, opp]) {
+        const top = g.player(p).library[0];
+        mv[p] = top !== undefined ? g.characteristics(top).manaValue : -1;
+        if (top !== undefined) {
+          g.log(`${g.player(p).name} reveals ${g.nameOf(top)} for the clash.`);
+          const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Clash: put ${g.nameOf(top)} on the bottom of your library?`, sourceId: ctx.sourceId ?? undefined });
+          if (r.type === 'yesNo' && r.value) {
+            g.player(p).library.shift();
+            g.player(p).library.push(top);
+          }
+        }
+      }
+      const won = mv[ctx.controller] > mv[opp];
+      g.log(won ? `${g.player(ctx.controller).name} wins the clash.` : `${g.player(ctx.controller).name} does not win the clash.`);
+      if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) g.state.objects[ctx.sourceId].memory['clashWon'] = won;
+      ctx.memory['clashWon'] = won ? 1 : 0;
+      return;
+    }
     case 'discover': {
       const n = amt(e.amount);
       const pl = g.player(ctx.controller);
@@ -898,7 +925,29 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'unlessPays': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
         let paid = false;
-        if (typeof e.cost === 'object' && 'discard' in e.cost) {
+        if (typeof e.cost === 'object' && 'returnToHand' in e.cost) {
+          const f = e.cost.returnToHand;
+          const cands = objectsMatching(g, { ...f, controller: p, zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).map((o) => o.id);
+          if (cands.length >= e.cost.count) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Return ${e.cost.count} to hand? (choose none to decline)`, candidates: cands, min: 0, max: e.cost.count });
+            if (r.type === 'objects' && r.ids.length === e.cost.count) {
+              for (const id of r.ids) g.moveObject(id, 'hand');
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'discard' in e.cost && e.cost.random) {
+          const hand = g.player(p).hand;
+          const n = e.cost.discard;
+          if (hand.length >= n) {
+            const r = yield* g.ask({ type: 'yesNo', player: p, prompt: e.text ?? `Discard ${n} card${n === 1 ? '' : 's'} at random? Otherwise: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'yesNo' && r.value) {
+              const ids = g.rng.shuffle([...hand]).slice(0, n);
+              for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'discard' });
+              g.emit({ name: 'discardBatch', playerId: p, amount: n, objectId: ids[0] });
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'discard' in e.cost) {
           const hand = g.player(p).hand;
           const n = e.cost.discard;
           if (hand.length >= n) {
@@ -1034,7 +1083,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         return;
       }
       // A delayed trigger about "this object" stops applying once it changes zones.
-      g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: e.event, filter: e.filter, effects: e.effects, text: e.text, controller: ctx.controller, sourceId: ctx.sourceId ?? -1, once: e.once ?? true, context: { ...ctx.triggerContext, delayedTargets: ctx.targets, delayedMemory: { ...ctx.memory } } , sourceZone: JSON.stringify(e.effects).includes('"ref":"self"') && ctx.sourceId != null ? g.state.objects[ctx.sourceId]?.zone : undefined });
+      g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: e.event, filter: e.filter, effects: e.effects, text: e.text, controller: ctx.controller, sourceId: ctx.sourceId ?? -1, once: e.untilEndOfTurn ? false : e.once ?? true, thisTurn: e.untilEndOfTurn, context: { ...ctx.triggerContext, delayedTargets: ctx.targets, delayedMemory: { ...ctx.memory } } , sourceZone: JSON.stringify(e.effects).includes('"ref":"self"') && ctx.sourceId != null ? g.state.objects[ctx.sourceId]?.zone : undefined });
       return;
     }
     case 'log':

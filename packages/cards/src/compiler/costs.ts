@@ -8,6 +8,16 @@ const MANA_RE = /^(?:\{[^}]+\})+$/;
 
 export function parseCost(text: string): AbilityCost | null {
   const cost: AbilityCost = {};
+  // "Sacrifice a creature or pay {3}" / "discard a card or pay 3 life": a choice of costs.
+  {
+    const cm = text.match(/^(.+?) or (pay .+|sacrifice .+|discard .+|exile .+)$/i);
+    if (cm && !/,/.test(text)) {
+      const norm = (x: string) => x.replace(/^pay ((?:\{[^}]+\})+)$/i, '$1');
+      const a = parseCost(norm(cm[1]).replace(/^[a-z]/, (c) => c.toUpperCase()));
+      const b = parseCost(norm(cm[2]).replace(/^[a-z]/, (c) => c.toUpperCase()));
+      if (a && b) return { choice: [a, b] };
+    }
+  }
   // Split on commas not inside braces
   const parts = text.split(/,\s*(?![^{]*\})/).map((p) => p.trim()).filter(Boolean);
   for (const p of parts) {
@@ -30,6 +40,11 @@ export function parseCost(text: string): AbilityCost | null {
     else if ((m = p.match(/^Pay ((?:\{E\})+)$/i))) cost.energy = (m[1].match(/\{E\}/g) ?? []).length;
     else if (/^Discard ~$/i.test(p)) cost.discardSelf = true;
     else if (/^Discard your hand$/i.test(p)) cost.discard = 'hand';
+    else if ((m = p.match(/^Discard (?:a|an|(\w+)) cards? at random$/i))) {
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (n === null || n === 'X') return null;
+      cost.discard = { count: n, random: true };
+    }
     else if ((m = p.match(/^Discard (?:a|an|(\w+)) (.+?)s?$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (n === null || n === 'X') return null;
@@ -102,6 +117,21 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only during an opponent's turn\.?$/i))) {
       addCond({ kind: 'notYourTurn' });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only before (?:blockers are declared|the declare blockers step)\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers'] });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only before attackers are declared\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers'], beforeAttackers: true });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only before the combat damage step\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers', 'declareBlockers'] });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during (?:the )?(?:declare blockers step|combat after blockers are declared)\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'] });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during your (?:precombat |first )?main phase\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: /precombat|first/i.test(m[0]) ? ['main1'] : ['main1', 'main2'], player: 'you' });
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only during combat\.?$/i))) {
       addCond({ kind: 'turnStep', steps: STEP_WORDS.combat });

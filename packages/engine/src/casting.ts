@@ -322,6 +322,13 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
 /** Non-mana costs: tap, sacrifice, discard, life, counters... Returns false if unpayable. */
 export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: AbilityCost, x: number): Gen<boolean> {
   const ctx = { sourceId: obj.id, controller: p, x };
+  if (cost.choice) {
+    // "Sacrifice a creature or pay {3}": pick one option, then pay it.
+    const label = (c: AbilityCost): string => c.mana ?? (c.sacrifice ? 'Sacrifice' : c.discard ? 'Discard' : c.payLife ? `Pay ${c.payLife} life` : c.returnToHand ? 'Return a permanent to hand' : c.exileFromGraveyard ? 'Exile from graveyard' : c.tapUntapped ? 'Tap creatures' : 'Other');
+    const resp = yield* g.ask({ type: 'chooseOption', player: p, prompt: 'Choose which cost to pay', options: cost.choice.map((c, i) => ({ id: String(i), label: label(c) })), min: 1, max: 1, sourceId: obj.id });
+    if (resp.type !== 'options' || !resp.ids.length) return false;
+    return yield* payAbilityCost(g, p, obj, cost.choice[parseInt(resp.ids[0], 10)], x);
+  }
   // Check first
   if (cost.tap && (obj.tapped || (g.characteristics(obj.id).types.includes('Creature') && summoningSick(g, obj)))) return false;
   if (cost.untap && !obj.tapped) return false;
@@ -393,7 +400,8 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     else {
       const cands = hand.filter((id) => !cost.discard || cost.discard === 'hand' || matchesFilter(g, g.obj(id), { ...cost.discard.filter, zone: 'hand' }, ctx));
       let ids = cands;
-      if (cands.length > cost.discard.count) {
+      if (cost.discard.random) ids = g.rng.shuffle([...cands]).slice(0, cost.discard.count);
+      else if (cands.length > cost.discard.count) {
         const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Discard ${cost.discard.count}`, candidates: cands, min: cost.discard.count, max: cost.discard.count, revealToChooser: true, sourceId: obj.id });
         if (resp.type !== 'objects') return false;
         ids = resp.ids;

@@ -84,10 +84,13 @@ export function stripAbilityWord(line: string): string {
 export function sentences(line: string): string[] {
   const out: string[] = [];
   let cur = '';
+  let quoted = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     cur += c;
-    if (c === '.' && (i === line.length - 1 || line[i + 1] === ' ')) {
+    if (c === '"') quoted = !quoted;
+    // Never split inside quoted ability text ("You get an emblem with \"Creatures you control get +2/+2.\"").
+    if (!quoted && c === '.' && (i === line.length - 1 || line[i + 1] === ' ')) {
       // Don't split decimals or "e.g."
       out.push(cur.trim());
       cur = '';
