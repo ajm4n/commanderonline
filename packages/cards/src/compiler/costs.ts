@@ -23,6 +23,7 @@ export function parseCost(text: string): AbilityCost | null {
   for (const p of parts) {
     let m: RegExpMatchArray | null;
     if (p === '{T}') cost.tap = true;
+    else if (/^Forage$/i.test(p)) cost.choice = [{ exileFromGraveyard: { filter: {}, count: 3 } }, { sacrifice: { filter: { subtypes: ['Food'], zone: 'battlefield' }, count: 1 } }];
     else if (p === '{Q}') cost.untap = true;
     else if (MANA_RE.test(p)) {
       // {T} may be embedded like "{1}{T}"? Rare. Mana cost.
@@ -55,8 +56,8 @@ export function parseCost(text: string): AbilityCost | null {
         if (!noun) return null;
         cost.discard = { count: n, filter: noun.filter };
       }
-    } else if ((m = p.match(/^Remove (?:a|an|(\w+)|any number of) ([+-]\d\/[+-]\d|\w+) counters? from ~$/i))) {
-      const n = /any number of/i.test(p) ? 'X' : m[1] ? wordToNumber(m[1]) : 1;
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)|any number of|all) ([+-]\d\/[+-]\d|\w+) counters? from ~$/i))) {
+      const n = /any number of/i.test(p) ? 'X' : /^Remove all /i.test(p) ? 'all' : m[1] ? wordToNumber(m[1]) : 1;
       if (n === null) return null;
       cost.removeCounters = { counter: m[2], amount: n };
     } else if ((m = p.match(/^Put (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on ~$/i))) {

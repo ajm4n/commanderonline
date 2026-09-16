@@ -1522,13 +1522,27 @@ export class Game {
 
   /** Deal damage from a source to a target (object or player). Handles infect, wither, lifelink, deathtouch, prevention. */
   /** Does a turn-wide prevention effect stop this damage? */
-  private preventedByFog(sourceId: ObjectId | null, target: Target, combat: boolean): boolean {
+  private preventedByFog(sourceId: ObjectId | null, target: Target, combat: boolean, amount = 0): boolean {
     if (this.state.turnStats['noPrevention']) return false;
     const src = sourceId !== null ? this.state.objects[sourceId] : null;
     // "Prevent all (combat) damage that would be dealt by [this source] this turn."
     if (src && src.zone === 'battlefield') {
       const noDmg = this.characteristics(src.id).rules.find((r) => r.kind === 'custom' && r.tag === 'dealsNoDamage') as { data?: string } | undefined;
       if (noDmg && (noDmg.data === 'combat' ? combat : noDmg.data === 'noncombat' ? !combat : true)) return true;
+    }
+    // "If damage would be dealt to ~, prevent that damage and put that many +1/+1 counters on it." (a replacement on the recipient)
+    if (target.kind === 'object') {
+      const tobj = this.state.objects[target.id];
+      if (tobj && tobj.zone === 'battlefield') {
+        for (const ab of this.scriptFor(tobj).abilities) {
+          if (ab.kind !== 'replacement' || ab.event !== 'damage' || ab.to !== 'self' || ab.prevent !== 'all') continue;
+          if (ab.combatOnly && !combat) continue;
+          if (ab.fromFilter && (!src || !matchesFilter(this, src, { ...ab.fromFilter, zone: undefined }, { sourceId: tobj.id, controller: tobj.controller }))) continue;
+          const eff = (ab as { effects?: import('./script.js').Effect[] }).effects;
+          if (eff?.length) this.pendingTriggers.push({ sourceId: tobj.id, controller: tobj.controller, ability: { kind: 'triggered', text: ab.text, event: 'dealtDamage', effects: eff }, context: { triggerAmount: amount, amount, objectId: tobj.id, sourceId } });
+          return true;
+        }
+      }
     }
     // "Prevent all damage that would be dealt to ~ by artifact creatures." (a static on the recipient)
     {
@@ -1568,7 +1582,7 @@ export class Game {
 
   dealDamage(sourceId: ObjectId | null, target: Target, amount: number, combat: boolean): number {
     if (amount <= 0) return 0;
-    if (this.preventedByFog(sourceId, target, combat)) {
+    if (this.preventedByFog(sourceId, target, combat, amount)) {
       this.log(`Damage to ${target.kind === 'player' ? this.player(target.id).name : target.kind === 'object' ? this.nameOf(target.id) : 'something'} is prevented.`);
       return 0;
     }

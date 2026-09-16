@@ -44,6 +44,14 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     .replace(/^Whenever ~ attacks for the first time each turn, /i, 'Whenever ~ attacks, ')
     .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ');
   {
+    // "Whenever one or more cards leave your graveyard during your turn, X" → same trigger, restricted to your turn.
+    const dm = line.match(/^(When(?:ever)? .+?) during your turn, (.+)$/i);
+    if (dm) {
+      const h = parseTriggerHead(`${dm[1]}, ${dm[2]}`);
+      if (h) return { ...h, filter: { ...(h.filter ?? {}), yourTurn: true } };
+    }
+  }
+  {
     const xm = line.match(/^Whenever you activate an exhaust ability, (.+)$/i);
     if (xm) return { event: 'abilityActivated', filter: { player: 'you', custom: 'exhaust' }, hasObject: true, hasPlayer: true, rest: xm[1] };
     const lm = line.match(/^When(?:ever)? you play another land, (.+)$/i);
@@ -282,6 +290,10 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     return { event: 'leftGraveyard', filter: tf, hasObject: true, hasPlayer: true, rest: m[2] };
   }
   if ((m = L.match(/^Whenever a creature you control becomes blocked, (.+)$/i))) return { event: 'becomesBlocked', filter: { object: { types: ['Creature'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an|another) (.+?) (?:becomes blocked|blocks), (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) return { event: /becomes blocked/i.test(m[0]) ? 'becomesBlocked' : 'blocks', filter: { object: noun.filter }, hasObject: true, hasPlayer: false, rest: m[2] };
+  }
   if ((m = L.match(/^At the beginning of your turn, (.+)$/i))) return { event: 'beginningOfUpkeep', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^At the beginning of combat on (your|each) turn, (.+)$/i)) || (m = L.match(/^At the beginning of (each) combat, (.+)$/i))) return { event: 'beginningOfCombat', filter: { player: m[1] === 'your' ? 'you' : 'any' }, hasObject: false, hasPlayer: true, rest: m[2] };
   // Casting
@@ -371,7 +383,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever you complete a dungeon, (.+)$/i))) return { event: 'dungeonCompleted', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you take the initiative, (.+)$/i))) return { event: 'takesInitiative', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^When(?:ever)? you sacrifice ~, (.+)$/i))) return { event: 'sacrifice', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: true, rest: m[1] };
-  if ((m = L.match(/^Whenever you sacrifice (?:a|an|another) (.+?), (.+)$/i))) {
+  if ((m = L.match(/^Whenever you sacrifice (?:a|an|another|one or more) (.+?), (.+)$/i))) {
     const tf = nounFilter(`a ${m[1]}`);
     if (!tf) return null;
     tf.player = 'you';
@@ -401,7 +413,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     tf.counterType = m[1];
     return { event: 'counterAdded', filter: tf, hasObject: true, hasPlayer: false, rest: m[3] };
   }
-  if ((m = L.match(/^Whenever you put one or more ([+-]\d\/[+-]\d|\w+) counters on (?:a|an) (.+?), (.+)$/i))) {
+  if ((m = L.match(/^Whenever you put (?:one or more|a|an) ([+-]\d\/[+-]\d|\w+) counters? on (?:a|an) (.+?), (.+)$/i))) {
     const tf = nounFilter(`a ${m[2]}`);
     if (!tf) return null;
     tf.counterType = m[1];

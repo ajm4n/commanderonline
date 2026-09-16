@@ -332,7 +332,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   // Check first
   if (cost.tap && (obj.tapped || (g.characteristics(obj.id).types.includes('Creature') && summoningSick(g, obj)))) return false;
   if (cost.untap && !obj.tapped) return false;
-  const nx = (v: number | 'X' | undefined): number => (v === 'X' ? x : (v ?? 0));
+  const nx = (v: number | 'X' | 'all' | undefined): number => (v === 'X' ? x : v === 'all' ? (cost.removeCounters ? obj.counters[cost.removeCounters.counter] ?? 0 : 0) : (v ?? 0));
   if (cost.payLife !== undefined && g.player(p).life < nx(cost.payLife)) return false;
   if (cost.energy !== undefined && g.player(p).energy < cost.energy) return false;
   if (cost.removeCounters && (obj.counters[cost.removeCounters.counter] ?? 0) < nx(cost.removeCounters.amount)) return false;
@@ -695,8 +695,8 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
   if (spec.cost.discardSelf && obj.zone !== 'hand') return false;
   if (spec.cost.returnSelf && obj.zone !== 'battlefield') return false;
   if (spec.cost.payLife !== undefined && spec.cost.payLife !== 'X' && g.player(p).life < spec.cost.payLife) return false;
-  if (spec.cost.removeCounters && spec.cost.removeCounters.amount !== 'X' && (obj.counters[spec.cost.removeCounters.counter] ?? 0) < spec.cost.removeCounters.amount) return false;
-  if (spec.cost.removeCounters && spec.cost.removeCounters.amount === 'X' && !(obj.counters[spec.cost.removeCounters.counter] ?? 0)) return false;
+  if (spec.cost.removeCounters && typeof spec.cost.removeCounters.amount === 'number' && (obj.counters[spec.cost.removeCounters.counter] ?? 0) < spec.cost.removeCounters.amount) return false;
+  if (spec.cost.removeCounters && typeof spec.cost.removeCounters.amount !== 'number' && !(obj.counters[spec.cost.removeCounters.counter] ?? 0)) return false;
   if (spec.cost.tapUntappedTotalPower && objectsMatching(g, { ...spec.cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, { sourceId: obj.id, controller: p }).reduce((s, o) => s + (g.characteristics(o.id).power ?? 0), 0) < spec.cost.tapUntappedTotalPower.power) return false;
   if (spec.cost.sacrifice) {
     if (objectsMatching(g, { ...spec.cost.sacrifice.filter, controller: 'you' }, { sourceId: obj.id, controller: p }).length < (spec.cost.sacrifice.count ?? 1)) return false;
@@ -748,7 +748,8 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (/\bLand\b/.test(face.typeLine)) return false;
   const fromZone = obj.zone;
   const ch = g.characteristics(obj.id);
-  const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash');
+  const altInstant = !!resp.alternativeCost && (g.scriptFor(obj).alternativeCosts ?? []).some((a) => a.id === resp.alternativeCost && a.instantSpeed);
+  const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash') || altInstant;
   if (freeFromExile(g, obj)) opts = { ...opts, free: true };
   if (fromZone === 'exile' && obj.memory['playableBy'] !== p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playExiledWithCounter' && (r.data as { anyMana?: boolean } | undefined)?.anyMana)) opts = { ...opts, anyMana: true };
   if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;
@@ -973,7 +974,8 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
 
   // X for abilities with {X} in cost
   let x = resp.xValue ?? 0;
-  if (spec.cost.removeCounters?.amount === 'X' && !(spec.cost.mana && parseManaCost(spec.cost.mana).xCount > 0)) {
+  if (spec.cost.removeCounters?.amount === 'all') x = obj.counters[spec.cost.removeCounters.counter] ?? 0;
+  else if (spec.cost.removeCounters?.amount === 'X' && !(spec.cost.mana && parseManaCost(spec.cost.mana).xCount > 0)) {
     // "Remove X / any number of counters": X is how many counters to remove.
     const mx = obj.counters[spec.cost.removeCounters.counter] ?? 0;
     const r = yield* g.ask({ type: 'chooseNumber', player: p, prompt: `Remove how many ${spec.cost.removeCounters.counter} counters?`, min: 1, max: mx, sourceId: id });

@@ -39,6 +39,14 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     t = t.replace(new RegExp(esc + "'s", 'g'), "~'s");
     t = t.replace(new RegExp(esc, 'g'), '~');
   }
+  // Legendary permanents without a comma sometimes refer to themselves by their first name ("Catti-brie of Mithral Hall" → "Catti-brie").
+  if (/Legendary/.test(card.typeLine) && !faceName.includes(',') && faceName.includes(' ')) {
+    const first = faceName.split(' ')[0];
+    if (first.length >= 5 && /^[A-Z][a-z]/.test(first) && !/'s$/.test(first) && !/^(The|Sword|Shield|Tower|Temple|Throne|Hall|Book|Staff|Crown|Ring|Blade|Gate|Cradle|Academy|Palace|Hammer|Heart|Scroll|Mask)$/.test(first)) {
+      const esc = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      t = t.replace(new RegExp(`\\b${esc}'s\\b`, 'g'), "~'s").replace(new RegExp(`\\b${esc}\\b(?! [A-Z])`, 'g'), '~');
+    }
+  }
   t = t.replace(/\b[Tt]his (creature|permanent|artifact|enchantment|land|spell|card|planeswalker|Aura|Equipment|Vehicle|token|battle|Class|Spacecraft|Case|Siege|Room|Saga|Contraption)\b/g, '~');
   t = t.replace(/\benters the battlefield\b/g, 'enters');
   t = t.replace(/\bput onto the battlefield\b/g, 'put onto the battlefield');
@@ -65,6 +73,8 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     .split('\n')
     .map((l) => l.replace(ABILITY_WORDS, (m) => (/^Choose/i.test(m) ? m : '')).trim())
     .map(stripAbilityWord)
+    // Flavor words ("Nitro-9 — Whenever ~ attacks", "Power-up — {5}: ...") are decorative: strip anything dash-prefixed that isn't a real keyword or Saga chapter.
+    .map((l) => l.replace(/^([A-Z][\w' !,.-]{1,40}?) — (?=[A-Z{~•+−-])/, (m0, w: string) => (DASH_KEYWORDS.test(w) || /^(I|II|III|IV|V|VI)(, (I|II|III|IV|V|VI))*$/.test(w) || /^Choose/i.test(w) ? m0 : '')))
     .filter(Boolean);
 }
 

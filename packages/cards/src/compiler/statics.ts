@@ -1,7 +1,7 @@
 /** Static abilities and replacement effects. */
 import type { AbilitySpec, Amount, ObjectFilter, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
-import { parseKeywordList, isNoOpSentence } from './effects.js';
+import { parseKeywordList, isNoOpSentence, parseEffects, newCtx } from './effects.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
 import { parseAmount } from './amounts.js';
@@ -31,6 +31,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   let innerText: string | null = null;
   if ((m = L.match(/^(?:As long as|While) (.+?), (.+)$/i))) [condText, innerText] = [m[1], m[2]];
   else if ((m = L.match(/^(.+?) (?:as long as|while) (.+)$/i))) [condText, innerText] = [m[2], m[1]];
+  else if ((m = L.match(/^(~ (?:does not untap|cannot|gets|has) .+?) if (.+)$/i))) [condText, innerText] = [m[2], m[1]];
   if (condText && innerText) {
     // "As long as ~ is attacking, it gets +2/+0": "it" is this permanent.
     if (/^it (gets|has|is|can|cannot|assigns|must|does|loses|gains|deals)\b/i.test(innerText) && /^(?:~|it)\b/i.test(condText)) innerText = innerText.replace(/^it /i, '~ ');
@@ -170,6 +171,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if (/^You control (?:enchanted|equipped) (?:creature|permanent|artifact|land|planeswalker)$/i.test(L)) return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }];
   // Self replacements on dying / leaving
+  if ((m = L.match(/^If (combat )?damage would be dealt to ~(?: by (.+?))?, prevent that damage(?:\.|,)? (?:and |then )?(.+)$/i))) {
+    const from = m[2] ? parseNoun(m[2].replace(/ sources?$/i, ' permanent')) : null;
+    if (m[2] && !from) return null;
+    const ctx = newCtx({ triggerHasObject: false, triggerHasPlayer: false });
+    const r = parseEffects(m[3].replace(/\bon it\b/g, 'on ~'), ctx);
+    if (r.unhandled.length) return null;
+    return [{ kind: 'replacement', text: line, event: 'damage', prevent: 'all', to: 'self', combatOnly: !!m[1] || undefined, fromFilter: from ? { ...from.filter, zone: undefined } : undefined, effects: r.effects }];
+  }
   if (/^If ~ would (?:die|be put into a graveyard from anywhere|be put into a graveyard), exile it instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'putIntoGraveyard', self: true, instead: 'exile' }];
   if (/^If ~ would be put into a graveyard from the battlefield, (?:exile it|return it to its owner's hand|shuffle it into its owner's library) instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'dies', self: true, instead: /exile/i.test(L) ? 'exile' : /hand/i.test(L) ? 'returnToHand' : 'shuffleIntoLibrary' }];
   if (/^If ~ would leave the battlefield, exile it instead of putting it anywhere else$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'leavesBattlefield', self: true, instead: 'exile' }];

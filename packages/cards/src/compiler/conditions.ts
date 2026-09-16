@@ -90,6 +90,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^(?:it|that creature|that permanent) is (?:still )?on the battlefield$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'battlefield' };
   if ((m = t.match(/^(?:it|~) (?:is|remains) exiled$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'exile' };
   if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
+  if (t === 'you cast ~ during your main phase' || t === '~ was cast during your main phase') return { kind: 'not', c: { kind: 'memoryFlag', key: 'castAtInstantSpeed' } };
+  if (t === '~ was cast during an opponent\'s turn' || t === 'you cast ~ during an opponent\'s turn') return { kind: 'notYourTurn' };
   if ((m = t.match(/^there are (\w+) or more (.+?) on the battlefield$/))) {
     const noun = parseNoun(oc(m, 2));
     const n = wordToNumber(m[1]);
@@ -204,7 +206,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const event: import('@commander/engine').GameEventName = /discard/.test(ev) ? 'discard' : /drew/.test(ev) ? 'drawCard' : /gained/.test(ev) ? 'lifeGained' : /lost/.test(ev) ? 'lifeLost' : /cast/.test(ev) ? 'cast' : /attacked/.test(ev) ? 'attacks' : /sacrificed/.test(ev) ? 'sacrifice' : /dealt damage/.test(ev) ? 'dealtDamage' : 'mill';
     return { kind: 'eventThisTurn', event, player: who, op: '>=', value: /two or more/.test(ev) ? 2 : 1 };
   }
-  if ((m = t.match(/^a creature died this turn$/))) return { kind: 'eventThisTurn', event: 'dies', player: 'any' };
+  if ((m = t.match(/^(?:a|another) creature(?: not named ~)? died this turn$/))) return { kind: 'eventThisTurn', event: 'dies', player: 'any' };
+  if ((m = t.match(/^a creature you control(?:led)? died this turn$/))) return { kind: 'eventThisTurn', event: 'dies', player: 'you' };
   if ((m = t.match(/^you have the initiative$/))) return { kind: 'hasInitiative' };
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };

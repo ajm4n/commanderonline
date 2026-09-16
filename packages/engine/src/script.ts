@@ -187,11 +187,11 @@ export type Effect =
   | { kind: 'sacrifice'; what: Ref }
   | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; unlessAlso?: never }
   | { kind: 'returnToHand'; what: Ref }
-  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean }
+  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean }
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
   | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref }
-  | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean }
+  | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean ; /** "your choice of a +1/+1, first strike, or trample counter" */ counterOptions?: string[] }
   | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
   | { kind: 'setPT'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
@@ -350,7 +350,7 @@ export interface AbilityCost {
   payLife?: number | 'X';
   discard?: { count: number | 'X'; filter?: ObjectFilter; random?: boolean } | 'hand';
   /** amount 'X' = the chosen X ("Remove X counters", "Remove any number of counters"). */
-  removeCounters?: { counter: CounterType; amount: number | 'X' };
+  removeCounters?: { counter: CounterType; amount: number | 'X' | 'all' };
   addCounters?: { counter: CounterType; amount: number };
   exileFromGraveyard?: { filter: ObjectFilter; count: number };
   exileSelf?: boolean;
@@ -442,7 +442,7 @@ export type ReplacementSpec =
   /** "If a creature an opponent controls would die, exile it instead." / Rest in Peace */
   | { kind: 'replacement'; text: string; event: 'dies' | 'putIntoGraveyard'; self: false; filter: ObjectFilter; instead: 'exile' }
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }
-  | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean }
+  | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean; /** Run after preventing ("prevent that damage and put that many +1/+1 counters on it"); the amount prevented is the trigger amount. */ effects?: Effect[] }
   | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' }
   | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; filter?: ObjectFilter; counterType?: CounterType }
   | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number }
@@ -486,7 +486,7 @@ export interface CardScript {
   /** "Cast ~ only during combat" / "only if you control a snow land": must hold to cast. */
   castCondition?: Condition;
   /** Alternative costs (e.g. warp, "You may pay {W} rather than pay this spell's mana cost if ..."). */
-  alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition; zone?: ZoneName }[];
+  alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition; zone?: ZoneName; /** Paying this cost lets the spell be cast as though it had flash. */ instantSpeed?: boolean }[];
   /** Cost changes the spell applies to itself ("costs {1} less to cast for each artifact you control", affinity). */
   costModifiers?: CostModifier[];
   /** How much of the card's text is automated. */

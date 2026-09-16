@@ -363,6 +363,8 @@ export interface ObjectFilter {
   damagedBySource?: boolean;
   /** Has a custom rule with this tag ("saddled", "goaded"). */
   customRule?: string;
+  /** Modified: has a counter, or an Equipment/Aura attached that its controller controls. */
+  modified?: boolean;
   nameIs?: string;
   historic?: boolean;
   /** Was cast this turn / entered this turn etc. */

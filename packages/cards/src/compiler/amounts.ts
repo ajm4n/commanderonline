@@ -34,6 +34,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     }
   }
   if (/^(?:the number of )?[+\-\w\/]+ counters? removed this way$/i.test(text.trim())) return 'X';
+  if (/^(?:the number of )?creatures? blocking (?:it|~|that creature)$/i.test(text.trim())) return { kind: 'countRef', ref: { ref: 'blockersOf', of: /~$/.test(text.trim()) ? { ref: 'self' } : ctx.lastObj ?? { ref: 'self' } } };
   const orig = text.trim().replace(/^(?:an amount of \w+ |a number of \w+ )?equal to /i, '');
   const t = orig.toLowerCase();
   /** Original-case text of a capture group (lowercasing preserves length). */

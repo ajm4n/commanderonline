@@ -186,6 +186,19 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    if ((m = line.match(/^You may cast ~ from your graveyard if (.+?)\.?$/i))) {
+      const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (cond && cond.kind !== 'manual') {
+        alternativeCosts.push({ id: 'fromGraveyard', text: line, cost: { mana: card.manaCost ?? '' }, zone: 'graveyard', condition: cond });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    if ((m = line.match(/^You may cast ~ as though it had flash if you pay ((?:\{[^}]+\})+) more to cast it\.?$/i))) {
+      alternativeCosts.push({ id: 'flashPlus', text: line, cost: { mana: `${card.manaCost ?? ''}${m[1]}` }, zone: 'hand', instantSpeed: true });
+      compiledLines.push(line);
+      continue;
+    }
     if (/^You may cast ~ as though it had flash\.?$/i.test(line)) {
       abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: ['Flash'] }, zone: 'hand' });
       compiledLines.push(line);

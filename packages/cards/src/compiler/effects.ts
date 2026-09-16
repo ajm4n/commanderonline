@@ -63,6 +63,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
     ctx.lastObj = SELF;
     return SELF;
   }
+  if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l) && ctx.lastObj) return ctx.lastObj;
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
@@ -159,7 +160,7 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
   let tapped = false;
   let attacking = false;
   let m: RegExpMatchArray | null;
-  if ((m = t.match(/^(.*?)(?:,)? (?:that is|that are) tapped and attacking$/))) {
+  if ((m = t.match(/^(.*?)(?:,| and)? (?:that is|that are) tapped and attacking$/))) {
     t = m[1];
     tapped = attacking = true;
   } else if ((m = t.match(/^(.*?) tapped and attacking$/))) {
@@ -1410,6 +1411,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   let text = s.trim().replace(/\.$/, '');
   if (!text) return [];
   text = text.replace(/^then,? /i, '');
+  text = text.replace(/^(for each (?:opponent|player)), you (create|draw|gain|lose|put|exile|destroy|sacrifice|mill|scry|return)\b/i, '$1, $2');
   text = rephraseFirstPerson(text);
   let m: RegExpMatchArray | null;
   // "each player searches their library for up to two basic land cards, puts them onto the battlefield, then shuffles"
@@ -1431,6 +1433,32 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^have (.+?) (get|gain|lose|become) (.+)$/i))) {
     const r = parseSentence(`${m[1]} ${m[2]}s ${m[3]}`, ctx);
     if (r) return r;
+  }
+  // "put your choice of a +1/+1, first strike, or trample counter on that creature"
+  if ((m = text.match(/^put your choice of (?:a|an) (.+?) counter on (.+)$/i))) {
+    const options = m[1].split(/,? or |, /).map((x) => x.replace(/^(?:a|an) /i, '').trim()).filter(Boolean);
+    const ref = objRef(m[2], ctx);
+    return ref && options.length > 1 ? [{ kind: 'addCounters', counter: options[0], counterOptions: options, amount: 1, on: ref }] : null;
+  }
+  // "return target creature card from your graveyard to the battlefield tapped and attacking"
+  if ((m = text.match(/^(return .+? to the battlefield) tapped and attacking$/i))) {
+    const inner = parseSentence(`${m[1]} tapped`, ctx);
+    if (inner) return inner.map((e) => (e.kind === 'returnToBattlefield' ? { ...e, attacking: true } : e));
+  }
+  if ((m = text.match(/^when (that creature|it|that permanent) becomes blocked this turn, (.+)$/i))) {
+    const ref = objRef(m[1], ctx);
+    const inner = ref ? parseSentence(m[2], ctx) : null;
+    if (ref && inner) return [{ kind: 'delayedTrigger', event: 'becomesBlocked', filter: { objectRef: ref }, effects: inner, text, once: true }];
+  }
+  // "You may cast a spell with mana value 4 or less from your hand without paying its mana cost"
+  if ((m = text.match(/^you may cast (?:a|an) (.+?) (?:card |spell )?(?:with mana value (\d+|X) or less )?from your hand without paying its mana cost$/i))) {
+    const noun = /^spell$/i.test(m[1]) ? { filter: { nonland: true } as ObjectFilter } : parseNoun(`a ${m[1].replace(/ spell$/i, '')} card`);
+    if (noun) {
+      const key = `hand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+      const f: ObjectFilter = { ...noun.filter, zone: 'hand', owner: 'you', nonland: true };
+      if (m[2]) f.cmcLE = m[2] === 'X' ? 'X' : parseInt(m[2], 10);
+      return [{ kind: 'may', effects: [{ kind: 'chooseObjects', filter: f, count: 1, key }, { kind: 'castWithoutPaying', what: { ref: 'chosen', key } }] }];
+    }
   }
   if ((m = text.match(/^(?:until end of turn, )?(.+?) assigns? combat damage equal to (?:its|their) toughness rather than (?:its|their) power(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
@@ -1815,9 +1843,18 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     // "X. If ~ was kicked, Y instead." → if kicked, Y; otherwise X.
+    s = s.replace(/^if (.+?), instead (.+)$/i, 'If $1, $2 instead');
+    if ((m = s.match(/^(.+?) instead if (.+)$/i)) && effects.length > lastStart && !/ would /i.test(m[2])) s = `If ${m[2]}, ${m[1]} instead`;
     if ((m = s.match(/^if (.+?), (.+?) instead$/i)) && effects.length > lastStart && !/ would /i.test(m[1])) {
       const cond = parseCondition(m[1], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer });
-      const inner = cond && cond.kind !== 'manual' ? parseSentence(m[2], ctx) : null;
+      let inner = cond && cond.kind !== 'manual' ? parseSentence(m[2], ctx) : null;
+      // "~ deals 5 damage instead": same targets as the previous damage effect, new amount.
+      const dm = !inner && m[2].match(/^(?:~|it) deals (\w+|X) damage$/i);
+      if (dm && cond && cond.kind !== 'manual') {
+        const n = wordToNumber(dm[1]);
+        const prev = effects.slice(lastStart);
+        if (n !== null && prev.some((e) => e.kind === 'damage')) inner = prev.map((e) => (e.kind === 'damage' ? { ...e, amount: n } : e));
+      }
       if (cond && inner) {
         const previous = effects.splice(lastStart);
         effects.push({ kind: 'conditional', if: cond, then: inner, else: previous });

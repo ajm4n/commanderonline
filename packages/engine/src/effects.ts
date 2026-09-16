@@ -179,7 +179,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const o of g.resolveObjects(e.what, ctx)) {
         const controller = e.controller === 'owner' ? o.owner : ctx.controller;
         const counters = e.counters ? { [e.counters.counter]: amt(e.counters.amount) } : undefined;
-        const r = yield* enterBattlefield(g, o.id, controller, { tapped: e.tapped, counters, ctx });
+        const r = yield* enterBattlefield(g, o.id, controller, { tapped: e.tapped || e.attacking, counters, ctx });
+        if (r && e.attacking) {
+          const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+          const entered = g.state.objects[o.id];
+          if (entered && entered.zone === 'battlefield') entered.attacking = src?.attacking ?? g.opponentsOf(controller)[0] ?? null;
+        }
         if (r) {
           moved.push(r.id);
           if (e.transformed && r.card.faces && r.card.faces.length > 1) {
@@ -231,6 +236,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'addCounters':
+      if (e.counterOptions?.length) {
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Choose a kind of counter', options: e.counterOptions.map((c) => ({ id: c, label: `${c} counter` })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        const pick = r.type === 'options' && r.ids[0] ? r.ids[0] : e.counterOptions[0];
+        yield* executeEffects(g, [{ ...e, counter: pick, counterOptions: undefined }], ctx);
+        return;
+      }
       if (e.divided) {
         const objs = g.resolveObjects(e.on, ctx).filter((o) => o.zone === 'battlefield');
         const total = amt(e.amount);
