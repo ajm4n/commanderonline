@@ -283,7 +283,7 @@ export type Modification =
   | { layer: 5; setColors?: Color[]; addColors?: Color[] }
   | { layer: 6; addKeywords?: string[]; removeKeywords?: string[]; loseAllAbilities?: boolean; addAbilityText?: string[] }
   | { layer: '7b'; setPower?: number; setToughness?: number; powerAmount?: import('./script.js').Amount; toughnessAmount?: import('./script.js').Amount }
-  | { layer: '7c'; power: number; toughness: number; /** Multiply by the number of objects matching ("+1/+1 for each artifact you control"). */ perCount?: ObjectFilter }
+  | { layer: '7c'; power: number; toughness: number; /** Multiply by the number of objects matching ("+1/+1 for each artifact you control"). */ perCount?: ObjectFilter; /** Multiply by an amount ("for each charge counter on ~"). */ perAmount?: import('./script.js').Amount }
   | { layer: '7d'; switchPT: true }
   | { layer: 'control'; controller: PlayerId | 'sourceController' } // layer 2
   | { layer: 'copy'; card: CardData } // layer 1
@@ -405,6 +405,8 @@ export type GameEventName =
   | 'dies'
   | 'putIntoGraveyard'
   | 'leftGraveyard'
+  | 'attacksUnblocked'
+  | 'cycled'
   | 'exiled'
   | 'returnedToHand'
   | 'cast'

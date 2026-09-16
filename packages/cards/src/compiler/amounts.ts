@@ -32,6 +32,10 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the number of cards milled this way' || t === 'the number of cards put into your graveyard this way') return { kind: 'ctxMemory', key: 'lastMoved' };
   if (t === 'the number of cards revealed this way') return { kind: 'ctxMemory', key: 'revealedCount' };
   if (t === 'twice that much' || t === 'twice that many') return { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 };
+  if ((m = t.match(/^(twice|three times|double) (.+)$/))) {
+    const inner = parseAmount(oc(m, 2), ctx);
+    if (inner !== null) return { kind: 'times', a: inner, b: /three/.test(m[1]) ? 3 : 2 };
+  }
   if (t === 'that many cards minus one' || t === 'that many minus one') return { kind: 'sum', parts: [{ kind: 'discardedThisWay', ref: { ref: 'iter' } }, -1] };
   if (t === 'the greatest number of cards a player discarded this way') return { kind: 'ctxMemory', key: 'maxDiscarded' };
   if (t === 'the number of cards discarded this way') return { kind: 'ctxMemory', key: 'discardedCount' };

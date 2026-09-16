@@ -194,6 +194,8 @@ function* declareBlockers(g: Game): Gen {
         if (!able.length) return true;
         const blockedBy = blocks.filter((b) => b.attacker === a.id).map((b) => b.blocker);
         if (rules.some((r) => r.kind === 'custom' && r.tag === 'mustBeBlocked') && blockedBy.length === 0) return false;
+        // "Target creature blocks this turn if able": any such blocker able to block something must block.
+        if (able.some((c) => g.characteristics(c.id).rules.some((r) => r.kind === 'custom' && r.tag === 'mustBlockAny') && !blocks.some((b) => b.blocker === c.id))) return false;
         if (rules.some((r) => r.kind === 'custom' && r.tag === 'lure') && able.some((c) => !blockedBy.includes(c.id) && !blocks.some((b) => b.blocker === c.id))) return false;
         return able.every((c) => !g.characteristics(c.id).rules.some((r) => r.kind === 'custom' && r.tag === 'mustBlock' && r.data === a.id) || blockedBy.includes(c.id) || blocks.some((b) => b.blocker === c.id));
       });
@@ -223,6 +225,8 @@ function* declareBlockers(g: Game): Gen {
     for (const b of blocks) g.emit({ name: 'blocks', objectId: b.blocker, sourceId: b.attacker, playerId: d, combat: true });
     for (const a of mine) if (a.blockedBy.length) g.emit({ name: 'becomesBlocked', objectId: a.id, playerId: a.controller, combat: true });
   }
+  // "Whenever ~ attacks and isn't blocked"
+  for (const a of attackers) if (!a.blockedBy.length && a.attacking !== null) g.emit({ name: 'attacksUnblocked', objectId: a.id, playerId: a.controller, otherPlayerId: defenderOf(g, a.attacking), combat: true });
   // Damage assignment order for attackers blocked by multiple creatures.
   for (const a of attackers) {
     if (a.blockedBy.length > 1) {

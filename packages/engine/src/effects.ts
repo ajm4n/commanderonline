@@ -965,10 +965,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const i of picks) yield* executeEffects(g, e.options[i].effects, ctx);
       return;
     }
-    case 'delayedTrigger':
+    case 'delayedTrigger': {
+      // "When that creature dies this turn": watch the specific objects the sentence refers to.
+      if (e.filter?.objectRef) {
+        const ids = g.resolveObjects(e.filter.objectRef, ctx).map((o) => o.id);
+        const { objectRef: _o, ...rest } = e.filter;
+        void _o;
+        g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: e.event, filter: rest, effects: e.effects, text: e.text, controller: ctx.controller, sourceId: ctx.sourceId ?? -1, once: e.once ?? true, context: { ...ctx.triggerContext, watchIds: ids } });
+        return;
+      }
       // A delayed trigger about "this object" stops applying once it changes zones.
       g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: e.event, filter: e.filter, effects: e.effects, text: e.text, controller: ctx.controller, sourceId: ctx.sourceId ?? -1, once: e.once ?? true, context: { ...ctx.triggerContext, delayedTargets: ctx.targets, delayedMemory: { ...ctx.memory } } , sourceZone: JSON.stringify(e.effects).includes('"ref":"self"') && ctx.sourceId != null ? g.state.objects[ctx.sourceId]?.zone : undefined });
       return;
+    }
     case 'log':
       g.log(e.text);
       return;
@@ -1166,6 +1175,20 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
   for (const ab of script.abilities) {
     if (ab.kind !== 'replacement' || ab.event !== 'entersBattlefield' || !ab.self) continue;
     if (ab.condition && !g.checkCondition(ab.condition, { sourceId: id, controller })) continue;
+    if (ab.enterAsCopy) {
+      const f = ab.enterAsCopy;
+      const cands = objectsMatching(g, f, { sourceId: id, controller }, f.zone ? undefined : ['battlefield']).filter((c) => c.id !== id).map((c) => c.id);
+      if (cands.length) {
+        const r = yield* g.ask({ type: 'chooseObjects', player: controller, prompt: `${o.card.name}: enter as a copy of${ab.enterAsCopyOptional ? ' (or choose none)' : ''}`, candidates: cands, min: ab.enterAsCopyOptional ? 0 : 1, max: 1, sourceId: id });
+        const pick = r.type === 'objects' ? r.ids[0] : undefined;
+        if (pick !== undefined) {
+          const src = g.obj(pick);
+          o.copyOf = src.copyOf ?? src.card;
+          o.faceIndex = 0;
+          g.log(`${o.card.name} enters as a copy of ${g.nameOf(pick)}.`);
+        }
+      }
+    }
     if (ab.tapped && !(ab.unless && g.checkCondition(ab.unless, { sourceId: id, controller }))) tapped = true;
     if (ab.payLifeOrTapped !== undefined) {
       let paid = false;

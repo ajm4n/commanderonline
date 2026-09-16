@@ -321,6 +321,8 @@ export interface TriggerFilter {
   attachedToSource?: boolean;
   /** For cast events: the spell must target the source (heroic). */
   targetsSource?: boolean;
+  /** Delayed triggers only: watch these specific objects ("When that creature dies this turn"). */
+  objectRef?: Ref;
   /** Custom */
   custom?: string;
 }
@@ -413,9 +415,11 @@ export interface SpellAbilitySpec {
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
+  /** "If a creature an opponent controls would die, exile it instead." / Rest in Peace */
+  | { kind: 'replacement'; text: string; event: 'dies' | 'putIntoGraveyard'; self: false; filter: ObjectFilter; instead: 'exile' }
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }
   | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean }
   | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' }

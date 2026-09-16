@@ -642,6 +642,19 @@ export class Game {
     if (!opts.skipEvents && toZone === 'graveyard' && fromZone === 'battlefield' && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'exileIfDies')) {
       return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
     }
+    // Other permanents' replacements: "If a creature an opponent controls would die, exile it instead." / Rest in Peace
+    if (!opts.skipEvents && toZone === 'graveyard') {
+      for (const srcId of this.state.battlefield) {
+        const src = this.state.objects[srcId];
+        if (!src || srcId === id) continue;
+        for (const ab of this.scriptFor(src).abilities) {
+          if (ab.kind !== 'replacement' || (ab.event !== 'dies' && ab.event !== 'putIntoGraveyard') || !('filter' in ab) || !('instead' in ab)) continue;
+          if (ab.event === 'dies' && fromZone !== 'battlefield') continue;
+          if (!matchesFilter(this, obj, { ...ab.filter, zone: undefined }, { sourceId: srcId, controller: src.controller, zoneOverride: fromZone })) continue;
+          return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
+        }
+      }
+    }
     // Self replacement effects: "If ~ would die / be put into a graveyard, exile it instead."
     if (!opts.skipEvents && toZone === 'graveyard' && !obj.card.isToken) {
       for (const ab of this.scriptFor(obj).abilities) {
@@ -864,6 +877,18 @@ export class Game {
           this.state.turnStats[k] = 1;
         }
         this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: this.triggerContextFrom(event), snapshot: isSelfLeaving ? event.snapshot : undefined });
+        // Panharmonicon-style: "that ability triggers an additional time".
+        for (const r of this.playerRules(controller)) {
+          if (r.kind !== 'custom' || r.tag !== 'doubleTriggers') continue;
+          const d = r.data as { filter?: import('./types.js').ObjectFilter; event?: GameEventName; eventObject?: import('./types.js').ObjectFilter } | undefined;
+          if (d?.event && event.name !== d.event) continue;
+          if (d?.filter && !matchesFilter(this, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller })) continue;
+          if (d?.eventObject) {
+            const eo = event.objectId !== undefined ? this.state.objects[event.objectId] ?? (event.snapshot as GameObject | undefined) : undefined;
+            if (!eo || !matchesFilter(this, eo, { ...d.eventObject, zone: undefined }, { sourceId: obj.id, controller })) continue;
+          }
+          this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: this.triggerContextFrom(event), snapshot: isSelfLeaving ? event.snapshot : undefined });
+        }
       }
     }
     // Delayed triggers
@@ -871,6 +896,8 @@ export class Game {
       if (dt.event !== event.name) continue;
       const src = this.state.objects[dt.sourceId];
       const evalObj = src ?? (event.snapshot as GameObject);
+      const watch = dt.context['watchIds'] as ObjectId[] | undefined;
+      if (watch && (event.objectId === undefined || !watch.includes(event.objectId))) continue;
       if (dt.sourceZone && src?.zone !== dt.sourceZone) {
         // The object it referred to has changed zones: it is a new object and the delayed trigger does nothing.
         if (dt.once) this.state.delayedTriggers = this.state.delayedTriggers.filter((x) => x.id !== dt.id);

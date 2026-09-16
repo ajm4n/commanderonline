@@ -24,6 +24,7 @@ export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
 const SELF: Ref = { ref: 'self' };
 const YOU: Ref = { ref: 'controller' };
 
+const EXTRA_KEYWORDS = ['mentor', 'exalted', 'banding', 'melee', 'flanking', 'bushido', 'decayed', 'training', 'backup', 'plainswalk', 'islandwalk', 'swampwalk', 'mountainwalk', 'forestwalk', 'landwalk', 'phasing', 'rampage', 'annihilator', 'afflict', 'battle cry', 'dethrone', 'myriad', 'extort', 'ingest', 'devoid', 'wither', 'toxic', 'riot', 'unleash', 'undying', 'persist', 'protection from the chosen color', 'protection from all colors', 'hexproof from each color', 'ward {1}', 'ward {2}', 'ward {3}', 'ward {4}', 'ward—pay 2 life', 'ward—pay 3 life', 'cumulative upkeep', 'cascade', 'storm', 'prowess', 'evolve', 'skulk', 'shadow', 'horsemanship', 'fear', 'intimidate', 'convoke', 'delve', 'improvise', 'ravenous', 'daybound', 'nightbound', 'squad', 'enlist', 'sunburst', 'modular', 'vanishing', 'fading', 'echo', 'living weapon', 'reconfigure', 'compleated', 'for mirrodin!', 'jump-start', 'afterlife', 'ascend', 'exert', 'crew', 'partner', 'changeling'];
 const KEYWORD_WORDS = ['flying', 'first strike', 'double strike', 'deathtouch', 'lifelink', 'trample', 'vigilance', 'haste', 'flash', 'defender', 'reach', 'menace', 'hexproof', 'indestructible', 'shroud', 'fear', 'intimidate', 'skulk', 'horsemanship', 'shadow', 'infect', 'wither', 'prowess', 'undying', 'persist', 'changeling', 'protection from white', 'protection from blue', 'protection from black', 'protection from red', 'protection from green', 'protection from all colors', 'protection from each color', 'protection from creatures', 'protection from artifacts', 'protection from everything', 'protection from instants', 'protection from sorceries', 'protection from planeswalkers', 'protection from colorless', 'protection from multicolored', 'protection from monocolored', 'hexproof from white', 'hexproof from blue', 'hexproof from black', 'hexproof from red', 'hexproof from green'];
 
 export function parseKeywordList(text: string): string[] | null {
@@ -36,8 +37,9 @@ export function parseKeywordList(text: string): string[] | null {
   if (!parts.length) return null;
   const out: string[] = [];
   for (const p of parts) {
-    if (!KEYWORD_WORDS.includes(p)) return null;
-    out.push(p.charAt(0).toUpperCase() + p.slice(1));
+    const q = p.replace(/^(?:your choice of )/, '');
+    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk)$/.test(q)) return null;
+    out.push(q.charAt(0).toUpperCase() + q.slice(1));
   }
   return out;
 }
@@ -121,7 +123,7 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'each opponent' || l === 'your opponents' || l === 'each of your opponents') return { ref: 'eachOpponent' };
   if (l === 'each player' || l === 'all players') return { ref: 'eachPlayer' };
   if (l === 'that player' || l === 'that opponent' || l === 'they' || l === 'the player') return ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : null);
-  if (l === 'its controller' || l === "that creature's controller" || l === "that permanent's controller" || l === 'the controller of that creature') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
+  if (l === 'its controller' || /^(?:that|the) [\w ]+'s controller$/.test(l) || l === 'the controller of that creature' || l === 'the controller of that permanent') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (l === "~'s controller") return { ref: 'controllerOf', of: SELF };
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
@@ -485,6 +487,10 @@ const PATTERNS: Pattern[] = [
     }
     return damageTo(m[3], amount, ctx, src);
   }],
+  [/^(~|it|that creature|enchanted creature|equipped creature|.+?) deals that much damage to (.+)$/i, (m, ctx) => {
+    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    return src ? damageTo(m[2], { kind: 'triggerAmount' }, ctx, src) : null;
+  }],
   [/^(~|it|that creature|enchanted creature|equipped creature|.+?) deals (\w+|X) damage to (.+?) and (\w+|X) damage to (.+)$/i, (m, ctx) => {
     const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
     const n1 = wordToNumber(m[2]);
@@ -630,6 +636,35 @@ const PATTERNS: Pattern[] = [
     ctx.lastObj = { ref: 'lastCreated' };
     return [{ kind: 'createToken', token: t.token, count: t.count, tapped: t.tapped, attacking: t.attacking }];
   }],
+  [/^(.+?) creates? (.+)$/i, (m, ctx) => {
+    if (/^(?:you|create)$/i.test(m[1])) return null;
+    const who = playerRef(m[1], ctx);
+    const t = parseTokenPhrase(m[2]);
+    if (!who || !t) return null;
+    ctx.lastObj = { ref: 'lastCreated' };
+    return [{ kind: 'createToken', token: t.token, count: t.count, tapped: t.tapped, attacking: t.attacking, who }];
+  }],
+  [/^create (.+?) for each (.+)$/i, (m, ctx) => {
+    const t = parseTokenPhrase(m[1]);
+    if (!t || t.count !== 1) return null;
+    const noun = parseNoun(m[2]);
+    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[2]}`, ctx);
+    if (a === null) return null;
+    ctx.lastObj = { ref: 'lastCreated' };
+    return [{ kind: 'createToken', token: t.token, count: a, tapped: t.tapped, attacking: t.attacking }];
+  }],
+  [/^create a number of (.+?) tokens? equal to (.+)$/i, (m, ctx) => {
+    const t = parseTokenPhrase(`a ${m[1]} token`);
+    const a = amt(m[2], ctx);
+    if (!t || a === null) return null;
+    ctx.lastObj = { ref: 'lastCreated' };
+    return [{ kind: 'createToken', token: t.token, count: a }];
+  }],
+  [/^(?:you )?gets? ((?:\{E\})+) for each (.+)$/i, (m, ctx) => {
+    const noun = parseNoun(m[2]);
+    if (!noun) return null;
+    return [{ kind: 'addCounters', counter: 'energy', amount: { kind: 'times', a: (m[1].match(/\{E\}/g) ?? []).length, b: { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } }, on: YOU }];
+  }],
   [/^investigate$/i, () => [{ kind: 'investigate' }]],
   [/^(?:(.+?) )?exiles? the top (?:card|(\w+|X) cards) of (?:your|their) library(?: face down)?$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
@@ -719,6 +754,37 @@ const PATTERNS: Pattern[] = [
     const p = parseInt(m[2], 10);
     const t = parseInt(m[3], 10);
     return [{ kind: 'pump', power: { kind: 'times', a: p, b: { kind: 'count', filter: f } }, toughness: { kind: 'times', a: t, b: { kind: 'count', filter: f } }, on: ref, duration: 'endOfTurn' }];
+  }],
+  [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+) until end of turn for each (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const noun = parseNoun(m[4]);
+    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[4]}`, ctx);
+    if (a === null) return null;
+    return [{ kind: 'pump', power: { kind: 'times', a: parseInt(m[2], 10), b: a }, toughness: { kind: 'times', a: parseInt(m[3], 10), b: a }, on: ref, duration: 'endOfTurn' }];
+  }],
+  [/^(.+?) (?:has|have) base power and toughness (\d+|X)\/(\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
+  }],
+  [/^(.+?) loses? (.+?) until end of turn$/i, (m, ctx) => {
+    const kws = parseKeywordList(m[2]);
+    const ref = kws ? objRef(m[1], ctx) : null;
+    return kws && ref ? [{ kind: 'removeKeywords', keywords: kws, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  [/^(.+?) becomes? (white|blue|black|red|green|colorless)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const c = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[2].toLowerCase() as 'white'];
+    return [{ kind: 'setColors', colors: c ? [c] : [], on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
+  [/^(.+?) blocks this turn if able$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBlockAny' }, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  [/^(?:(.+?) )?draws? an additional card$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    return who ? [{ kind: 'draw', amount: 1, who }] : null;
   }],
   [/^(.+?) (?:gains?|has|have) (.+?)(?: until end of turn| until your next turn)?$/i, (m, ctx) => {
     const { duration: dur } = duration(m[0]);
@@ -858,6 +924,12 @@ const PATTERNS: Pattern[] = [
     return null;
   }],
   // Counter
+  [/^counter (that spell|it)(?: unless its controller pays (\{.+\}|\d+))?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : null);
+    if (!ref) return null;
+    const pays = m[2] ? (/^\d+$/.test(m[2]) ? `{${m[2]}}` : m[2]) : undefined;
+    return [{ kind: 'counterSpell', what: ref, unlessPays: pays }];
+  }],
   [/^counter (.+?)(?: unless its controller pays (\{.+\}|\d+))?$/i, (m, ctx) => {
     const noun = parseNoun(m[1]);
     if (!noun || !noun.target) return null;
@@ -869,7 +941,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'counterSpell', what: ref, unlessPays: pays }];
   }],
   // Search
-  [/^search (your|their|that player's|target player's|target opponent's) library for (?:a|an|up to (\w+)) ([^,]+?)(?:, reveal (?:it|them))?,?(?: and| then)? (?:reveal (?:it|them),? (?:then )?shuffle,? and )?put (?:it|them|that card|those cards|the rest) (into (?:your|their) hand|onto the battlefield(?: under your control)?( tapped)?|on top of (?:your|their) library|into (?:your|their) graveyard)(?:, then shuffle| and shuffle|, then shuffle (?:your|their) library)?(?:\. then shuffle)?$/i, (m, ctx) => {
+  [/^search (your|their|that player's|target player's|target opponent's) library for (?:a|an|up to (\w+)) ([^,]+?)(?:, reveal (?:it|them))?,?(?: and| then)? (?:reveal (?:it|them),? (?:then )?shuffle,? and )?put (?:it|them|that card|those cards|the rest) (into (?:your|their) hand|onto the battlefield(?: under your control)?( tapped)?|on top(?: of (?:your|their) library)?|into (?:your|their) graveyard)(?:, then shuffle| and shuffle|, then shuffle (?:your|their) library)?(?:\. then shuffle)?$/i, (m, ctx) => {
     const nounText = m[3].replace(/ cards$/i, ' card');
     const noun = /^cards?$/i.test(m[3]) ? { filter: {} as ObjectFilter } : parseNoun(/\bcards?\b/i.test(nounText) ? nounText : `${nounText} card`);
     ctx.lastObj = { ref: 'lastMoved' };
@@ -887,6 +959,12 @@ const PATTERNS: Pattern[] = [
     }
     const dest = /hand/.test(m[4]) ? 'hand' : /battlefield/.test(m[4]) ? 'battlefield' : /top/.test(m[4]) ? 'top' : 'graveyard';
     return [{ kind: 'searchLibrary', who, filter: { ...noun.filter, zone: 'library' }, count: n, destination: dest, tapped: !!m[5], reveal: /reveal/i.test(m[0]), shuffle: true }];
+  }],
+  [/^search your library for up to two (.+?) cards, reveal them, put one onto the battlefield( tapped)? and the other into your hand(?:, then shuffle)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (!noun) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: 1, destination: 'battlefield', tapped: !!m[2], reveal: true, shuffle: false }, { kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: 1, destination: 'hand', reveal: true, shuffle: true }];
   }],
   [/^search your library for (two|\w+) cards, put one into your hand and the other (into your graveyard|onto the battlefield|on top of your library)(?:, then shuffle)?$/i, (m) => {
     ctx0();
@@ -1073,6 +1151,11 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
     const b = anyRef(parts[1], ctx);
     if (a && b) return [mk(a), mk(b)];
   }
+  if (/^any other target$/i.test(t)) {
+    ctx.targets.push({ description: t, kind: 'any', min: 1, max: 1, distinct: true });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [mk(ref)];
+  }
   if (/^(?:any number of|up to \w+) targets?$/i.test(t) || /^any target$/i.test(t) || /^up to (\w+) targets?$/i.test(t) || /^one or two targets$/i.test(t) || /^one, two, or three targets$/i.test(t)) {
     const um = t.match(/^up to (\w+) targets?$/i);
     const n = um ? wordToNumber(um[1]) : /^one or two/i.test(t) ? 2 : /^one, two, or three/i.test(t) ? 3 : 1;
@@ -1104,6 +1187,18 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const life = m[1].match(/^(\d+) life$/);
     const energy = m[1].match(/^(?:\{E\})+$/);
     return [life ? { kind: 'ifPays', cost: '', payLife: parseInt(life[1], 10), effects: inner } : energy ? { kind: 'ifPays', cost: '', energy: (m[1].match(/\{E\}/g) ?? []).length, effects: inner } : { kind: 'ifPays', cost: m[1], effects: inner }];
+  }
+  if ((m = text.match(/^at the beginning of (the next end step|your next end step|the next turn's upkeep|your next upkeep|the next upkeep|the next cleanup step), (.+)$/i))) {
+    const inner = parseSentence(m[2], ctx);
+    if (inner) {
+      const upkeep = /upkeep/i.test(m[1]);
+      return [{ kind: 'delayedTrigger', event: upkeep ? 'beginningOfUpkeep' : /cleanup/i.test(m[1]) ? 'cleanup' : 'beginningOfEndStep', filter: /your next/i.test(m[1]) ? { player: 'you' } : undefined, effects: inner, text, once: true }];
+    }
+  }
+  if ((m = text.match(/^when (that creature|that permanent|it|that token|those creatures) (dies|die|leaves the battlefield|is put into a graveyard) this turn, (.+)$/i))) {
+    const ref = objRef(m[1], ctx);
+    const inner = ref ? parseSentence(m[3], ctx) : null;
+    if (ref && inner) return [{ kind: 'delayedTrigger', event: /dies|die|graveyard/i.test(m[2]) ? 'dies' : 'leavesBattlefield', filter: { objectRef: ref }, effects: inner, text, once: true }];
   }
   // Delayed triggers: "X at the beginning of the next end step" / "…of the next turn's upkeep"
   if ((m = text.match(/^(.+?) at the beginning of (?:the next end step|your next end step|the next turn's upkeep|your next upkeep|the next upkeep)$/i))) {
@@ -1254,6 +1349,15 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         i++;
       }
     }
+    // "Search your library for a basic land card. Put it onto the battlefield tapped, then shuffle."
+    if (/^search your library for (?:a|an|up to \w+) [^,]+$/i.test(s) && sents[i + 1] && /^(?:reveal (?:it|them), )?(?:put|you may put) (?:it|them|that card|those cards) /i.test(sents[i + 1])) {
+      const merged = parseSentence(`${s}, ${lc(sents[i + 1])}`, ctx);
+      if (merged) {
+        effects.push(...merged);
+        i++;
+        continue;
+      }
+    }
     // Merge "Reveal the top N cards of your library" with its follow-up sentences.
     if (/^reveal the top (?:\w+|X) cards of your library$/i.test(s)) {
       let j = i + 1;
@@ -1318,7 +1422,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     // "If that spell is countered this way, exile it instead of putting it into its owner's graveyard."
-    if (/^if that spell is countered this way, exile it instead/i.test(s)) {
+    if (/^if that spell is countered this way, exile it instead/i.test(s) || /^if that spell would be put into (?:a|their|its owner's|that player's) graveyard(?: this way)?, exile it instead$/i.test(s)) {
       const last = effects[effects.length - 1];
       if (last && last.kind === 'counterSpell') {
         last.exileInstead = true;

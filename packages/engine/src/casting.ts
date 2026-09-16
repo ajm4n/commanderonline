@@ -372,6 +372,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.discardSelf) {
     g.moveObject(obj.id, 'graveyard', { cause: 'discard' });
     g.emit({ name: 'discardBatch', playerId: p, amount: 1, objectId: obj.id });
+    g.emit({ name: 'cycled', playerId: p, objectId: obj.id }); // cycling (and channel) discards
   }
   if (cost.returnSelf) g.moveObject(obj.id, 'hand', { cause: 'bounce' });
   if (cost.discard) {

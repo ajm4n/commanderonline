@@ -22,6 +22,10 @@ function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: b
 export function parseStatic(line: string, isCreatureOrPermanent: boolean): AbilitySpec[] | null {
   let m: RegExpMatchArray | null;
   const L = line.replace(/\.$/, '');
+  const objRule = (who: string, rule: RuleModification): AbilitySpec[] | null => {
+    const a = affectsOf(who);
+    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
+  };
   // Conditional statics: "As long as X, Y" / "During your turn, Y" / "Y as long as X"
   let condText: string | null = null;
   let innerText: string | null = null;
@@ -43,6 +47,79 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = parseStatic(`${m[1]} ${m[2]}`, isCreatureOrPermanent);
     const b = parseStatic(`${m[1]} ${m[3]}`, isCreatureOrPermanent);
     if (a && b) return [...a, ...b];
+  }
+  // Generic conjunctions sharing a subject: "Enchanted creature gets +2/+2, has flying, and is goaded."
+  if ((m = L.match(/^(~|Enchanted \w+|Equipped \w+|Creatures you control|Other creatures you control|Each creature you control|Creatures your opponents control|Each other creature you control|All creatures|Each creature) (.+)$/i)) && /(?:, | and )/.test(m[2])) {
+    const subject = m[1];
+    const parts = m[2].split(/, and |, | and (?=(?:has|have|is|are|gets?|cannot|can|loses?|gains?)\b)/i).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      const out: AbilitySpec[] = [];
+      let ok = true;
+      for (const p of parts) {
+        const r = parseStatic(`${subject} ${p}`, isCreatureOrPermanent);
+        if (!r) {
+          ok = false;
+          break;
+        }
+        out.push(...r);
+      }
+      if (ok) return out;
+    }
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) goaded$/i))) return objRule(m[1], { kind: 'custom', tag: 'goaded', data: '__controller__' });
+  if ((m = L.match(/^(.+?) loses? all abilities$/i))) {
+    const a = affectsOf(m[1]);
+    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, loseAllAbilities: true } }] : null;
+  }
+  if ((m = L.match(/^(.+?) (?:has|have) base power and toughness (\d+)\/(\d+)$/i))) {
+    const a = affectsOf(m[1]);
+    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } }] : null;
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) creatures? with base power and toughness (\d+)\/(\d+)$/i))) {
+    const a = affectsOf(m[1]);
+    if (!a.ok) return null;
+    const words = m[2].split(/\s+/);
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    const out: AbilitySpec[] = [
+      { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: ['Creature'], addSubtypes: subtypes } },
+      { kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[3], 10), setToughness: parseInt(m[4], 10) } },
+    ];
+    if (colors.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: colors } });
+    return out;
+  }
+  if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
+  // Clones
+  if ((m = L.match(/^(You may have )?~ enters? as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?$/i))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!noun) return null;
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, enterAsCopy: noun.filter, enterAsCopyOptional: !!m[1] }];
+  }
+  // Rest in Peace / "If a creature an opponent controls would die, exile it instead."
+  if ((m = L.match(/^If (?:a|an) (.+?) would (die|be put into (a|an opponent's|your) graveyard(?: from anywhere| from the battlefield)?), exile it instead$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const f = { ...noun.filter };
+    delete f.zone;
+    if (m[3] === "an opponent's") f.owner = 'opponent';
+    if (m[3] === 'your') f.owner = 'you';
+    const event = m[2] === 'die' || / from the battlefield$/i.test(m[2]) ? 'dies' : 'putIntoGraveyard';
+    return [{ kind: 'replacement', text: line, event, self: false, filter: f, instead: 'exile' }];
+  }
+  // Panharmonicon family
+  if ((m = L.match(/^If (?:a|an) (.+?) entering(?: the battlefield)? causes a triggered ability of (.+?) to trigger, that ability triggers an additional time$/i))) {
+    const eo = parseNoun(`a ${m[1]}`);
+    const who = parseNoun(m[2]);
+    if (!eo || !who) return null;
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: who.filter, event: 'entersBattlefield', eventObject: eo.filter } } }];
+  }
+  if ((m = L.match(/^If a creature dying causes a triggered ability of (.+?) to trigger, that ability triggers an additional time$/i))) {
+    const who = parseNoun(m[1]);
+    return who ? [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: who.filter, event: 'dies', eventObject: { types: ['Creature'] } } } }] : null;
+  }
+  if ((m = L.match(/^If a triggered ability of (.+?) triggers, that ability triggers an additional time$/i))) {
+    const who = parseNoun(m[1]);
+    return who ? [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: who.filter } } }] : null;
   }
   // Compound: "Equipped creature cannot be blocked and has shroud."
   if ((m = L.match(/^(.+?) (cannot be blocked|cannot block|cannot attack|cannot attack or block) and (?:has|have) (.+)$/i))) {
@@ -130,10 +207,6 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: c ? [c] : [] } }];
   }
   // Rules on objects
-  const objRule = (who: string, rule: RuleModification): AbilitySpec[] | null => {
-    const a = affectsOf(who);
-    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
-  };
   if ((m = L.match(/^(.+?) cannot block$/i))) return objRule(m[1], { kind: 'cantBlock' });
   if ((m = L.match(/^(.+?) cannot attack$/i))) return objRule(m[1], { kind: 'cantAttack' });
   if ((m = L.match(/^(.+?) cannot attack or block$/i))) {
@@ -178,11 +251,16 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^You may play lands from your graveyard$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playLandsFromGraveyard' } }];
   if ((m = L.match(/^(.+?) (?:get|gets) ([+-]\d+)\/([+-]\d+) for each (.+?)(?: on the battlefield)?$/i))) {
     const a = affectsOf(m[1]);
+    if (!a.ok) return null;
     const noun = parseNoun(m[4]) ?? parseNoun(`a ${m[4]}`);
-    if (!a.ok || !noun) return null;
-    const f = { ...noun.filter };
-    if (!f.zone) f.zone = 'battlefield';
-    return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perCount: f } }];
+    if (noun) {
+      const f = { ...noun.filter };
+      if (!f.zone) f.zone = 'battlefield';
+      return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perCount: f } }];
+    }
+    const amt = parseAmount(`the number of ${m[4]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (amt !== null) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: amt } }];
+    return null;
   }
   if ((m = L.match(/^~'s (power|toughness) is equal to (.+)$/i))) {
     const amt = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });

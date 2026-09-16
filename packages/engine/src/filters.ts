@@ -72,7 +72,10 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.fromLibraryThisTurn && !(obj.lastZoneChange?.from === 'library' && obj.lastZoneChange.turn === g.state.turn.number)) return false;
   if (filter.enteredZoneThisTurn && obj.lastZoneChange?.turn !== g.state.turn.number) return false;
   if (filter.custom === 'ringBearer' && !ch.rules.some((r) => r.kind === 'custom' && r.tag === 'ringBearer')) return false;
-  if (filter.nameIs && ch.name !== filter.nameIs) return false;
+  if (filter.nameIs) {
+    const want = filter.nameIs === '~' ? (ctx.sourceId !== null ? g.state.objects[ctx.sourceId]?.card.name : undefined) : filter.nameIs;
+    if (want !== undefined && ch.name !== want && !ch.name.startsWith(`${want} //`)) return false;
+  }
   if (filter.historic && !(ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga'))) return false;
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;

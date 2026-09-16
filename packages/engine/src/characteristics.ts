@@ -94,7 +94,11 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
       const target = ab.affects ?? ab.ruleAffects;
       const applies = target && typeof target === 'object' ? (ch: Characteristics) => matchesFilter(g, obj, target as ObjectFilter, { sourceId: src.id, controller: src.controller, chOverride: ch }) : undefined;
       if (ab.modification) effects.push({ mod: ab.modification, ts: src.timestamp, sourceId: src.id, applies });
-      if (ab.rule) effects.push({ mod: { layer: 'rule', rule: ab.rule }, ts: src.timestamp, sourceId: src.id, applies });
+      if (ab.rule) {
+        // "is goaded" from a static: goaded by the source's controller.
+        const rule = ab.rule.kind === 'custom' && ab.rule.tag === 'goaded' && ab.rule.data === '__controller__' ? { ...ab.rule, data: src.controller } : ab.rule;
+        effects.push({ mod: { layer: 'rule', rule }, ts: src.timestamp, sourceId: src.id, applies });
+      }
     }
   }
   effects.sort((a, b) => layerOrder(a.mod) - layerOrder(b.mod) || a.ts - b.ts);
@@ -224,6 +228,9 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
       if (e.mod.perCount) {
         const src = e.sourceId !== null ? g.state.objects[e.sourceId] : undefined;
         times = objectsMatching(g, e.mod.perCount, { sourceId: e.sourceId, controller: src?.controller ?? obj.controller }).length;
+      } else if (e.mod.perAmount !== undefined) {
+        const src = e.sourceId !== null ? g.state.objects[e.sourceId] : undefined;
+        times = g.resolveAmount(e.mod.perAmount, { sourceId: e.sourceId, controller: src?.controller ?? obj.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
       }
       dp += e.mod.power * times;
       dt += e.mod.toughness * times;

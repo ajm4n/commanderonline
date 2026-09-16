@@ -59,6 +59,10 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const noun = parseNoun(oc(m, 1));
     if (noun) return { kind: 'count', filter: { ...noun.filter, controller: 'you', zone: 'battlefield', other: /another/.test(m[0]) }, op: '>=', value: 1 };
   }
+  if ((m = t.match(/^an opponent controls (?:a|an) (.+)$/))) {
+    const noun = parseNoun(oc(m, 1));
+    if (noun) return { kind: 'count', filter: { ...noun.filter, controller: 'opponent', zone: 'battlefield' }, op: '>=', value: 1 };
+  }
   if ((m = t.match(/^you control no (.+)$/))) {
     const noun = parseNoun(oc(m, 1));
     if (noun) return { kind: 'count', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, op: '==', value: 0 };
