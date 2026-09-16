@@ -1123,7 +1123,7 @@ const PATTERNS: Pattern[] = [
     delete f.zone;
     return [{ kind: 'searchLibrary', filter: f, count: 1, destination: /hand/.test(m[2]) ? 'hand' : 'battlefield', tapped: !!m[3], reveal: true, shuffle: true, zones: ['library', 'graveyard'] }];
   }],
-  [/^search your library for up to two (.+?) cards, reveal them, put one onto the battlefield( tapped)? and the other into your hand(?:, then shuffle)?$/i, (m, ctx) => {
+  [/^search your library for up to two (.+?) cards, reveal (?:them|those cards), put one onto the battlefield( tapped)? and the other into your hand(?:, then shuffle)?$/i, (m, ctx) => {
     const noun = parseNoun(`a ${m[1]} card`);
     if (!noun) return null;
     ctx.lastObj = { ref: 'lastMoved' };
@@ -1498,6 +1498,28 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const a = parseSentence(`${m[1]} deals ${m[2]} damage to ${m[3]}`, ctx);
     const b = a ? parseSentence(`${m[1]} deals ${m[2]} damage to ${m[4]}`, ctx) : null;
     if (a && b) return [...a, ...b];
+  }
+  if ((m = text.match(/^(.+?) can block an additional creature (?:this turn|each combat)$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'extraBlock' }, on: ref, duration: / this turn$/i.test(text) ? 'endOfTurn' : 'permanent' }] : null;
+  }
+  if ((m = text.match(/^put (.+?) into its owner's library second from the top$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'putOnLibrary', what: ref, position: 'secondFromTop' }] : null;
+  }
+  if ((m = text.match(/^choose ((?:any number of|up to \w+|\w+) target .+)$/i))) {
+    const ref = objRef(m[1], ctx);
+    if (ref) return [];
+  }
+  if ((m = text.match(/^(.+?) becomes? the (basic land type|creature type) of your choice(?: until end of turn)?$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'setSubtypes', on: ref, choose: m[2].toLowerCase() === 'basic land type' ? 'basicLandType' : 'creatureType', duration: / until end of turn$/i.test(text) ? 'endOfTurn' : 'permanent' }] : null;
+  }
+  if ((m = text.match(/^you and (permanents|creatures) you control gain (hexproof|indestructible|hexproof and indestructible) until end of turn$/i))) {
+    const kws = m[2].split(' and ').map((k) => k.charAt(0).toUpperCase() + k.slice(1));
+    const out: Effect[] = [{ kind: 'grantKeywords', keywords: kws, on: { ref: 'all', filter: { controller: 'you', zone: 'battlefield', ...(m[1].toLowerCase() === 'creatures' ? { types: ['Creature'] } : {}) } }, duration: 'endOfTurn' }];
+    if (/hexproof/i.test(m[2])) out.push({ kind: 'applyRule', rule: { kind: 'custom', tag: 'hexproof' }, on: YOU, duration: 'endOfTurn' });
+    return out;
   }
   if ((m = text.match(/^blight (\d+|X)$/i))) {
     const key = `blight${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;

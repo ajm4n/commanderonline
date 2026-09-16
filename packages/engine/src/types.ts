@@ -279,7 +279,7 @@ export interface ContinuousEffect {
 }
 
 export type Modification =
-  | { layer: 4; addTypes?: string[]; removeTypes?: string[]; setTypes?: string[]; addSubtypes?: string[]; addSupertypes?: Supertype[] }
+  | { layer: 4; addTypes?: string[]; removeTypes?: string[]; setTypes?: string[]; addSubtypes?: string[]; /** Replace subtypes ("becomes the basic land type of your choice"). */ setSubtypes?: string[]; addSupertypes?: Supertype[] }
   | { layer: 5; setColors?: Color[]; addColors?: Color[] }
   | { layer: 6; addKeywords?: string[]; removeKeywords?: string[]; loseAllAbilities?: boolean; addAbilityText?: string[] }
   | { layer: '7b'; setPower?: number; setToughness?: number; powerAmount?: import('./script.js').Amount; toughnessAmount?: import('./script.js').Amount }

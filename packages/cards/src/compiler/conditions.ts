@@ -95,6 +95,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === 'evidence was collected' || t === 'you collected evidence') return { kind: 'memoryFlag', key: 'evidenceCollected' };
   if (t === "tribute wasn't paid" || t === 'tribute was not paid') return { kind: 'not', c: { kind: 'memoryFlag', key: 'tributePaid' } };
   if (t === 'tribute was paid') return { kind: 'memoryFlag', key: 'tributePaid' };
+  if ((m = t.match(/^(?:this is|it is) the (first|second|third|fourth) time(?: this ability has resolved this turn)?$/))) return { kind: 'abilityResolvedThisTurn', op: '==', value: { first: 1, second: 2, third: 3, fourth: 4 }[m[1] as 'first'] };
   if (t === "~'s additional cost was paid" || t === 'its additional cost was paid' || t === 'the additional cost was paid') return { kind: 'memoryFlag', key: 'additionalCostPaid' };
   if ((m = t.match(/^you have (\w+) or more (.+?) in your graveyard$/))) {
     const noun = parseNoun(oc(m, 2).replace(/ cards$/i, ' card'));

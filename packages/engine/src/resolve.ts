@@ -75,6 +75,9 @@ export function* resolveTopOfStack(g: Game): Gen {
         if (r.type !== 'yesNo' || !r.value) return;
       }
     }
+    const resolvedKey = `resolved:${item.sourceId}:${ability.text}`;
+    g.state.turnStats[resolvedKey] = (g.state.turnStats[resolvedKey] ?? 0) + 1;
+    ctx.triggerContext = { ...ctx.triggerContext, resolvedKey };
     g.log(`Resolving: ${item.text}`, { kind: 'resolve', data: { stackId: item.id } });
     yield* executeEffects(g, ability.effects, ctx);
   }

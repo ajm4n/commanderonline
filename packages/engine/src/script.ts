@@ -172,6 +172,8 @@ export type Condition =
   | { kind: 'eventLastTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; op?: Comparison; value?: number }
   /** Some opponent compares to you ("an opponent controls more lands than you", "an opponent has more life than you"). */
   | { kind: 'opponentCompare'; what: 'life' | ObjectFilter; op: Comparison }
+  /** "This is the second time this ability has resolved this turn" (counts the current resolution). */
+  | { kind: 'abilityResolvedThisTurn'; op: Comparison; value: number }
   | { kind: 'manual'; text: string }; // engine asks the controller yes/no
 
 // ---------------------------------------------------------------------------
@@ -213,6 +215,8 @@ export type Effect =
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' | 'ownerChoice' }
   /** Exert: the object won't untap during its controller's next untap step. */
   | { kind: 'exert'; what: Ref }
+  /** "Target land becomes the basic land type of your choice" / "~ becomes the creature type of your choice". */
+  | { kind: 'setSubtypes'; on: Ref; subtypes?: string[]; choose?: 'basicLandType' | 'creatureType'; duration?: Duration }
   /** "When ~ leaves the battlefield, put its counters on target creature you control." */
   | { kind: 'moveCounters'; from: Ref; to: Ref }
   /** "~ becomes a copy of that creature" (permanently). */

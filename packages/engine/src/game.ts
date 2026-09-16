@@ -1216,6 +1216,10 @@ export class Game {
         if (c.beforeAttackers && t.attackers.length > 0) return false;
         return true;
       }
+      case 'abilityResolvedThisTurn': {
+        const key = (ctx.triggerContext as Record<string, unknown> | undefined)?.resolvedKey as string | undefined;
+        return cmp(key ? (this.state.turnStats[key] ?? 0) : 0, c.op, c.value);
+      }
       case 'ctxFlag':
         return !!((ctx as { memory?: Record<string, unknown> }).memory ?? ectx.memory)[c.key];
       case 'eventLastTurn': {

@@ -186,6 +186,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: ['Changeling'] } }] : null;
   }
 
+  if ((m = L.match(/^The (first|second|third|fourth) (.*?)spell you cast each turn costs \{(\d+)\} (less|more) to cast$/i))) {
+    const nth = { first: 0, second: 1, third: 2, fourth: 3 }[m[1].toLowerCase() as 'first'];
+    const noun = m[2].trim() ? parseNoun(`a ${m[2].trim()} spell`) : null;
+    if (m[2].trim() && !noun) return null;
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[4].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[3], 10), filter: noun ? { ...noun.filter, zone: undefined } : undefined }, condition: { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '==', value: nth } }];
+  }
   if (/^You do not lose the game for having 0 or less life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'cantLose' } }];
   // "Each creature you control that is a Wolf or a Werewolf enters with an additional +1/+1 counter on it."
   if ((m = L.match(/^(?:Each )?(.+?) enters? with (?:an additional )?(?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on (?:it|them)$/i)) && !/^~/.test(m[1])) {

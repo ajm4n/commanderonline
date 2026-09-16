@@ -237,6 +237,18 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'setSubtypes': {
+      const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
+      if (!ids.length) return;
+      let subtypes = e.subtypes ?? [];
+      if (e.choose) {
+        const options = e.choose === 'basicLandType' ? ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] : g.creatureTypeOptions();
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: e.choose === 'basicLandType' ? 'Choose a basic land type' : 'Choose a creature type', options: options.map((t) => ({ id: t, label: t })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        subtypes = r.type === 'options' && r.ids[0] ? [r.ids[0]] : [options[0]];
+      }
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 4, setSubtypes: subtypes } });
+      return;
+    }
     case 'moveCounters': {
       const from = g.resolveObjects(e.from, ctx)[0];
       const snapshot = (ctx.triggerContext.snapshot as { counters?: Record<string, number> } | undefined)?.counters;

@@ -192,6 +192,7 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     if (m.addTypes) for (const t of m.addTypes) if (!c.types.includes(t)) c.types.push(t);
     const rm = m.removeTypes;
     if (rm) c.types = c.types.filter((t) => !rm.includes(t));
+    if (m.setSubtypes) c.subtypes = [...m.setSubtypes];
     if (m.addSubtypes) for (const t of m.addSubtypes) if (!c.subtypes.includes(t)) c.subtypes.push(t);
     if (m.addSupertypes) for (const t of m.addSupertypes) if (!c.supertypes.includes(t)) c.supertypes.push(t);
   };
