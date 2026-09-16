@@ -283,6 +283,7 @@ function parseAdjectives(wordsIn: string[], r: ParsedNoun): boolean {
     else if (l === 'nontoken') r.filter.nonToken = true;
     else if (l === 'tapped') r.filter.tapped = true;
     else if (l === 'modified') r.filter.modified = true;
+    else if (l === 'permanent') r.filter.permanentCard = true;
     else if (l === 'untapped') r.filter.untapped = true;
     else if (l === 'attacking') r.filter.attacking = true;
     else if (l === 'blocking') r.filter.blocking = true;

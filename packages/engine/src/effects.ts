@@ -45,7 +45,7 @@ export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardDat
       if (ex?.addTypes?.length) typeLine = `${ex.addTypes.filter((t) => !typeLine.includes(t)).join(' ')} ${typeLine}`.trim();
       if (ex?.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
       const extraText = ex?.keywords?.length ? `\n${ex.keywords.join('\n')}` : '';
-      return { ...base, isToken: true, oracleId: `${base.oracleId}${ex ? ':x' : ''}`, name: ch.name || base.name, typeLine, oracleText: `${base.oracleText}${extraText}`, power: ex?.power ?? base.power, toughness: ex?.toughness ?? base.toughness, colors: ex?.colors ?? base.colors, keywords: [...ch.keywords, ...(ex?.keywords ?? [])] };
+      return { ...base, isToken: true, oracleId: `${base.oracleId}${ex ? ':x' : ''}`, name: ex?.name ?? (ch.name || base.name), typeLine, oracleText: `${base.oracleText}${extraText}`, power: ex?.power ?? base.power, toughness: ex?.toughness ?? base.toughness, colors: ex?.colors ?? base.colors, keywords: [...ch.keywords, ...(ex?.keywords ?? [])] };
     }
   }
   const text = [merged.oracleText, ...(merged.keywords ?? [])].filter(Boolean).join('\n');
@@ -306,7 +306,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'setColors': {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
-      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 5, setColors: e.colors } });
+      let colors = e.colors;
+      if (e.chooseColors) {
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Choose one or more colors', options: (['W', 'U', 'B', 'R', 'G'] as const).map((c) => ({ id: c, label: c })), min: 1, max: 5, sourceId: ctx.sourceId ?? undefined });
+        if (r.type === 'options' && r.ids.length) colors = r.ids as typeof e.colors;
+      }
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 5, setColors: colors } });
       return;
     }
     case 'applyRule': {

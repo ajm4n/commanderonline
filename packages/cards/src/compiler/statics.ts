@@ -428,6 +428,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (c === 'a player') return [{ ...base, choose: 'player' }];
     if (c.startsWith('a number')) return [{ ...base, choose: 'number' }];
     if (c === 'a basic land type') return [{ ...base, choose: 'option', chooseOptions: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'], chooseKey: 'landType' }];
+    if (c === 'a card type') return [{ ...base, choose: 'option', chooseOptions: ['Artifact', 'Creature', 'Enchantment', 'Instant', 'Land', 'Planeswalker', 'Sorcery', 'Battle', 'Kindred'], chooseKey: 'cardType' }];
     if (c === 'odd or even') return [{ ...base, choose: 'option', chooseOptions: ['odd', 'even'], chooseKey: 'choice' }];
     return [{ ...base, choose: 'option', chooseOptions: m[1].split(' or '), chooseKey: 'choice' }];
   }

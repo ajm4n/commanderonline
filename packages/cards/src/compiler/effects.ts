@@ -299,7 +299,7 @@ const PATTERNS: Pattern[] = [
       const filter = { ...noun.filter };
       if (!filter.zone) filter.zone = 'battlefield';
       per = { kind: 'count', filter };
-    } else per = amt(`the number of ${m[4]}`, ctx);
+    } else per = amt(`the number of ${m[4].replace(/^of /i, '')}`, ctx);
     if (per === null) return null;
     return [{ kind: /gain/i.test(m[2]) ? 'gainLife' : 'loseLife', amount: { kind: 'times', a: n, b: per }, who } as Effect];
   }],
@@ -1371,13 +1371,17 @@ function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
     const p = part.trim();
     let m: RegExpMatchArray | null;
     const p2 = p.replace(/^(?:the token|the copy|that token|those tokens) /i, 'it ');
+    if ((m = p2.match(/^its name is (.+)$/i))) {
+      ex.name = m[1].replace(/^~'s /, '');
+      continue;
+    }
     if ((m = p2.match(/^(?:it|they) (?:has|have) (.+)$/i))) {
       const kws = parseKeywordList(m[1].replace(/^"|"$/g, ''));
       if (!kws) return null;
       ex.keywords = [...(ex.keywords ?? []), ...kws];
     } else if (/^(?:it|they) (?:is|are) not legendary$/i.test(p2)) ex.notLegendary = true;
     else if (/^(?:it|they) (?:is|are) legendary$/i.test(p2)) ex.legendary = true;
-    else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (.+?) in addition to its other types$/i))) {
+    else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (.+?)(?: in addition to its other types)?$/i)) && /^(?:artifact|creature|enchantment|land|legendary|[A-Z]\w+)(?: \w+)*$/.test(m[1]) && !/\d\/\d/.test(m[1])) {
       const words = m[1].split(/\s+/);
       ex.addTypes = [...(ex.addTypes ?? []), ...words.filter((w) => /^(artifact|creature|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
       ex.addSubtypes = [...(ex.addSubtypes ?? []), ...words.filter((w) => /^[A-Z]/.test(w))];
@@ -1499,9 +1503,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const b = a ? parseSentence(`${m[2]} ${m[3]} this turn`, ctx) ?? parseSentence(`${m[2]} ${m[3]}`, ctx) : null;
     if (a && b) return [...a, ...b];
   }
-  if ((m = text.match(/^put (it|that card|~|them|those cards) onto the battlefield transformed(?: under (?:your|its owner's|their owner's) control)?$/i))) {
+  if ((m = text.match(/^(.+?) becomes? the color (?:or colors )?of your choice(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'returnToBattlefield', what: ref, transformed: true }] : null;
+    return ref ? [{ kind: 'setColors', colors: [], chooseColors: true, on: ref, duration: / until end of turn$/i.test(text) ? 'endOfTurn' : 'permanent' }] : null;
+  }
+  if ((m = text.match(/^put (it|that card|~|them|those cards) onto the battlefield transformed(?: under (?:your|its owner's|their owner's) control)?(?: with (?:a|an|(\w+)) ([+\-\w\/]+) counters? on it)?$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToBattlefield', what: ref, transformed: true, counters: m[3] ? { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) as number) ?? 1 : 1 } : undefined }] : null;
   }
   if ((m = text.match(/^exile the top (?:card|(\w+|X) cards) of (target player|target opponent|that player|each player|each opponent)'s library(?: face down)?$/i))) {
     const who = playerRef(m[2], ctx);
@@ -1620,6 +1628,16 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     } else cost = { discard: m[3] ? (wordToNumber(m[3]) as number) ?? 1 : 1 };
     return [{ kind: 'unlessPays', who, cost, effects: inner, text: m[0].slice(m[1].length + 8) }];
   }
+  // "~ deals 2 damage to that player unless they control a commander": do it unless the condition holds.
+  if ((m = text.match(/^(.+?) unless (.+)$/i)) && !/^counter /i.test(text) && !/ pays? /i.test(m[2]) && !/^(?:they|that player|you|its controller|that opponent|each opponent|an opponent) (?:discards?|sacrifices?|returns?)/i.test(m[2])) {
+    const cond = parseCondition(m[2].replace(/^they control/i, 'that player controls').replace(/^they have/i, 'that player has'), { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer });
+    if (cond && cond.kind !== 'manual') {
+      const saved = ctx.targets.length;
+      const inner = parseSentence(m[1], ctx);
+      if (inner) return [{ kind: 'conditional', if: { kind: 'not', c: cond }, then: inner }];
+      ctx.targets.length = saved;
+    }
+  }
   if ((m = text.match(/^(you|each player|each opponent|target player|target opponent|that player|its controller) may (.+)$/i)) && !/^you may (?:play|cast) /i.test(text)) {
     const saved = ctx.targets.length;
     const savedPlayer = ctx.lastPlayer;
@@ -1649,7 +1667,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   text = text.replace(/^((?:any number of |up to \w+ |\w+ )?target [^,]+?) each (gets?|gains?|deals?|loses?|has|have|becomes?|cannot|can't|draws?|discards?|sacrifices?|mills?)\b/i, '$1 $2');
-  text = text.replace(/^until end of turn, (.+?)$/i, (_m, rest: string) => (/ until end of turn$/i.test(rest) ? rest : `${rest} until end of turn`));
+  text = text.replace(/^until end of turn, (.+?)$/i, (_m, rest: string) => (/ until end of turn$/i.test(rest) ? rest : /, where X is /i.test(rest) ? rest.replace(/, where X is /i, ' until end of turn, where X is ') : `${rest} until end of turn`));
   if ((m = text.match(/^(.+?), where X is ([^,]+?), (.+)$/i)) && /\bX\b/.test(m[1])) {
     const a = amt(m[2], ctx);
     const inner = a !== null ? parseSentence(`${m[1]}, ${m[3]}`, ctx) : null;

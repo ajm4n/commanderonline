@@ -35,6 +35,10 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   }
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
   {
+    const cc = text.trim().toLowerCase().match(/^(?:the number of )?(?:its|~'s|that (?:creature|permanent|card|spell)'s) colors?$/) || text.trim().toLowerCase().match(/^(?:the number of )?colors? (?:of|among) (it|~|that (?:creature|permanent|card|spell))$/);
+    if (cc) return { kind: 'colorCount', ref: /~/.test(text) ? { ref: 'self' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'self' }) };
+  }
+  {
     const dv = text.trim().toLowerCase().match(/^your devotion to (white|blue|black|red|green)(?: and (white|blue|black|red|green))?$/);
     if (dv) {
       const C: Record<string, import('@commander/engine').Color> = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' };

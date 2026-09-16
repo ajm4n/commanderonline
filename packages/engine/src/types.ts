@@ -357,6 +357,8 @@ export interface ObjectFilter {
   hasCounter?: CounterType;
   legendary?: boolean;
   nonland?: boolean;
+  /** A permanent card/spell (artifact, creature, enchantment, land, planeswalker, battle). */
+  permanentCard?: boolean;
   /** Only objects attached to / attached by. */
   attachedToSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
@@ -479,6 +481,7 @@ export type GameEventName =
   | 'controlChanged'
   | 'becomesMonarch'
   | 'becomesMonstrous'
+  | 'expend'
   | 'takesInitiative'
   | 'ventures'
   | 'dungeonCompleted'

@@ -52,7 +52,9 @@ export type Amount =
   /** Number of events of a kind this turn ("creatures that died this turn", "spells your opponents cast this turn"). */
   | { kind: 'eventsThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any' }
   /** Sum of mana values of matching objects. */
-  | { kind: 'totalManaValue'; filter: ObjectFilter };
+  | { kind: 'totalManaValue'; filter: ObjectFilter }
+  /** Number of colors of the referenced object(s). */
+  | { kind: 'colorCount'; ref: Ref };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -112,7 +114,7 @@ export interface TokenSpec {
   legendary?: boolean;
   /** Copy of another object (for "create a token that's a copy of ~"). */
   copyOf?: Ref;
-  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[] };
+  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[]; name?: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +201,7 @@ export type Effect =
   | { kind: 'removeKeywords'; keywords: string[]; on: Ref; duration?: Duration }
   | { kind: 'loseAllAbilities'; on: Ref; duration?: Duration }
   | { kind: 'addTypes'; types: string[]; on: Ref; duration?: Duration; subtypes?: string[] }
-  | { kind: 'setColors'; colors: Color[]; on: Ref; duration?: Duration }
+  | { kind: 'setColors'; colors: Color[]; on: Ref; duration?: Duration; /** "the color or colors of your choice" */ chooseColors?: boolean }
   | { kind: 'applyRule'; rule: RuleModification; on: Ref; duration?: Duration }
   | { kind: 'tap'; what: Ref }
   | { kind: 'untap'; what: Ref }

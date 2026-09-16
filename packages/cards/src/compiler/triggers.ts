@@ -63,6 +63,28 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     }
   }
   {
+    // Compound heads: "When ~ enters or transforms into ~, X" / "At the beginning of your upkeep and whenever enchanted land becomes tapped, X" / "When you cycle ~ and when ~ dies, X"
+    const cm = line.match(/^((?:When(?:ever)?|At the beginning of) [^,]+?) (?:and|or) ((?:when(?:ever)?|at the beginning of) [^,]+?), (.+)$/i) ?? line.match(/^(When(?:ever)? ~) ([^,]+?) or ([^,]+?), (.+)$/i);
+    if (cm) {
+      const rest = cm[4] !== undefined ? cm[4] : cm[3];
+      const headA = cm[4] !== undefined ? `${cm[1]} ${cm[2]}, ${rest}` : `${cm[1]}, ${rest}`;
+      const headB = cm[4] !== undefined ? `${cm[1]} ${cm[3]}, ${rest}` : `${cm[2].charAt(0).toUpperCase()}${cm[2].slice(1)}, ${rest}`;
+      const a = parseTriggerHead(headA);
+      const b = a ? parseTriggerHead(headB) : null;
+      if (a && b) {
+        const { rest: _r, also: _a, ...bHead } = b;
+        void _r;
+        void _a;
+        return { ...a, also: [...(a.also ?? []), bHead, ...(b.also ?? [])] };
+      }
+    }
+    const em = line.match(/^Whenever you expend (\d+), (.+)$/i);
+    if (em) return { event: 'expend', filter: { player: 'you', custom: `expend:${em[1]}` }, hasObject: false, hasPlayer: true, rest: em[2] };
+    const am = line.match(/^Whenever (a player|an opponent|you) activates? an ability(?: of (?:a|an) (.+?))?( that is not a mana ability| that isn't a mana ability)?, (.+)$/i);
+    if (am) {
+      const noun = am[2] ? parseNoun(`a ${am[2]}`) : null;
+      if (!am[2] || noun) return { event: 'abilityActivated', filter: { player: am[1] === 'you' ? 'you' : /opponent/i.test(am[1]) ? 'opponent' : 'any', object: noun?.filter, custom: am[3] ? 'nonManaAbility' : undefined }, hasObject: true, hasPlayer: true, rest: am[4] };
+    }
     const xm = line.match(/^Whenever you activate an exhaust ability, (.+)$/i);
     if (xm) return { event: 'abilityActivated', filter: { player: 'you', custom: 'exhaust' }, hasObject: true, hasPlayer: true, rest: xm[1] };
     const lm = line.match(/^When(?:ever)? you play another land, (.+)$/i);
@@ -203,7 +225,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) becomes tapped, (.+)$/i))) return { event: 'tapped', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
   if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) is dealt damage, (.+)$/i))) return { event: 'dealtDamage', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
-  if ((m = L.match(/^At the beginning of the upkeep of (?:enchanted|equipped) (?:creature|permanent)'s controller, (.+)$/i))) return { event: 'beginningOfUpkeep', filter: { custom: 'attachedControllersUpkeep' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^At the beginning of the upkeep of (?:enchanted|equipped) (?:creature|permanent|artifact|enchantment|land|planeswalker)'s controller, (.+)$/i))) return { event: 'beginningOfUpkeep', filter: { custom: 'attachedControllersUpkeep' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false }] };
   if ((m = L.match(/^Whenever ~ attacks(?: a player| an opponent)?, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ attacks a player who (?:is|has) .+?, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
@@ -326,6 +348,19 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^Whenever you cast an instant or sorcery spell that targets only ~, (.+)$/i))) return { event: 'cast', filter: { player: 'you', targetsSource: true, object: { types: ['Instant', 'Sorcery'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you cast a spell that is one or more colors, (.+)$/i))) return { event: 'cast', filter: { player: 'you', object: { custom: 'colored' } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (you|a player|an opponent|each opponent|another player) casts? (?:a|an) (.+?), (.+)$/i)) && !/^Whenever you cast (?:a|an) (.+?) spell with mana value/i.test(L)) {
+    const noun = parseNoun(`a ${/\bspells?\b/i.test(m[2]) ? m[2] : `${m[2]} spell`}`);
+    if (noun) {
+      const f: TriggerFilter = { player: m[1] === 'you' ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : m[1] === 'another player' ? 'notYou' : 'any' };
+      const of = { ...noun.filter };
+      if (of.zone === 'graveyard' || of.zone === 'exile' || of.zone === 'hand') {
+        f.fromZone = of.zone;
+        delete of.zone;
+      }
+      if (Object.keys(of).length) f.object = of;
+      return { event: 'cast', filter: f, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+  }
   if ((m = L.match(/^Whenever you cast a kicked spell, (.+)$/i))) return { event: 'cast', filter: { player: 'you', custom: 'kicked' }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you cast a spell from (exile|your graveyard|a graveyard), (.+)$/i))) return { event: 'cast', filter: { player: 'you', fromZone: /exile/.test(m[1]) ? 'exile' : 'graveyard' }, hasObject: true, hasPlayer: true, rest: m[2] };
   if ((m = L.match(/^Whenever you cast (?:a|an|your first|your second) (.+?)(?: spell)?(?: each turn| during an opponent's turn| during each opponent's turn| from your hand| from anywhere other than your hand)?, (.+)$/i))) {

@@ -194,7 +194,17 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have (\w+|\d+) or (more|less) life$/))) return { kind: 'life', ref: { ref: 'controller' }, op: m[2] === 'more' ? '>=' : '<=', value: wordToNumber(m[1]) ?? 0 };
   if ((m = t.match(/^your life total is (?:less than|greater than) (\d+)$/))) return { kind: 'life', ref: { ref: 'controller' }, op: /less/.test(t) ? '<' : '>', value: parseInt(m[1], 10) };
   if ((m = t.match(/^~ was kicked$/))) return { kind: 'wasKicked' };
-  if ((m = t.match(/^(?:~|this spell) was cast from (?:your )?(graveyard|hand|exile)$/))) return { kind: 'castFrom', zone: m[1] as 'graveyard' };
+  if ((m = t.match(/^(?:~|this spell) was cast from (?:your |a )?(graveyard|hand|exile)$/))) return { kind: 'castFrom', zone: m[1] as 'graveyard' };
+  if ((m = t.match(/^that player controls (?:a|an) (.+)$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, controllerRef: thatPlayer, zone: 'battlefield' }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^that player controls (\w+) or more (.+)$/))) {
+    const noun = parseNoun(oc(m, 2));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, controllerRef: thatPlayer, zone: 'battlefield' }, op: '>=', value: n };
+  }
+  if (t === 'that player controls a commander' || t === 'they control a commander') return { kind: 'count', filter: { controllerRef: thatPlayer, zone: 'battlefield', isCommander: true }, op: '>=', value: 1 };
   if ((m = t.match(/^(.+?) is (\d+) or (more|less)$/))) {
     const a = parseAmount(m[1], ctx);
     if (a !== null) return { kind: 'amount', a, op: m[3] === 'more' ? '>=' : '<=', b: parseInt(m[2], 10) };

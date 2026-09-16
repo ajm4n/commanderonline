@@ -100,6 +100,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.historic && !(ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga'))) return false;
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;
+  if (filter.permanentCard && !ch.types.some((t) => ['Artifact', 'Creature', 'Enchantment', 'Land', 'Planeswalker', 'Battle'].includes(t))) return false;
   if (filter.modified && !(Object.values(obj.counters).some((n) => n > 0) || g.state.battlefield.some((id) => { const a = g.state.objects[id]; return !!a && a.attachedTo === obj.id && a.controller === obj.controller && ['Equipment', 'Aura'].some((t) => g.characteristics(a.id).subtypes.includes(t)); }))) return false;
   if (filter.customRule && !ch.rules.some((r) => r.kind === 'custom' && r.tag === filter.customRule)) return false;
   if (filter.damagedBySource && (ctx.sourceId === null || ctx.sourceId === undefined || !(g.state.damagedBy[obj.id] ?? []).includes(ctx.sourceId))) return false;
@@ -107,7 +108,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.chosenSubtypeKey) {
     const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
     const t = src?.memory[filter.chosenSubtypeKey];
-    if (typeof t !== 'string' || !(ch.subtypes.includes(t) || (ch.keywords.has('Changeling') && ch.types.includes('Creature')))) return false;
+    // "the chosen type" may be a creature type or, on cards that choose a card type, a card type.
+    const ct = src?.memory['cardType'];
+    if (typeof t !== 'string' && typeof ct === 'string') {
+      if (!ch.types.includes(ct as (typeof ch.types)[number])) return false;
+    } else if (typeof t !== 'string' || !(ch.subtypes.includes(t) || (ch.keywords.has('Changeling') && ch.types.includes('Creature')))) return false;
   }
   if (filter.lowestToughness) {
     const rest: ObjectFilter = { ...filter, lowestToughness: undefined, controller: undefined };

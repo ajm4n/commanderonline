@@ -316,6 +316,16 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
     return false;
   }
   g.touch();
+  // Expend: track total mana spent this turn and fire "expend N" thresholds.
+  {
+    const spent = cost.symbols.reduce((acc, sym) => acc + (sym.kind === 'generic' ? sym.amount : sym.kind === 'x' ? 0 : 1), 0) + x * cost.xCount;
+    if (spent > 0) {
+      const pl = g.player(p);
+      const before = pl.turnStats['manaSpent'] ?? 0;
+      pl.turnStats['manaSpent'] = before + spent;
+      for (const n of [4, 8]) if (before < n && before + spent >= n) g.emit({ name: 'expend', playerId: p, data: { n } });
+    }
+  }
   return true;
 }
 

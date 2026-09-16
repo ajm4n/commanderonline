@@ -27,8 +27,13 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   // Strip reminder text (parenthesized) but keep the rest.
   t = t.replace(/\s*\([^()]*\)/g, '');
   const names = [faceName];
+  for (const f of card.faces ?? []) if (f.name && f.name !== faceName) names.push(f.name);
   const sn = shortName(faceName);
   if (sn) names.push(sn);
+  for (const f of card.faces ?? []) {
+    const fs = f.name ? shortName(f.name) : null;
+    if (fs && !names.includes(fs)) names.push(fs);
+  }
   // Planeswalkers refer to themselves by first name ("Ajani deals 3 damage").
   if (/Planeswalker/.test(card.typeLine) && !faceName.includes(',') && faceName.includes(' ')) {
     const first = faceName.split(' ')[0];
