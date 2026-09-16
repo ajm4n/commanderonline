@@ -37,6 +37,7 @@ export function parseCost(text: string): AbilityCost | null {
       if (n === null || n === 'X') return null;
       cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield', other: /another/i.test(p) || undefined }, count: n };
     } else if ((m = p.match(/^Pay (\d+) life$/i))) cost.payLife = parseInt(m[1], 10);
+    else if (/^Pay X life$/i.test(p)) cost.payLife = 'X';
     else if ((m = p.match(/^Pay ((?:\{E\})+)$/i))) cost.energy = (m[1].match(/\{E\}/g) ?? []).length;
     else if (/^Discard ~$/i.test(p)) cost.discardSelf = true;
     else if (/^Discard your hand$/i.test(p)) cost.discard = 'hand';
@@ -47,16 +48,16 @@ export function parseCost(text: string): AbilityCost | null {
     }
     else if ((m = p.match(/^Discard (?:a|an|(\w+)) (.+?)s?$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
-      if (n === null || n === 'X') return null;
+      if (n === null) return null;
       if (/^cards?$/i.test(m[2])) cost.discard = { count: n };
       else {
         const noun = parseNoun(`a ${m[2]} card`);
         if (!noun) return null;
         cost.discard = { count: n, filter: noun.filter };
       }
-    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? from ~$/i))) {
-      const n = m[1] ? wordToNumber(m[1]) : 1;
-      if (n === null || n === 'X') return null;
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)|any number of) ([+-]\d\/[+-]\d|\w+) counters? from ~$/i))) {
+      const n = /any number of/i.test(p) ? 'X' : m[1] ? wordToNumber(m[1]) : 1;
+      if (n === null) return null;
       cost.removeCounters = { counter: m[2], amount: n };
     } else if ((m = p.match(/^Put (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on ~$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;

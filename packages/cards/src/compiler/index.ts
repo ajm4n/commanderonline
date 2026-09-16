@@ -2,9 +2,9 @@
  * Oracle text → CardScript compiler. Turns templated rules text into
  * executable scripts so the engine can automate cards nobody hand-scripted.
  */
-import type { AbilitySpec, ActivatedAbilitySpec, CardData, CardScript, Effect, TargetSpec, TriggeredAbilitySpec, Condition, CostModifier } from '@commander/engine';
+import type { AbilitySpec, ActivatedAbilitySpec, CardData, CardScript, Effect, TargetSpec, TriggeredAbilitySpec, Condition, CostModifier, AbilityCost } from '@commander/engine';
 import { ENFORCED_KEYWORDS } from '@commander/engine';
-import { normalizeOracle } from './text.js';
+import { normalizeOracle, wordToNumber } from './text.js';
 import { parseEffects, newCtx, parseSentence, isNoOpSentence, type ParseCtx } from './effects.js';
 import { parseTriggerHead, splitTriggerRest } from './triggers.js';
 import { parseCost, parseActivationRestriction } from './costs.js';
@@ -130,6 +130,37 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if (block && isKeywordLine(line)) {
       const kws = line.replace(/\.$/, '').split(/[,;]\s*/).map((k) => k.trim()).map((k) => k.charAt(0).toUpperCase() + k.slice(1).toLowerCase());
       abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: kws }, condition: block.condition });
+      compiledLines.push(line);
+      continue;
+    }
+    // Crew N / Saddle N: tap creatures with total power N or more.
+    if ((m = line.match(/^(Crew|Saddle) (\d+)$/i))) {
+      const n = parseInt(m[2], 10);
+      const crew = /^crew$/i.test(m[1]);
+      abilities.push({ kind: 'activated', text: line, cost: { tapUntappedTotalPower: { filter: { types: ['Creature'], zone: 'battlefield', other: true }, power: n } }, effects: crew ? [{ kind: 'addTypes', types: ['Artifact', 'Creature'], on: { ref: 'self' }, duration: 'endOfTurn' }] : [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'saddled' }, on: { ref: 'self' }, duration: 'endOfTurn' }], sorcerySpeed: !crew });
+      compiledLines.push(line);
+      continue;
+    }
+    // "You may pay {U} rather than pay ~'s mana cost if you attacked this turn." / "You may sacrifice a creature rather than pay ..."
+    if ((m = line.match(/^You may (pay ((?:\{[^}]+\})+)|[^,]+?) rather than pay (?:~'s|this spell's) mana cost(?: if (.+?)| as long as (.+?))?\.?$/i))) {
+      const cost = m[2] ? { mana: m[2] } : parseCost(m[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
+      const condText = m[3] ?? m[4];
+      const cond = condText ? parseCondition(condText, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false }) : undefined;
+      if (cost && (!condText || (cond && cond.kind !== 'manual'))) {
+        alternativeCosts.push({ id: `alt${alternativeCosts.length}`, text: line, cost, condition: cond ?? undefined, zone: 'hand' });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    if (/^You may cast ~ as though it had flash\.?$/i.test(line)) {
+      abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: ['Flash'] }, zone: 'hand' });
+      compiledLines.push(line);
+      continue;
+    }
+    // "You may cast ~ from your graveyard by discarding a card in addition to paying its other costs."
+    if ((m = line.match(/^You may cast ~ from your graveyard by (discarding a card|paying (\d+) life|sacrificing (?:a|an) (.+?)|exiling (\w+) other cards? from your graveyard) in addition to paying its other costs\.?$/i))) {
+      const extra: AbilityCost = m[2] ? { payLife: parseInt(m[2], 10) } : m[3] ? { sacrifice: { filter: { ...(parseNoun(`a ${m[3]}`)?.filter ?? {}), zone: 'battlefield' }, count: 1 } } : m[4] ? { exileFromGraveyard: { filter: {}, count: wordToNumber(m[4]) as number } } : { discard: { count: 1 } };
+      alternativeCosts.push({ id: 'fromGraveyard', text: line, cost: { mana: card.manaCost ?? '', ...extra }, zone: 'graveyard' });
       compiledLines.push(line);
       continue;
     }
@@ -358,6 +389,15 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       if (unhandled.length) unhandledLines.push(...unhandled);
       else compiledLines.push(line);
       continue;
+    }
+    // On a spell, "At the beginning of your next upkeep, X" is a delayed trigger the spell sets up.
+    if (isSpell && /^At the beginning of (?:your next|the next) /i.test(line)) {
+      const r = parseEffects(line, spellCtx);
+      if (!r.unhandled.length) {
+        spellEffects.push(...r.effects);
+        compiledLines.push(line);
+        continue;
+      }
     }
     // Reflexive trigger on its own line: "When you do, X" attaches to the previous ability's optional block.
     if ((m = line.match(/^When you do, (.+?)\.?$/i)) && abilities.length) {

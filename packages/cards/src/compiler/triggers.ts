@@ -37,6 +37,21 @@ function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
 }
 
 export function parseTriggerHead(line: string): TriggerHead | null {
+  // "When a Dragon you control enters" behaves like "Whenever ..."; "attacks while saddled" is an attack trigger with a condition.
+  line = line
+    .replace(/^When (a|an|another|one or more) /, 'Whenever $1 ')
+    .replace(/^Whenever ~ attacks while saddled, /i, 'Whenever ~ attacks, if ~ is saddled, ')
+    .replace(/^Whenever ~ attacks for the first time each turn, /i, 'Whenever ~ attacks, ')
+    .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ');
+  {
+    const tm = line.match(/^When(?:ever)? ~ transforms into [^,]+, (.+)$/i);
+    if (tm) return { event: 'transformed', filter: { self: true }, hasObject: true, hasPlayer: false, rest: tm[1] };
+    const dm2 = line.match(/^Whenever (?:a|an) (.+?) deals damage to you, (.+)$/i);
+    if (dm2 && !/^source/i.test(dm2[1])) {
+      const noun = parseNoun(`a ${dm2[1]}`);
+      if (noun) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, source: noun.filter }, hasObject: false, hasPlayer: true, rest: dm2[2] };
+    }
+  }
   {
     const dm = line.match(/^Whenever (?:a|an) (.+?) dealt damage by ~ this turn (dies|is put into a graveyard), (.+)$/i);
     if (dm) {

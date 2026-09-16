@@ -239,7 +239,7 @@ export type Effect =
   | { kind: 'forEach'; over: Ref; effects: Effect[] }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref }
-  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
   | { kind: 'revealHand'; who: Ref }
@@ -343,9 +343,10 @@ export interface AbilityCost {
   untap?: boolean;
   sacrificeSelf?: boolean;
   sacrifice?: { filter: ObjectFilter; count?: number };
-  payLife?: number;
-  discard?: { count: number; filter?: ObjectFilter; random?: boolean } | 'hand';
-  removeCounters?: { counter: CounterType; amount: number };
+  payLife?: number | 'X';
+  discard?: { count: number | 'X'; filter?: ObjectFilter; random?: boolean } | 'hand';
+  /** amount 'X' = the chosen X ("Remove X counters", "Remove any number of counters"). */
+  removeCounters?: { counter: CounterType; amount: number | 'X' };
   addCounters?: { counter: CounterType; amount: number };
   exileFromGraveyard?: { filter: ObjectFilter; count: number };
   exileSelf?: boolean;
@@ -354,6 +355,8 @@ export interface AbilityCost {
   /** Return this permanent to hand as a cost. */
   returnSelf?: boolean;
   tapUntapped?: { filter: ObjectFilter; count: number };
+  /** Crew / saddle: tap any number of untapped matching creatures with total power N or more. */
+  tapUntappedTotalPower?: { filter: ObjectFilter; power: number };
   returnToHand?: { filter: ObjectFilter; count: number };
   loyalty?: number;
   energy?: number;

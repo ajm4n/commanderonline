@@ -155,6 +155,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (noun) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: noun.filter };
   }
   if ((m = t.match(/^(?:enchanted|equipped) creature is (white|blue|black|red|green)$/))) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { colors: [({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white']] } };
+  if (t === '~ is saddled' || t === 'it is saddled') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'saddled' } };
+  if (t === '~ is goaded' || t === 'it is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
   if ((m = t.match(/^(?:~|it) is (tapped|untapped)$/))) return m[1] === 'tapped' ? { kind: 'isTapped', ref: ctx.self } : { kind: 'not', c: { kind: 'isTapped', ref: ctx.self } };
   if ((m = t.match(/^(?:~|it) is attacking$/))) return { kind: 'isAttacking', ref: ctx.self };
   if ((m = t.match(/^(?:~|it) has (?:a|an) ([+-]\d\/[+-]\d|\w+) counter on it$/))) return { kind: 'hasCounter', ref: ctx.self, counter: m[1] };

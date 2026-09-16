@@ -948,7 +948,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             }
           }
         } else if (typeof e.cost === 'object' && 'discard' in e.cost) {
-          const hand = g.player(p).hand;
+          const df = e.cost.filter;
+          const hand = df ? g.player(p).hand.filter((id) => matchesFilter(g, g.obj(id), { ...df, zone: 'hand' }, { sourceId: ctx.sourceId, controller: p })) : g.player(p).hand;
           const n = e.cost.discard;
           if (hand.length >= n) {
             const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Discard ${n} card${n === 1 ? '' : 's'}? (choose none to decline)`, candidates: [...hand], min: 0, max: n, revealToChooser: true });

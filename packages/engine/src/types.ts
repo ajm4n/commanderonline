@@ -361,6 +361,8 @@ export interface ObjectFilter {
   attachedToSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
   damagedBySource?: boolean;
+  /** Has a custom rule with this tag ("saddled", "goaded"). */
+  customRule?: string;
   nameIs?: string;
   historic?: boolean;
   /** Was cast this turn / entered this turn etc. */

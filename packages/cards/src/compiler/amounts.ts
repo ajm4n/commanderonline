@@ -18,6 +18,7 @@ function thatPlayer(ctx: RefCtx): Ref {
 /** Parse an amount phrase. Returns null if not understood. */
 export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   text = text.replace(/\byou've\b/gi, 'you have').replace(/\bopponents? you have\b/i, 'opponents you have');
+  if (/^(?:the number of )?[+\-\w\/]+ counters? removed this way$/i.test(text.trim())) return 'X';
   const orig = text.trim().replace(/^(?:an amount of \w+ |a number of \w+ )?equal to /i, '');
   const t = orig.toLowerCase();
   /** Original-case text of a capture group (lowercasing preserves length). */

@@ -260,7 +260,7 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
   for (const a of attackers) {
     if (!dealsNow(a)) continue;
     const ch = g.characteristics(a.id);
-    const power = ch.power ?? 0;
+    const power = (ch.rules.some((r) => r.kind === 'custom' && r.tag === 'damageByToughness') ? ch.toughness : ch.power) ?? 0;
     if (power <= 0) continue;
     const deathtouch = ch.keywords.has('Deathtouch');
     const blockers = a.blockedBy.map((id) => g.state.objects[id]).filter((b): b is GameObject => !!b && b.zone === 'battlefield');
@@ -333,7 +333,8 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
   for (const id of g.state.battlefield) {
     const b = g.obj(id);
     if (!b.blocking.length || !dealsNow(b)) continue;
-    const power = g.characteristics(b.id).power ?? 0;
+    const bch = g.characteristics(b.id);
+    const power = (bch.rules.some((r) => r.kind === 'custom' && r.tag === 'damageByToughness') ? bch.toughness : bch.power) ?? 0;
     if (power <= 0) continue;
     const alive = b.blocking.filter((aid) => g.state.objects[aid]?.zone === 'battlefield');
     if (!alive.length) continue;
