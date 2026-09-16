@@ -324,7 +324,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         if (e.amount === 'hand') {
-          const all = [...pl.hand];
+          const all = e.filter ? pl.hand.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: 'hand' }, { sourceId: ctx.sourceId, controller: ctx.controller })) : [...pl.hand];
           for (const id of all) g.moveObject(id, 'graveyard', { cause: 'discard' });
           if (all.length) g.emit({ name: 'discardBatch', playerId: p, amount: all.length, objectId: all[0] });
           rememberDiscard(ctx, p, all);
@@ -404,7 +404,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         const n = amt(e.count);
-        const cands = pl.library.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }));
+        const pool = e.zones ? e.zones.flatMap((z) => (z === 'graveyard' ? pl.graveyard : pl.library)) : pl.library;
+        const cands = pool.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: e.zones ?? 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }));
         let ids: ObjectId[] = [];
         if (cands.length > 0) {
           const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Search your library: choose up to ${n}`, candidates: cands, min: 0, max: Math.min(n, cands.length), revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
@@ -779,6 +780,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'preventAll':
+      g.state.preventions.push({ combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId });
+      return;
     case 'turnFlag':
       g.state.turnStats[e.flag] = 1;
       return;
@@ -868,7 +872,36 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'unlessPays': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
         let paid = false;
-        if (e.cost === 'discard') {
+        if (typeof e.cost === 'object' && 'discard' in e.cost) {
+          const hand = g.player(p).hand;
+          const n = e.cost.discard;
+          if (hand.length >= n) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Discard ${n} card${n === 1 ? '' : 's'}? (choose none to decline)`, candidates: [...hand], min: 0, max: n, revealToChooser: true });
+            if (r.type === 'objects' && r.ids.length === n) {
+              for (const id of r.ids) g.moveObject(id, 'graveyard', { cause: 'discard' });
+              g.emit({ name: 'discardBatch', playerId: p, amount: n, objectId: r.ids[0] });
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'sacrifice' in e.cost) {
+          const f = e.cost.sacrifice;
+          const cands = objectsMatching(g, { ...f, controller: p, zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).map((o) => o.id);
+          if (cands.length) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? 'Sacrifice one? (choose none to decline)', candidates: cands, min: 0, max: 1 });
+            if (r.type === 'objects' && r.ids.length) {
+              g.moveObject(r.ids[0], 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'payLife' in e.cost) {
+          if (g.player(p).life >= e.cost.payLife) {
+            const r = yield* g.ask({ type: 'yesNo', player: p, prompt: e.text ?? `Pay ${e.cost.payLife} life? Otherwise: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'yesNo' && r.value) {
+              g.loseLife(p, e.cost.payLife, ctx.sourceId ?? undefined);
+              paid = true;
+            }
+          }
+        } else if (e.cost === 'discard') {
           const hand = g.player(p).hand;
           if (hand.length) {
             const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? 'Discard a card? (choose none to decline)', candidates: [...hand], min: 0, max: 1, revealToChooser: true });
@@ -887,7 +920,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
               paid = true;
             }
           }
-        } else paid = yield* offerToPay(g, p, e.cost, e.text ?? `Pay ${e.cost}? Otherwise: ${describe(e.effects)}`);
+        } else if (typeof e.cost === 'string') paid = yield* offerToPay(g, p, e.cost, e.text ?? `Pay ${e.cost}? Otherwise: ${describe(e.effects)}`);
         if (!paid) yield* executeEffects(g, e.effects, { ...ctx, iter: { kind: 'player', id: p } });
       }
       return;
@@ -1217,6 +1250,15 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
     } else if (ab.choose === 'cardName') {
       yield* executeEffect(g, { kind: 'nameCard', key: ab.chooseKey ?? 'cardName' }, ectx);
       chosen[ab.chooseKey ?? 'cardName'] = ectx.memory[ab.chooseKey ?? 'cardName'];
+    } else if (ab.choose === 'player') {
+      yield* executeEffect(g, { kind: 'choosePlayer', key: ab.chooseKey ?? 'player', who: 'any' }, ectx);
+      chosen[ab.chooseKey ?? 'player'] = ectx.memory[ab.chooseKey ?? 'player'];
+    } else if (ab.choose === 'number') {
+      const r = yield* g.ask({ type: 'chooseNumber', player: controller, prompt: `${o.card.name}: choose a number`, min: 0, max: 30, sourceId: id });
+      chosen[ab.chooseKey ?? 'number'] = r.type === 'number' ? r.value : 0;
+    } else if (ab.choose === 'option' && ab.chooseOptions?.length) {
+      const r = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose`, options: ab.chooseOptions.map((x) => ({ id: x, label: x })), min: 1, max: 1, sourceId: id });
+      chosen[ab.chooseKey ?? 'choice'] = r.type === 'options' ? r.ids[0] : ab.chooseOptions[0];
     }
   }
   // Other permanents' ETB replacements (e.g. "Artifacts enter tapped").

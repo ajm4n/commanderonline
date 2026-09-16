@@ -43,6 +43,8 @@ export type Amount =
   | { kind: 'discardedThisWay'; ref: Ref }
   /** Sum of power of matching objects ("creatures you control have total power 8 or greater"). */
   | { kind: 'totalPower'; filter: ObjectFilter }
+  /** "the greatest power among creatures you control" */
+  | { kind: 'maxOf'; stat: 'power' | 'toughness' | 'manaValue'; filter: ObjectFilter }
   /** Number of party roles (Cleric, Rogue, Warrior, Wizard) among creatures you control. */
   | { kind: 'partySize' }
   /** Times the spell was kicked (multikicker). */
@@ -200,10 +202,10 @@ export type Effect =
   | { kind: 'scry'; amount: Amount; who?: Ref }
   | { kind: 'surveil'; amount: Amount; who?: Ref }
   | { kind: 'mill'; amount: Amount; who?: Ref }
-  | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; chooser?: 'self' | 'controller' }
+  | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter }
   | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor'; amount?: Amount; who?: Ref }
   | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
-  | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile'; tapped?: boolean; reveal?: boolean; shuffle?: boolean }
+  | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile'; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your library and/or graveyard" */ zones?: ('library' | 'graveyard')[] }
   | { kind: 'shuffle'; who?: Ref }
   | { kind: 'gainControl'; what: Ref; duration?: Duration; who?: Ref }
   | { kind: 'exchangeControl'; a: Ref; b: Ref }
@@ -237,7 +239,7 @@ export type Effect =
   | { kind: 'forEach'; over: Ref; effects: Effect[] }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref }
-  | { kind: 'unlessPays'; who: Ref; cost: string; effects: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number } | { sacrifice: ObjectFilter } | { payLife: number }; effects: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
   | { kind: 'revealHand'; who: Ref }
@@ -273,6 +275,8 @@ export type Effect =
   | { kind: 'discover'; amount: Amount }
   /** Turn-wide flags such as "Damage can't be prevented this turn". */
   | { kind: 'turnFlag'; flag: 'noPrevention' }
+  /** Fog effects: "Prevent all (combat) damage that would be dealt this turn [by X] [to Y]". */
+  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | ObjectFilter }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
   | { kind: 'revealUntil'; filter: ObjectFilter; destination: 'hand' | 'battlefield' | 'graveyard' | 'exile'; rest: 'bottom' | 'graveyard' | 'exile'; tapped?: boolean; who?: Ref }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
@@ -319,10 +323,14 @@ export interface TriggerFilter {
   notFromZone?: ZoneName;
   /** The event object must be what the source is attached to ("When enchanted creature dies"). */
   attachedToSource?: boolean;
+  /** The event's source (damage dealer) must be what the source is attached to ("Whenever equipped creature deals damage"). */
+  sourceAttachedTo?: boolean;
   /** For cast events: the spell must target the source (heroic). */
   targetsSource?: boolean;
   /** Delayed triggers only: watch these specific objects ("When that creature dies this turn"). */
   objectRef?: Ref;
+  /** For cast events: the spell must target an object you control matching this ("Whenever you cast a spell that targets a creature you control"). */
+  targetsControlled?: ObjectFilter;
   /** Custom */
   custom?: string;
 }
@@ -415,7 +423,7 @@ export interface SpellAbilitySpec {
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName'; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName' | 'player' | 'number' | 'option'; chooseOptions?: string[]; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
   /** "If a creature an opponent controls would die, exile it instead." / Rest in Peace */
@@ -447,6 +455,8 @@ export interface CostModifier {
   perExtraTarget?: boolean;
   /** Reduce/increase once per unit of an amount ("for each creature in your party"). */
   perAmount?: Amount;
+  /** Applies when the spell targets a matching object ("costs {3} less to cast if it targets a tapped creature"). */
+  ifTargets?: ObjectFilter;
   condition?: Condition;
   text?: string;
 }

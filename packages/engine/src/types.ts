@@ -313,6 +313,11 @@ export type RuleModification =
   | { kind: 'cantAttackUnlessDefenderControls'; filter: ObjectFilter }
   /** "~ can't be blocked by creatures with flying" / "by Walls" */
   | { kind: 'cantBeBlockedBy'; filter: ObjectFilter }
+  /** "~ can't be blocked except by artifact creatures" */
+  | { kind: 'canBeBlockedOnlyBy'; filter: ObjectFilter }
+  /** "~ can't block creatures with power 2 or greater" */
+  | { kind: 'cantBlockFilter'; filter: ObjectFilter }
+  | { kind: 'cantBeBlockedByPowerGreaterThanSource' }
   | { kind: 'maxBlockers'; count: number }
   | { kind: 'custom'; tag: string; data?: unknown };
 
@@ -374,6 +379,12 @@ export interface ObjectFilter {
   chosenSubtypeKey?: string;
   /** Controlled by the player a Ref resolves to ("lands target player controls"); bound to `controller` when the effect runs. */
   controllerRef?: import('./script.js').Ref;
+  /** Has damage marked on it ("that was dealt damage this turn"). */
+  damaged?: boolean;
+  /** Is attached to something ("Aura attached to a creature"). */
+  attached?: boolean;
+  /** Mana value at most an amount ("with mana value less than or equal to the number of lands you control"). */
+  cmcLEAmount?: import('./script.js').Amount;
   custom?: string;
 }
 
@@ -407,6 +418,7 @@ export type GameEventName =
   | 'leftGraveyard'
   | 'attacksUnblocked'
   | 'cycled'
+  | 'tappedForMana'
   | 'exiled'
   | 'returnedToHand'
   | 'cast'

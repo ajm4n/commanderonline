@@ -11,6 +11,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     return idx >= 0 ? orig.slice(idx, idx + m[g].length) : m[g];
   };
   let m: RegExpMatchArray | null;
+  // "you control a Mountain or a Plains" → "you control a Mountain or Plains"
+  if ((m = orig.match(/^(.+?) (?:a|an) (.+?) or (?:a|an) (.+)$/i)) && /^you control|^an opponent controls/i.test(m[1])) {
+    const r = parseCondition(`${m[1]} a ${m[2]} or ${m[3]}`, ctx);
+    if (r) return r;
+  }
   // Conjunctions: "X and Y"
   if ((m = orig.match(/^(.+?) and (.+)$/i))) {
     const a = parseCondition(m[1], ctx);
@@ -45,6 +50,10 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === 'you have no cards in hand') return { kind: 'handSize', ref: { ref: 'controller' }, op: '==', value: 0 };
   if ((m = t.match(/^you have (\w+) or more cards in hand$/))) return { kind: 'handSize', ref: { ref: 'controller' }, op: '>=', value: wordToNumber(m[1]) ?? 1 };
   if ((m = t.match(/^you have (\w+) or fewer cards in hand$/))) return { kind: 'handSize', ref: { ref: 'controller' }, op: '<=', value: wordToNumber(m[1]) ?? 1 };
+  if ((m = t.match(/^you control exactly one (.+)$/))) {
+    const noun = parseNoun(oc(m, 1));
+    if (noun) return { kind: 'count', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, op: '==', value: 1 };
+  }
   if ((m = t.match(/^you control (\w+) or more (.+)$/))) {
     const noun = parseNoun(oc(m, 2));
     const n = wordToNumber(m[1]);
@@ -58,6 +67,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you control (?:a|an|another) (.+)$/))) {
     const noun = parseNoun(oc(m, 1));
     if (noun) return { kind: 'count', filter: { ...noun.filter, controller: 'you', zone: 'battlefield', other: /another/.test(m[0]) }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^an opponent controls (\w+) or more (.+)$/))) {
+    const noun = parseNoun(oc(m, 2));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, controller: 'opponent', zone: 'battlefield' }, op: '>=', value: n };
   }
   if ((m = t.match(/^an opponent controls (?:a|an) (.+)$/))) {
     const noun = parseNoun(oc(m, 1));

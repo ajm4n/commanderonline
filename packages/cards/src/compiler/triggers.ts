@@ -1,6 +1,8 @@
 /** Trigger head parsing: "Whenever X, " → event + filter. */
 import type { GameEventName, TriggerFilter, ZoneName } from '@commander/engine';
 import { parseNoun } from './nouns.js';
+import { wordToNumber } from './text.js';
+import type { ObjectFilter } from '@commander/engine';
 
 export interface TriggerHead {
   event: GameEventName;
@@ -40,6 +42,19 @@ export function parseTriggerHead(line: string): TriggerHead | null {
 
   // ETB
   if ((m = L.match(/^Whenever ~ enters or attacks, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true }] };
+  if ((m = L.match(/^When(?:ever)? ~ enters or leaves the battlefield, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'leavesBattlefield', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^When ~ enters and at the beginning of your upkeep, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'beginningOfUpkeep', filter: { player: 'you' }, hasObject: false, hasPlayer: true }] };
+  if ((m = L.match(/^When ~ enters?, (.+)$/i)) && /^When ~ enter,/.test(L)) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When ~ becomes level (\d+), (.+)$/i))) return { event: 'counterAdded', filter: { self: true, counterType: 'level' }, hasObject: true, hasPlayer: false, rest: `if ~ has ${m[1]} or more level counters on it, ${m[2]}` };
+  if ((m = L.match(/^Whenever ~ and at least (\w+) other creatures? attack, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if you control ${wordToNumber(m[1]) === 1 ? 'two' : wordToNumber(m[1]) === 2 ? 'three' : 'four'} or more attacking creatures, ${m[2]}` };
+  if ((m = L.match(/^Whenever ~ attacks alone, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if you control exactly one attacking creature, ${m[1]}` };
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) you control attacks alone, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1]} you control`);
+    if (!tf) return null;
+    return { event: 'attacks', filter: tf, hasObject: true, hasPlayer: true, rest: `if you control exactly one attacking creature, ${m[2]}` };
+  }
+  if ((m = L.match(/^Whenever you attack with (\w+) or more creatures, (.+)$/i))) return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking creatures, ${m[2]}` };
+  if ((m = L.match(/^Whenever ~ attacks while you control (.+?), (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]}, ${m[2]}` };
   if ((m = L.match(/^Whenever ~ enters or dies, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'dies', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false }] };
   if ((m = L.match(/^When(?:ever)? ~ enters(?: under your control)?, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^When ~ exploits a creature, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], exploit: true };
@@ -98,6 +113,36 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     return { event: 'leavesBattlefield', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }
   // Attacks / blocks
+  if ((m = L.match(/^When ~ attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^When ~ blocks, (.+)$/i))) return { event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ blocks or becomes blocked, (.+)$/i))) return { event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'becomesBlocked', filter: { self: true }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) attacks, (.+)$/i))) return { event: 'attacks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) blocks, (.+)$/i))) return { event: 'blocks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
+  if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) becomes blocked, (.+)$/i))) return { event: 'becomesBlocked', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
+  if ((m = L.match(/^When(?:ever)? (equipped|enchanted) (?:creature|permanent) dies, (.+)$/i))) return { event: 'dies', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
+  if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) deals (combat )?damage(?: to (a player|an opponent|a creature))?, (.+)$/i))) {
+    const tf: TriggerFilter = { sourceAttachedTo: true };
+    if (m[3] && /player|opponent/.test(m[3])) tf.toPlayer = true;
+    if (m[3] === 'an opponent') tf.player = 'opponent';
+    if (m[3] === 'a creature') tf.object = { types: ['Creature'] };
+    return { event: m[2] ? 'dealsCombatDamage' : 'dealsDamage', filter: tf, hasObject: true, hasPlayer: true, rest: m[4] };
+  }
+  if ((m = L.match(/^Whenever (?:enchanted|equipped) (?:land|permanent|creature|Forest|Island|Swamp|Mountain|Plains) is tapped for mana, (.+)$/i))) return { event: 'tappedForMana', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ is tapped for mana, (.+)$/i))) return { event: 'tappedForMana', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you tap (?:a|an) (.+?) for mana, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1]}`);
+    if (!tf) return null;
+    tf.player = 'you';
+    return { event: 'tappedForMana', filter: tf, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever a player taps (?:a|an) (.+?) for mana, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1]}`);
+    if (!tf) return null;
+    return { event: 'tappedForMana', filter: tf, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) becomes tapped, (.+)$/i))) return { event: 'tapped', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
+  if ((m = L.match(/^Whenever (equipped|enchanted) (?:creature|permanent) is dealt damage, (.+)$/i))) return { event: 'dealtDamage', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
+  if ((m = L.match(/^At the beginning of the upkeep of (?:enchanted|equipped) (?:creature|permanent)'s controller, (.+)$/i))) return { event: 'beginningOfUpkeep', filter: { custom: 'attachedControllersUpkeep' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false }] };
   if ((m = L.match(/^Whenever ~ attacks(?: a player| an opponent)?, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ attacks a player who (?:is|has) .+?, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
@@ -139,6 +184,11 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     return { event: 'blocks', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }
   // Damage
+  if ((m = L.match(/^When ~ deals combat damage to (a player|an opponent), (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { self: true, player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever a creature deals combat damage to you, (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { player: 'you', object: { types: ['Creature'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you're dealt damage, (.+)$/i)) || (m = L.match(/^Whenever you are dealt damage, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever a source you control deals (noncombat )?damage to (an opponent|a player), (.+)$/i))) return { event: 'dealsDamage', filter: { player: /opponent/i.test(m[2]) ? 'opponent' : 'any', toPlayer: true, source: { controller: 'you' }, combat: m[1] ? false : undefined }, hasObject: false, hasPlayer: true, rest: m[3] };
+  if ((m = L.match(/^Whenever a source you control deals damage to you, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, source: { controller: 'you' } }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ deals combat damage to (a player|an opponent|a player or battle|a player or planeswalker|an opponent or battle), (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { self: true, player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[2] };
   if ((m = L.match(/^Whenever ~ attacks and is not blocked, (.+)$/i))) return { event: 'attacksUnblocked', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^When you cycle ~, (.+)$/i))) return { event: 'cycled', filter: { self: true }, zone: ['graveyard', 'hand'], hasObject: true, hasPlayer: true, rest: m[1] };
@@ -176,11 +226,43 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     if (step.includes('on your turn') || step.includes('each of your turns')) tf.player = 'you';
     return { event, filter: tf, hasObject: false, hasPlayer: true, rest: m[3] };
   }
+  if ((m = L.match(/^At the beginning of your (?:second|postcombat) main phase, (.+)$/i)) || (m = L.match(/^At the beginning of each of your postcombat main phases, (.+)$/i))) return { event: 'beginningOfPostcombatMain', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^At the beginning of your combat step, (.+)$/i))) return { event: 'beginningOfCombat', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever one or more (.+?) you control enter, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1].replace(/s$/, '')} you control`);
+    if (!tf) return null;
+    return { event: 'entersBattlefield', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever one or more (.+?) cards? leave your graveyard, (.+)$/i))) {
+    const tf = nounFilter(`a ${m[1]} card`);
+    if (!tf) return null;
+    tf.player = 'you';
+    return { event: 'leftGraveyard', filter: tf, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever a creature you control becomes blocked, (.+)$/i))) return { event: 'becomesBlocked', filter: { object: { types: ['Creature'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^At the beginning of your turn, (.+)$/i))) return { event: 'beginningOfUpkeep', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^At the beginning of combat on (your|each) turn, (.+)$/i)) || (m = L.match(/^At the beginning of (each) combat, (.+)$/i))) return { event: 'beginningOfCombat', filter: { player: m[1] === 'your' ? 'you' : 'any' }, hasObject: false, hasPlayer: true, rest: m[2] };
   // Casting
   if ((m = L.match(/^When you cast ~, (.+)$/i)) || (m = L.match(/^When you cast this spell, (.+)$/i))) return { event: 'cast', filter: { self: true }, zone: 'stack', hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you cast or copy (?:a|an) (.+?) spell, (.+)$/i))) L = `Whenever you cast a ${m[1]} spell, ${m[2]}`; // copies are approximated by casts
+  if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell with mana value (\d+) or (greater|less), (.+)$/i)) || (m = L.match(/^Whenever you cast a (spell) with mana value (\d+) or (greater|less), (.+)$/i))) {
+    const noun = m[1] === 'spell' ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} spell`);
+    if (!noun) return null;
+    const f: ObjectFilter = { ...noun.filter };
+    delete f.zone;
+    if (m[3] === 'greater') f.cmcGE = parseInt(m[2], 10);
+    else f.cmcLE = parseInt(m[2], 10);
+    return { event: 'cast', filter: { player: 'you', object: f }, hasObject: true, hasPlayer: true, rest: m[4] };
+  }
+  if ((m = L.match(/^Whenever you cast a spell that targets (?:a|an|one or more) (.+?) you control, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    return { event: 'cast', filter: { player: 'you', targetsControlled: noun.filter }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever you cast an instant or sorcery spell that targets only ~, (.+)$/i))) return { event: 'cast', filter: { player: 'you', targetsSource: true, object: { types: ['Instant', 'Sorcery'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast a spell that is one or more colors, (.+)$/i))) return { event: 'cast', filter: { player: 'you', object: { custom: 'colored' } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast a kicked spell, (.+)$/i))) return { event: 'cast', filter: { player: 'you', custom: 'kicked' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast a spell from (exile|your graveyard|a graveyard), (.+)$/i))) return { event: 'cast', filter: { player: 'you', fromZone: /exile/.test(m[1]) ? 'exile' : 'graveyard' }, hasObject: true, hasPlayer: true, rest: m[2] };
   if ((m = L.match(/^Whenever you cast (?:a|an|your first|your second) (.+?)(?: spell)?(?: each turn| during an opponent's turn| during each opponent's turn| from your hand| from anywhere other than your hand)?, (.+)$/i))) {
     const nounText = m[1].replace(/ spell$/, '');
     const tf: TriggerFilter = { player: 'you' };
@@ -246,6 +328,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever you venture into the dungeon, (.+)$/i))) return { event: 'ventures', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you complete a dungeon, (.+)$/i))) return { event: 'dungeonCompleted', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you take the initiative, (.+)$/i))) return { event: 'takesInitiative', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? you sacrifice ~, (.+)$/i))) return { event: 'sacrifice', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you sacrifice (?:a|an|another) (.+?), (.+)$/i))) {
     const tf = nounFilter(`a ${m[1]}`);
     if (!tf) return null;

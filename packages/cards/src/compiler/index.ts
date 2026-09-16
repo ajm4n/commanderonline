@@ -11,6 +11,7 @@ import { parseCost, parseActivationRestriction } from './costs.js';
 import { parseStatic } from './statics.js';
 import { parseCondition } from './conditions.js';
 import { parseNoun } from './nouns.js';
+import { parseAmount } from './amounts.js';
 import { parseTypeLine } from '@commander/engine';
 
 export interface CompileResult {
@@ -154,6 +155,22 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 4, addTypes: ['Artifact', 'Creature'] }, condition: { kind: 'yourTurn' } });
       compiledLines.push(line);
       continue;
+    }
+    if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast if it targets (?:a|an) (.+?)\.?$/i))) {
+      const noun = parseNoun(`a ${m[3]}`);
+      if (noun) {
+        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', ifTargets: noun.filter, text: line });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    if ((m = line.match(/^(?:~|This spell) costs? \{X\} (less|more) to cast, where X is (.+?)\.?$/i))) {
+      const amt = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (amt !== null) {
+        costModifiers.push({ amount: 1, direction: m[1].toLowerCase() as 'less' | 'more', perAmount: amt, text: line });
+        compiledLines.push(line);
+        continue;
+      }
     }
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast for each creature in your party\.?$/i))) {
       costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', perAmount: { kind: 'partySize' }, text: line });

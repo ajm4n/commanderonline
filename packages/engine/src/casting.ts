@@ -198,6 +198,18 @@ export function* tapForMana(g: Game, sourceId: ObjectId, produce: ManaColor[]): 
     const extra = ab.spec.effects.filter((e) => e.kind !== 'addMana' && e.kind !== 'chooseMode');
     if (extra.length) yield* executeEffects(g, extra, { sourceId, controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
   }
+  // "Whenever enchanted land is tapped for mana, its controller adds an additional {G}": mana triggers resolve at once (rule 605.1b).
+  const event: import('./types.js').GameEvent = { name: 'tappedForMana', objectId: sourceId, playerId: controller, data: { mana: produce } };
+  for (const id of [...g.state.battlefield]) {
+    const src = g.state.objects[id];
+    if (!src) continue;
+    for (const ab of g.scriptFor(src).abilities) {
+      if (ab.kind !== 'triggered' || ab.event !== 'tappedForMana' || !ab.effects.every((e) => e.kind === 'addMana')) continue;
+      if (!g.triggerMatches(ab.filter, event, src, src.controller)) continue;
+      yield* executeEffects(g, ab.effects, { sourceId: id, controller: src.controller, targets: [], triggerContext: g.triggerContextFrom(event), x: 0, modes: [], memory: {} });
+    }
+  }
+  g.emit(event);
   g.emit({ name: 'abilityActivated', objectId: sourceId, playerId: obj.controller, data: { mana: true } });
 }
 
@@ -509,7 +521,7 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   }
   // The spell's own cost modifiers (affinity, "costs {1} less for each ...").
   for (const mod of script.costModifiers ?? []) {
-    if (mod.perExtraTarget) continue; // applied at cast time once targets are known
+    if (mod.perExtraTarget || mod.ifTargets) continue; // applied at cast time once targets are known
     if (mod.condition && !g.checkCondition(mod.condition, { sourceId: obj.id, controller: p })) continue;
     const n = mod.per ? objectsMatching(g, { ...mod.per, zone: mod.per.zone ?? 'battlefield' }, { sourceId: obj.id, controller: p }).length : mod.perAmount !== undefined ? g.resolveAmount(mod.perAmount, { sourceId: obj.id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 1;
     delta += (mod.direction === 'less' ? -1 : 1) * mod.amount * n;
@@ -824,11 +836,15 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
       return false;
     }
   }
-  // "costs {1} more to cast for each target beyond the first"
+  // "costs {1} more to cast for each target beyond the first" / "costs {3} less to cast if it targets a tapped creature"
   for (const mod of script.costModifiers ?? []) {
-    if (!mod.perExtraTarget) continue;
-    const n = targets.filter((t) => t.kind !== 'none').length - 1;
-    if (n > 0) cost = adjustGeneric(cost, (mod.direction === 'less' ? -1 : 1) * mod.amount * n);
+    if (mod.perExtraTarget) {
+      const n = targets.filter((t) => t.kind !== 'none').length - 1;
+      if (n > 0) cost = adjustGeneric(cost, (mod.direction === 'less' ? -1 : 1) * mod.amount * n);
+    } else if (mod.ifTargets) {
+      const hit = targets.some((t) => t.kind === 'object' && g.state.objects[t.id] && matchesFilter(g, g.state.objects[t.id], { ...mod.ifTargets, zone: undefined }, { sourceId: id, controller: p }));
+      if (hit) cost = adjustGeneric(cost, (mod.direction === 'less' ? -1 : 1) * mod.amount);
+    }
   }
   // Mana
   if (obj.memory['anyManaType'] || opts.anyMana) cost = { symbols: cost.symbols.map((sy) => (sy.kind === 'color' || sy.kind === 'hybrid' || sy.kind === 'phyrexian' ? { kind: 'generic' as const, amount: 1 } : sy.kind === 'monoHybrid' ? { kind: 'generic' as const, amount: 2 } : sy)), xCount: cost.xCount };

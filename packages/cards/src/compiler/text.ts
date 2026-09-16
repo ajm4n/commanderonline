@@ -39,7 +39,7 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     t = t.replace(new RegExp(esc + "'s", 'g'), "~'s");
     t = t.replace(new RegExp(esc, 'g'), '~');
   }
-  t = t.replace(/\b[Tt]his (creature|permanent|artifact|enchantment|land|spell|card|planeswalker|Aura|Equipment|Vehicle|token|battle)\b/g, '~');
+  t = t.replace(/\b[Tt]his (creature|permanent|artifact|enchantment|land|spell|card|planeswalker|Aura|Equipment|Vehicle|token|battle|Class|Spacecraft|Case|Siege|Room|Saga|Contraption)\b/g, '~');
   t = t.replace(/\benters the battlefield\b/g, 'enters');
   t = t.replace(/\bput onto the battlefield\b/g, 'put onto the battlefield');
   t = t.replace(/\bmana value\b/g, 'mana value');
@@ -52,6 +52,7 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   t = t.replace(/\bIt's\b/g, 'It is').replace(/\bit's\b/g, 'it is');
   t = t.replace(/\bThey're\b/g, 'They are').replace(/\bthey're\b/g, 'they are');
   t = t.replace(/\b(?:He|She) (deals|gets|gains|has|is|becomes|cannot|can't|attacks|blocks|fights|enters)\b/g, '~ $1').replace(/\b(?:he|she) (deals|gets|gains|has|is|becomes|cannot|can't|attacks|blocks|fights|enters)\b/g, '~ $1');
+  t = t.replace(/\b(counters? on) (?:her|him)\b/g, '$1 it');
   t = t.replace(/\bhis or her\b/g, 'their');
   t = t.replace(/\bhe or she\b/g, 'they');
   t = t.replace(/\bhim or her\b/g, 'them');

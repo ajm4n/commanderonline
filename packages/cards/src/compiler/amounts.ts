@@ -66,6 +66,10 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     return noun ? { kind: 'graveyardSize', ref: { ref: 'controller' }, filter: noun.filter } : null;
   }
   if (t === 'the number of lands you control') return { kind: 'landsYouControl' };
+  if ((m = t.match(/^the (greatest|highest) (power|toughness|mana value) among (.+)$/))) {
+    const noun = parseNoun(oc(m, 3));
+    if (noun) return { kind: 'maxOf', stat: m[2] === 'power' ? 'power' : m[2] === 'toughness' ? 'toughness' : 'manaValue', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
+  }
   if (t === 'the number of creatures in your party') return { kind: 'partySize' };
   if (t === 'the number of times it was kicked' || t === 'the number of times ~ was kicked') return { kind: 'kickCount' };
   if (t === 'the number of opponents you have' || t === 'the number of your opponents') return { kind: 'opponents' };

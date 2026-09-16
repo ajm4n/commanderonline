@@ -56,6 +56,7 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
   const ach = g.characteristics(attacker.id);
   if (blocker.tapped) return false;
   if (bch.rules.some((r) => r.kind === 'cantBlock')) return false;
+  for (const r of bch.rules) if (r.kind === 'cantBlockFilter' && matchesFilter(g, attacker, { ...r.filter, zone: 'battlefield' }, { sourceId: blocker.id, controller: blocker.controller })) return false;
   if (ach.rules.some((r) => r.kind === 'cantBeBlocked')) return false;
   if (ach.keywords.has('Flying') && !(bch.keywords.has('Flying') || bch.keywords.has('Reach'))) return false;
   if (ach.keywords.has('Shadow') !== bch.keywords.has('Shadow')) return false;
@@ -68,6 +69,8 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
     if (r.kind === 'cantBeBlockedByPowerGE' && (bch.power ?? 0) >= r.power) return false;
     if (r.kind === 'cantBeBlockedByPowerLessThanSource' && (bch.power ?? 0) < (ach.power ?? 0)) return false;
     if (r.kind === 'cantBeBlockedBy' && matchesFilter(g, blocker, { ...r.filter, zone: 'battlefield' }, { sourceId: attacker.id, controller: attacker.controller })) return false;
+    if (r.kind === 'canBeBlockedOnlyBy' && !matchesFilter(g, blocker, { ...r.filter, zone: 'battlefield' }, { sourceId: attacker.id, controller: attacker.controller })) return false;
+    if (r.kind === 'cantBeBlockedByPowerGreaterThanSource' && (bch.power ?? 0) > (ach.power ?? 0)) return false;
     if (r.kind === 'custom' && r.tag === 'ringBearer' && (bch.power ?? 0) > (ach.power ?? 0)) return false;
   }
   // "Target creature can't block ~ this turn"

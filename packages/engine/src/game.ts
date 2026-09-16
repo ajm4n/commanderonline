@@ -80,6 +80,8 @@ export interface GameState {
   turn: TurnState;
   continuousEffects: ContinuousEffect[];
   delayedTriggers: DelayedTrigger[];
+  /** Turn-wide damage prevention (Fog effects); cleared at cleanup. */
+  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null }[];
   log: LogEntry[];
   monarch: PlayerId | null;
   initiative: PlayerId | null;
@@ -184,6 +186,7 @@ export class Game {
       turn: { number: 0, activePlayer: order[0], phase: 'beginning', step: 'untap', extraTurns: [], skipSteps: [], firstStrikeHappened: false, attackers: [] },
       continuousEffects: [],
       delayedTriggers: [],
+      preventions: [],
       log: [],
       monarch: null,
       initiative: null,
@@ -869,6 +872,7 @@ export class Game {
         if (isSelfEntering && !zones.includes('battlefield')) continue;
         const controller = isSelfLeaving && event.snapshot ? event.snapshot.controller : obj.controller;
         const evalObj = isSelfLeaving && event.snapshot ? event.snapshot : obj;
+        if (event.name === 'tappedForMana' && ab.effects.every((e) => e.kind === 'addMana')) continue; // already resolved as a mana ability
         if (!this.triggerMatches(ab.filter, event, evalObj, controller, lkiCh)) continue;
         if (ab.condition && !this.checkCondition(ab.condition, { sourceId: obj.id, controller, triggerContext: this.triggerContextFrom(event) })) continue;
         if (ab.oncePerTurn) {
@@ -972,6 +976,24 @@ export class Game {
       const src = this.state.objects[obj.id] ?? obj;
       const attachedTo = src.attachedTo ?? (src.lastKnownInfo as GameObject | undefined)?.attachedTo ?? null;
       if (e.objectId === undefined || attachedTo !== e.objectId) return false;
+    }
+    if (f.sourceAttachedTo) {
+      const src = this.state.objects[obj.id] ?? obj;
+      const attachedTo = src.attachedTo ?? (src.lastKnownInfo as GameObject | undefined)?.attachedTo ?? null;
+      if (e.sourceId === undefined || attachedTo !== e.sourceId) return false;
+    }
+    if (f.targetsControlled) {
+      const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
+      if (!item || !item.targets.some((t) => t.kind === 'object' && this.state.objects[t.id] && this.state.objects[t.id].controller === controller && matchesFilter(this, this.state.objects[t.id], { ...f.targetsControlled, zone: undefined }, { sourceId: obj.id, controller }))) return false;
+    }
+    if (f.custom === 'kicked') {
+      const cast = e.objectId !== undefined ? this.state.objects[e.objectId] : undefined;
+      if (!cast || !cast.additionalCostsPaid.includes('kicker')) return false;
+    }
+    if (f.custom === 'attachedControllersUpkeep') {
+      const src = this.state.objects[obj.id] ?? obj;
+      const host = src.attachedTo !== null ? this.state.objects[src.attachedTo] : undefined;
+      if (!host || e.playerId !== host.controller) return false;
     }
     if (f.targetsSource) {
       const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
@@ -1271,6 +1293,15 @@ export class Game {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         return (src?.memory['kicks'] as number) ?? (src?.additionalCostsPaid.includes('kicker') ? 1 : 0);
       }
+      case 'maxOf': {
+        let best = 0;
+        for (const o of objectsMatching(this, a.filter, fctx)) {
+          const ch = this.characteristics(o.id);
+          const v = a.stat === 'power' ? ch.power : a.stat === 'toughness' ? ch.toughness : ch.manaValue;
+          if (v !== null && v > best) best = v;
+        }
+        return best;
+      }
       case 'totalPower':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
       case 'discardedThisWay':
@@ -1462,8 +1493,35 @@ export class Game {
   }
 
   /** Deal damage from a source to a target (object or player). Handles infect, wither, lifelink, deathtouch, prevention. */
+  /** Does a turn-wide prevention effect stop this damage? */
+  private preventedByFog(sourceId: ObjectId | null, target: Target, combat: boolean): boolean {
+    if (this.state.turnStats['noPrevention'] || !this.state.preventions.length) return false;
+    const src = sourceId !== null ? this.state.objects[sourceId] : null;
+    for (const pv of this.state.preventions) {
+      if (pv.combat && !combat) continue;
+      if (pv.source && (!src || !matchesFilter(this, src, { ...pv.source, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller }))) continue;
+      const to = pv.to;
+      if (to === 'all') return true;
+      if (target.kind === 'player') {
+        if (to === 'players' || ((to === 'you' || to === 'youAndCreaturesYouControl') && target.id === pv.controller)) return true;
+        continue;
+      }
+      if (target.kind !== 'object') continue;
+      const obj = this.state.objects[target.id];
+      if (!obj) continue;
+      if (to === 'creatures') return true;
+      if ((to === 'creaturesYouControl' || to === 'youAndCreaturesYouControl') && obj.controller === pv.controller) return true;
+      if (typeof to === 'object' && matchesFilter(this, obj, { ...to, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller })) return true;
+    }
+    return false;
+  }
+
   dealDamage(sourceId: ObjectId | null, target: Target, amount: number, combat: boolean): number {
     if (amount <= 0) return 0;
+    if (this.preventedByFog(sourceId, target, combat)) {
+      this.log(`Damage to ${target.kind === 'player' ? this.player(target.id).name : target.kind === 'object' ? this.nameOf(target.id) : 'something'} is prevented.`);
+      return 0;
+    }
     const src = sourceId !== null ? this.state.objects[sourceId] : null;
     const sch = src ? this.characteristics(src.id) : null;
     const controller = src?.controller;
@@ -1829,6 +1887,7 @@ export class Game {
   private *cleanup(): Gen {
     const pid = this.state.turn.activePlayer;
     const p = this.player(pid);
+    this.state.preventions = [];
     for (;;) {
       // Discard to hand size
       const noMax = this.playerRules(pid).some((r) => r.kind === 'noMaxHandSize');

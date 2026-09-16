@@ -1,5 +1,5 @@
 /** Static abilities and replacement effects. */
-import type { AbilitySpec, ObjectFilter, RuleModification, StaticAbilitySpec } from '@commander/engine';
+import type { AbilitySpec, Amount, ObjectFilter, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
 import { parseKeywordList, isNoOpSentence } from './effects.js';
 import { wordToNumber } from './text.js';
@@ -97,7 +97,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // Rest in Peace / "If a creature an opponent controls would die, exile it instead."
   if ((m = L.match(/^If (?:a|an) (.+?) would (die|be put into (a|an opponent's|your) graveyard(?: from anywhere| from the battlefield)?), exile it instead$/i))) {
-    const noun = parseNoun(`a ${m[1]}`);
+    const noun = /^cards? or tokens?$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]}`);
     if (!noun) return null;
     const f = { ...noun.filter };
     delete f.zone;
@@ -223,6 +223,37 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return noun ? objRule(m[1], { kind: 'cantAttackUnlessDefenderControls', filter: noun.filter }) : null;
   }
   if ((m = L.match(/^(.+?) must be blocked if able$/i))) return objRule(m[1], { kind: 'custom', tag: 'mustBeBlocked' });
+  if ((m = L.match(/^(.+?) cannot be blocked except by (.+)$/i))) {
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    return noun ? objRule(m[1], { kind: 'canBeBlockedOnlyBy', filter: noun.filter }) : null;
+  }
+  if ((m = L.match(/^(.+?) cannot block (.+?)$/i)) && !/^(alone|unless|if)\b/i.test(m[2])) {
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    return noun ? objRule(m[1], { kind: 'cantBlockFilter', filter: noun.filter }) : null;
+  }
+  if ((m = L.match(/^(.+?) cannot be blocked by creatures with greater power$/i))) return objRule(m[1], { kind: 'cantBeBlockedByPowerGreaterThanSource' });
+  if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) unless (.+)$/i))) {
+    const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (!cond || cond.kind === 'manual') return null;
+    const kinds: RuleModification['kind'][] = m[2].toLowerCase() === 'attack or block' ? ['cantAttack', 'cantBlock'] : m[2].toLowerCase() === 'attack' ? ['cantAttack'] : ['cantBlock'];
+    const out: AbilitySpec[] = [];
+    for (const k of kinds) {
+      const r = objRule(m[1], { kind: k } as RuleModification);
+      if (!r) return null;
+      out.push(...r.map((a) => (a.kind === 'static' ? { ...a, condition: { kind: 'not' as const, c: cond } } : a)));
+    }
+    return out;
+  }
+  if ((m = L.match(/^~ enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it for each (.+)$/i))) {
+    const noun = parseNoun(m[3]);
+    const per: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : parseAmount(`the number of ${m[3]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (per === null) return null;
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: { kind: 'times', a: m[1] ? (wordToNumber(m[1]) as number) : 1, b: per } } }];
+  }
+  if ((m = L.match(/^~ enters with (?:a number of|X) ([+-]\d\/[+-]\d|\w+) counters on it(?: equal to (.+)|, where X is (.+))$/i))) {
+    const amt = parseAmount(m[2] ?? m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    return amt !== null ? [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[1], amount: amt } }] : null;
+  }
   if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) alone$/i))) return objRule(m[1], { kind: 'custom', tag: m[2].toLowerCase() === 'attack or block' ? 'cantAttackOrBlockAlone' : m[2].toLowerCase() === 'attack' ? 'cantAttackAlone' : 'cantBlockAlone' });
   if ((m = L.match(/^(.+?) cannot be blocked by (.+)$/i)) && !/power|more than one|two or more/i.test(m[2])) {
     const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
@@ -322,7 +353,24 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (n === null) return null;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, counters: { counter: m[2], amount: n } }];
   }
-  if ((m = L.match(/^As ~ enters, choose (a color|an opponent|a creature type|a card name|a nonland card name)$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: /color/.test(m[1]) ? 'color' : /opponent/.test(m[1]) ? 'opponent' : /card name/.test(m[1]) ? 'cardName' : 'creatureType' }];
+  if ((m = L.match(/^As ~ enters, choose (a color(?: other than \w+)?|an opponent|a creature type|a card name|a nonland card name|a player|a number(?: greater than 0)?|a basic land type|odd or even|[A-Z]\w+ or [A-Z]\w+)$/i))) {
+    const c = m[1].toLowerCase();
+    const base = { kind: 'replacement' as const, text: line, event: 'entersBattlefield' as const, self: true as const };
+    if (c.startsWith('a color')) return [{ ...base, choose: 'color' }];
+    if (c === 'an opponent') return [{ ...base, choose: 'opponent' }];
+    if (c === 'a creature type') return [{ ...base, choose: 'creatureType' }];
+    if (/card name/.test(c)) return [{ ...base, choose: 'cardName' }];
+    if (c === 'a player') return [{ ...base, choose: 'player' }];
+    if (c.startsWith('a number')) return [{ ...base, choose: 'number' }];
+    if (c === 'a basic land type') return [{ ...base, choose: 'option', chooseOptions: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'], chooseKey: 'landType' }];
+    if (c === 'odd or even') return [{ ...base, choose: 'option', chooseOptions: ['odd', 'even'], chooseKey: 'choice' }];
+    return [{ ...base, choose: 'option', chooseOptions: m[1].split(' or '), chooseKey: 'choice' }];
+  }
+  if ((m = L.match(/^As ~ enters, you may reveal (?:a|an) (.+?) card from your hand\.? If you do not, (?:~|it) enters tapped$/i))) {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (!noun) return null;
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, unless: { kind: 'count', filter: { ...noun.filter, zone: 'hand', owner: 'you' }, op: '>=', value: 1 } }];
+  }
   if (/^If it is neither day nor night, it becomes day as ~ enters$/i.test(L)) return [{ kind: 'static', text: line }]; // day/night is not modeled; nothing else to do
   // Several statics in one line: "~ enters tapped. As it enters, choose a color."
   if (/\. [A-Z]/.test(L)) {
