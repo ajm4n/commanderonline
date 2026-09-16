@@ -1381,6 +1381,22 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
         }
       }
     }
+    if (ab.tribute) {
+      const opps = g.opponentsOf(controller);
+      if (opps.length) {
+        let opp = opps[0];
+        if (opps.length > 1) {
+          const r = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose an opponent for tribute`, options: opps.map((p) => ({ id: p, label: g.player(p).name })), min: 1, max: 1, sourceId: id });
+          if (r.type === 'options' && r.ids[0]) opp = r.ids[0] as typeof opp;
+        }
+        const r = yield* g.ask({ type: 'yesNo', player: opp, prompt: `Tribute ${ab.tribute}: put ${ab.tribute} +1/+1 counter${ab.tribute === 1 ? '' : 's'} on ${o.card.name}?`, sourceId: id });
+        if (r.type === 'yesNo' && r.value) {
+          counters['+1/+1'] = (counters['+1/+1'] ?? 0) + ab.tribute;
+          o.memory['tributePaid'] = true;
+          g.log(`${g.player(opp).name} pays tribute to ${o.card.name}.`);
+        }
+      }
+    }
     if (ab.tapped && !(ab.unless && g.checkCondition(ab.unless, { sourceId: id, controller }))) tapped = true;
     if (ab.payLifeOrTapped !== undefined) {
       let paid = false;

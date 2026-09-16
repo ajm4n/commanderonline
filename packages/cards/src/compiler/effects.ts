@@ -819,8 +819,8 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[3], ctx);
     return ref ? [{ kind: 'addCounters', counter: m[2], amount: { kind: 'times', a: n, b: per }, on: ref }] : null;
   }],
-  [/^remove (?:a|an|all|(\w+|X)) ([+-]\d+\/[+-]\d+|\w+) counters? from (.+)$/i, (m, ctx) => {
-    const n = /all/i.test(m[0].split(' ')[1]) ? 'all' : m[1] ? wordToNumber(m[1]) : 1;
+  [/^remove (?:a|an|all|(\w+|X|that many)) ([+-]\d+\/[+-]\d+|\w+) counters? from (.+)$/i, (m, ctx) => {
+    const n: Amount | 'all' | null = /all/i.test(m[0].split(' ')[1]) ? 'all' : m[1] ? (/that many/i.test(m[1]) ? { kind: 'triggerAmount' } : wordToNumber(m[1])) : 1;
     if (n === null) return null;
     const ref = objRef(m[3], ctx);
     return ref ? [{ kind: 'removeCounters', counter: m[2], amount: n, on: ref }] : null;
@@ -1499,6 +1499,18 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const b = a ? parseSentence(`${m[1]} deals ${m[2]} damage to ${m[4]}`, ctx) : null;
     if (a && b) return [...a, ...b];
   }
+  if ((m = text.match(/^blight (\d+|X)$/i))) {
+    const key = `blight${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    return [{ kind: 'chooseObjects', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' }, count: 1, key }, { kind: 'addCounters', counter: '-1/-1', amount: m[1] === 'X' ? 'X' : parseInt(m[1], 10), on: { ref: 'chosen', key } }];
+  }
+  if ((m = text.match(/^return (it|that card|~|them) to the battlefield transformed(?: under (?:your|its owner's|their owner's) control)?(?: tapped)?$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToBattlefield', what: ref, transformed: true, controller: /owner's/i.test(text) ? 'owner' : 'you', tapped: / tapped$/i.test(text) || undefined }] : null;
+  }
+  if (/^reveal the top card of your library$/i.test(text)) {
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'revealTop', destination: 'stay' }];
+  }
   if ((m = text.match(/^exert (~|it|that creature)$/i))) {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'exert', what: ref }] : null;
@@ -1602,6 +1614,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'returnToBattlefield', what: ref, transformed: true, counters: m[3] ? { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) as number) ?? 1 : 1 } : undefined }] : null;
   }
+  if ((m = text.match(/^exile the top (?:card|(\w+|X) cards)(?: of your library)?(?: face down)?$/i))) {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (n !== null) {
+      ctx.lastObj = { ref: 'lastMoved' };
+      return [{ kind: 'exileTop', amount: n }];
+    }
+  }
   if ((m = text.match(/^exile the top (?:card|(\w+|X) cards) of (target player|target opponent|that player|each player|each opponent)'s library(?: face down)?$/i))) {
     const who = playerRef(m[2], ctx);
     const n = m[1] ? wordToNumber(m[1]) : 1;
@@ -1661,6 +1680,17 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (inner) {
       const types = /instant or sorcery/i.test(m[1]) ? ['Instant', 'Sorcery'] : /creature/i.test(m[1]) ? ['Creature'] : /instant/i.test(m[1]) ? ['Instant'] : /sorcery/i.test(m[1]) ? ['Sorcery'] : undefined;
       return [{ kind: 'delayedTrigger', event: 'cast', filter: { player: 'you', object: types ? { types } : undefined }, effects: inner, text, once: true }];
+    }
+  }
+  // "When you discard a nonland card this way, X" (same paragraph as the discard): X happens if a matching card moved.
+  if ((m = text.match(/^when (?:you )?(?:discard|exile|sacrifice|reveal|mill|destroy|return) (?:a|an|one or more) (.+?) this way, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1].replace(/ cards?$/i, ' card')}`);
+    if (noun) {
+      const saved = ctx.lastObj;
+      ctx.lastObj = { ref: 'lastMoved' };
+      const inner = parseSentence(m[2], ctx);
+      if (inner) return [{ kind: 'conditional', if: { kind: 'amount', a: { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 }, then: inner }];
+      ctx.lastObj = saved;
     }
   }
   if ((m = text.match(/^when (that creature|that permanent|it|that token|those creatures) (dies|die|leaves the battlefield|is put into a graveyard) this turn, (.+)$/i))) {

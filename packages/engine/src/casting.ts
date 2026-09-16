@@ -372,6 +372,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     if (!inHand && !onField) return false;
   }
   if (cost.revealFromHand && !g.player(p).hand.some((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHand, zone: 'hand' }, ctx))) return false;
+  if (cost.blight !== undefined && !cost.blightOptional && !objectsMatching(g, { types: ['Creature'], controller: 'you', zone: 'battlefield' }, ctx).length) return false;
   if (cost.collectEvidence) {
     const cands = [...g.player(p).graveyard];
     const need = cost.collectEvidence.n;
@@ -386,6 +387,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       if (total < need) continue;
       for (const id of resp.ids) g.moveObject(id, 'exile', { cause: 'exile' });
       obj.memory['evidenceCollected'] = true;
+      obj.memory['additionalCostPaid'] = true;
       break;
     }
   }
@@ -406,6 +408,17 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     if (resp.type !== 'objects' || !resp.ids.length) return false;
     obj.memory['revealed'] = resp.ids[0];
     g.log(`${g.player(p).name} reveals ${g.nameOf(resp.ids[0])}.`);
+  }
+  if (cost.blight !== undefined) {
+    const cands = objectsMatching(g, { types: ['Creature'], controller: 'you', zone: 'battlefield' }, ctx).map((o) => o.id);
+    if (cands.length) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Blight ${cost.blight}: put ${cost.blight} -1/-1 counter${cost.blight === 1 ? '' : 's'} on a creature you control${cost.blightOptional ? ' (or choose none)' : ''}`, candidates: cands, min: cost.blightOptional ? 0 : 1, max: 1, sourceId: obj.id });
+      if (resp.type !== 'objects' || (!resp.ids.length && !cost.blightOptional)) return false;
+      if (resp.ids.length) {
+        g.addCounters(resp.ids[0], '-1/-1', cost.blight, obj.id);
+        obj.memory['additionalCostPaid'] = true;
+      }
+    }
   }
   if (cost.chooseCreatureType) {
     const resp = yield* g.ask({ type: 'chooseOption', player: p, prompt: 'Choose a creature type', options: g.creatureTypeOptions().map((t) => ({ id: t, label: t })), min: 1, max: 1, sourceId: obj.id });
@@ -577,7 +590,18 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (obj.zone === 'library') return playableFromTop(g, p, obj);
   if (obj.owner !== p && obj.zone !== 'exile' && obj.zone !== 'graveyard') return false;
   if (obj.zone === 'hand' || obj.zone === 'command') return true;
-  if (obj.zone === 'graveyard') return (obj.owner === p && /^Flashback/m.test(obj.card.oracleText)) || obj.memory['castableBy'] === p;
+  if (obj.zone === 'graveyard') {
+    if ((obj.owner === p && /^Flashback/m.test(obj.card.oracleText)) || obj.memory['castableBy'] === p) return true;
+    if (obj.owner !== p) return false;
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || r.tag !== 'castFromGraveyard') continue;
+      const d = (r.data as { filter?: import('./types.js').ObjectFilter; oncePerTurn?: boolean } | undefined) ?? {};
+      if (d.oncePerTurn && g.state.turnStats[`castFromGy:${p}`]) continue;
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+      return true;
+    }
+    return false;
+  }
   if (obj.zone === 'exile' && obj.memory['playableBy'] !== p) {
     // "You may play cards you don't own with stash counters on them from exile" style permissions.
     for (const r of g.playerRules(p)) {
@@ -989,6 +1013,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (!opts.free) {
     const paid = yield* payCost(g, p, cost, x, id, keywords, !!resp.manualMana);
     if (paid) {
+      if (fromZone === 'graveyard' && !/^Flashback/m.test(face.oracleText) && obj.memory['castableBy'] !== p) g.state.turnStats[`castFromGy:${p}`] = 1;
       obj.memory['wasCast'] = true;
       obj.memory['manaSpent'] = cost.symbols.reduce((acc, sym) => acc + (sym.kind === 'generic' ? sym.amount : sym.kind === 'x' ? 0 : 1), 0) + x * cost.xCount;
     }

@@ -363,6 +363,8 @@ export interface ObjectFilter {
   hasAdventure?: boolean;
   /** Shares a creature type with the effect's source. */
   sharesCreatureTypeWithSource?: boolean;
+  /** Matches if any of these sub-filters match ("artifact or Human spell"). */
+  anyOf?: ObjectFilter[];
   /** Only objects attached to / attached by. */
   attachedToSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */

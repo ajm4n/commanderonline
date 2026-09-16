@@ -103,6 +103,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If a source you control would deal (noncombat |combat )?damage to (an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i))) {
     return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damagePlus', data: { filter: { controller: 'you' }, plus: parseInt(m[3], 10), noncombatOnly: /noncombat/i.test(m[1] ?? '') || undefined, combatOnly: /^combat/i.test(m[1] ?? '') || undefined, toOpponents: /opponent/i.test(m[2]) || undefined } } }];
   }
+  // "Once during each of your turns, you may cast an artifact or Human spell from your graveyard with mana value less than or equal to X."
+  if ((m = L.match(/^(Once during each of your turns, )?[Yy]ou may cast (.+?) (?:spells? )?from your graveyard(?: with mana value (?:less than or equal to|equal to or less than) (.+?))?$/i))) {
+    const noun = parseNoun(`a ${m[2].replace(/^(?:a|an) /i, '').replace(/ spells?$/i, '')} spell`);
+    if (noun) {
+      const filter = { ...noun.filter, zone: undefined as undefined };
+      if (m[3]) {
+        const amt = parseAmount(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+        if (amt === null) return null;
+        filter.cmcLEAmount = amt;
+      }
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter, oncePerTurn: !!m[1] || undefined } } }];
+    }
+  }
   if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) return objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' });
   // Static damage prevention: "Prevent all damage that would be dealt to ~ by artifact creatures." / "Prevent all combat damage that would be dealt by enchanted creature."
   if ((m = L.match(/^Prevent all (combat |noncombat )?damage that would be dealt(?: to (.+?))?(?: by (.+?))?$/i)) && (m[2] || m[3])) {
@@ -204,13 +217,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if (/^You control (?:enchanted|equipped) (?:creature|permanent|artifact|land|planeswalker)$/i.test(L)) return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }];
   // Self replacements on dying / leaving
-  if ((m = L.match(/^If (combat )?damage would be dealt to ~(?: by (.+?))?, prevent that damage(?:\.|,)? (?:and |then )?(.+)$/i))) {
+  if ((m = L.match(/^If (combat )?damage would be dealt to ~(?: by (.+?))?(?: while (.+?))?, prevent that damage(?:\.|,)? (?:and |then )?(.+)$/i))) {
     const from = m[2] ? parseNoun(m[2].replace(/ sources?$/i, ' permanent')) : null;
     if (m[2] && !from) return null;
+    const whileCond = m[3] ? parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false }) : null;
+    if (m[3] && (!whileCond || whileCond.kind === 'manual')) return null;
     const ctx = newCtx({ triggerHasObject: false, triggerHasPlayer: false });
-    const r = parseEffects(m[3].replace(/\bon it\b/g, 'on ~'), ctx);
+    const r = parseEffects(m[4].replace(/\bon it\b/g, 'on ~').replace(/\bfrom it\b/g, 'from ~'), ctx);
     if (r.unhandled.length) return null;
-    return [{ kind: 'replacement', text: line, event: 'damage', prevent: 'all', to: 'self', combatOnly: !!m[1] || undefined, fromFilter: from ? { ...from.filter, zone: undefined } : undefined, effects: r.effects }];
+    return [{ kind: 'replacement', text: line, event: 'damage', prevent: 'all', to: 'self', combatOnly: !!m[1] || undefined, fromFilter: from ? { ...from.filter, zone: undefined } : undefined, condition: whileCond ?? undefined, effects: r.effects }];
   }
   if (/^If ~ would (?:die|be put into a graveyard from anywhere|be put into a graveyard), exile it instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'putIntoGraveyard', self: true, instead: 'exile' }];
   if (/^If ~ would be put into a graveyard from the battlefield, (?:exile it|return it to its owner's hand|shuffle it into its owner's library) instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'dies', self: true, instead: /exile/i.test(L) ? 'exile' : /hand/i.test(L) ? 'returnToHand' : 'shuffleIntoLibrary' }];

@@ -1625,6 +1625,7 @@ export class Game {
         for (const ab of this.scriptFor(tobj).abilities) {
           if (ab.kind !== 'replacement' || ab.event !== 'damage' || ab.to !== 'self' || ab.prevent !== 'all') continue;
           if (ab.combatOnly && !combat) continue;
+          if (ab.condition && !this.checkCondition(ab.condition, { sourceId: tobj.id, controller: tobj.controller })) continue;
           if (ab.fromFilter && (!src || !matchesFilter(this, src, { ...ab.fromFilter, zone: undefined }, { sourceId: tobj.id, controller: tobj.controller }))) continue;
           const eff = (ab as { effects?: import('./script.js').Effect[] }).effects;
           if (eff?.length) this.pendingTriggers.push({ sourceId: tobj.id, controller: tobj.controller, ability: { kind: 'triggered', text: ab.text, event: 'dealtDamage', effects: eff }, context: { triggerAmount: amount, amount, objectId: tobj.id, sourceId } });

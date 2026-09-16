@@ -93,6 +93,9 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === "you have the city's blessing") return { kind: 'cityBlessing' };
   if (t === 'it was kicked' || t === 'this spell was kicked') return { kind: 'wasKicked' };
   if (t === 'evidence was collected' || t === 'you collected evidence') return { kind: 'memoryFlag', key: 'evidenceCollected' };
+  if (t === "tribute wasn't paid" || t === 'tribute was not paid') return { kind: 'not', c: { kind: 'memoryFlag', key: 'tributePaid' } };
+  if (t === 'tribute was paid') return { kind: 'memoryFlag', key: 'tributePaid' };
+  if (t === "~'s additional cost was paid" || t === 'its additional cost was paid' || t === 'the additional cost was paid') return { kind: 'memoryFlag', key: 'additionalCostPaid' };
   if ((m = t.match(/^you have (\w+) or more (.+?) in your graveyard$/))) {
     const noun = parseNoun(oc(m, 2).replace(/ cards$/i, ' card'));
     const n = wordToNumber(m[1]);

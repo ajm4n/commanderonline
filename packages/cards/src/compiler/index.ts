@@ -155,6 +155,11 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
+    if ((m = line.match(/^Tribute (\d+)$/i))) {
+      abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tribute: parseInt(m[1], 10) });
+      compiledLines.push(line);
+      continue;
+    }
     if ((m = line.match(/^Mayhem ((?:\{[^}]+\})+)$/i))) {
       alternativeCosts.push({ id: 'mayhem', text: line, cost: { mana: m[1] }, zone: 'graveyard', condition: { kind: 'memoryFlag', key: 'discardedThisTurn' } });
       compiledLines.push(line);
@@ -457,6 +462,26 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         spellEffects.push(...r.effects);
         compiledLines.push(line);
         continue;
+      }
+    }
+    // "When you discard a nonland card this way, X" on its own line: runs after the previous ability when a matching card moved.
+    if ((m = line.match(/^When (?:you )?(?:discard|exile|sacrifice|reveal|mill|destroy|return) (?:a|an|one or more) (.+?) this way, (.+?)\.?$/i)) && (abilities.length || (isSpell && spellEffects.length))) {
+      const prev = abilities[abilities.length - 1] as AbilitySpec | undefined;
+      const prevEffects = isSpell && spellEffects.length ? spellEffects : prev && (prev.kind === 'triggered' || prev.kind === 'activated' || prev.kind === 'spell') ? prev.effects : null;
+      const noun = parseNoun(`a ${m[1].replace(/ cards?$/i, ' card')}`);
+      if (prevEffects && noun) {
+        const ctx = newCtx({ triggerHasObject: false, triggerHasPlayer: false, isSpell: isSpell || prev?.kind === 'spell' });
+        ctx.lastObj = { ref: 'lastMoved' };
+        const r = parseEffects(m[2], ctx);
+        if (!r.unhandled.length) {
+          prevEffects.push({ kind: 'conditional', if: { kind: 'amount', a: { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 }, then: r.effects });
+          if (ctx.targets.length) {
+            if (isSpell && spellEffects.length) spellCtx.targets.push(...ctx.targets);
+            else if (prev && 'targets' in prev) prev.targets = [...(prev.targets ?? []), ...ctx.targets];
+          }
+          compiledLines.push(line);
+          continue;
+        }
       }
     }
     // Reflexive trigger on its own line: "When you do, X" attaches to the previous ability's optional block.

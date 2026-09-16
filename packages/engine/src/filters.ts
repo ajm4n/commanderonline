@@ -101,6 +101,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.historic && !(ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga'))) return false;
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;
+  if (filter.anyOf && !filter.anyOf.some((f) => matchesFilter(g, obj, f, ctx))) return false;
   if (filter.sharesCreatureTypeWithSource) {
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     const sch = src ? g.characteristics(src.id) : undefined;

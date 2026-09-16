@@ -402,6 +402,10 @@ export interface AbilityCost {
   revealFromHand?: ObjectFilter;
   /** "As an additional cost, choose a creature type" (stored as memory `creatureType`). */
   chooseCreatureType?: boolean;
+  /** Blight N: put N -1/-1 counters on a creature you control. */
+  blight?: number;
+  /** "you may blight 1": the blight cost is optional (memory `additionalCostPaid` records whether it was paid). */
+  blightOptional?: boolean;
   tapUntapped?: { filter: ObjectFilter; count: number | 'any' | 'X' };
   /** Crew / saddle: tap any number of untapped matching creatures with total power N or more. */
   tapUntappedTotalPower?: { filter: ObjectFilter; power: number };
@@ -480,13 +484,13 @@ export interface SpellAbilitySpec {
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; /** "..., except it is an enchantment in addition to its other types" */ copyExceptions?: TokenSpec['exceptions']; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName' | 'player' | 'number' | 'option'; chooseOptions?: string[]; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; /** "..., except it is an enchantment in addition to its other types" */ copyExceptions?: TokenSpec['exceptions']; /** Tribute N: an opponent may put N +1/+1 counters on it (memory `tributePaid`). */ tribute?: number; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName' | 'player' | 'number' | 'option'; chooseOptions?: string[]; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
   /** "If a creature an opponent controls would die, exile it instead." / Rest in Peace */
   | { kind: 'replacement'; text: string; event: 'dies' | 'putIntoGraveyard'; self: false; filter: ObjectFilter; instead: 'exile' }
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }
-  | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean; /** Run after preventing ("prevent that damage and put that many +1/+1 counters on it"); the amount prevented is the trigger amount. */ effects?: Effect[] }
+  | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean; /** "If damage would be dealt to ~ while it has a +1/+1 counter on it" */ condition?: Condition; /** Run after preventing ("prevent that damage and put that many +1/+1 counters on it"); the amount prevented is the trigger amount. */ effects?: Effect[] }
   | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' }
   | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; filter?: ObjectFilter; counterType?: CounterType }
   | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number }

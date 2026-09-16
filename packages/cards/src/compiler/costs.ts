@@ -24,6 +24,10 @@ export function parseCost(text: string): AbilityCost | null {
     let m: RegExpMatchArray | null;
     if (p === '{T}') cost.tap = true;
     else if ((m = p.match(/^Waterbend \{(\d+)\}$/i))) cost.waterbend = parseInt(m[1], 10);
+    else if ((m = p.match(/^(You may )?Blight (\d+)$/i))) {
+      cost.blight = parseInt(m[2], 10);
+      if (m[1]) cost.blightOptional = true;
+    }
     else if ((m = p.match(/^(you may )?collect evidence (\d+)$/i))) cost.collectEvidence = { n: parseInt(m[2], 10), optional: !!m[1] || undefined };
     else if ((m = p.match(/^Behold (?:a|an) (.+)$/i))) {
       const noun = parseNoun(`a ${m[1]}`);

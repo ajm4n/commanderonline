@@ -240,8 +240,13 @@ export function parseNoun(raw: string): ParsedNoun | null {
     for (const h of listHeads) if (!addHead(h) && !parseAdjectives([h], result)) ok = false;
     if (!ok) return null;
     for (const h of right.slice(0, -0)) void h; // right side words are adjectives for the final head, already applied
-    if (types.size) result.filter.types = [...types];
-    if (subtypes.size) result.filter.subtypes = [...subtypes];
+    if (types.size && subtypes.size && !(result.filter.types ?? []).length && !(result.filter.subtypes ?? []).length) {
+      // "artifact or Human": a card type OR a subtype.
+      result.filter.anyOf = [{ types: [...types] }, { subtypes: [...subtypes] }];
+    } else {
+      if (types.size) result.filter.types = [...types];
+      if (subtypes.size) result.filter.subtypes = [...subtypes];
+    }
     adjWords = right.length ? right.slice(0, right.length) : [];
     // if leftHead itself got into adjectives, strip type words from adjectives
     adjWords = adjWords.filter((w) => !(w.toLowerCase() in TYPE_WORDS) && !(w in SUBTYPE_ALIASES) && !CREATURE_TYPE_RE.test(w));
