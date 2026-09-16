@@ -73,7 +73,9 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // Generic conjunctions sharing a subject: "Enchanted creature gets +2/+2, has flying, and is goaded."
   if ((m = L.match(/^(~|Enchanted \w+|Equipped \w+|Creatures you control|Other creatures you control|Each creature you control|Creatures your opponents control|Each other creature you control|All creatures|Each creature) (.+)$/i)) && /(?:, | and )/.test(m[2])) {
     const subject = m[1];
-    const parts = m[2].split(/, and |, | and (?=(?:has|have|is|are|gets?|cannot|can|loses?|gains?|does not|doesn't|attacks?|assigns?|must|enters?)\b)/i).map((p) => p.trim()).filter(Boolean);
+    // Commas inside quoted ability text are not list separators.
+    const masked = m[2].replace(/"[^"]*"/g, (q) => q.replace(/, /g, '\u0001'));
+    const parts = masked.split(/, and |, | and (?=(?:has|have|is|are|gets?|cannot|can|loses?|gains?|does not|doesn't|attacks?|assigns?|must|enters?)\b)/i).map((p) => p.replace(/\u0001/g, ', ').trim()).filter(Boolean);
     if (parts.length > 1) {
       const out: AbilitySpec[] = [];
       let ok = true;
@@ -190,6 +192,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(m[1]);
     const n = m[2] ? wordToNumber(m[2]) : 1;
     if (a.ok && typeof a.affects === 'object' && typeof n === 'number') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: a.affects, counters: { counter: m[3], amount: n } }];
+  }
+  if ((m = L.match(/^(?:Each )?(.+?) enters? with (?:a number of additional|an additional X|X additional) ([+-]\d\/[+-]\d|\w+) counters on (?:it|them)(?: equal to (.+)|, where X is (.+))$/i)) && !/^~/.test(m[1])) {
+    const a = affectsOf(m[1]);
+    const amt = parseAmount(m[3] ?? m[4], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (a.ok && typeof a.affects === 'object' && amt !== null) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: a.affects, counters: { counter: m[2], amount: amt } }];
   }
   // "Enchanted land is a 3/3 red Spirit creature with haste. It is still a land."
   if ((m = L.match(/^(.+?) is (?:a|an) (\d+)\/(\d+) (.+?) creature(?: with (.+?))?(?:\. (?:It|They) (?:is|are) still (?:a |an )?\w+s?| that (?:is|are) still (?:a |an )?\w+s?)?$/i))) {

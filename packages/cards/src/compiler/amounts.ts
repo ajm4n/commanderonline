@@ -36,6 +36,10 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
   if (/^(?:the number of )?times? (?:it|~|this spell) was kicked$/i.test(text.trim())) return { kind: 'kickCount' };
   if (/^(?:the number of )?(?:creatures?|permanents?|cards?) put into your graveyard from the battlefield this turn$/i.test(text.trim())) return { kind: 'eventsThisTurn', event: 'dies', player: 'you' };
+  {
+    const pw = text.trim().match(/^(?:the|its|that creature's|the sacrificed creature's|the destroyed creature's) ?(power|toughness|mana value)(?: of (the creature that died|that creature|it|the sacrificed creature|the destroyed creature|the exiled card|that card))?$/i);
+    if (pw && (pw[2] || /^(its|that|the sacrificed|the destroyed)/i.test(text.trim()))) return { kind: pw[1].toLowerCase() === 'power' ? 'power' : pw[1].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
+  }
   if (/^(?:the number of )?colors (?:that spell|it|that card|that permanent) is$/i.test(text.trim())) return { kind: 'colorCount', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'self' }) };
   if (/^(?:that|the) (?:card|creature|permanent|spell|revealed card|exiled card|discarded card|sacrificed creature|sacrificed permanent)'s mana value$/i.test(text.trim())) return { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
   if (/^(?:the number of )?basic land types? among lands you control$/i.test(text.trim()) || /^your domain count$/i.test(text.trim())) return { kind: 'domain' };
