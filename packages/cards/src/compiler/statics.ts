@@ -1,7 +1,7 @@
 /** Static abilities and replacement effects. */
 import type { AbilitySpec, Amount, ObjectFilter, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
-import { parseKeywordList, isNoOpSentence, parseEffects, newCtx } from './effects.js';
+import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions } from './effects.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
 import { parseAmount } from './amounts.js';
@@ -72,6 +72,33 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   if ((m = L.match(/^(.+?) assigns? combat damage equal to (?:its|their) toughness rather than (?:its|their) power$/i))) return objRule(m[1], { kind: 'custom', tag: 'damageByToughness' });
+  if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) unless (.+)$/i))) {
+    const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond && cond.kind !== 'manual') {
+      const rules: RuleModification[] = m[2].toLowerCase() === 'attack or block' ? [{ kind: 'cantAttack' }, { kind: 'cantBlock' }] : m[2].toLowerCase() === 'attack' ? [{ kind: 'cantAttack' }] : [{ kind: 'cantBlock' }];
+      const out: AbilitySpec[] = [];
+      for (const rule of rules) {
+        const r = objRule(m[1], rule);
+        if (!r) return null;
+        out.push(...r.map((a) => (a.kind === 'static' ? { ...a, condition: { kind: 'not' as const, c: cond } } : a)));
+      }
+      return out;
+    }
+  }
+  // "You may play lands and cast creature spells from the top of your library."
+  if ((m = L.match(/^You may (play lands and cast (.+?) spells|play lands|cast (.+?) spells|play cards|cast spells|play lands and cast spells) from the top of your library$/i))) {
+    const what = m[1].toLowerCase();
+    const spellNoun = m[2] ?? m[3];
+    const filter = spellNoun ? parseNoun(`a ${spellNoun} spell`)?.filter : undefined;
+    if (spellNoun && !filter) return null;
+    const data = { lands: /play lands|play cards/.test(what), spells: /cast|play cards/.test(what), filter: filter ? { ...filter, zone: undefined } : undefined };
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data } }];
+  }
+  if ((m = L.match(/^As ~ enters, choose (a color|a creature type|an opponent|a player|a card name|a number) and (a color|a creature type|an opponent|a player|a card name|a number)$/i))) {
+    const a = parseStatic(`As ~ enters, choose ${m[1]}`, isCreatureOrPermanent);
+    const b = parseStatic(`As ~ enters, choose ${m[2]}`, isCreatureOrPermanent);
+    if (a && b) return [...a, ...b];
+  }
   if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) return objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' });
   // Static damage prevention: "Prevent all damage that would be dealt to ~ by artifact creatures." / "Prevent all combat damage that would be dealt by enchanted creature."
   if ((m = L.match(/^Prevent all (combat |noncombat )?damage that would be dealt(?: to (.+?))?(?: by (.+?))?$/i)) && (m[2] || m[3])) {
@@ -120,10 +147,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
-  if ((m = L.match(/^(You may have )?~ enters? as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?$/i))) {
+  if ((m = L.match(/^(You may have )?~ enters? as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {
     const noun = parseNoun(`a ${m[2]}`);
     if (!noun) return null;
-    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, enterAsCopy: noun.filter, enterAsCopyOptional: !!m[1] }];
+    const ex = m[3] ? parseCopyExceptions(m[3].replace(/^(?:it|he|she) enters with /i, 'it has ').replace(/\bhis name\b/i, 'its name')) : undefined;
+    if (m[3] && !ex) return null;
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, enterAsCopy: noun.filter, enterAsCopyOptional: !!m[1], copyExceptions: ex ?? undefined }];
   }
   // Rest in Peace / "If a creature an opponent controls would die, exile it instead."
   if ((m = L.match(/^If (?:a|an) (.+?) would (die|be put into (a|an opponent's|your) graveyard(?: from anywhere| from the battlefield)?), exile it instead$/i))) {
@@ -371,7 +400,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If ~ was kicked, it enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: m[1] ? (wordToNumber(m[1]) as number) : 1 }, condition: { kind: 'wasKicked' } }];
   if ((m = L.match(/^(.+?) cannot be blocked by more than one creature$/i))) return objRule(m[1], { kind: 'maxBlockers', count: 1 });
   if ((m = L.match(/^(?:During your turn, )?you may (?:play|cast) cards( you do not own)? with (\w+) counters on them from exile(?:, and mana of any type can be spent to cast (?:those spells|them))?$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playExiledWithCounter', data: { counter: m[2], notOwned: !!m[1], yourTurn: /^During your turn/i.test(L), anyMana: /mana of any type/i.test(L) } } }];
-  if ((m = L.match(/^(.+?) cannot be blocked except by two or more creatures$/i))) return objRule(m[1], { kind: 'custom', tag: 'minBlockers', data: 2 });
+  if ((m = L.match(/^(.+?) cannot be blocked except by (\w+) or more creatures$/i)) && wordToNumber(m[2]) !== null) return objRule(m[1], { kind: 'custom', tag: 'minBlockers', data: wordToNumber(m[2]) });
   if ((m = L.match(/^(.+?) can block only creatures with flying$/i))) return objRule(m[1], { kind: 'custom', tag: 'blockOnlyFlying' });
   if ((m = L.match(/^(.+?) attacks? each combat if able$/i))) return objRule(m[1], { kind: 'mustAttack' });
   if ((m = L.match(/^(.+?) does not untap during (?:your|its controller's) untap step$/i))) return objRule(m[1], { kind: 'cantUntap' });

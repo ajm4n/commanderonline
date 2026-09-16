@@ -1367,7 +1367,7 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
 }
 
 /** "except it has haste and it is a Nightmare in addition to its other types" → token copy exceptions. */
-function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
+export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
   const ex: NonNullable<TokenSpec['exceptions']> = {};
   for (const part of text.split(/,? and (?=it|they|its)|, /i)) {
     const p = part.trim();
@@ -1484,6 +1484,29 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const a = parseSentence(`${m[1]} deals ${m[2]} damage to ${m[3]}`, ctx);
     const b = a ? parseSentence(`${m[1]} deals ${m[2]} damage to ${m[4]}`, ctx) : null;
     if (a && b) return [...a, ...b];
+  }
+  if ((m = text.match(/^exert (~|it|that creature)$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilNextUntap' }] : null;
+  }
+  // "~ deals damage equal to the discarded card's mana value to that permanent or player" → "~ deals X damage to ..., where X is ..."
+  if ((m = text.match(/^(.+?) deals damage equal to (.+?) to (.+)$/i)) && !/\bwhere X is\b/i.test(text)) {
+    const r = parseSentence(`${m[1]} deals X damage to ${m[3]}, where X is ${m[2]}`, ctx);
+    if (r) return r;
+  }
+  if ((m = text.match(/^(.+?) deals damage to (.+?) equal to (.+)$/i)) && !/\bwhere X is\b/i.test(text)) {
+    const r = parseSentence(`${m[1]} deals X damage to ${m[2]}, where X is ${m[3]}`, ctx);
+    if (r) return r;
+  }
+  // "For each creature card exiled this way, create a token that is a copy of it"
+  if ((m = text.match(/^for each (.+?) (exiled|destroyed|sacrificed|returned|discarded|milled|revealed) this way, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1].replace(/ cards?$/i, ' card')}`);
+    if (noun) {
+      const sub = newCtx({ ...ctx, targets: ctx.targets });
+      sub.lastObj = { ref: 'iter' };
+      const inner = parseSentence(m[3].replace(/\b(?:that|this) (?:creature|permanent|card|land|token)\b/gi, 'it'), sub);
+      if (inner) return [{ kind: 'forEach', over: { ref: 'lastMoved' }, effects: inner, filter: { ...noun.filter, zone: undefined } } as Effect];
+    }
   }
   if (/^~ assigns no combat damage this turn$/i.test(text)) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: 'combat' }, on: SELF, duration: 'endOfTurn' }];
   if (/^until end of turn, you (?:do not|don't) lose this mana as steps and phases end$/i.test(text) || /^you (?:do not|don't) lose this mana as steps and phases end(?: this turn)?$/i.test(text)) return [{ kind: 'turnFlag', flag: 'keepMana' }];

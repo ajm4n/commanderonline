@@ -42,6 +42,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     const cm = l.match(/^((?:~|This spell) costs? )(\{\d+\} (?:less|more) to cast (?:if|as long as) .+?) and (\{\d+\} (?:less|more) to cast (?:if|as long as) .+?)\.?$/i);
     if (cm) return [`${cm[1]}${cm[2]}.`, `${cm[1]}${cm[3]}.`];
     const also = l.match(/^(~ costs? .+?)\. It also (costs? .+?)\.?$/i);
+    if (/^You may exert ~ as it attacks\./i.test(l)) return [l.replace(/^You may exert ~ as it attacks\./i, 'Whenever ~ attacks, you may exert ~.')];
     if (also) return [`${also[1]}.`, `~ ${also[2]}.`];
     // "If you have 3 or less life, ~ costs {6} less to cast." → "~ costs {6} less to cast if you have 3 or less life."
     const im = l.match(/^If (.+?), ((?:~|this spell) costs? \{[^}]+\} (?:less|more) to cast)\.?$/i);

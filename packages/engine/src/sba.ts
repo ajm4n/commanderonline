@@ -16,6 +16,16 @@ export function* checkStateBasedActions(g: Game): Gen {
     if (g.state.over) return;
     let changed = false;
     g.pruneConditionalDurations();
+    // Ascend: ten or more permanents while controlling an Ascend source grants the city's blessing for the rest of the game.
+    for (const pid of g.activePlayers()) {
+      const pl = g.player(pid);
+      if (pl.flags['cityBlessing']) continue;
+      const mine = g.state.battlefield.filter((id) => g.obj(id).controller === pid);
+      if (mine.length >= 10 && mine.some((id) => g.characteristics(id).keywords.has('Ascend'))) {
+        pl.flags['cityBlessing'] = true;
+        g.log(`${pl.name} gets the city's blessing.`);
+      }
+    }
 
     // "When you control no Islands, sacrifice ~." (a state trigger, handled like an SBA)
     for (const id of [...g.state.battlefield]) {

@@ -484,8 +484,27 @@ export function canCastSorcerySpeed(g: Game, p: PlayerId): boolean {
   return g.state.turn.activePlayer === p && g.isMainPhase() && g.state.stack.length === 0;
 }
 
+/** "You may play lands and cast creature spells from the top of your library." */
+export function playableFromTop(g: Game, p: PlayerId, obj: GameObject): boolean {
+  if (obj.owner !== p || g.player(p).library[0] !== obj.id) return false;
+  const land = /\bLand\b/.test(faceOf(obj, 0).typeLine);
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom' || r.tag !== 'playFromTop') continue;
+    const d = (r.data as { lands?: boolean; spells?: boolean; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+    if (land) {
+      if (d.lands) return true;
+      continue;
+    }
+    if (!d.spells) continue;
+    if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+    return true;
+  }
+  return false;
+}
+
 /** Zones a player may cast the object from right now. */
 function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
+  if (obj.zone === 'library') return playableFromTop(g, p, obj);
   if (obj.owner !== p && obj.zone !== 'exile' && obj.zone !== 'graveyard') return false;
   if (obj.zone === 'hand' || obj.zone === 'command') return true;
   if (obj.zone === 'graveyard') return (obj.owner === p && /^Flashback/m.test(obj.card.oracleText)) || obj.memory['castableBy'] === p;
@@ -649,12 +668,13 @@ export function buildPriorityDecision(g: Game, p: PlayerId): PriorityDecision {
   const playable: ObjectId[] = [];
   const landOk = canPlayLandNow(g, p);
   const zonesToScan: ObjectId[] = [...pl.hand, ...pl.command, ...pl.graveyard, ...pl.exile];
+  if (pl.library[0] !== undefined && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playFromTop')) zonesToScan.push(pl.library[0]);
   const landsFromGraveyard = g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playLandsFromGraveyard');
   for (const o of g.opponentsOf(p)) zonesToScan.push(...g.player(o).graveyard.filter((id) => g.obj(id).memory['castableBy'] === p), ...g.player(o).exile.filter((id) => Object.values(g.obj(id).counters).some((n) => n > 0)));
   for (const id of zonesToScan) {
     const obj = g.obj(id);
     if (isLandCard(obj) || obj.card.faces?.some((f) => /\bLand\b/.test(f.typeLine))) {
-      if (landOk && (obj.zone === 'hand' || obj.zone === 'command' || (obj.zone === 'exile' && castableFrom(g, p, obj)) || (obj.zone === 'graveyard' && landsFromGraveyard && obj.owner === p))) {
+      if (landOk && (obj.zone === 'hand' || obj.zone === 'command' || ((obj.zone === 'exile' || obj.zone === 'library') && castableFrom(g, p, obj)) || (obj.zone === 'graveyard' && landsFromGraveyard && obj.owner === p))) {
         if (isLandCard(obj) || obj.card.layout === 'modal_dfc') playable.push(id);
       }
       if (isLandCard(obj) && obj.card.layout !== 'modal_dfc') continue;
@@ -738,7 +758,7 @@ export function* playLand(g: Game, p: PlayerId, id: ObjectId): Gen<boolean> {
     faceIndex = back;
   }
   const fromGraveyard = obj.zone === 'graveyard' && obj.owner === p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playLandsFromGraveyard');
-  if (!(obj.zone === 'hand' || (obj.zone === 'exile' && castableFrom(g, p, obj)) || obj.zone === 'command' || fromGraveyard)) return false;
+  if (!(obj.zone === 'hand' || ((obj.zone === 'exile' || obj.zone === 'library') && castableFrom(g, p, obj)) || obj.zone === 'command' || fromGraveyard)) return false;
   obj.faceIndex = faceIndex;
   const r = yield* enterBattlefield(g, id, p, {});
   if (!r) return false;

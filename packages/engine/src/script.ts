@@ -152,6 +152,8 @@ export type Condition =
   | { kind: 'turnStep'; steps: string[]; player?: 'you' | 'opponent' | 'any'; beforeAttackers?: boolean }
   | { kind: 'and'; cs: Condition[] }
   | { kind: 'or'; cs: Condition[] }
+  /** Ascend: the controller has the city's blessing (ten or more permanents at some point while controlling an Ascend source). */
+  | { kind: 'cityBlessing'; ref?: Ref }
   | { kind: 'manual'; text: string }; // engine asks the controller yes/no
 
 // ---------------------------------------------------------------------------
@@ -242,7 +244,7 @@ export type Effect =
   | { kind: 'setMemory'; key: string; value: unknown }
   | { kind: 'incrementMemory'; key: string; by?: number }
   | { kind: 'conditional'; if: Condition; then: Effect[]; else?: Effect[] }
-  | { kind: 'forEach'; over: Ref; effects: Effect[] }
+  | { kind: 'forEach'; over: Ref; effects: Effect[]; /** Only iterate objects matching this filter ("for each creature card exiled this way"). */ filter?: ObjectFilter }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref }
   | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
@@ -331,6 +333,8 @@ export interface TriggerFilter {
   toPlayer?: boolean;
   /** For zone-change events: the object must not have come from this zone. */
   notFromZone?: ZoneName;
+  /** For zone-change events: the object must not be going to this zone ("leaves the battlefield without dying"). */
+  notToZone?: ZoneName;
   /** The event object must be what the source is attached to ("When enchanted creature dies"). */
   attachedToSource?: boolean;
   /** The event's source (damage dealer) must be what the source is attached to ("Whenever equipped creature deals damage"). */
@@ -442,7 +446,7 @@ export interface SpellAbilitySpec {
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName' | 'player' | 'number' | 'option'; chooseOptions?: string[]; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; /** "..., except it is an enchantment in addition to its other types" */ copyExceptions?: TokenSpec['exceptions']; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName' | 'player' | 'number' | 'option'; chooseOptions?: string[]; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
   /** "If a creature an opponent controls would die, exile it instead." / Rest in Peace */

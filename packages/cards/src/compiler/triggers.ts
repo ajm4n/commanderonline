@@ -88,6 +88,11 @@ export function parseTriggerHead(line: string): TriggerHead | null {
         return { ...a, also: [...(a.also ?? []), bHead, ...(b.also ?? [])] };
       }
     }
+    const lv = line.match(/^Whenever (?:one or more |a |an |another )?(.+?) (?:leaves?|leave) the battlefield without dying, (.+)$/i);
+    if (lv) {
+      const noun = parseNoun(`a ${lv[1]}`);
+      if (noun) return { event: 'leavesBattlefield', filter: { object: { ...noun.filter, zone: undefined }, notToZone: 'graveyard' }, hasObject: true, hasPlayer: false, rest: lv[2] };
+    }
     const em = line.match(/^Whenever you expend (\d+), (.+)$/i);
     if (em) return { event: 'expend', filter: { player: 'you', custom: `expend:${em[1]}` }, hasObject: false, hasPlayer: true, rest: em[2] };
     const am = line.match(/^Whenever (a player|an opponent|you) activates? an ability(?: of (?:a|an) (.+?))?( that is not a mana ability| that isn't a mana ability)?, (.+)$/i);

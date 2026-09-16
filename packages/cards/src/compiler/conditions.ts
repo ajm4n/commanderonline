@@ -90,6 +90,13 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^(?:it|that creature|that permanent) is (?:still )?on the battlefield$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'battlefield' };
   if ((m = t.match(/^(?:it|~) (?:is|remains) exiled$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'exile' };
   if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
+  if (t === "you have the city's blessing") return { kind: 'cityBlessing' };
+  if (t === 'you cast it from your hand' || t === 'you cast ~ from your hand' || t === 'it was cast from your hand') return { kind: 'castFrom', zone: 'hand' };
+  if ((m = t.match(/^defending player controls (\w+) or more (.+)$/))) {
+    const noun = parseNoun(oc(m, 2));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, controllerRef: { ref: 'defendingPlayer' }, zone: 'battlefield' }, op: '>=', value: n };
+  }
   if (t === 'you cast ~ during your main phase' || t === '~ was cast during your main phase') return { kind: 'not', c: { kind: 'memoryFlag', key: 'castAtInstantSpeed' } };
   if (t === '~ was cast during an opponent\'s turn' || t === 'you cast ~ during an opponent\'s turn') return { kind: 'notYourTurn' };
   if ((m = t.match(/^there are (\w+) or more (.+?) on the battlefield$/))) {

@@ -34,6 +34,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     }
   }
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
+  if (/^(?:the number of )?times? (?:it|~|this spell) was kicked$/i.test(text.trim())) return { kind: 'kickCount' };
   if (/^(?:the number of )?(?:\w+ )?(?:permanents?|creatures?|artifacts?|enchantments?|lands?|cards?|planeswalkers?) destroyed this way$/i.test(text.trim())) return { kind: 'ctxMemory', key: 'destroyedThisWay' };
   {
     const pm = text.trim().match(/^(.+?) (plus|minus) (\d+|one|two|three|four|five)$/i);
@@ -124,7 +125,11 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const noun = parseNoun(oc(m, 1));
     if (noun) return { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter } };
   }
-  if ((m = t.match(/^(\d+|x) plus the number of (.+)$/))) {
+  if ((m = t.match(/^the number of (.+?) in all graveyards$/))) {
+    const noun = parseNoun(oc(m, 1).replace(/ cards$/i, ' card'));
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'graveyard' } };
+  }
+  if ((m = t.match(/^(\d+|x|one|two|three|four|five) plus the number of (.+)$/))) {
     const noun = parseNoun(oc(m, 2));
     const base = wordToNumber(m[1]);
     if (noun && base !== null) return { kind: 'sum', parts: [base, { kind: 'count', filter: noun.filter }] };

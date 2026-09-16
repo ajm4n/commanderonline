@@ -30,6 +30,18 @@ function durationOf(d: Duration | undefined): ContinuousEffect['duration'] {
   return d ?? 'endOfTurn';
 }
 
+/** Apply clone exceptions ("except it is an enchantment in addition to its other types") to a copied card. */
+export function applyCopyExceptions(base: CardData, ex: TokenSpec['exceptions'] | undefined): CardData {
+  if (!ex) return base;
+  let typeLine = base.typeLine;
+  if (ex.notLegendary) typeLine = typeLine.replace(/^Legendary /, '');
+  if (ex.legendary && !/^Legendary /.test(typeLine)) typeLine = `Legendary ${typeLine}`;
+  if (ex.addTypes?.length) typeLine = `${ex.addTypes.filter((t) => !typeLine.includes(t)).join(' ')} ${typeLine}`.trim();
+  if (ex.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
+  const extraText = [...(ex.keywords ?? []), ...(ex.haste ? ['Haste'] : [])];
+  return { ...base, oracleId: `${base.oracleId}:x`, name: ex.name ?? base.name, typeLine, oracleText: extraText.length ? `${base.oracleText}\n${extraText.join('\n')}` : base.oracleText, power: ex.power ?? base.power, toughness: ex.toughness ?? base.toughness, colors: ex.colors ?? base.colors };
+}
+
 export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardData {
   const preset = spec.preset ? TOKEN_PRESETS[spec.preset] : undefined;
   const merged: TokenSpec = { ...(preset ?? {}), ...spec, name: spec.name || preset?.name || 'Token', typeLine: spec.typeLine || preset?.typeLine || 'Creature', colors: spec.colors ?? preset?.colors ?? [] };
@@ -930,7 +942,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'forEach': {
-      const items = g.resolveRef(e.over, ctx);
+      let items = g.resolveRef(e.over, ctx);
+      if (e.filter) items = items.filter((it) => it.kind === 'object' && g.state.objects[it.id] && matchesFilter(g, g.state.objects[it.id], { ...e.filter, zone: undefined }, { sourceId: ctx.sourceId, controller: ctx.controller }));
       for (const it of items) yield* executeEffects(g, e.effects, { ...ctx, iter: it });
       return;
     }
@@ -1315,7 +1328,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
         const pick = r.type === 'objects' ? r.ids[0] : undefined;
         if (pick !== undefined) {
           const src = g.obj(pick);
-          o.copyOf = src.copyOf ?? src.card;
+          o.copyOf = applyCopyExceptions(src.copyOf ?? src.card, ab.copyExceptions);
           o.faceIndex = 0;
           g.log(`${o.card.name} enters as a copy of ${g.nameOf(pick)}.`);
         }

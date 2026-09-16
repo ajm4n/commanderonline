@@ -977,6 +977,7 @@ export class Game {
     if (f.notYourTurn && this.state.turn.activePlayer === controller) return false;
     if (f.fromZone && e.fromZone !== f.fromZone) return false;
     if (f.notFromZone && e.fromZone === f.notFromZone) return false;
+    if (f.notToZone && e.toZone === f.notToZone) return false;
     if (f.attachedToSource) {
       const src = this.state.objects[obj.id] ?? obj;
       const attachedTo = src.attachedTo ?? (src.lastKnownInfo as GameObject | undefined)?.attachedTo ?? null;
@@ -1206,6 +1207,11 @@ export class Game {
         if (c.player === 'opponent' && t.activePlayer === ctx.controller) return false;
         if (c.beforeAttackers && t.attackers.length > 0) return false;
         return true;
+      }
+      case 'cityBlessing': {
+        const pid = c.ref ? this.resolvePlayers(c.ref, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0] : ctx.controller;
+        const pl = pid !== undefined ? this.state.players[pid] : undefined;
+        return !!pl?.flags['cityBlessing'];
       }
       case 'and':
         return c.cs.every((x) => this.checkCondition(x, ctx));
