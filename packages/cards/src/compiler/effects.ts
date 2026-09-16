@@ -74,7 +74,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
     return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : null);
   }
-  if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker)$/.test(l)) return { ref: 'attachedTo' };
+  if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker|enchantment)$/.test(l) || /^(?:enchanted|equipped) [A-Z]\w+$/.test(t)) return { ref: 'attachedTo' };
   if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
   if (/^(that|those) tokens?$/.test(l) || l === 'the tokens' || l === 'the token') return { ref: 'lastCreated' };
   if (/^(that|the) spell$/.test(l)) return ctx.lastObj ?? { ref: 'stackTarget' };
@@ -522,7 +522,7 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilNextUntap' }] : null;
   }],
-  [/^(.+?) does not untap during your next untap step$/i, (m, ctx) => {
+  [/^(.+?) (?:does not|do not|doesn't|don't) untap during (?:your|its controller's|their controllers'|their controller's) next untap steps?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilNextUntap' }] : null;
   }],
@@ -1530,6 +1530,27 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ];
   }
   // "~ becomes a Construct artifact creature with "..." until end of turn"
+  if ((m = text.match(/^(.+?) becomes? (?:a|an) (\d+)\/(\d+) (.+?) creature(?: with (.+?))?(?: until end of turn)?(?: that(?:'s| is) still (?:a |an )?\w+)?$/i)) && !/"/.test(text)) {
+    const ref = objRef(m[1], ctx);
+    if (ref) {
+      const words = m[4].split(/\s+/);
+      const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+      const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+      const rest = words.filter((w) => !/^(white|blue|black|red|green|and|colorless|artifact|enchantment)$/i.test(w) && !/^[A-Z]/.test(w));
+      if (!rest.length) {
+        const dur: Duration = / until end of turn/i.test(text) ? 'endOfTurn' : 'permanent';
+        const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+        const out: Effect[] = [{ kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, on: ref, duration: dur }, { kind: 'setPT', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: dur }];
+        if (colors.length || /colorless/i.test(m[4])) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+        if (m[5]) {
+          const kws = parseKeywordList(m[5]);
+          if (!kws) return null;
+          out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
+        }
+        return out;
+      }
+    }
+  }
   if ((m = text.match(/^(.+?) becomes? (?:a|an) (.+?) (artifact creature|creature|artifact|enchantment creature) with "(.+)"(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
     if (ref) {

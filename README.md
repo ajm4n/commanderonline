@@ -55,8 +55,9 @@ transform. Life, poison and commander damage are editable, and there are token, 
 and shuffle tools. Manual actions are recorded in the same history as everything else, so games
 stay replayable.
 
-Current coverage across the 33,574-card pool (run `pnpm cards:coverage` for the live number):
-41% of cards fully automated, another 36% partially, 23% manual.
+Current coverage across the 32,169-card Commander-playable pool (Un-set cards are excluded; run
+`pnpm cards:coverage` for the live number): 67% of cards fully automated, another 22% partially,
+11% manual.
 
 ## Play it
 
@@ -102,8 +103,8 @@ in the deck picker, and a Cast options dialog that actually casts (alternative c
 spells, X spells, adventures and modal double-faced cards are covered by a browser test).
 
 The oracle-text compiler is free and offline (regex templates, no paid API). Coverage over the full
-Commander-legal pool is tracked by `pnpm cards:coverage`; at the time of writing it automates 48% of
-cards completely and another 32% partially. Cards it cannot fully script still play: unscripted
+Commander-playable pool is tracked by `pnpm cards:coverage`; at the time of writing it automates 67% of
+cards completely and another 22% partially. Cards it cannot fully script still play: unscripted
 sentences become a prompt at the right moment and the player resolves them by hand (Untap-style).
 
 Still open, roughly in order of value:

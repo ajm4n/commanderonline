@@ -102,6 +102,9 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;
   if (filter.anyOf && !filter.anyOf.some((f) => matchesFilter(g, obj, f, ctx))) return false;
+  if (filter.notZone && zone === filter.notZone) return false;
+  if (filter.zoneIn && !filter.zoneIn.includes(zone)) return false;
+  if (filter.toughnessGreaterThanPower && !((ch.toughness ?? 0) > (ch.power ?? 0))) return false;
   if (filter.sharesCreatureTypeWithSource) {
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     const sch = src ? g.characteristics(src.id) : undefined;

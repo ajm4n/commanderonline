@@ -298,6 +298,8 @@ export type RuleModification =
   | { kind: 'cantBeTargeted'; by?: 'spells' | 'abilities' | 'opponents' }
   | { kind: 'extraLandDrop'; count: number }
   | { kind: 'noMaxHandSize' }
+  /** "Your maximum hand size is eleven" / "... is reduced by two" */
+  | { kind: 'maxHandSize'; value?: number; delta?: number }
   | { kind: 'costReduction'; amount: number; filter?: SpellFilter }
   | { kind: 'costIncrease'; amount: number; filter?: SpellFilter }
   | { kind: 'entersTapped' }
@@ -365,6 +367,11 @@ export interface ObjectFilter {
   sharesCreatureTypeWithSource?: boolean;
   /** Matches if any of these sub-filters match ("artifact or Human spell"). */
   anyOf?: ObjectFilter[];
+  /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
+  notZone?: ZoneName;
+  zoneIn?: ZoneName[];
+  /** Toughness greater than power ("creatures with toughness greater than their power"). */
+  toughnessGreaterThanPower?: boolean;
   /** Only objects attached to / attached by. */
   attachedToSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */

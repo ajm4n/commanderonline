@@ -21,17 +21,34 @@ function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: b
 
 export function parseStatic(line: string, isCreatureOrPermanent: boolean): AbilitySpec[] | null {
   let m: RegExpMatchArray | null;
-  const L = line.replace(/\.$/, '');
+  const L = line
+    .replace(/\.$/, '')
+    .replace(/\. This effect (?:does not|doesn't) remove .+$/i, '')
+    .replace(/\bloses? all other abilities\b/i, (w) => w.replace(/ other/, ''))
+    .replace(/ and cannot have or gain \w+$/i, '');
   const objRule = (who: string, rule: RuleModification): AbilitySpec[] | null => {
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
+    const a = affectsOf(m[1]);
+    const kws = parseKeywordList(m[2]);
+    if (a.ok && kws) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } }, { kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: [m[3]] } }];
+  }  // "Enchanted creature gets +2/+2 as long as it is a Human. Otherwise, it cannot attack or block."
+  if ((m = L.match(/^(.+?) as long as (.+?)\. Otherwise, (.+)$/i))) {
+    const subject = m[1].match(/^(~|Enchanted \w+|Equipped \w+|Creatures you control|Each creature you control)\b/i)?.[1];
+    const a = parseStatic(`${m[1]} as long as ${m[2]}`, isCreatureOrPermanent);
+    const otherwise = subject ? m[3].replace(/^(?:it|they) /i, `${subject} `) : m[3];
+    const cond = parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const b = cond && cond.kind !== 'manual' ? parseStatic(otherwise, isCreatureOrPermanent) : null;
+    if (a && b && cond) return [...a, ...b.map((x) => (x.kind === 'static' ? { ...x, condition: { kind: 'not' as const, c: cond } } : x))];
+  }
   // Conditional statics: "As long as X, Y" / "During your turn, Y" / "Y as long as X"
   let condText: string | null = null;
   let innerText: string | null = null;
   if ((m = L.match(/^(?:As long as|While) (.+?), (.+)$/i))) [condText, innerText] = [m[1], m[2]];
   else if ((m = L.match(/^(.+?) (?:as long as|while) (.+)$/i))) [condText, innerText] = [m[2], m[1]];
-  else if ((m = L.match(/^(~ (?:does not untap|cannot|gets|has) .+?) if (.+)$/i))) [condText, innerText] = [m[2], m[1]];
+  else if ((m = L.match(/^((?:~|Enchanted \w+|Equipped \w+) (?:does not untap|cannot|gets|has) .+?) if (.+)$/i))) [condText, innerText] = [m[2], m[1]];
   if (condText && innerText) {
     // "As long as ~ is attacking, it gets +2/+0": "it" is this permanent.
     if (/^it (gets|has|is|can|cannot|assigns|must|does|loses|gains|deals)\b/i.test(innerText) && /^(?:~|it)\b/i.test(condText)) innerText = innerText.replace(/^it /i, '~ ');
@@ -56,7 +73,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // Generic conjunctions sharing a subject: "Enchanted creature gets +2/+2, has flying, and is goaded."
   if ((m = L.match(/^(~|Enchanted \w+|Equipped \w+|Creatures you control|Other creatures you control|Each creature you control|Creatures your opponents control|Each other creature you control|All creatures|Each creature) (.+)$/i)) && /(?:, | and )/.test(m[2])) {
     const subject = m[1];
-    const parts = m[2].split(/, and |, | and (?=(?:has|have|is|are|gets?|cannot|can|loses?|gains?)\b)/i).map((p) => p.trim()).filter(Boolean);
+    const parts = m[2].split(/, and |, | and (?=(?:has|have|is|are|gets?|cannot|can|loses?|gains?|does not|doesn't|attacks?|assigns?|must|enters?)\b)/i).map((p) => p.trim()).filter(Boolean);
     if (parts.length > 1) {
       const out: AbilitySpec[] = [];
       let ok = true;
@@ -115,6 +132,85 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       }
       return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter, oncePerTurn: !!m[1] || undefined } } }];
     }
+  }
+  if ((m = L.match(/^(Each player|Players|Your opponents|Each opponent|You) cannot cast more than (\w+) spells? each turn$/i))) {
+    const n = wordToNumber(m[2]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: n } }];
+  }  // "Your opponents cannot cast spells with the chosen name / with mana value 3 or less / during your turn / from anywhere other than their hands."
+  if ((m = L.match(/^(Your opponents|Each opponent|Players|Each player|You) cannot cast (.+?)(?: (during your turn|from anywhere other than (?:their|your) hands?|with the chosen name))?$/i))) {
+    const who = /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
+    const data: Record<string, unknown> = {};
+    if (m[3]) {
+      if (/during your turn/i.test(m[3])) data.sourceTurnOnly = true;
+      else if (/anywhere other than/i.test(m[3])) data.notFromHand = true;
+      else data.chosenNameKey = 'cardName';
+    }
+    if (!/^spells$/i.test(m[2])) {
+      const noun = /^spells? /i.test(m[2]) ? parseNoun(`a spell ${m[2].replace(/^spells? /i, '')}`) : parseNoun(`a ${m[2].replace(/ spells?$/i, '')} spell`);
+      if (!noun) return null;
+      data.filter = { ...noun.filter, zone: undefined };
+    }
+    return [{ kind: 'static', text: line, ruleAffects: who, rule: { kind: 'custom', tag: 'cantCastSpells', data } }];
+  }
+
+  if ((m = L.match(/^All (combat )?damage that would be dealt to (you|you and other permanents you control|you and creatures you control|enchanted creature's controller|you and permanents you control) is dealt to (~|enchanted creature) instead$/i))) {
+    const permanents = /permanents|creatures/i.test(m[2]);
+    return [{ kind: 'static', text: line, affects: /^~$/i.test(m[3]) ? 'self' : 'attachedTo', rule: { kind: 'custom', tag: 'redirectDamage', data: { player: true, permanents, combatOnly: !!m[1] || undefined } } }];
+  }
+  if ((m = L.match(/^(Your|Each player's|Each opponent's) maximum hand size is (?:(\w+)|(reduced|increased) by (\w+))$/i))) {
+    const who = /^your$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
+    if (m[2]) {
+      const v = wordToNumber(m[2]);
+      if (typeof v !== 'number') return null;
+      return [{ kind: 'static', text: line, ruleAffects: who, rule: { kind: 'maxHandSize', value: v } }];
+    }
+    const d = wordToNumber(m[4]);
+    if (typeof d !== 'number') return null;
+    return [{ kind: 'static', text: line, ruleAffects: who, rule: { kind: 'maxHandSize', delta: m[3].toLowerCase() === 'reduced' ? -d : d } }];
+  }
+  if ((m = L.match(/^Spells (your opponents cast |you cast |)that target ~ cost \{(\d+)\} (less|more) to cast$/i))) {
+    const who = /opponents/i.test(m[1]) ? 'opponents' : /you cast/i.test(m[1]) ? 'controller' : 'allPlayers';
+    return [{ kind: 'static', text: line, ruleAffects: who, rule: { kind: m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10), filter: { spellTargets: { nameIs: '~' } } } }];
+  }
+  if ((m = L.match(/^Spells you cast from (anywhere other than your hand|your graveyard or from exile|your graveyard|exile) cost \{(\d+)\} (less|more) to cast$/i))) {
+    const filter: ObjectFilter = /anywhere other/i.test(m[1]) ? { notZone: 'hand' } : /graveyard or/i.test(m[1]) ? { zoneIn: ['graveyard', 'exile'] } : { zoneIn: [/graveyard/i.test(m[1]) ? 'graveyard' : 'exile'] };
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10), filter } }];
+  }
+  if ((m = L.match(/^(You|Players|Each player) (?:do not|don't) lose unspent (?:\w+ )?mana as steps and phases end$/i))) return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : 'allPlayers', rule: { kind: 'custom', tag: 'keepMana' } }];
+  if ((m = L.match(/^(Players|Each player|Your opponents|Each opponent|You) cannot draw cards$/i))) return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'cantDraw' } }];
+  if ((m = L.match(/^(.+?) (?:is|are) every creature type$/i))) {
+    const a = affectsOf(m[1]);
+    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: ['Changeling'] } }] : null;
+  }
+
+  if (/^You do not lose the game for having 0 or less life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'cantLose' } }];
+  // "Each creature you control that is a Wolf or a Werewolf enters with an additional +1/+1 counter on it."
+  if ((m = L.match(/^(?:Each )?(.+?) enters? with (?:an additional )?(?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on (?:it|them)$/i)) && !/^~/.test(m[1])) {
+    const a = affectsOf(m[1]);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (a.ok && typeof a.affects === 'object' && typeof n === 'number') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: a.affects, counters: { counter: m[3], amount: n } }];
+  }
+  // "Enchanted land is a 3/3 red Spirit creature with haste. It is still a land."
+  if ((m = L.match(/^(.+?) is (?:a|an) (\d+)\/(\d+) (.+?) creature(?: with (.+?))?(?:\. (?:It|They) (?:is|are) still (?:a |an )?\w+s?| that (?:is|are) still (?:a |an )?\w+s?)?$/i))) {
+    const a = affectsOf(m[1]);
+    if (!a.ok) return null;
+    const words = m[4].split(/\s+/);
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    const rest = words.filter((w) => !/^(white|blue|black|red|green|and|colorless)$/i.test(w) && !/^[A-Z]/.test(w));
+    if (rest.length) return null;
+    const out: AbilitySpec[] = [
+      { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: ['Creature'], addSubtypes: subtypes.length ? subtypes : undefined } },
+      { kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } },
+    ];
+    if (colors.length || /colorless/i.test(m[4])) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: colors } });
+    if (m[5]) {
+      const kws = parseKeywordList(m[5]);
+      if (!kws) return null;
+      out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } });
+    }
+    return out;
   }
   if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) return objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' });
   // Static damage prevention: "Prevent all damage that would be dealt to ~ by artifact creatures." / "Prevent all combat damage that would be dealt by enchanted creature."
@@ -375,7 +471,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       if (!f.zone) f.zone = 'battlefield';
       return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perCount: f } }];
     }
-    const amt = parseAmount(`the number of ${m[4].replace(/ counter on /, ' counters on ')}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const amt = parseAmount(`the number of ${m[4].replace(/^of /i, '').replace(/ counter on /, ' counters on ')}`, { self: { ref: 'self' }, lastObj: /^(?:enchanted|equipped) /i.test(m[1]) ? { ref: 'attachedTo' } : null, triggerHasObject: false });
     if (amt !== null) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: amt } }];
     return null;
   }

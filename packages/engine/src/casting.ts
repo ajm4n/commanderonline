@@ -877,6 +877,24 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (freeFromExile(g, obj)) opts = { ...opts, free: true };
   if (fromZone === 'exile' && obj.memory['playableBy'] !== p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playExiledWithCounter' && (r.data as { anyMana?: boolean } | undefined)?.anyMana)) opts = { ...opts, anyMana: true };
   if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom') continue;
+    if (r.tag === 'maxSpellsPerTurn' && (g.state.turnStats[`cast:${p}`] ?? 0) >= ((r.data as number | undefined) ?? 1)) return false;
+    if (r.tag === 'cantCastSpells') {
+      const d = (r.data as { filter?: import('./types.js').ObjectFilter; sourceTurnOnly?: boolean; notFromHand?: boolean; chosenNameKey?: string } | undefined) ?? {};
+      const srcId = (r as { sourceId?: ObjectId }).sourceId;
+      const srcController = (r as { sourceController?: PlayerId }).sourceController;
+      if (d.sourceTurnOnly && g.state.turn.activePlayer !== srcController) continue;
+      if (d.notFromHand && fromZone === 'hand') continue;
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: srcId ?? null, controller: srcController ?? p })) continue;
+      if (d.chosenNameKey) {
+        const src = srcId !== undefined ? g.state.objects[srcId] : undefined;
+        const chosen = src?.memory[d.chosenNameKey];
+        if (typeof chosen !== 'string' || chosen !== face.name) continue;
+      }
+      return false;
+    }
+  }
   const keywords = castingKeywordsOf(g, obj);
   const altId = resp.alternativeCost;
   if (altId && !availableAlternativeCosts(g, p, obj).some((a) => a.id === altId)) return false;

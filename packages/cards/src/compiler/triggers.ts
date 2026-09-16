@@ -98,7 +98,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
       const noun = parseNoun(`a ${lv[1]}`);
       if (noun) return { event: 'leavesBattlefield', filter: { object: { ...noun.filter, zone: undefined }, notToZone: 'graveyard' }, hasObject: true, hasPlayer: false, rest: lv[2] };
     }
-    const pg = line.match(/^When(?:ever)? (?:enchanted|equipped) (?:artifact|permanent|creature|land|enchantment) (?:is put into a graveyard|dies|is put into a graveyard from the battlefield), (.+)$/i);
+    const pg = line.match(/^When(?:ever)? (?:enchanted|equipped) (?:artifact|permanent|creature|land|enchantment|[A-Z]\w+) (?:is put into a graveyard|dies|is put into a graveyard from the battlefield), (.+)$/i);
     if (pg) return { event: /dies|from the battlefield/i.test(pg[0]) ? 'dies' : 'putIntoGraveyard', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, leaves: true, rest: pg[1] };
     const es = line.match(/^At the beginning of the (end step|upkeep) of (?:enchanted|equipped) \w+'s controller, (.+)$/i);
     if (es) return { event: es[1].toLowerCase() === 'upkeep' ? 'beginningOfUpkeep' : 'beginningOfEndStep', filter: { custom: 'attachedControllersUpkeep' }, hasObject: false, hasPlayer: true, rest: es[2] };

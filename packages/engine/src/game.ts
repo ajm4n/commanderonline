@@ -598,6 +598,10 @@ export class Game {
           who === 'allPlayers' ||
           (who === 'attachedToController' && src.attachedTo !== null && this.state.objects[src.attachedTo]?.controller === p);
         if (!applies) continue;
+        if (ab.rule.kind === 'custom') {
+          out.push({ ...ab.rule, sourceId: src.id, sourceController: src.controller } as import('./types.js').RuleModification);
+          continue;
+        }
         if (ab.condition && !this.checkCondition(ab.condition, { sourceId: src.id, controller: src.controller })) continue;
         out.push(ab.rule);
       }
@@ -1556,6 +1560,10 @@ export class Game {
   drawCards(pid: PlayerId, n: number): ObjectId[] {
     const p = this.player(pid);
     const drawn: ObjectId[] = [];
+    if (n > 0 && this.playerRules(pid).some((r) => r.kind === 'custom' && r.tag === 'cantDraw')) {
+      this.log(`${p.name} cannot draw cards.`);
+      return drawn;
+    }
     for (let i = 0; i < n; i++) {
       const id = p.library.shift();
       if (id === undefined) {
@@ -1671,6 +1679,20 @@ export class Game {
 
   dealDamage(sourceId: ObjectId | null, target: Target, amount: number, combat: boolean): number {
     if (amount <= 0) return 0;
+    // Redirection: "All damage that would be dealt to you and other permanents you control is dealt to ~ instead."
+    for (const id of this.state.battlefield) {
+      const holder = this.state.objects[id];
+      if (!holder || (target.kind === 'object' && target.id === id)) continue;
+      const rule = this.characteristics(id).rules.find((r) => r.kind === 'custom' && r.tag === 'redirectDamage') as { data?: { player?: boolean; permanents?: boolean; combatOnly?: boolean } } | undefined;
+      if (!rule) continue;
+      const d = rule.data ?? {};
+      if (d.combatOnly && !combat) continue;
+      const hit = (target.kind === 'player' && d.player && target.id === holder.controller) || (target.kind === 'object' && d.permanents && this.state.objects[target.id]?.controller === holder.controller);
+      if (!hit) continue;
+      this.log(`Damage is redirected to ${this.nameOf(id)}.`);
+      target = { kind: 'object', id };
+      break;
+    }
     if (this.preventedByFog(sourceId, target, combat, amount)) {
       this.log(`Damage to ${target.kind === 'player' ? this.player(target.id).name : target.kind === 'object' ? this.nameOf(target.id) : 'something'} is prevented.`);
       return 0;
@@ -1957,7 +1979,7 @@ export class Game {
       this.touch();
       yield* this.doStep(step);
       // Mana empties between steps.
-      for (const p of Object.values(this.state.players)) if (!this.state.turnStats[`keepMana:${p.id}`]) p.manaPool = emptyPool();
+      for (const p of Object.values(this.state.players)) if (!this.state.turnStats[`keepMana:${p.id}`] && !this.playerRules(p.id).some((r) => r.kind === 'custom' && r.tag === 'keepMana')) p.manaPool = emptyPool();
       // Extra combat handling: scripts can request an additional combat phase via memory.
       if (step === 'main2' && this.state.turnStats['extraCombat']) {
         this.state.turnStats['extraCombat'] = 0;
@@ -2063,8 +2085,11 @@ export class Game {
     this.state.preventions = [];
     for (;;) {
       // Discard to hand size
-      const noMax = this.playerRules(pid).some((r) => r.kind === 'noMaxHandSize');
-      const maxHand = 7;
+      const rules = this.playerRules(pid);
+      const noMax = rules.some((r) => r.kind === 'noMaxHandSize');
+      let maxHand = 7;
+      for (const r of rules) if (r.kind === 'maxHandSize') maxHand = r.value !== undefined ? r.value : maxHand + (r.delta ?? 0);
+      maxHand = Math.max(0, maxHand);
       if (!noMax && p.hand.length > maxHand) {
         const n = p.hand.length - maxHand;
         const resp = yield* this.ask({ type: 'chooseObjects', player: pid, prompt: `Discard ${n} card${n === 1 ? '' : 's'} (hand size)`, candidates: [...p.hand], min: n, max: n, revealToChooser: true });
