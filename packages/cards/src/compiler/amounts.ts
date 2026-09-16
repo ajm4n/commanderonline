@@ -17,7 +17,22 @@ function thatPlayer(ctx: RefCtx): Ref {
 
 /** Parse an amount phrase. Returns null if not understood. */
 export function parseAmount(text: string, ctx: RefCtx): Amount | null {
-  text = text.replace(/\byou've\b/gi, 'you have').replace(/\bopponents? you have\b/i, 'opponents you have');
+  text = text.replace(/\byou've\b/gi, 'you have').replace(/\bopponents? you have\b/i, 'opponents you have').replace(/\b([+\-\w\/]+) counter on\b/i, '$1 counters on');
+  {
+    const t0 = text.trim().toLowerCase().replace(/^the number of /, '');
+    const ev = t0.match(/^(creatures?|permanents?|spells?|cards?|instant or sorcery spells?|nontoken creatures?) (?:that )?(died|entered(?: the battlefield)?|you have cast|your opponents have cast|an opponent has cast|you have drawn|you have discarded|you have sacrificed|were sacrificed|you have milled|were milled)(?: under your control)? this turn$/);
+    if (ev) {
+      const v = ev[2];
+      const event: import('@commander/engine').GameEventName = /died/.test(v) ? 'dies' : /entered/.test(v) ? 'entersBattlefield' : /cast/.test(v) ? 'cast' : /drawn/.test(v) ? 'drawCard' : /discard/.test(v) ? 'discard' : /sacrific/.test(v) ? 'sacrifice' : 'mill';
+      const player: 'you' | 'opponent' | 'any' = /^you have|under your control/.test(v) || /under your control/.test(t0) ? 'you' : /opponent/.test(v) ? 'opponent' : 'any';
+      return { kind: 'eventsThisTurn', event, player };
+    }
+    const tp = t0.match(/^(?:the )?total (power|mana value) of (.+)$/);
+    if (tp) {
+      const noun = parseNoun(text.trim().slice(text.trim().length - tp[2].length));
+      if (noun) return tp[1] === 'power' ? { kind: 'totalPower', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } } : { kind: 'totalManaValue', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
+    }
+  }
   if (/^(?:the number of )?[+\-\w\/]+ counters? removed this way$/i.test(text.trim())) return 'X';
   const orig = text.trim().replace(/^(?:an amount of \w+ |a number of \w+ )?equal to /i, '');
   const t = orig.toLowerCase();

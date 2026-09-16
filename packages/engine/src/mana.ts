@@ -96,6 +96,27 @@ export function formatCost(cost: ManaCost, x?: number): string {
 }
 
 /** Add generic mana to a cost (cost increases) or reduce it. Returns new cost. */
+/** Remove (times < 0) or add (times > 0) the given colored symbols from a cost, |times| times. */
+export function adjustSymbols(cost: ManaCost, symbols: string, times: number): ManaCost {
+  const parsed = parseManaCost(symbols).symbols;
+  const out: ManaSymbol[] = [...cost.symbols];
+  for (let i = 0; i < Math.abs(times); i++) {
+    for (const sym of parsed) {
+      if (times > 0) out.push(sym);
+      else {
+        const idx = out.findIndex((s) => JSON.stringify(s) === JSON.stringify(sym));
+        if (idx >= 0) out.splice(idx, 1);
+        else if (sym.kind === 'color' || sym.kind === 'generic') {
+          // No such colored symbol left: reduce generic instead (rule 601.2f lets reductions of a color only remove that color, so this is a fallback).
+          const g = out.findIndex((s) => s.kind === 'generic');
+          if (g >= 0 && sym.kind === 'generic') (out[g] as { amount: number }).amount = Math.max(0, (out[g] as { amount: number }).amount - sym.amount);
+        }
+      }
+    }
+  }
+  return { symbols: out.filter((s) => !(s.kind === 'generic' && s.amount <= 0)), xCount: cost.xCount };
+}
+
 export function adjustGeneric(cost: ManaCost, delta: number): ManaCost {
   const symbols: ManaSymbol[] = cost.symbols.filter((s) => s.kind !== 'generic');
   const existing = cost.symbols.filter((s) => s.kind === 'generic').reduce((a, s) => a + (s as { amount: number }).amount, 0);

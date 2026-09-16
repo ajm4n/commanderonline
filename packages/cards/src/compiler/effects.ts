@@ -63,7 +63,8 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
     ctx.lastObj = SELF;
     return SELF;
   }
-  if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l)) {
+  if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
+  if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
     return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : l === 'it' && !ctx.isSpell ? SELF : null);
@@ -153,7 +154,7 @@ function anyRef(phrase: string, ctx: ParseCtx): Ref | null {
 const COLOR_MAP: Record<string, Color> = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' };
 
 /** Parse "a 1/1 white Soldier creature token with vigilance" etc. */
-export function parseTokenPhrase(text: string): { count: number | 'X'; token: TokenSpec; tapped?: boolean; attacking?: boolean } | null {
+export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpec; tapped?: boolean; attacking?: boolean } | null {
   let t = text.trim().replace(/\.$/, '');
   let tapped = false;
   let attacking = false;
@@ -182,9 +183,9 @@ export function parseTokenPhrase(text: string): { count: number | 'X'; token: To
     if (!ref || ctx.targets.length) return null; // copy targets are handled by the caller pattern
     return { count: n, token: { name: 'Copy', typeLine: '', colors: [], copyOf: ref }, tapped, attacking };
   }
-  m = t.match(/^(a|an|\w+|X) (.+?) tokens?(?: named ((?:~'s |[A-Z])[\w' ,-]*?))?(?: with (.+))?$/i);
+  m = t.match(/^(a|an|twice that many|that many|\w+|X) (.+?) tokens?(?: named ((?:~'s |[A-Z])[\w' ,-]*?))?(?: with (.+))?$/i);
   if (!m) return null;
-  const n = wordToNumber(m[1]);
+  const n: Amount | null = /that many/i.test(m[1]) ? (/twice/i.test(m[1]) ? { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 } : { kind: 'triggerAmount' }) : wordToNumber(m[1]);
   if (n === null) return null;
   let body = m[2];
   if (/^tapped /i.test(body)) {
@@ -1441,6 +1442,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const ref = objRef(m[2], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: m[1] ? 'combat' : 'all' }, on: ref, duration: 'endOfTurn' }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'preventDamageTo', data: { combat: m[1] ? 'combat' : undefined } }, on: ref, duration: 'endOfTurn' }] : null;
   }
+  if ((m = text.match(/^(.+?) deals (\w+|X) damage to (target player|target opponent|any target|target player or planeswalker|that player|each opponent) and (each .+)$/i))) {
+    const a = parseSentence(`${m[1]} deals ${m[2]} damage to ${m[3]}`, ctx);
+    const b = a ? parseSentence(`${m[1]} deals ${m[2]} damage to ${m[4]}`, ctx) : null;
+    if (a && b) return [...a, ...b];
+  }
   if (/^~ assigns no combat damage this turn$/i.test(text)) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: 'combat' }, on: SELF, duration: 'endOfTurn' }];
   if (/^until end of turn, you (?:do not|don't) lose this mana as steps and phases end$/i.test(text) || /^you (?:do not|don't) lose this mana as steps and phases end(?: this turn)?$/i.test(text)) return [{ kind: 'turnFlag', flag: 'keepMana' }];
   if (/^clash with an opponent$/i.test(text)) return [{ kind: 'clash' }];
@@ -1681,13 +1687,15 @@ function ctx0(): void {
 export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; unhandled: string[] } {
   const effects: Effect[] = [];
   const unhandled: string[] = [];
+  let m: RegExpMatchArray | null;
   const sents = sentences(text);
   let lastStart = 0;
+  let curStart = 0;
   for (let i = 0; i < sents.length; i++) {
     let s = sents[i];
-    const startHere = effects.length;
-    // Every branch below appends to `effects`; remember where this sentence's effects start for "instead" rewrites.
-    lastStart = startHere;
+    // `lastStart` is where the previous sentence's effects begin: "X. If ~ was kicked, Y instead." replaces them.
+    lastStart = curStart;
+    curStart = effects.length;
     // Merge "You may pay X." + "If you do, Y."
     if ((/^(?:you may )?pay/i.test(s) || /, pay (?:\{[^}]+\})+$/i.test(s)) && sents[i + 1] && /^(?:if|when) you do, |^if you (?:do not|don't), /i.test(sents[i + 1])) {
       s = `${s}. ${sents[i + 1].replace(/^when you do, /i, 'If you do, ')}`;
@@ -1807,11 +1815,12 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     // "X. If ~ was kicked, Y instead." → if kicked, Y; otherwise X.
-    if (/^if ~ was kicked, (.+?) instead$/i.test(s) && effects.length > lastStart) {
-      const inner = parseSentence(s.replace(/^if ~ was kicked, /i, '').replace(/ instead$/i, ''), ctx);
-      if (inner) {
+    if ((m = s.match(/^if (.+?), (.+?) instead$/i)) && effects.length > lastStart && !/ would /i.test(m[1])) {
+      const cond = parseCondition(m[1], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer });
+      const inner = cond && cond.kind !== 'manual' ? parseSentence(m[2], ctx) : null;
+      if (cond && inner) {
         const previous = effects.splice(lastStart);
-        effects.push({ kind: 'conditional', if: { kind: 'wasKicked' }, then: inner, else: previous });
+        effects.push({ kind: 'conditional', if: cond, then: inner, else: previous });
         continue;
       }
     }

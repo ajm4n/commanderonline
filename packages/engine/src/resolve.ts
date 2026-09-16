@@ -108,7 +108,8 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
     return;
   }
   // Instant / sorcery (or a copy of anything).
-  const spell = script.abilities.find((a) => a.kind === 'spell') as SpellAbilitySpec | undefined;
+  let spell = script.abilities.find((a) => a.kind === 'spell') as SpellAbilitySpec | undefined;
+  if (spell && obj?.memory['overloaded']) spell = overloadSpell(spell);
   if (spell) yield* runSpellEffects(g, spell, item, ctx);
   else if (script.coverage === 'none' || !spell) {
     // Unscripted: show the text so the player can do it by hand.
@@ -155,4 +156,25 @@ function* runSpellEffects(g: Game, spell: SpellAbilitySpec, item: StackItem, ctx
     return;
   }
   yield* executeEffects(g, spell.effects, ctx);
+}
+
+/** Overload: every "target X" becomes "each X" (rule 702.96). */
+function overloadSpell(spell: SpellAbilitySpec): SpellAbilitySpec {
+  const targets = spell.targets ?? [];
+  const swap = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(swap);
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      if (o.ref === 'target') {
+        const spec = targets[(o.slot as number | undefined) ?? 0];
+        if (spec && spec.kind !== 'player') return { ref: 'all', filter: { ...(spec.filter ?? {}), zone: (spec.filter as { zone?: string } | undefined)?.zone ?? (spec.kind === 'spell' ? 'stack' : 'battlefield') } };
+        if (spec && spec.kind === 'player') return spec.playerFilter === 'opponent' ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+      }
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(o)) out[k] = swap(val);
+      return out;
+    }
+    return v;
+  };
+  return { ...spell, targets: [], effects: swap(spell.effects) as SpellAbilitySpec['effects'], modes: spell.modes?.map((m) => ({ ...m, effects: swap(m.effects) as SpellAbilitySpec['effects'] })) };
 }

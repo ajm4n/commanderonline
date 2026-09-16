@@ -64,6 +64,8 @@ const NOT_TYPES = new Set(['If', 'When', 'Whenever', 'At', 'Then', 'You', 'Your'
 
 export function parseNoun(raw: string): ParsedNoun | null {
   let text = raw.trim().replace(/[.,;]$/, '').replace(/ and\/or /g, ' or ').replace(/ or another /g, ' or ').replace(/ or (?:a|an) /g, ' or ');
+  // "each other attacking ~" → permanents with this card's name
+  if (/(^|\s)~$/.test(text) && text !== '~') text = text.replace(/~$/, 'permanent named ~');
   if (/^cards? or tokens?$/i.test(text)) return { filter: {}, target: false, count: 1, upTo: false, each: false, other: false, indefinite: true, isCard: true, kind: 'object', confident: true, text: raw.trim(), plural: /s$/.test(text) };
   const result: ParsedNoun = { filter: {}, target: false, count: 1, upTo: false, each: false, other: false, indefinite: false, isCard: false, kind: 'object', confident: true, text: raw.trim(), plural: false };
   let m: RegExpMatchArray | null;

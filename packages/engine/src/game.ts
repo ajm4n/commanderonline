@@ -991,6 +991,7 @@ export class Game {
       const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
       if (!item || !item.targets.some((t) => t.kind === 'object' && this.state.objects[t.id] && this.state.objects[t.id].controller === controller && matchesFilter(this, this.state.objects[t.id], { ...f.targetsControlled, zone: undefined }, { sourceId: obj.id, controller }))) return false;
     }
+    if (f.custom === 'exhaust' && !(e.data as { exhaust?: boolean } | undefined)?.exhaust) return false;
     if (f.custom === 'kicked') {
       const cast = e.objectId !== undefined ? this.state.objects[e.objectId] : undefined;
       if (!cast || !cast.additionalCostsPaid.includes('kicker')) return false;
@@ -1309,6 +1310,13 @@ export class Game {
       }
       case 'totalPower':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
+      case 'totalManaValue':
+        return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + this.characteristics(o.id).manaValue, 0);
+      case 'eventsThisTurn': {
+        const who = a.player ?? 'any';
+        const players = who === 'you' ? [ctx.controller] : who === 'opponent' ? this.opponentsOf(ctx.controller) : this.state.playerOrder;
+        return players.reduce((s, p) => s + (this.state.players[p]?.turnStats[a.event] ?? 0), 0);
+      }
       case 'discardedThisWay':
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + ((ctx.memory[`discarded:${p}`] as number) ?? 0), 0);
       case 'differenceLife': {

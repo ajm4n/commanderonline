@@ -5,7 +5,7 @@ import type { Game, Gen } from './game.js';
 import type { GameObject, ObjectId, PlayerId, PriorityDecision, Response, StackItem, Target, ZoneName, ManaColor, ManaPool } from './types.js';
 import { emptyPool } from './types.js';
 import type { ActivatedAbilitySpec, AbilityCost, CardScript, TargetSpec, Effect } from './script.js';
-import { type ManaCost, type ManaSourceOption, parseManaCost, solvePayment, adjustGeneric, maxX, expandRequirements, parseAddManaText, formatCost } from './mana.js';
+import { type ManaCost, type ManaSourceOption, parseManaCost, solvePayment, adjustGeneric, maxX, expandRequirements, parseAddManaText, formatCost, adjustSymbols } from './mana.js';
 import { BASIC_LAND_TYPES } from './typeline.js';
 import { matchesFilter, objectsMatching } from './filters.js';
 import { executeEffects, enterBattlefield, auraTargetSpec, type EffectContext } from './effects.js';
@@ -550,6 +550,10 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
     if (mod.perExtraTarget || mod.ifTargets) continue; // applied at cast time once targets are known
     if (mod.condition && !g.checkCondition(mod.condition, { sourceId: obj.id, controller: p })) continue;
     const n = mod.per ? objectsMatching(g, { ...mod.per, zone: mod.per.zone ?? 'battlefield' }, { sourceId: obj.id, controller: p }).length : mod.perAmount !== undefined ? g.resolveAmount(mod.perAmount, { sourceId: obj.id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 1;
+    if (mod.symbols) {
+      cost = adjustSymbols(cost, mod.symbols, (mod.direction === 'less' ? -1 : 1) * n);
+      continue;
+    }
     delta += (mod.direction === 'less' ? -1 : 1) * mod.amount * n;
   }
   if (delta !== 0) cost = adjustGeneric(cost, delta);
@@ -682,6 +686,7 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
     if (spec.cost.loyalty < 0 && (obj.counters['loyalty'] ?? 0) < -spec.cost.loyalty) return false;
   }
   if (spec.oncePerTurn && g.state.turnStats[`once:${obj.id}:${spec.text}`]) return false;
+  if (spec.exhaust && obj.memory[`exhausted:${spec.text}`]) return false;
   if (spec.condition && !g.checkCondition(spec.condition, { sourceId: obj.id, controller: p })) return false;
   if (obj.zone === 'battlefield' && g.characteristics(obj.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantActivate')) return false;
   if (spec.cost.tap && !canUseTapAbility(g, obj)) return false;
@@ -827,6 +832,8 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   }
   if (kicker) obj.additionalCostsPaid.push('kicker');
   obj.memory['kicks'] = kicks;
+  obj.memory['castAtInstantSpeed'] = !canCastSorcerySpeed(g, p);
+  if (altId === 'overload') obj.memory['overloaded'] = true;
 
   // X
   let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
@@ -845,7 +852,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   obj.xValue = x;
 
   // Targets
-  const specs = spellTargets(g, obj, script, faceIndex, modes);
+  const specs = altId === 'overload' ? [] : spellTargets(g, obj, script, faceIndex, modes);
   let targets: Target[] = [];
   let targetSlots: Target[][] | undefined;
   if (specs.length) {
@@ -991,6 +998,7 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
   if (!ok) return false;
   if (spec.cost.loyalty !== undefined) g.state.turnStats[`loyalty:${obj.id}`] = 1;
   if (spec.oncePerTurn) g.state.turnStats[`once:${obj.id}:${spec.text}`] = 1;
+  if (spec.exhaust) obj.memory[`exhausted:${spec.text}`] = true;
   const item: StackItem = {
     id: g.state.nextStackId++,
     kind: 'ability',
@@ -1007,7 +1015,7 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
   g.state.stack.push(item);
   g.touch();
   g.log(`${g.player(p).name} activates ${item.text}`, { kind: 'activate', data: { player: p, objectId: id } });
-  g.emit({ name: 'abilityActivated', objectId: id, playerId: p });
+  g.emit({ name: 'abilityActivated', objectId: id, playerId: p, data: spec.exhaust ? { exhaust: true } : undefined });
   return true;
 }
 

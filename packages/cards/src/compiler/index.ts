@@ -41,6 +41,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   const lines = normalizeOracle(card, faceName, text).flatMap((l) => {
     const cm = l.match(/^((?:~|This spell) costs? )(\{\d+\} (?:less|more) to cast (?:if|as long as) .+?) and (\{\d+\} (?:less|more) to cast (?:if|as long as) .+?)\.?$/i);
     if (cm) return [`${cm[1]}${cm[2]}.`, `${cm[1]}${cm[3]}.`];
+    const also = l.match(/^(~ costs? .+?)\. It also (costs? .+?)\.?$/i);
+    if (also) return [`${also[1]}.`, `~ ${also[2]}.`];
     // "If you have 3 or less life, ~ costs {6} less to cast." → "~ costs {6} less to cast if you have 3 or less life."
     const im = l.match(/^If (.+?), ((?:~|this spell) costs? \{[^}]+\} (?:less|more) to cast)\.?$/i);
     if (im) return [`${im[2].charAt(0).toUpperCase()}${im[2].slice(1)} if ${im[1]}.`];
@@ -90,6 +92,16 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   };
   for (let li = 0; li < lines.length; li++) {
     let line = lines[li];
+    // "~ costs {U}{U} less to cast ..." — colored reductions are handled as generic-count lines with the symbols remembered.
+    let costSymbols: string | undefined;
+    {
+      const cl = line.match(/^((?:~|This spell) costs? )((?:\{[WUBRGC]\})+)( (?:less|more) to cast .+)$/i);
+      if (cl) {
+        costSymbols = cl[2];
+        line = `${cl[1]}{${(cl[2].match(/\{/g) ?? []).length}}${cl[3]}`;
+      }
+    }
+    const pushCostMod = (mod: CostModifier) => costModifiers.push(costSymbols ? { ...mod, symbols: costSymbols, text: mod.text } : mod);
     let m: RegExpMatchArray | null;
     if ((m = line.match(/^(\d+)(?:\s*[—–-]\s*(\d+))?\s*\|\s*(.+)$/))) {
       if (!pendingRoll) for (const ab of [...abilities].reverse()) if ('effects' in ab && Array.isArray(ab.effects)) { pendingRoll = findRoll(ab.effects); if (pendingRoll) break; }
@@ -133,6 +145,28 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
+    if ((m = line.match(/^Overload ((?:\{[^}]+\})+)$/i))) {
+      alternativeCosts.push({ id: 'overload', text: line, cost: { mana: m[1] }, zone: 'hand' });
+      compiledLines.push(line);
+      continue;
+    }
+    if ((m = line.match(/^Sneak ((?:\{[^}]+\})+)$/i))) {
+      alternativeCosts.push({ id: 'sneak', text: line, cost: { mana: m[1] }, zone: 'hand', condition: { kind: 'eventThisTurn', event: 'dealtCombatDamageToPlayer', player: 'opponent' } });
+      compiledLines.push(line);
+      continue;
+    }
+    if ((m = line.match(/^Firebending (\d+)$/i))) {
+      abilities.push({ kind: 'triggered', text: line, event: 'beginningOfPrecombatMain', filter: { player: 'you' }, effects: [{ kind: 'addMana', mana: ['R'], amount: parseInt(m[1], 10) }, { kind: 'turnFlag', flag: 'keepMana' }] });
+      compiledLines.push(line);
+      continue;
+    }
+    // "You may cast ~ as though it had flash. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step."
+    if (/^You may cast ~ as though it had flash\. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step\.?$/i.test(line)) {
+      abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: ['Flash'] }, zone: 'hand' });
+      abilities.push({ kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true }, condition: { kind: 'memoryFlag', key: 'castAtInstantSpeed' }, effects: [{ kind: 'delayedTrigger', event: 'cleanup', effects: [{ kind: 'sacrifice', what: { ref: 'self' } }], text: 'Sacrifice this at the beginning of the next cleanup step.', once: true }] });
+      compiledLines.push(line);
+      continue;
+    }
     // Crew N / Saddle N: tap creatures with total power N or more.
     if ((m = line.match(/^(Crew|Saddle) (\d+)$/i))) {
       const n = parseInt(m[2], 10);
@@ -158,8 +192,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       continue;
     }
     // "You may cast ~ from your graveyard by discarding a card in addition to paying its other costs."
-    if ((m = line.match(/^You may cast ~ from your graveyard by (discarding a card|paying (\d+) life|sacrificing (?:a|an) (.+?)|exiling (\w+) other cards? from your graveyard) in addition to paying its other costs\.?$/i))) {
-      const extra: AbilityCost = m[2] ? { payLife: parseInt(m[2], 10) } : m[3] ? { sacrifice: { filter: { ...(parseNoun(`a ${m[3]}`)?.filter ?? {}), zone: 'battlefield' }, count: 1 } } : m[4] ? { exileFromGraveyard: { filter: {}, count: wordToNumber(m[4]) as number } } : { discard: { count: 1 } };
+    if ((m = line.match(/^You may cast ~ from your graveyard by (discarding a card|paying (\d+) life(?: and discarding a card)?|sacrificing (?:a|an) (.+?)|exiling (\w+) other cards? from your graveyard) in addition to paying its other costs\.?$/i))) {
+      const extra: AbilityCost = m[2] ? { payLife: parseInt(m[2], 10), ...(/discarding a card/i.test(m[1]) ? { discard: { count: 1 } } : {}) } : m[3] ? { sacrifice: { filter: { ...(parseNoun(`a ${m[3]}`)?.filter ?? {}), zone: 'battlefield' }, count: 1 } } : m[4] ? { exileFromGraveyard: { filter: {}, count: wordToNumber(m[4]) as number } } : { discard: { count: 1 } };
       alternativeCosts.push({ id: 'fromGraveyard', text: line, cost: { mana: card.manaCost ?? '', ...extra }, zone: 'graveyard' });
       compiledLines.push(line);
       continue;
@@ -178,7 +212,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if ((m = line.match(/^Affinity for (.+)$/i))) {
       const noun = parseNounLoose(m[1]);
       if (noun) {
-        costModifiers.push({ amount: 1, direction: 'less', per: { ...noun, controller: 'you' }, text: line });
+        pushCostMod({ amount: 1, direction: 'less', per: { ...noun, controller: 'you' }, text: line });
         compiledLines.push(line);
         continue;
       }
@@ -201,7 +235,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast if it targets (?:a|an) (.+?)\.?$/i))) {
       const noun = parseNoun(`a ${m[3]}`);
       if (noun) {
-        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', ifTargets: noun.filter, text: line });
+        pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', ifTargets: noun.filter, text: line });
         compiledLines.push(line);
         continue;
       }
@@ -209,13 +243,13 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if ((m = line.match(/^(?:~|This spell) costs? \{X\} (less|more) to cast, where X is (.+?)\.?$/i))) {
       const amt = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
       if (amt !== null) {
-        costModifiers.push({ amount: 1, direction: m[1].toLowerCase() as 'less' | 'more', perAmount: amt, text: line });
+        pushCostMod({ amount: 1, direction: m[1].toLowerCase() as 'less' | 'more', perAmount: amt, text: line });
         compiledLines.push(line);
         continue;
       }
     }
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast for each creature in your party\.?$/i))) {
-      costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', perAmount: { kind: 'partySize' }, text: line });
+      pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', perAmount: { kind: 'partySize' }, text: line });
       compiledLines.push(line);
       continue;
     }
@@ -243,20 +277,20 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     if ((m = line.match(/^(?:~|This spell) costs? ((?:\{[^}]+\})+) more to cast for each target beyond the first\.?$/i))) {
       // Colored symbols count as generic mana here (the engine's cost modifiers are generic-only).
-      costModifiers.push({ amount: (m[1].match(/\{([^}]+)\}/g) ?? []).reduce((s, x) => s + (/^\{\d+\}$/.test(x) ? parseInt(x.slice(1, -1), 10) : 1), 0), direction: 'more', perExtraTarget: true, text: line });
+      pushCostMod({ amount: (m[1].match(/\{([^}]+)\}/g) ?? []).reduce((s, x) => s + (/^\{\d+\}$/.test(x) ? parseInt(x.slice(1, -1), 10) : 1), 0), direction: 'more', perExtraTarget: true, text: line });
       compiledLines.push(line);
       continue;
     }
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast for each (.+?)\.?$/i))) {
       const noun = parseNounLoose(m[3]);
       if (noun) {
-        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', per: noun, text: line });
+        pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', per: noun, text: line });
         compiledLines.push(line);
         continue;
       }
       const amt = parseAmount(`the number of ${m[3]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
       if (amt !== null) {
-        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', perAmount: amt, text: line });
+        pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', perAmount: amt, text: line });
         compiledLines.push(line);
         continue;
       }
@@ -274,14 +308,14 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const steps: Record<string, string[]> = { upkeep: ['upkeep'], 'draw step': ['draw'], 'end step': ['end'], combat: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'], 'main phase': ['main1', 'main2'], 'precombat main phase': ['main1'], 'postcombat main phase': ['main2'], 'declare attackers step': ['declareAttackers'], 'declare blockers step': ['declareBlockers'] };
       const who = m[3].toLowerCase() === 'your' ? 'you' : /opponent/i.test(m[3]) ? 'opponent' : 'any';
       const cond: Condition = m[4].toLowerCase() === 'turn' ? (who === 'you' ? { kind: 'yourTurn' } : { kind: 'notYourTurn' }) : { kind: 'turnStep', steps: steps[m[4].toLowerCase()], player: who };
-      costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
+      pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
       compiledLines.push(line);
       continue;
     }
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast if (.+?)\.?$/i))) {
       const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
       if (cond && cond.kind !== 'manual') {
-        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
+        pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
         compiledLines.push(line);
         continue;
       }
@@ -289,7 +323,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast as long as (.+?)\.?$/i))) {
       const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
       if (cond && cond.kind !== 'manual') {
-        costModifiers.push({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
+        pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
         compiledLines.push(line);
         continue;
       }
@@ -501,7 +535,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         const conds: Condition[] = [];
         if (rest.yourTurn) conds.push({ kind: 'yourTurn' });
         if (rest.condition) conds.push(rest.condition);
-        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
+        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, exhaust: rest.exhaust, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
         if (cost.discardSelf || cost.exileSelf && /from your graveyard/i.test(costText)) ab.zone = cost.discardSelf ? 'hand' : 'graveyard';
         if (rest.unhandled) {
           ab.condition = { kind: 'manual', text: `${rest.unhandled}?` };

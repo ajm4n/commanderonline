@@ -8,6 +8,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     .trim()
     .replace(/[.,]$/, '')
     .replace(/^you've (cast|drawn|discarded|sacrificed|attacked|gained|lost|milled|committed)\b/i, (_m, v: string) => `you ${({ drawn: 'drew' } as Record<string, string>)[v.toLowerCase()] ?? v}`)
+    .replace(/^(an opponent|a player|each opponent) has (drawn|cast|discarded|sacrificed)\b/i, (_m, w: string, v: string) => `${w} ${({ drawn: 'drew' } as Record<string, string>)[v.toLowerCase()] ?? v}`)
     .replace(/^you're the monarch$/i, 'you are the monarch')
     .replace(/^(?:~|it) remains tapped$/i, '~ is tapped')
     .replace(/^(?:~|it) remains untapped$/i, '~ is untapped')
@@ -89,6 +90,25 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^(?:it|that creature|that permanent) is (?:still )?on the battlefield$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'battlefield' };
   if ((m = t.match(/^(?:it|~) (?:is|remains) exiled$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'exile' };
   if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
+  if ((m = t.match(/^there are (\w+) or more (.+?) on the battlefield$/))) {
+    const noun = parseNoun(oc(m, 2));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield' }, op: '>=', value: n };
+  }
+  if ((m = t.match(/^there (?:is|are) (?:a|an|one or more) (.+?) in your graveyard$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'graveyard', ref: { ref: 'controller' }, op: '>=', value: 1, filter: noun.filter };
+  }
+  if ((m = t.match(/^your opponents control (\w+) or more (.+)$/))) {
+    const noun = parseNoun(oc(m, 2));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, controller: 'opponent', zone: 'battlefield' }, op: '>=', value: n };
+  }
+  if ((m = t.match(/^(?:an opponent controls|your opponents control) no (.+)$/))) {
+    const noun = parseNoun(oc(m, 1));
+    if (noun) return { kind: 'count', filter: { ...noun.filter, controller: 'opponent', zone: 'battlefield' }, op: '==', value: 0 };
+  }
+  if (t === "a player's life total is less than or equal to half their starting life total" || t === 'a player has half their starting life total or less') return { kind: 'or', cs: [{ kind: 'life', ref: { ref: 'controller' }, op: '<=', value: 20 }, { kind: 'life', ref: { ref: 'eachOpponent' }, op: '<=', value: 20 }] };
   if (t === 'an opponent has no cards in hand') return { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '==', value: 0 };
   if ((m = t.match(/^you cast (?:another|a|one or more) spells? this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '>=', value: 1 };
   if ((m = t.match(/^there are (\w+) or more (.+?) (?:total )?in all graveyards$/))) {

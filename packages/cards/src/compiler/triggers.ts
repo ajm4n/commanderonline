@@ -44,6 +44,10 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     .replace(/^Whenever ~ attacks for the first time each turn, /i, 'Whenever ~ attacks, ')
     .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ');
   {
+    const xm = line.match(/^Whenever you activate an exhaust ability, (.+)$/i);
+    if (xm) return { event: 'abilityActivated', filter: { player: 'you', custom: 'exhaust' }, hasObject: true, hasPlayer: true, rest: xm[1] };
+    const lm = line.match(/^When(?:ever)? you play another land, (.+)$/i);
+    if (lm) return { event: 'landPlayed', filter: { player: 'you', object: { other: true } }, hasObject: true, hasPlayer: true, rest: lm[1] };
     const tm = line.match(/^When(?:ever)? ~ transforms into [^,]+, (.+)$/i);
     if (tm) return { event: 'transformed', filter: { self: true }, hasObject: true, hasPlayer: false, rest: tm[1] };
     const dm2 = line.match(/^Whenever (?:a|an) (.+?) deals damage to you, (.+)$/i);
@@ -196,7 +200,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^When(?:ever)? enchanted (creature|permanent|land|artifact) dies, (.+)$/i))) return { event: 'dies', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
   if ((m = L.match(/^Whenever you cast a spell that targets ~, (.+)$/i))) return { event: 'cast', filter: { player: 'you', targetsSource: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ becomes blocked(?: by a creature)?, (.+)$/i))) return { event: 'becomesBlocked', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
-  if ((m = L.match(/^Whenever (?:a|an|another|one or more) (.+?) attacks?, (.+)$/i))) {
+  if ((m = L.match(/^Whenever (?:a|an|another|one or more) (.+?) attacks?(?: a player| you or a planeswalker you control| a player or planeswalker)?, (.+)$/i))) {
     const tf = nounFilter(`${/^Whenever another/i.test(m[0]) ? 'another ' : 'a '}${m[1]}`);
     if (!tf) return null;
     return { event: 'attacks', filter: tf, hasObject: true, hasPlayer: true, rest: m[2] };

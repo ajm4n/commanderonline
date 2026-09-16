@@ -48,7 +48,11 @@ export type Amount =
   /** Number of party roles (Cleric, Rogue, Warrior, Wizard) among creatures you control. */
   | { kind: 'partySize' }
   /** Times the spell was kicked (multikicker). */
-  | { kind: 'kickCount' };
+  | { kind: 'kickCount' }
+  /** Number of events of a kind this turn ("creatures that died this turn", "spells your opponents cast this turn"). */
+  | { kind: 'eventsThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any' }
+  /** Sum of mana values of matching objects. */
+  | { kind: 'totalManaValue'; filter: ObjectFilter };
 
 export type Ref =
   | { ref: 'target'; slot?: number }
@@ -396,6 +400,8 @@ export interface ActivatedAbilitySpec {
   /** Zone the ability can be activated from (default battlefield). */
   zone?: ZoneName;
   oncePerTurn?: boolean;
+  /** Exhaust: activate only once per game (per object). */
+  exhaust?: boolean;
   condition?: Condition;
   /** Only the controller of the object may activate (default) or any player. */
   anyPlayer?: boolean;
@@ -465,6 +471,8 @@ export interface CostModifier {
   /** Applies when the spell targets a matching object ("costs {3} less to cast if it targets a tapped creature"). */
   ifTargets?: ObjectFilter;
   condition?: Condition;
+  /** Colored reduction/increase: these exact symbols ("{U}{U}") are removed from / added to the cost `amount`×n times. */
+  symbols?: string;
   text?: string;
 }
 
