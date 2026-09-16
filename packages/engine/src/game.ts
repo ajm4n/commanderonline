@@ -81,7 +81,7 @@ export interface GameState {
   continuousEffects: ContinuousEffect[];
   delayedTriggers: DelayedTrigger[];
   /** Turn-wide damage prevention (Fog effects); cleared at cleanup. */
-  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null }[];
+  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean }[];
   log: LogEntry[];
   monarch: PlayerId | null;
   initiative: PlayerId | null;
@@ -1501,17 +1501,20 @@ export class Game {
       if (pv.combat && !combat) continue;
       if (pv.source && (!src || !matchesFilter(this, src, { ...pv.source, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller }))) continue;
       const to = pv.to;
-      if (to === 'all') return true;
-      if (target.kind === 'player') {
-        if (to === 'players' || ((to === 'you' || to === 'youAndCreaturesYouControl') && target.id === pv.controller)) return true;
-        continue;
+      let hit = false;
+      if (to === 'all') hit = true;
+      else if (target.kind === 'player') hit = to === 'players' || ((to === 'you' || to === 'youAndCreaturesYouControl') && target.id === pv.controller);
+      else if (target.kind === 'object') {
+        const obj = this.state.objects[target.id];
+        if (obj) {
+          if (to === 'creatures') hit = true;
+          else if ((to === 'creaturesYouControl' || to === 'youAndCreaturesYouControl') && obj.controller === pv.controller) hit = true;
+          else if (typeof to === 'object' && matchesFilter(this, obj, { ...to, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller })) hit = true;
+        }
       }
-      if (target.kind !== 'object') continue;
-      const obj = this.state.objects[target.id];
-      if (!obj) continue;
-      if (to === 'creatures') return true;
-      if ((to === 'creaturesYouControl' || to === 'youAndCreaturesYouControl') && obj.controller === pv.controller) return true;
-      if (typeof to === 'object' && matchesFilter(this, obj, { ...to, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller })) return true;
+      if (!hit) continue;
+      if (pv.once) this.state.preventions = this.state.preventions.filter((x) => x !== pv);
+      return true;
     }
     return false;
   }
@@ -1526,6 +1529,19 @@ export class Game {
     const sch = src ? this.characteristics(src.id) : null;
     const controller = src?.controller;
     let dealt = amount;
+    // "If a source you control would deal damage, it deals double that damage instead."
+    for (const id of this.state.battlefield) {
+      const holder = this.state.objects[id];
+      if (!holder) continue;
+      for (const r of this.characteristics(id).rules) {
+        if (r.kind !== 'custom' || r.tag !== 'damageMultiplier') continue;
+        const d = r.data as { filter?: import('./types.js').ObjectFilter; times: number; combatOnly?: boolean } | undefined;
+        if (!d) continue;
+        if (d.combatOnly && !combat) continue;
+        if (d.filter && (!src || !matchesFilter(this, src, { ...d.filter, zone: undefined }, { sourceId: id, controller: holder.controller }))) continue;
+        dealt *= d.times;
+      }
+    }
     if (target.kind === 'player') {
       const p = this.player(target.id);
       // Prevention rules on player

@@ -383,6 +383,10 @@ export interface ObjectFilter {
   damaged?: boolean;
   /** Is attached to something ("Aura attached to a creature"). */
   attached?: boolean;
+  /** Has something attached ("is equipped" / "is enchanted"). */
+  hasAttachment?: 'Equipment' | 'Aura' | 'any';
+  /** Became monstrous. */
+  monstrous?: boolean;
   /** Mana value at most an amount ("with mana value less than or equal to the number of lands you control"). */
   cmcLEAmount?: import('./script.js').Amount;
   custom?: string;

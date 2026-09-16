@@ -227,8 +227,8 @@ export type Effect =
   | { kind: 'preventDamage'; amount: Amount | 'all'; to: Ref; duration?: Duration }
   | { kind: 'lookAtTop'; amount: Amount; who?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'topRestGraveyard' | 'graveyardRestTop' | 'handRestTop'; filter?: ObjectFilter; pick?: Amount }
   | { kind: 'revealTop'; who?: Ref; ifMatches?: ObjectFilter; then?: Effect[]; else?: Effect[]; destination?: 'hand' | 'graveyard' | 'bottom' | 'stay' }
-  | { kind: 'castWithoutPaying'; what: Ref }
-  | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean }
+  | { kind: 'castWithoutPaying'; what: Ref; exileAfter?: boolean }
+  | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean; exileAfter?: boolean }
   | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent' }
   | { kind: 'chooseColor'; key: string }
   | { kind: 'chooseCreatureType'; key: string }
@@ -276,7 +276,7 @@ export type Effect =
   /** Turn-wide flags such as "Damage can't be prevented this turn". */
   | { kind: 'turnFlag'; flag: 'noPrevention' }
   /** Fog effects: "Prevent all (combat) damage that would be dealt this turn [by X] [to Y]". */
-  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | ObjectFilter }
+  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
   | { kind: 'revealUntil'; filter: ObjectFilter; destination: 'hand' | 'battlefield' | 'graveyard' | 'exile'; rest: 'bottom' | 'graveyard' | 'exile'; tapped?: boolean; who?: Ref }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player

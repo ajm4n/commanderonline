@@ -86,6 +86,22 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const n = wordToNumber(m[1]);
     if (n !== null) return { kind: 'graveyard', ref: { ref: 'controller' }, op: '>=', value: n, filter: noun?.filter };
   }
+  if ((m = t.match(/^(?:~|it) is (equipped|enchanted)$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { hasAttachment: m[1] === 'equipped' ? 'Equipment' : 'Aura' } };
+  if (t === '~ is monstrous' || t === 'it is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
+  if (t === '~ is attached to a creature' || t === 'it is attached to a creature' || t === '~ is attached to a permanent') return { kind: 'objectMatches', ref: ctx.self, filter: { attached: true } };
+  if (t === 'it entered this turn' || t === '~ entered this turn' || t === 'it entered the battlefield this turn') return { kind: 'objectMatches', ref: ctx.self, filter: { enteredThisTurn: true } };
+  if (t === '~ is in your graveyard' || t === 'it is in your graveyard') return { kind: 'inZone', ref: ctx.self, zone: 'graveyard' };
+  if (t === '~ is on the battlefield' || t === 'it is on the battlefield') return { kind: 'inZone', ref: ctx.self, zone: 'battlefield' };
+  if ((m = t.match(/^(\w+) or more (.+?) are attached to (?:it|~)$/))) {
+    const noun = parseNoun(oc(m, 2));
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, attachedToSource: true, zone: 'battlefield' }, op: '>=', value: n };
+  }
+  if ((m = t.match(/^(?:enchanted|equipped) (?:creature|permanent) is (?:a|an) (.+)$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: noun.filter };
+  }
+  if ((m = t.match(/^(?:enchanted|equipped) creature is (white|blue|black|red|green)$/))) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { colors: [({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white']] } };
   if ((m = t.match(/^(?:~|it) is (tapped|untapped)$/))) return m[1] === 'tapped' ? { kind: 'isTapped', ref: ctx.self } : { kind: 'not', c: { kind: 'isTapped', ref: ctx.self } };
   if ((m = t.match(/^(?:~|it) is attacking$/))) return { kind: 'isAttacking', ref: ctx.self };
   if ((m = t.match(/^(?:~|it) has (?:a|an) ([+-]\d\/[+-]\d|\w+) counter on it$/))) return { kind: 'hasCounter', ref: ctx.self, counter: m[1] };

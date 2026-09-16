@@ -289,9 +289,36 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       if (!f.zone) f.zone = 'battlefield';
       return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perCount: f } }];
     }
-    const amt = parseAmount(`the number of ${m[4]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const amt = parseAmount(`the number of ${m[4].replace(/ counter on /, ' counters on ')}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     if (amt !== null) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: amt } }];
     return null;
+  }
+  if ((m = L.match(/^(.+?) (?:get|gets) ([+-]X|[+-]\d+)\/([+-]X|[+-]\d+), where X is (.+)$/i))) {
+    const a = affectsOf(m[1]);
+    const amt = parseAmount(m[4], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (!a.ok || amt === null) return null;
+    const p = m[2].toUpperCase().includes('X') ? (m[2].startsWith('-') ? -1 : 1) : 0;
+    const t = m[3].toUpperCase().includes('X') ? (m[3].startsWith('-') ? -1 : 1) : 0;
+    const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: p, toughness: t, perAmount: amt } }];
+    const fixedP = m[2].toUpperCase().includes('X') ? 0 : parseInt(m[2], 10);
+    const fixedT = m[3].toUpperCase().includes('X') ? 0 : parseInt(m[3], 10);
+    if (fixedP || fixedT) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: fixedP, toughness: fixedT } });
+    return out;
+  }
+  if ((m = L.match(/^If (?:a|an) (.+?) would deal damage to (?:a permanent or player|a creature or player|any target|a permanent, player, or battle|a creature, planeswalker, or player), it deals (double|twice|triple|three times) that (?:much )?damage(?: to (?:that|it)[^,]*)? instead$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const f = { ...noun.filter };
+    delete f.zone;
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damageMultiplier', data: { filter: f, times: /triple|three/i.test(m[2]) ? 3 : 2 } } }];
+  }
+  if ((m = L.match(/^If ~ was kicked, it enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it and with (.+)$/i))) {
+    const kws = parseKeywordList(m[3]);
+    if (!kws) return null;
+    return [
+      { kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: m[1] ? (wordToNumber(m[1]) as number) : 1 }, condition: { kind: 'wasKicked' } },
+      { kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: kws }, condition: { kind: 'wasKicked' } },
+    ];
   }
   if ((m = L.match(/^~'s (power|toughness) is equal to (.+)$/i))) {
     const amt = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });

@@ -695,15 +695,21 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'castWithoutPaying':
       for (const o of g.resolveObjects(e.what, ctx)) {
         const { castSpell } = await_casting();
-        yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: true });
+        if (e.exileAfter) o.memory['exileOnResolve'] = true;
+        const ok = yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: true });
+        if (!ok) delete o.memory['exileOnResolve'];
       }
       return;
     case 'castFrom':
       for (const o of g.resolveObjects(e.what, ctx)) {
         const { castSpell } = await_casting();
         o.memory['castableBy'] = ctx.controller;
+        if (e.exileAfter) o.memory['exileOnResolve'] = true;
         const ok = yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: e.free, anyMana: e.anyManaType });
-        if (!ok) delete o.memory['castableBy'];
+        if (!ok) {
+          delete o.memory['castableBy'];
+          delete o.memory['exileOnResolve'];
+        }
       }
       return;
     case 'playFromExile':
@@ -781,7 +787,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'preventAll':
-      g.state.preventions.push({ combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId });
+      g.state.preventions.push({ combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId, once: e.once });
       return;
     case 'turnFlag':
       g.state.turnStats[e.flag] = 1;

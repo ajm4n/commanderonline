@@ -67,6 +67,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.cmcLE !== undefined && !(ch.manaValue <= num(filter.cmcLE))) return false;
   if (filter.cmcLEAmount !== undefined && !(ch.manaValue <= g.resolveAmount(filter.cmcLEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.damaged !== undefined && (obj.damage > 0) !== filter.damaged) return false;
+  if (filter.hasAttachment) {
+    const has = Object.values(g.state.objects).some((a) => a.attachedTo === obj.id && (filter.hasAttachment === 'any' || g.characteristics(a.id).subtypes.includes(filter.hasAttachment!)));
+    if (!has) return false;
+  }
+  if (filter.monstrous !== undefined && !!obj.memory['monstrous'] !== filter.monstrous) return false;
   if (filter.attached !== undefined && (obj.attachedTo !== null) !== filter.attached) return false;
   if (filter.cmcGE !== undefined && !(ch.manaValue >= filter.cmcGE)) return false;
   if (filter.cmcEQ !== undefined && ch.manaValue !== filter.cmcEQ) return false;

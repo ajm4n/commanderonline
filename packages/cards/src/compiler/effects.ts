@@ -39,7 +39,7 @@ export function parseKeywordList(text: string): string[] | null {
   const out: string[] = [];
   for (const p of parts) {
     const q = p.replace(/^(?:your choice of )/, '');
-    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk)$/.test(q)) return null;
+    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad) \d+)$/.test(q)) return null;
     out.push(q.charAt(0).toUpperCase() + q.slice(1));
   }
   return out;
@@ -826,6 +826,34 @@ const PATTERNS: Pattern[] = [
     if (a === null) return null;
     return [{ kind: 'pump', power: { kind: 'times', a: parseInt(m[2], 10), b: a }, toughness: { kind: 'times', a: parseInt(m[3], 10), b: a }, on: ref, duration: 'endOfTurn' }];
   }],
+  [/^(.+?) (?:gets?|get) ([+-]\d+|[+-]X)\/([+-]\d+|[+-]X) and gains? "(.+)"(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const p = m[2].toUpperCase().includes('X') ? (m[2].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[2], 10);
+    const t = m[3].toUpperCase().includes('X') ? (m[3].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[3], 10);
+    return [{ kind: 'pump', power: p, toughness: t, on: ref, duration: 'endOfTurn' }, { kind: 'grantAbility', text: m[4], on: ref, duration: 'endOfTurn' }];
+  }],
+  [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) (.+?)(?: creature)? with base power and toughness (\d+|X)\/(\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const words = m[2].split(/\s+/);
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    const out: Effect[] = [];
+    if (/loses all abilities and/i.test(m[0])) out.push({ kind: 'loseAllAbilities', on: ref, duration: dur });
+    out.push({ kind: 'setPT', power: m[3] === 'X' ? 'X' : parseInt(m[3], 10), toughness: m[4] === 'X' ? 'X' : parseInt(m[4], 10), on: ref, duration: dur });
+    out.push({ kind: 'addTypes', types, subtypes, on: ref, duration: dur });
+    if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+    return out;
+  }],
+  [/^(.+?) becomes? an? (artifact creature|artifact|creature|enchantment creature|enchantment)(?: in addition to its other types)?(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const types = m[2].split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+    return [{ kind: 'addTypes', types, on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
   [/^(.+?) (?:has|have) base power and toughness (\d+|X)\/(\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
@@ -868,15 +896,24 @@ const PATTERNS: Pattern[] = [
     const kinds = m[2] === 'attack or block' ? ['cantAttack', 'cantBlock'] : m[2] === 'be blocked' ? ['cantBeBlocked'] : [m[2] === 'attack' ? 'cantAttack' : 'cantBlock'];
     return kinds.map((k) => ({ kind: 'applyRule', rule: { kind: k as 'cantAttack' }, on: ref, duration: dur }));
   }],
-  [/^(.+?) becomes? (?:a|an) ([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)(?: with (.+?))?(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) becomes? (?:a|an) ([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)(?: with (.+?))?(?: and loses (.+?))?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
-    const out: Effect[] = [{ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur }, { kind: 'addTypes', types: ['Creature'], subtypes: m[4].split(/\s+/).filter((w) => /^[A-Z]/.test(w)), on: ref, duration: dur }];
+    const words = m[4].split(/\s+/);
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const types = ['Creature', ...(/artifact creature$/i.test(m[0].split(' with ')[0]) || words.some((w) => /^artifact$/i.test(w)) ? ['Artifact'] : [])];
+    const out: Effect[] = [{ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur }, { kind: 'addTypes', types, subtypes: words.filter((w) => /^[A-Z]/.test(w)), on: ref, duration: dur }];
+    if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
     if (m[5]) {
       const kws = parseKeywordList(m[5]);
       if (!kws) return null;
       out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
+    }
+    if (m[6]) {
+      const kws = parseKeywordList(m[6]);
+      if (!kws) return null;
+      out.push({ kind: 'removeKeywords', keywords: kws, on: ref, duration: dur });
     }
     return out;
   }],
@@ -1146,11 +1183,27 @@ const PATTERNS: Pattern[] = [
     if (/^noncombat/i.test(m[1] ?? '')) return null;
     return [{ kind: 'preventAll', combat, source, to }];
   }],
+  [/^prevent all (combat )?damage that would be dealt by (.+?) this turn$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: m[1] ? 'combat' : 'all' }, on: ref, duration: 'endOfTurn' }] : null;
+  }],
   [/^prevent all (combat )?damage (?:that )?(.+?) would deal this turn$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
     if (!ref) return null;
     // Source-specific: remember the object as the prevention's source filter via a chosen ref is not expressible; use a rule on the source.
     return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: m[1] ? 'combat' : 'all' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  [/^the next time (?:a|an) (?:(\w+) )?source of your choice would deal damage to you this turn, prevent that damage$/i, (m) => {
+    const c = m[1] ? ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1].toLowerCase() as 'white'] : undefined;
+    const source: ObjectFilter | undefined = m[1] ? (c ? { colors: [c] } : /^artifact$/i.test(m[1]) ? { types: ['Artifact'] } : undefined) : undefined;
+    if (m[1] && !source) return null;
+    return [{ kind: 'preventAll', to: 'you', source, once: true }];
+  }],
+  [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
+  [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
+  [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToBattlefield', what: ref, tapped: !!m[2], controller: 'owner' }] : null;
   }],
   [/^prevent the next (\d+) damage that would be dealt to (.+?) this turn$/i, (m, ctx) => {
     const ref = anyRef(m[2], ctx);
@@ -1216,7 +1269,7 @@ const PATTERNS: Pattern[] = [
   }],
   // Choices
   [/^choose a color$/i, () => [{ kind: 'chooseColor', key: 'color' }]],
-  [/^choose a creature type$/i, () => [{ kind: 'chooseCreatureType', key: 'creatureType' }]],
+  [/^choose a creature type(?: other than \w+)?$/i, () => [{ kind: 'chooseCreatureType', key: 'creatureType' }]],
   [/^exchange life totals with (.+)$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
     return who ? [{ kind: 'exchangeLife', a: YOU, b: who }] : null;
@@ -1452,8 +1505,12 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
   const effects: Effect[] = [];
   const unhandled: string[] = [];
   const sents = sentences(text);
+  let lastStart = 0;
   for (let i = 0; i < sents.length; i++) {
     let s = sents[i];
+    const startHere = effects.length;
+    // Every branch below appends to `effects`; remember where this sentence's effects start for "instead" rewrites.
+    lastStart = startHere;
     // Merge "You may pay X." + "If you do, Y."
     if (/^(?:you may )?pay/i.test(s) && sents[i + 1] && /^if you do, /i.test(sents[i + 1])) {
       s = `${s}. ${sents[i + 1]}`;
@@ -1551,6 +1608,27 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       const last = effects[effects.length - 1];
       if (last && last.kind === 'counterSpell') {
         last.exileInstead = true;
+        continue;
+      }
+    }
+    // "X. If ~ was kicked, Y instead." → if kicked, Y; otherwise X.
+    if (/^if ~ was kicked, (.+?) instead$/i.test(s) && effects.length > lastStart) {
+      const inner = parseSentence(s.replace(/^if ~ was kicked, /i, '').replace(/ instead$/i, ''), ctx);
+      if (inner) {
+        const previous = effects.splice(lastStart);
+        effects.push({ kind: 'conditional', if: { kind: 'wasKicked' }, then: inner, else: previous });
+        continue;
+      }
+    }
+    // "If a spell cast this way would be put into a graveyard, exile it instead."
+    if (/^if (?:a spell cast this way|that spell|it) would be put into (?:a|your|its owner's) graveyard(?: this way)?, exile it instead$/i.test(s)) {
+      const last = effects[effects.length - 1];
+      if (last && (last.kind === 'castFrom' || last.kind === 'castWithoutPaying')) {
+        last.exileAfter = true;
+        continue;
+      }
+      if (last && last.kind === 'may' && last.effects.some((x) => x.kind === 'castFrom' || x.kind === 'castWithoutPaying')) {
+        for (const x of last.effects) if (x.kind === 'castFrom' || x.kind === 'castWithoutPaying') x.exileAfter = true;
         continue;
       }
     }

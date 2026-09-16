@@ -426,6 +426,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     // Static
     const stat = parseStatic(line, !isSpell);
     if (stat) {
+      // "As long as ~ is in your graveyard, ..." works from the graveyard.
+      if (/~ is in your graveyard/i.test(line)) for (const a of stat) if (a.kind === 'static') a.zone = 'graveyard';
       abilities.push(...withBlock(stat));
       compiledLines.push(line);
       continue;
