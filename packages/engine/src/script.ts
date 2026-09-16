@@ -246,6 +246,8 @@ export type Effect =
   | { kind: 'gainControl'; what: Ref; duration?: Duration; who?: Ref }
   | { kind: 'exchangeControl'; a: Ref; b: Ref }
   | { kind: 'copySpell'; what: Ref; count?: Amount }
+  /** Copy a card (not a spell): a token copy is created in exile that its controller may then cast ("Copy target instant card in your graveyard. You may cast the copy"). */
+  | { kind: 'copyCard'; what: Ref }
   | { kind: 'fight'; a: Ref; b: Ref }
   | { kind: 'bite'; a: Ref; b: Ref } // a deals damage equal to its power to b
   | { kind: 'attach'; what: Ref; to: Ref }
@@ -314,7 +316,7 @@ export type Effect =
   /** Fog effects: "Prevent all (combat) damage that would be dealt this turn [by X] [to Y]". */
   /** Clash with an opponent: each reveals the top card; the controller's source remembers whether they won (memory flag `clashWon`). */
   | { kind: 'clash' }
-  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
+  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
   | { kind: 'revealUntil'; filter: ObjectFilter; destination: 'hand' | 'battlefield' | 'graveyard' | 'exile'; rest: 'bottom' | 'graveyard' | 'exile'; tapped?: boolean; who?: Ref }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
@@ -402,6 +404,8 @@ export interface AbilityCost {
   collectEvidence?: { n: number; optional?: boolean };
   /** Behold a Dragon: reveal a matching creature card from your hand or choose one you control (free). */
   behold?: ObjectFilter;
+  /** "behold a Kithkin and exile it" */
+  beholdExile?: boolean;
   /** Reveal a matching card from your hand (free). */
   revealFromHand?: ObjectFilter;
   /** "As an additional cost, choose a creature type" (stored as memory `creatureType`). */

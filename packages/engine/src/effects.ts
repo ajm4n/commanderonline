@@ -237,6 +237,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'copyCard': {
+      const created: ObjectId[] = [];
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        const base = o.copyOf ?? o.card;
+        const copy = g.createObject({ ...base, isToken: true, oracleId: `${base.oracleId}:copy` }, ctx.controller, 'exile', { skipEvents: true });
+        copy.memory['castableBy'] = ctx.controller;
+        copy.memory['playableBy'] = ctx.controller;
+        created.push(copy.id);
+        g.log(`${g.player(ctx.controller).name} copies ${g.nameOf(o.id)}.`);
+      }
+      ctx.memory['lastCreated'] = created;
+      return;
+    }
     case 'setSubtypes': {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;

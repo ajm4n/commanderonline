@@ -400,6 +400,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       if (resp.type !== 'objects' || !resp.ids.length) return false;
       obj.memory['beheld'] = resp.ids[0];
       g.log(`${g.player(p).name} beholds ${g.nameOf(resp.ids[0])}.`);
+      if (cost.beholdExile) {
+        const moved = g.moveObject(resp.ids[0], 'exile', { cause: 'exile', sourceId: obj.id });
+        if (moved) obj.memory['exiled'] = [moved.id];
+      }
     }
   }
   if (cost.revealFromHand) {
@@ -779,9 +783,11 @@ export function buildPriorityDecision(g: Game, p: PlayerId): PriorityDecision {
   }
   const abilities: PriorityDecision['activatableAbilities'] = [];
   for (const obj of Object.values(g.state.objects)) {
-    if (obj.controller !== p) continue;
+    const foreign = obj.controller !== p;
+    if (foreign && obj.zone !== 'battlefield') continue;
     if (obj.zone !== 'battlefield' && obj.zone !== 'graveyard' && obj.zone !== 'hand' && obj.zone !== 'command' && obj.zone !== 'exile') continue;
     for (const ab of abilitiesOf(g, obj)) {
+      if (foreign && !ab.spec.anyPlayer) continue; // "Any player may activate this ability"
       if ((ab.spec.zone ?? 'battlefield') !== obj.zone) continue;
       if (!canActivate(g, p, obj, ab)) continue;
       abilities.push({ objectId: obj.id, abilityIndex: ab.index, text: ab.spec.text });
@@ -1093,9 +1099,10 @@ export function* chooseTargetsGrouped(g: Game, p: PlayerId, sourceId: ObjectId |
 
 export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityIndex: number, resp: Extract<Response, { type: 'activate' }>): Gen<boolean> {
   const obj = g.state.objects[id];
-  if (!obj || obj.controller !== p) return false;
+  if (!obj) return false;
   const ab = findAbility(g, obj, abilityIndex);
   if (!ab) return false;
+  if (obj.controller !== p && !ab.spec.anyPlayer) return false;
   if ((ab.spec.zone ?? 'battlefield') !== obj.zone) return false;
   if (!canActivate(g, p, obj, ab)) return false;
   const spec = ab.spec;

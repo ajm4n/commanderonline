@@ -586,7 +586,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         const conds: Condition[] = [];
         if (rest.yourTurn) conds.push({ kind: 'yourTurn' });
         if (rest.condition) conds.push(rest.condition);
-        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, exhaust: rest.exhaust, zone: cost.discardSelf || cost.revealSelf ? 'hand' : undefined, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
+        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, exhaust: rest.exhaust, anyPlayer: rest.anyPlayer, zone: cost.discardSelf || cost.revealSelf ? 'hand' : undefined, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
         if (cost.discardSelf || cost.exileSelf && /from your graveyard/i.test(costText)) ab.zone = cost.discardSelf ? 'hand' : 'graveyard';
         if (rest.unhandled) {
           ab.condition = { kind: 'manual', text: `${rest.unhandled}?` };

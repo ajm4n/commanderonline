@@ -69,7 +69,8 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l) && ctx.lastObj) return ctx.lastObj;
   if ((m0 = l.match(/^the player or planeswalker (it|that creature|~) is attacking$/))) return { ref: 'defenderOf', of: m0[1] === '~' ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
-  if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/.test(t)) {
+  if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
+  if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
     return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : null);
@@ -651,8 +652,8 @@ const PATTERNS: Pattern[] = [
     const key = `hand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
     return [{ kind: 'chooseObjects', filter: { ...noun.filter, zone: 'hand', owner: 'you' }, count: n, key }, { kind: 'putOnLibrary', what: { ref: 'chosen', key }, position: /top/.test(m[3]) ? 'top' : 'bottom' }];
   }],
-  [/^(?:you may )?put (?:a|an|up to (\w+)) (.+?) cards? from your hand onto the battlefield( tapped)?$/i, (m, ctx) => {
-    const c = chooseRef(`a ${m[2]} card from your hand`, ctx, YOU, true);
+  [/^(?:you may )?put (?:a|an|up to (\w+)) (.+?) from your hand onto the battlefield( tapped)?$/i, (m, ctx) => {
+    const c = chooseRef(`a ${/\bcards?\b/i.test(m[2]) ? m[2].replace(/ cards$/i, ' card') : `${m[2]} card`} from your hand`, ctx, YOU, true);
     if (!c) return null;
     return [...c.pre, { kind: 'returnToBattlefield', what: c.ref, tapped: !!m[3] }];
   }],
@@ -1157,9 +1158,16 @@ const PATTERNS: Pattern[] = [
   }],
   // Copy
   [/^copy (.+?)(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
+    const isCard = /\bcards?\b|^(?:the exiled card|that card|the revealed card|it)$/i.test(m[1]) && !/\bspell\b/i.test(m[1]);
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'copySpell', what: ref }] : null;
+    if (!ref) return null;
+    if (isCard) {
+      ctx.lastObj = { ref: 'lastCreated' };
+      return [{ kind: 'copyCard', what: ref }];
+    }
+    return [{ kind: 'copySpell', what: ref }];
   }],
+  [/^(?:you may )?cast the cop(?:y|ies)(?: without paying (?:its|their) mana costs?)?$/i, (m) => [{ kind: 'may', effects: [/without paying/i.test(m[0]) ? { kind: 'castWithoutPaying', what: { ref: 'lastCreated' } } : { kind: 'castFrom', what: { ref: 'lastCreated' } }] }]],
   // Attach
   [/^attach (.+) to (.+?)$/i, (m, ctx) => {
     const a = objRef(m[1], ctx);
@@ -1203,14 +1211,16 @@ const PATTERNS: Pattern[] = [
     const combat = /^combat/i.test(m[1] ?? '');
     let source: ObjectFilter | undefined;
     if (m[3]) {
-      const sn = parseNoun(m[3]) ?? parseNoun(`a ${m[3]}`);
+      const st = m[3].replace(/\bsources\b/i, 'permanents').replace(/\bsource\b/i, 'permanent');
+      const sn = parseNoun(st) ?? parseNoun(`a ${st}`);
       if (!sn) return null;
-      source = sn.filter;
+      source = { ...sn.filter, zone: undefined };
     }
     let to: Extract<Effect, { kind: 'preventAll' }>['to'] = 'all';
     if (m[2]) {
       const l = m[2].toLowerCase();
       if (l === 'you') to = 'you';
+      else if (l === 'you and planeswalkers you control' || l === 'you and each planeswalker you control') to = 'youAndPlaneswalkersYouControl';
       else if (l === 'you and creatures you control' || l === 'you and permanents you control') to = 'youAndCreaturesYouControl';
       else if (l === 'creatures you control') to = 'creaturesYouControl';
       else if (l === 'players' || l === 'each player') to = 'players';
@@ -2079,6 +2089,14 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
       if (last && last.kind === 'may' && last.effects.some((x) => x.kind === 'castFrom' || x.kind === 'castWithoutPaying')) {
         for (const x of last.effects) if (x.kind === 'castFrom' || x.kind === 'castWithoutPaying') x.exileAfter = true;
+        continue;
+      }
+    }
+    // "X is the mana value of the exiled card." defines X for the effects before it.
+    if ((m = s.match(/^X is (.+)$/i)) && effects.length) {
+      const a = amt(m[1], ctx);
+      if (a !== null) {
+        for (let k = 0; k < effects.length; k++) effects[k] = substituteX(effects[k], a);
         continue;
       }
     }

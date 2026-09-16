@@ -29,10 +29,11 @@ export function parseCost(text: string): AbilityCost | null {
       if (m[1]) cost.blightOptional = true;
     }
     else if ((m = p.match(/^(you may )?collect evidence (\d+)$/i))) cost.collectEvidence = { n: parseInt(m[2], 10), optional: !!m[1] || undefined };
-    else if ((m = p.match(/^Behold (?:a|an) (.+)$/i))) {
+    else if ((m = p.match(/^Behold (?:a|an) (.+?)( and exile it)?$/i))) {
       const noun = parseNoun(`a ${m[1]}`);
       if (!noun) return null;
       cost.behold = { ...noun.filter, types: ['Creature'] };
+      if (m[2]) cost.beholdExile = true;
     } else if ((m = p.match(/^Reveal (?:a|an) (.+?) card from your hand$/i))) {
       const noun = parseNoun(`a ${m[1]} card`);
       if (!noun) return null;
@@ -119,9 +120,9 @@ export function parseCost(text: string): AbilityCost | null {
 /** Trailing restrictions: "Activate only as a sorcery." etc. */
 const STEP_WORDS: Record<string, string[]> = { upkeep: ['upkeep'], 'draw step': ['draw'], 'end step': ['end'], combat: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'], 'main phase': ['main1', 'main2'], 'precombat main phase': ['main1'], 'postcombat main phase': ['main2'], 'declare attackers step': ['declareAttackers'], 'declare blockers step': ['declareBlockers'] };
 
-export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; exhaust?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
+export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
   let t = text.trim().replace(/^"(.*)"$/, '$1').replace(/Activate only (.+?) and only (.+?)\.?$/i, 'Activate only $1. Activate only $2.').replace(/\s*Activate only as an instant\.?$/i, '');
-  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; exhaust?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
+  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
   let m: RegExpMatchArray | null;
   const addCond = (c: Condition) => {
     out.condition = out.condition ? { kind: 'and', cs: [out.condition, c] } : c;
@@ -129,6 +130,10 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
   for (;;) {
     if ((m = t.match(/^(.*?)\s*Activate only as a sorcery\.?$/i))) {
       out.sorcerySpeed = true;
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Any player may activate this ability(?: but only during (?:any|an) upkeep step)?\.?$/i))) {
+      out.anyPlayer = true;
+      if (/upkeep/i.test(m[0])) addCond({ kind: 'turnStep', steps: ['upkeep'] });
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only once\.?$/i))) {
       out.exhaust = true;

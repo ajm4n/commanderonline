@@ -42,6 +42,13 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   }
   if (/^(?:the number of )?colors (?:that spell|it|that card|that permanent) is$/i.test(text.trim())) return { kind: 'colorCount', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'self' }) };
   if (/^(?:that|the) (?:card|creature|permanent|spell|revealed card|exiled card|discarded card|sacrificed creature|sacrificed permanent)'s mana value$/i.test(text.trim())) return { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
+  {
+    const pf = text.trim().match(/^the (power|toughness|mana value) of (the exiled card|the exiled cards|that card|that creature|that permanent|it|the revealed card|the discarded card|the sacrificed creature|the destroyed creature|the returned card)$/i);
+    if (pf) {
+      const ref: Ref = /^the exiled/i.test(pf[2]) ? { ref: 'chosen', key: 'exiled' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' });
+      return { kind: pf[1].toLowerCase() === 'power' ? 'power' : pf[1].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref };
+    }
+  }
   if (/^(?:the number of )?basic land types? among lands you control$/i.test(text.trim()) || /^your domain count$/i.test(text.trim())) return { kind: 'domain' };
   {
     const ct = text.trim().match(/^(?:the number of )?card types? among (.+)$/i);

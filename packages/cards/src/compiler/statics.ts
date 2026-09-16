@@ -119,8 +119,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (a && b) return [...a, ...b];
   }
   if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
-  if ((m = L.match(/^If a source you control would deal (noncombat |combat )?damage to (an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i))) {
-    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damagePlus', data: { filter: { controller: 'you' }, plus: parseInt(m[3], 10), noncombatOnly: /noncombat/i.test(m[1] ?? '') || undefined, combatOnly: /^combat/i.test(m[1] ?? '') || undefined, toOpponents: /opponent/i.test(m[2]) || undefined } } }];
+  if ((m = L.match(/^If a source you control would deal (noncombat |combat )?damage to (an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+|an amount of damage equal to .+?) (?:to (?:that permanent or player|that player|them) )?instead$/i))) {
+    const plusAmt = /^\d+$/.test(m[3]) ? parseInt(m[3], 10) : parseAmount(m[3].replace(/^an amount of damage equal to /i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (plusAmt === null) return null;
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damagePlus', data: { filter: { controller: 'you' }, plus: plusAmt, noncombatOnly: /noncombat/i.test(m[1] ?? '') || undefined, combatOnly: /^combat/i.test(m[1] ?? '') || undefined, toOpponents: /opponent/i.test(m[2]) || undefined } } }];
   }
   // "Once during each of your turns, you may cast an artifact or Human spell from your graveyard with mana value less than or equal to X."
   if ((m = L.match(/^(Once during each of your turns, )?[Yy]ou may cast (.+?) (?:spells? )?from your graveyard(?: with mana value (?:less than or equal to|equal to or less than) (.+?))?$/i))) {

@@ -43,6 +43,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   line = line
     .replace(/^When (a|an|another|one or more) /, 'Whenever $1 ')
     .replace(/^Whenever ~ attack, /, 'Whenever ~ attacks, ')
+    .replace(/^Whenever you attack a player with /i, 'Whenever you attack with ')
     .replace(/^Whenever ~ attacks while saddled, /i, 'Whenever ~ attacks, if ~ is saddled, ')
     .replace(/^Whenever ~ attacks for the first time each turn, /i, 'Whenever ~ attacks, ')
     .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ')
@@ -113,6 +114,11 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     if (rm) {
       const noun = parseNoun(`a ${rm[1]}`);
       if (noun) return { event: 'returnedToHand', filter: { player: 'you', object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: rm[2] };
+    }
+    const tp = line.match(/^Whenever you tap (?:an untapped |a |an )?(.+?), (.+)$/i);
+    if (tp && !/for mana/i.test(tp[1])) {
+      const noun = parseNoun(`a ${tp[1]}`);
+      if (noun) return { event: 'tapped', filter: { object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: false, rest: tp[2] };
     }
     const xe = line.match(/^Whenever you exert (?:a|an) (.+?), (.+)$/i);
     if (xe) {

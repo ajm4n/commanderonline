@@ -87,7 +87,7 @@ export interface GameState {
   damagedBy: Record<number, ObjectId[]>;
   /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
   lastTurnStats: Record<string, number>;
-  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean }[];
+  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean }[];
   log: LogEntry[];
   monarch: PlayerId | null;
   initiative: PlayerId | null;
@@ -1665,12 +1665,13 @@ export class Game {
       const to = pv.to;
       let hit = false;
       if (to === 'all') hit = true;
-      else if (target.kind === 'player') hit = to === 'players' || ((to === 'you' || to === 'youAndCreaturesYouControl') && target.id === pv.controller);
+      else if (target.kind === 'player') hit = to === 'players' || ((to === 'you' || to === 'youAndCreaturesYouControl' || to === 'youAndPlaneswalkersYouControl') && target.id === pv.controller);
       else if (target.kind === 'object') {
         const obj = this.state.objects[target.id];
         if (obj) {
           if (to === 'creatures') hit = true;
           else if ((to === 'creaturesYouControl' || to === 'youAndCreaturesYouControl') && obj.controller === pv.controller) hit = true;
+          else if (to === 'youAndPlaneswalkersYouControl' && obj.controller === pv.controller && this.characteristics(obj.id).types.includes('Planeswalker')) hit = true;
           else if (typeof to === 'object' && matchesFilter(this, obj, { ...to, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller })) hit = true;
         }
       }
@@ -1711,7 +1712,7 @@ export class Game {
       if (!holder) continue;
       for (const r of this.characteristics(id).rules) {
         if (r.kind !== 'custom' || (r.tag !== 'damageMultiplier' && r.tag !== 'damagePlus')) continue;
-        const d = r.data as { filter?: import('./types.js').ObjectFilter; times?: number; plus?: number; combatOnly?: boolean; noncombatOnly?: boolean; toOpponents?: boolean } | undefined;
+        const d = r.data as { filter?: import('./types.js').ObjectFilter; times?: number; plus?: number | Amount; combatOnly?: boolean; noncombatOnly?: boolean; toOpponents?: boolean } | undefined;
         if (!d) continue;
         if (d.combatOnly && !combat) continue;
         if (d.noncombatOnly && combat) continue;
@@ -1721,7 +1722,7 @@ export class Game {
         }
         if (d.filter && (!src || !matchesFilter(this, src, { ...d.filter, zone: undefined }, { sourceId: id, controller: holder.controller }))) continue;
         if (r.tag === 'damageMultiplier') dealt *= d.times ?? 1;
-        else dealt += d.plus ?? 0;
+        else dealt += typeof d.plus === 'number' ? d.plus : d.plus ? this.resolveAmount(d.plus, { sourceId: id, controller: holder.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 0;
       }
     }
     if (target.kind === 'player') {
