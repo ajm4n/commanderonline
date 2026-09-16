@@ -68,7 +68,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:exiled|returned|chosen) cards?)$/.test(l)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
-    return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : l === 'it' && !ctx.isSpell ? SELF : null);
+    return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : l === 'it' ? SELF : null);
   }
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker)$/.test(l)) return { ref: 'attachedTo' };
   if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
@@ -804,9 +804,11 @@ const PATTERNS: Pattern[] = [
   [/^put (?:a|an|(\w+|X)) ([+-]\d+\/[+-]\d+|\w+) counters? on (.+?) for each (.+)$/i, (m, ctx) => {
     const n = m[1] ? wordToNumber(m[1]) : 1;
     const noun = parseNoun(m[4]);
-    if (n === null || !noun) return null;
+    if (n === null) return null;
+    const per: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[4]}`, ctx);
+    if (per === null) return null;
     const ref = objRef(m[3], ctx);
-    return ref ? [{ kind: 'addCounters', counter: m[2], amount: { kind: 'times', a: n, b: { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } }, on: ref }] : null;
+    return ref ? [{ kind: 'addCounters', counter: m[2], amount: { kind: 'times', a: n, b: per }, on: ref }] : null;
   }],
   [/^remove (?:a|an|all|(\w+|X)) ([+-]\d+\/[+-]\d+|\w+) counters? from (.+)$/i, (m, ctx) => {
     const n = /all/i.test(m[0].split(' ')[1]) ? 'all' : m[1] ? wordToNumber(m[1]) : 1;
@@ -1388,7 +1390,7 @@ function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
     } else if ((m = p2.match(/^(?:it|they) (?:is|are) (\d+)\/(\d+)$/i))) {
       ex.power = m[1];
       ex.toughness = m[2];
-    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?)(?: creatures?)?$/i))) {
+    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?)(?: creatures?)?(?: in addition to its other types)?$/i))) {
       ex.power = m[1];
       ex.toughness = m[2];
       for (const w of m[3].split(/\s+/)) {
@@ -1396,6 +1398,8 @@ function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
         if (c) ex.colors = [...(ex.colors ?? []), c];
         else if (/^colorless$/i.test(w)) ex.colors = [];
         else if (/^and$/i.test(w)) continue;
+        else if (/^(artifact|creature|enchantment|land)$/i.test(w)) ex.addTypes = [...(ex.addTypes ?? []), w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()];
+        else if (/^legendary$/i.test(w)) ex.legendary = true;
         else if (/^[A-Z]/.test(w)) ex.addSubtypes = [...(ex.addSubtypes ?? []), w];
         else return null;
       }

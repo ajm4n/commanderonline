@@ -123,9 +123,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       ctx.memory['lastDamaged'] = [...((ctx.memory['lastDamaged'] as ObjectId[]) ?? []), ...targets.filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id)];
       return;
     }
-    case 'destroy':
-      for (const o of g.resolveObjects(e.what, ctx)) destroyObject(g, o.id, ctx.sourceId, e.cantRegenerate);
+    case 'destroy': {
+      let destroyed = 0;
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        destroyObject(g, o.id, ctx.sourceId, e.cantRegenerate);
+        if (g.state.objects[o.id]?.zone !== 'battlefield') destroyed++;
+      }
+      ctx.memory['destroyedThisWay'] = ((ctx.memory['destroyedThisWay'] as number) ?? 0) + destroyed;
       return;
+    }
     case 'exile': {
       const moved: ObjectId[] = [];
       for (const o of g.resolveObjects(e.what, ctx)) {

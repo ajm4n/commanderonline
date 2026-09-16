@@ -993,6 +993,11 @@ export class Game {
     }
     if (f.custom === 'exhaust' && !(e.data as { exhaust?: boolean } | undefined)?.exhaust) return false;
     if (f.custom === 'nonManaAbility' && (e.data as { mana?: boolean } | undefined)?.mana) return false;
+    if (f.custom === 'chosenPlayersStep') {
+      const src = this.state.objects[obj.id] ?? obj;
+      const chosen = src.memory['opponent'] ?? src.memory['player'] ?? src.memory['chosenPlayer'];
+      if (typeof chosen !== 'string' || e.playerId !== chosen) return false;
+    }
     if (f.custom?.startsWith('expend:') && (e.data as { n?: number } | undefined)?.n !== Number(f.custom.slice(7))) return false;
     if (f.custom === 'kicked') {
       const cast = e.objectId !== undefined ? this.state.objects[e.objectId] : undefined;

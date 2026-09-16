@@ -34,6 +34,15 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     }
   }
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
+  if (/^(?:the number of )?(?:\w+ )?(?:permanents?|creatures?|artifacts?|enchantments?|lands?|cards?|planeswalkers?) destroyed this way$/i.test(text.trim())) return { kind: 'ctxMemory', key: 'destroyedThisWay' };
+  {
+    const pm = text.trim().match(/^(.+?) (plus|minus) (\d+|one|two|three|four|five)$/i);
+    if (pm && !/^(?:that many|twice)/i.test(pm[1])) {
+      const a = parseAmount(pm[1], ctx);
+      const n = wordToNumber(pm[3]);
+      if (a !== null && typeof n === 'number') return { kind: 'sum', parts: [a, pm[2].toLowerCase() === 'plus' ? n : -n] };
+    }
+  }
   {
     const cc = text.trim().toLowerCase().match(/^(?:the number of )?(?:its|~'s|that (?:creature|permanent|card|spell)'s) colors?$/) || text.trim().toLowerCase().match(/^(?:the number of )?colors? (?:of|among) (it|~|that (?:creature|permanent|card|spell))$/);
     if (cc) return { kind: 'colorCount', ref: /~/.test(text) ? { ref: 'self' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'self' }) };

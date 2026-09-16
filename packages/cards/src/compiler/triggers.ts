@@ -55,6 +55,16 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     if (nm) return { event: 'cast', filter: { player: 'you', minNthThisTurn: 2 }, hasObject: true, hasPlayer: true, rest: nm[1] };
   }
   {
+    // "Whenever ~ attacks or blocks while you control a Dinosaur, X" → the condition becomes an intervening "if".
+    const wm = line.match(/^(When(?:ever)? [^,]+?) while (.+?), (.+)$/i);
+    if (wm && !/for as long as/i.test(line)) {
+      const h = parseTriggerHead(`${wm[1]}, if ${wm[2]}, ${wm[3]}`);
+      if (h) return h;
+    }
+    const cp = line.match(/^At the beginning of the chosen (?:player|opponent)'s (upkeep|end step|draw step), (.+)$/i);
+    if (cp) return { event: cp[1].toLowerCase() === 'upkeep' ? 'beginningOfUpkeep' : cp[1].toLowerCase() === 'end step' ? 'beginningOfEndStep' : 'beginningOfDraw', filter: { custom: 'chosenPlayersStep' }, hasObject: false, hasPlayer: true, rest: cp[2] };
+  }
+  {
     // "Whenever one or more cards leave your graveyard during your turn, X" → same trigger, restricted to your turn.
     const dm = line.match(/^(When(?:ever)? .+?) during your turn, (.+)$/i);
     if (dm) {
