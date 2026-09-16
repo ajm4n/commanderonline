@@ -57,6 +57,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   const compiledLines: string[] = [];
   const unhandledLines: string[] = [];
   const spellEffects: Effect[] = [];
+  let lastSpellLine: string | null = null;
+  let lastSpellStart = 0;
   const spellTargets: TargetSpec[] = [];
   const spellCtx = newCtx({ isSpell: true });
   let modal: { text: string; targets?: TargetSpec[]; effects: Effect[] }[] | null = null;
@@ -186,7 +188,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
-    if ((m = line.match(/^You may cast ~ from your graveyard if (.+?)\.?$/i))) {
+    if ((m = line.match(/^You may cast ~ from your graveyard (?:if|as long as) (.+?)\.?$/i))) {
       const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
       if (cond && cond.kind !== 'manual') {
         alternativeCosts.push({ id: 'fromGraveyard', text: line, cost: { mana: card.manaCost ?? '' }, zone: 'graveyard', condition: cond });
@@ -438,7 +440,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       continue;
     }
     // On a spell, "At the beginning of your next upkeep, X" is a delayed trigger the spell sets up.
-    if (isSpell && /^At the beginning of (?:your next|the next) /i.test(line)) {
+    if (isSpell && (/^At the beginning of (?:your next|the next) /i.test(line) || /^Whenever [^,]+ this turn, /i.test(line))) {
       const r = parseEffects(line, spellCtx);
       if (!r.unhandled.length) {
         spellEffects.push(...r.effects);
@@ -548,7 +550,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         const conds: Condition[] = [];
         if (rest.yourTurn) conds.push({ kind: 'yourTurn' });
         if (rest.condition) conds.push(rest.condition);
-        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, exhaust: rest.exhaust, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
+        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, exhaust: rest.exhaust, zone: cost.discardSelf || cost.revealSelf ? 'hand' : undefined, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
         if (cost.discardSelf || cost.exileSelf && /from your graveyard/i.test(costText)) ab.zone = cost.discardSelf ? 'hand' : 'graveyard';
         if (rest.unhandled) {
           ab.condition = { kind: 'manual', text: `${rest.unhandled}?` };
@@ -576,6 +578,21 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     // Spell text
     if (isSpell) {
+      // "Morbid — ~ deals 5 damage instead if a creature died this turn." rewrites the previous line's effects.
+      if (lastSpellLine !== null && lastSpellStart === 0 && /instead(?: if .+)?\.?$/i.test(line) && !/ would /i.test(line)) {
+        const fresh = newCtx({ isSpell: true });
+        const r = parseEffects(`${lastSpellLine}. ${line}`, fresh);
+        if (!r.unhandled.length) {
+          spellEffects.length = 0;
+          spellEffects.push(...r.effects);
+          spellCtx.targets.length = 0;
+          spellCtx.targets.push(...fresh.targets);
+          compiledLines.push(line);
+          continue;
+        }
+      }
+      lastSpellStart = spellEffects.length;
+      lastSpellLine = line;
       const { effects, unhandled } = parseEffects(line, spellCtx);
       spellEffects.push(...effects);
       if (unhandled.length) unhandledLines.push(...unhandled);

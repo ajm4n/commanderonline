@@ -700,11 +700,12 @@ const PATTERNS: Pattern[] = [
   // Tokens
   [/^create (.+)$/i, (m, ctx) => {
     // copies of a target
-    const copy = m[1].match(/^(a|an|\w+|X) ((?:tapped and attacking |tapped )?)tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+?)(?:, except (.+))?$/i);
+    const copy = m[1].match(/^(a|an|\w+|X) ((?:tapped and attacking |tapped )?)tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+?)(?:,? except (.+?))?((?:,| and)? (?:that is|that are|that's) (?:tapped and attacking|attacking|tapped))?$/i);
     if (copy) {
       const n = wordToNumber(copy[1]);
       const ref = objRef(copy[3], ctx);
       if (n === null || !ref) return null;
+      if (copy[5]) copy[2] = `${copy[2]} ${copy[5]}`;
       const token: TokenSpec = { name: 'Copy', typeLine: '', colors: [], copyOf: ref };
       if (copy[4]) {
         const ex = parseCopyExceptions(copy[4]);
@@ -1236,7 +1237,7 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'returnToBattlefield', what: ref, tapped: !!m[2], controller: 'owner' }] : null;
   }],
-  [/^prevent the next (\d+) damage that would be dealt to (.+?) this turn$/i, (m, ctx) => {
+  [/^prevent the next (\d+|X) damage that would be dealt to (.+?) this turn$/i, (m, ctx) => {
     const ref = anyRef(m[2], ctx);
     return ref ? [{ kind: 'preventDamage', amount: parseInt(m[1], 10), to: ref, duration: 'endOfTurn' }] : null;
   }],
@@ -1375,6 +1376,7 @@ function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
       if (!kws) return null;
       ex.keywords = [...(ex.keywords ?? []), ...kws];
     } else if (/^(?:it|they) (?:is|are) not legendary$/i.test(p2)) ex.notLegendary = true;
+    else if (/^(?:it|they) (?:is|are) legendary$/i.test(p2)) ex.legendary = true;
     else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (.+?) in addition to its other types$/i))) {
       const words = m[1].split(/\s+/);
       ex.addTypes = [...(ex.addTypes ?? []), ...words.filter((w) => /^(artifact|creature|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
@@ -1496,6 +1498,24 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const a = parseSentence(m[1], ctx);
     const b = a ? parseSentence(`${m[2]} ${m[3]} this turn`, ctx) ?? parseSentence(`${m[2]} ${m[3]}`, ctx) : null;
     if (a && b) return [...a, ...b];
+  }
+  if ((m = text.match(/^put (it|that card|~|them|those cards) onto the battlefield transformed(?: under (?:your|its owner's|their owner's) control)?$/i))) {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToBattlefield', what: ref, transformed: true }] : null;
+  }
+  if ((m = text.match(/^exile the top (?:card|(\w+|X) cards) of (target player|target opponent|that player|each player|each opponent)'s library(?: face down)?$/i))) {
+    const who = playerRef(m[2], ctx);
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (who && n !== null) return [{ kind: 'exileTop', who, amount: n }];
+  }
+  // "Whenever a creature blocks this turn, X" (a spell setting up a this-turn trigger)
+  if ((m = text.match(/^(whenever [^,]+?) this turn, (.+)$/i))) {
+    const head = parseTriggerHead(`${m[1].charAt(0).toUpperCase()}${m[1].slice(1)}, ${m[2]}`);
+    if (head && !head.also) {
+      const sub = newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer });
+      const inner = parseSentence(head.rest, sub);
+      if (inner) return [{ kind: 'delayedTrigger', event: head.event, filter: head.filter, effects: inner, text, untilEndOfTurn: true }];
+    }
   }
   // "Gain control of target creature for as long as ~ remains tapped" / "... for as long as you control ~"
   if ((m = text.match(/^(.+?) for as long as (~ remains tapped|you control ~|~ remains on the battlefield|~ remains untapped|you control ~ and ~ remains tapped|~ remains tapped and you control ~)$/i))) {
@@ -1665,6 +1685,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (r) return r;
     ctx.targets.length = saved;
   }
+  // "you scry 2" → "scry 2"
+  if ((m = text.match(/^you ((?:scry|surveil|mill|proliferate|investigate|explore|manifest|venture|amass|adapt|monstrosity|bolster|support|fateseal|clash|populate|learn|discover|incubate|connive) .*|(?:proliferate|investigate|populate|learn|connive))$/i))) {
+    const r = parseSentence(m[1], ctx);
+    if (r) return r;
+  }
   // Compound: "A and B" / "A, then B"
   const splitters = [/, then /i, /\. then /i, / and then /i, /, and /i, / and /i, /, (?=(?:then )?(?:discards?|loses?|gains?|draws?|sacrifices?|mills?|creates?|exiles?|destroys?|returns?|puts?|scry|untaps?|taps?)\b)/i];
   for (const sp of splitters) {
@@ -1680,6 +1705,8 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       const p = parts[pi];
       let r = parseSentence(p, ctx);
       if (!r && pi > 0 && verb && !/^(you|each player|each opponent|target player|target opponent|that player|those players|it|they|~|its|their)\b/i.test(p)) r = parseSentence(`${verb} ${p}`, ctx);
+      // "target creature gains haste and gets +X/+0": the second clause shares the first clause's subject.
+      if (!r && pi > 0 && /^(gets?|gains?|loses?|has|have|cannot|can|becomes?|is|deals?|must|fights?|doesn't|does not)\b/i.test(p) && ctx.lastObj) r = parseSentence(`it ${p}`, ctx);
       if (!r) {
         ok = false;
         break;

@@ -112,7 +112,7 @@ export interface TokenSpec {
   legendary?: boolean;
   /** Copy of another object (for "create a token that's a copy of ~"). */
   copyOf?: Ref;
-  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; power?: string; toughness?: string; colors?: Color[] };
+  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +321,8 @@ export interface TriggerFilter {
   objectController?: 'you' | 'opponent' | 'any';
   /** Trigger only when the cast spell was the Nth this turn, etc. */
   nthThisTurn?: number;
+  /** Trigger only when this is at least the Nth such event this turn ("other than your first spell each turn"). */
+  minNthThisTurn?: number;
   /** Event amount threshold (e.g. "5 or more damage"). */
   minAmount?: number;
   /** Damage dealt to a player specifically (dealtDamage events). */
@@ -358,6 +360,8 @@ export interface AbilityCost {
   discardSelf?: boolean;
   /** Return this permanent to hand as a cost. */
   returnSelf?: boolean;
+  /** Reveal this card from your hand (free; the ability works from the hand). */
+  revealSelf?: boolean;
   tapUntapped?: { filter: ObjectFilter; count: number };
   /** Crew / saddle: tap any number of untapped matching creatures with total power N or more. */
   tapUntappedTotalPower?: { filter: ObjectFilter; power: number };

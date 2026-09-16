@@ -33,7 +33,19 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
       if (noun) return tp[1] === 'power' ? { kind: 'totalPower', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } } : { kind: 'totalManaValue', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
     }
   }
-  if (/^(?:the number of )?[+\-\w\/]+ counters? removed this way$/i.test(text.trim())) return 'X';
+  if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
+  {
+    const dv = text.trim().toLowerCase().match(/^your devotion to (white|blue|black|red|green)(?: and (white|blue|black|red|green))?$/);
+    if (dv) {
+      const C: Record<string, import('@commander/engine').Color> = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' };
+      return { kind: 'devotion', colors: dv[2] ? [C[dv[1]], C[dv[2]]] : [C[dv[1]]] };
+    }
+    const ca = text.trim().match(/^(?:the number of )?([+\-\w\/]+) counters? (?:among|on) (.+)$/i);
+    if (ca && !/^(it|them|~|that creature|that permanent|each of them)$/i.test(ca[2])) {
+      const noun = parseNoun(ca[2]);
+      if (noun) return { kind: 'countersOn', ref: { ref: 'all', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } }, counter: ca[1] };
+    }
+  }
   if (/^(?:the number of )?creatures? blocking (?:it|~|that creature)$/i.test(text.trim())) return { kind: 'countRef', ref: { ref: 'blockersOf', of: /~$/.test(text.trim()) ? { ref: 'self' } : ctx.lastObj ?? { ref: 'self' } } };
   const orig = text.trim().replace(/^(?:an amount of \w+ |a number of \w+ )?equal to /i, '');
   const t = orig.toLowerCase();

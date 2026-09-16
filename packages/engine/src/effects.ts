@@ -41,6 +41,7 @@ export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardDat
       const ex = spec.exceptions;
       let typeLine = base.typeLine;
       if (ex?.notLegendary) typeLine = typeLine.replace(/^Legendary /, '');
+      if (ex?.legendary && !/^Legendary /.test(typeLine)) typeLine = `Legendary ${typeLine}`;
       if (ex?.addTypes?.length) typeLine = `${ex.addTypes.filter((t) => !typeLine.includes(t)).join(' ')} ${typeLine}`.trim();
       if (ex?.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
       const extraText = ex?.keywords?.length ? `\n${ex.keywords.join('\n')}` : '';

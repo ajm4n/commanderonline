@@ -1022,6 +1022,10 @@ export class Game {
       const key = `${e.name}:${e.playerId ?? ''}`;
       if ((this.state.turnStats[key] ?? 0) !== f.nthThisTurn) return false;
     }
+    if (f.minNthThisTurn !== undefined) {
+      const key = `${e.name}:${e.playerId ?? ''}`;
+      if ((this.state.turnStats[key] ?? 0) < f.minNthThisTurn) return false;
+    }
     return true;
   }
 

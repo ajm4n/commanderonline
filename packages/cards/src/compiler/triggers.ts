@@ -42,7 +42,18 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     .replace(/^When (a|an|another|one or more) /, 'Whenever $1 ')
     .replace(/^Whenever ~ attacks while saddled, /i, 'Whenever ~ attacks, if ~ is saddled, ')
     .replace(/^Whenever ~ attacks for the first time each turn, /i, 'Whenever ~ attacks, ')
-    .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ');
+    .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ')
+    .replace(/deals (combat )?damage to (a player|an opponent) or battle\b/i, 'deals $1damage to $2')
+    .replace(/deals (combat )?damage to a player or planeswalker\b/i, 'deals $1damage to a player');
+  {
+    const sm = line.match(/^Whenever (?:a|an|one or more) (.+?) you control deals? (combat )?damage to (an opponent|a player), (.+)$/i);
+    if (sm) {
+      const noun = parseNoun(`a ${sm[1]}`);
+      if (noun) return { event: 'dealtDamage', filter: { player: /opponent/i.test(sm[3]) ? 'opponent' : 'any', toPlayer: true, combat: sm[2] ? true : undefined, source: { ...noun.filter, controller: 'you' } }, hasObject: false, hasPlayer: true, rest: sm[4] };
+    }
+    const nm = line.match(/^Whenever you cast a spell other than your first spell each turn, (.+)$/i);
+    if (nm) return { event: 'cast', filter: { player: 'you', minNthThisTurn: 2 }, hasObject: true, hasPlayer: true, rest: nm[1] };
+  }
   {
     // "Whenever one or more cards leave your graveyard during your turn, X" → same trigger, restricted to your turn.
     const dm = line.match(/^(When(?:ever)? .+?) during your turn, (.+)$/i);

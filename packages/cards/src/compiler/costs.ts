@@ -81,6 +81,7 @@ export function parseCost(text: string): AbilityCost | null {
       if (n === null || n === 'X' || !noun) return null;
       cost.tapUntapped = { filter: noun.filter, count: n };
     } else if (/^Return ~ to its owner's hand$/i.test(p)) cost.returnSelf = true;
+    else if (/^Reveal ~ from your hand$/i.test(p)) cost.revealSelf = true;
     else if ((m = p.match(/^Return (?:a|an|(\w+)) (.+?) you control to (?:its|their) owner'?s'? hands?$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       const noun = parseNoun(`a ${m[2]}`);
