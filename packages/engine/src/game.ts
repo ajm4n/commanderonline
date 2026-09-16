@@ -1382,8 +1382,14 @@ export class Game {
         for (const o of objectsMatching(this, a.filter, fctx)) for (const t of this.characteristics(o.id).types) types.add(t);
         return types.size;
       }
-      case 'colorCount':
-        return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + this.characteristics(o.id).colors.length, 0);
+      case 'colorCount': {
+        if (a.filter) {
+          const set = new Set<string>();
+          for (const o of objectsMatching(this, this.bindFilter(a.filter, ctx), fctx)) for (const c of this.characteristics(o.id).colors) set.add(c);
+          return set.size;
+        }
+        return a.ref ? this.resolveObjects(a.ref, ctx).reduce((s, o) => s + this.characteristics(o.id).colors.length, 0) : 0;
+      }
       case 'totalManaValue':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + this.characteristics(o.id).manaValue, 0);
       case 'eventsThisTurn': {
@@ -1469,6 +1475,8 @@ export class Game {
         return objT(objectsMatching(this, this.bindFilter(ref.filter, ctx), { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }).map((o) => o.id));
       case 'iter':
         return ctx.iter ? [ctx.iter] : [];
+      case 'players':
+        return ref.of.flatMap((r) => this.resolveRef(r, ctx));
       case 'lastCreated':
         return objT((ctx.memory['lastCreated'] as ObjectId[]) ?? []);
       case 'lastMoved':

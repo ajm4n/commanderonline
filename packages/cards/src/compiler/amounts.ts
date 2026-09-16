@@ -8,6 +8,19 @@ export interface RefCtx {
   triggerHasObject: boolean;
   lastPlayer?: Ref | null;
   triggerHasPlayer?: boolean;
+  /** Resolve a player phrase ("target player") to a Ref, registering targets when the caller can. */
+  resolvePlayer?: (phrase: string) => Ref | null;
+}
+
+/** Apply a noun's controller phrase ("creatures target player controls") to its filter; null when the player cannot be resolved. */
+function withCtrl<T extends { filter: import('@commander/engine').ObjectFilter; controllerPhrase?: string } | null>(noun: T, ctx: RefCtx): T | null {
+  if (!noun || !noun.controllerPhrase) return noun;
+  const p = noun.controllerPhrase;
+  let r: Ref | null = ctx.resolvePlayer?.(p) ?? null;
+  if (!r && /^(that player|they|that opponent|its controller)$/i.test(p)) r = thatPlayer(ctx);
+  if (!r && /^defending player$/i.test(p)) r = { ref: 'defendingPlayer' };
+  if (!r) return null;
+  return { ...noun, filter: { ...noun.filter, controllerRef: r } };
 }
 
 /** "their"/"that player's" inside an amount: the player the sentence is about. */
@@ -53,7 +66,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   {
     const ct = text.trim().match(/^(?:the number of )?card types? among (.+)$/i);
     if (ct) {
-      const noun = parseNoun(ct[1].replace(/ cards$/i, ' card'));
+      const noun = withCtrl(parseNoun(ct[1].replace(/ cards$/i, ' card')), ctx);
       if (noun) return { kind: 'cardTypesAmong', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
     }
     if (/^(?:the number of )?(?:1 )?life you (?:have )?gained this turn$/i.test(text.trim())) return { kind: 'playerTurnStat', key: 'lifeGainedAmount' };
@@ -86,7 +99,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     }
     const ca = text.trim().match(/^(?:the number of )?([+\-\w\/]+) counters? (?:among|on) (.+)$/i);
     if (ca && !/^(it|them|~|that creature|that permanent|each of them)$/i.test(ca[2])) {
-      const noun = parseNoun(ca[2]);
+      const noun = withCtrl(parseNoun(ca[2]), ctx);
       if (noun) return { kind: 'countersOn', ref: { ref: 'all', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } }, counter: ca[1] };
     }
   }
@@ -121,7 +134,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'their life total' || t === "that player's life total") return { kind: 'life', ref: thatPlayer(ctx) };
   if (t === 'the number of cards in their library') return { kind: 'librarySize', ref: thatPlayer(ctx) };
   if ((m = t.match(/^the number of (.+?) cards? put into (?:a|your|their) graveyard this way$/)) || (m = t.match(/^the number of (.+?) cards? milled this way$/))) {
-    const noun = parseNoun(`a ${oc(m, 1)} card`);
+    const noun = withCtrl(parseNoun(`a ${oc(m, 1)} card`), ctx);
     if (noun) return { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: noun.filter };
   }
   if ((m = t.match(/^(?:its|that creature's|~'s|this creature's) (power|toughness)$/))) {
@@ -136,12 +149,12 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the number of cards in that player\'s hand' || t === "the number of cards in their hand") return { kind: 'handSize', ref: { ref: 'triggerPlayer' } };
   if (t === 'the number of cards in your graveyard') return { kind: 'graveyardSize', ref: { ref: 'controller' } };
   if ((m = t.match(/^the number of (\w+) cards in your graveyard$/))) {
-    const noun = parseNoun(`${oc(m, 1)} card`);
+    const noun = withCtrl(parseNoun(`${oc(m, 1)} card`), ctx);
     return noun ? { kind: 'graveyardSize', ref: { ref: 'controller' }, filter: noun.filter } : null;
   }
   if (t === 'the number of lands you control') return { kind: 'landsYouControl' };
   if ((m = t.match(/^the (greatest|highest) (power|toughness|mana value) among (.+)$/))) {
-    const noun = parseNoun(oc(m, 3));
+    const noun = withCtrl(parseNoun(oc(m, 3)), ctx);
     if (noun) return { kind: 'maxOf', stat: m[2] === 'power' ? 'power' : m[2] === 'toughness' ? 'toughness' : 'manaValue', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
   }
   if (t === 'the number of creatures in your party') return { kind: 'partySize' };
@@ -150,18 +163,29 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the number of opponents you have' || t === 'the number of your opponents' || t === 'opponents you have' || t === 'your opponents' || t === 'the number of opponents') return { kind: 'opponents' };
   if (t === 'the number of spells you have cast this turn' || t === 'spells you have cast this turn' || t === 'spell you have cast this turn' || t === 'the number of spell you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
   if (t === 'the number of cards you have drawn this turn' || t === 'cards you have drawn this turn' || t === 'card you have drawn this turn' || t === 'the number of card you have drawn this turn') return { kind: 'cardsDrawnThisTurn' };
-  if (t === 'the number of experience counters you have') return { kind: 'turnStat', key: 'experience' };
-  if ((m = t.match(/^the number of (\+1\/\+1|-1\/-1|charge|loyalty|lore|\w+) counters on (~|it|that creature|this creature)$/))) return { kind: 'countersOn', ref: /~|this/.test(m[2]) ? ctx.self : ctx.lastObj ?? ctx.self, counter: m[1] };
+  if (t === 'the number of experience counters you have' || t === 'experience counter you have' || t === 'experience counters you have') return { kind: 'turnStat', key: 'experience' };
+  if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
+  if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {
+    const noun = withCtrl(parseNoun(oc(m, 1)), ctx);
+    if (noun) return { kind: 'colorCount', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
+  }
+  if ((m = t.match(/^(?:the number of )?different (powers?|toughnesses|toughness|mana values?|names?) among (.+)$/))) {
+    const noun = withCtrl(parseNoun(oc(m, 2)), ctx);
+    if (noun) return { kind: 'distinctValues', stat: /^power/.test(m[1]) ? 'power' : /^tough/.test(m[1]) ? 'toughness' : /^mana/.test(m[1]) ? 'manaValue' : 'name', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
+  }
+  if ((m = t.match(/^(?:the number of )?(?:cards?|creatures?|permanents?|creature cards?|nonland cards?|lands?) (?:you )?exiled this way$/))) return { kind: 'ctxMemory', key: 'lastMoved' };
+  if ((m = t.match(/^(?:the number of )?(?:\w+ )?(?:creatures?|permanents?|lands?|artifacts?) (?:you )?(?:tapped|untapped|returned|put onto the battlefield|sacrificed|exiled|destroyed) this way$/))) return { kind: 'ctxMemory', key: 'lastMoved' };
+  if ((m = t.match(/^(?:the number of )?(\+1\/\+1|-1\/-1|charge|loyalty|lore|\w+) counters on (~|it|that creature|this creature)$/))) return { kind: 'countersOn', ref: /~|this/.test(m[2]) ? ctx.self : ctx.lastObj ?? ctx.self, counter: m[1] };
   if ((m = t.match(/^the number of (.+?)(?: on the battlefield)?$/))) {
-    const noun = parseNoun(oc(m, 1));
+    const noun = withCtrl(parseNoun(oc(m, 1)), ctx);
     if (noun) return { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter } };
   }
   if ((m = t.match(/^the number of (.+?) in all graveyards$/))) {
-    const noun = parseNoun(oc(m, 1).replace(/ cards$/i, ' card'));
+    const noun = withCtrl(parseNoun(oc(m, 1).replace(/ cards$/i, ' card')), ctx);
     if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'graveyard' } };
   }
   if ((m = t.match(/^(\d+|x|one|two|three|four|five) plus the number of (.+)$/))) {
-    const noun = parseNoun(oc(m, 2));
+    const noun = withCtrl(parseNoun(oc(m, 2)), ctx);
     const base = wordToNumber(m[1]);
     if (noun && base !== null) return { kind: 'sum', parts: [base, { kind: 'count', filter: noun.filter }] };
   }

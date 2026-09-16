@@ -18,6 +18,8 @@ export interface ParseCtx {
   isSpell: boolean;
   /** Inside a trigger whose subject is the event's source (damage dealer) rather than its object. */
   triggerObjectIsSource?: boolean;
+  /** Memory key of a looked-at / revealed pool of library cards that "the rest" refers to. */
+  restKey?: string;
 }
 
 export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
@@ -94,7 +96,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
     ctx.targets.push(spec);
     const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
     if (noun.kind !== 'player') ctx.lastObj = ref;
-    else ctx.lastPlayer = ref;
+    if (noun.kind !== 'object') ctx.lastPlayer = ref;
     return ref;
   }
   if (noun.each || (noun.plural && !noun.indefinite)) {
@@ -254,7 +256,22 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
 type Pattern = [RegExp, (m: RegExpMatchArray, ctx: ParseCtx) => Effect[] | null];
 
 function amt(text: string, ctx: ParseCtx) {
-  return parseAmount(text, { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer });
+  return parseAmount(text, { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, resolvePlayer: (p) => playerRef(p, ctx) });
+}
+
+/** "for each X": a count of matching objects, or any other amount phrase. */
+function perEach(phrase: string, ctx: ParseCtx): Amount | null {
+  const noun = parseNoun(phrase);
+  if (noun && noun.kind !== 'player') {
+    const f: ObjectFilter = noun.filter.zone ? { ...noun.filter } : { ...noun.filter, zone: 'battlefield' };
+    if (noun.controllerPhrase) {
+      const pr = playerRef(noun.controllerPhrase, ctx);
+      if (!pr) return null;
+      f.controllerRef = pr;
+    }
+    return { kind: 'count', filter: f };
+  }
+  return amt(`the number of ${phrase}`, ctx) ?? amt(phrase, ctx);
 }
 
 /** Subject-verb helpers */
@@ -265,7 +282,131 @@ function subjectPlayer(subj: string | undefined, ctx: ParseCtx): Ref | null {
   return who;
 }
 
+
+const DEST_RE = String.raw`(into (?:your|their) hand|into (?:your|their) graveyard|onto the battlefield(?: tapped)?(?: under your control)?|on the bottom of (?:your|their) library(?: in (?:a random|any) order)?|on top of (?:your|their) library(?: in any order)?|into exile)`;
+/** Effects that move a chosen ref to a destination phrase (see DEST_RE). */
+function moveChosen(ref: Ref, dest: string): Effect | null {
+  const d = dest.toLowerCase();
+  if (/^into (?:your|their) hand$/.test(d)) return { kind: 'putIntoHand', what: ref };
+  if (/^into (?:your|their) graveyard$/.test(d)) return { kind: 'moveToZone', what: ref, zone: 'graveyard' };
+  if (/^onto the battlefield/.test(d)) return { kind: 'returnToBattlefield', what: ref, tapped: /tapped/.test(d) };
+  if (/^on the bottom/.test(d)) return { kind: 'putOnLibrary', what: ref, position: 'bottom' };
+  if (/^on top/.test(d)) return { kind: 'putOnLibrary', what: ref, position: 'top' };
+  if (/^into exile$/.test(d)) return { kind: 'exile', what: ref };
+  return null;
+}
+function restDest(dest: string): Extract<Effect, { kind: 'moveRest' }>['to'] | null {
+  const d = dest.toLowerCase();
+  if (/^into (?:your|their) hand$/.test(d)) return 'hand';
+  if (/^into (?:your|their) graveyard$/.test(d)) return 'graveyard';
+  if (/^on the bottom/.test(d)) return /random/.test(d) ? 'bottomRandom' : 'bottom';
+  if (/^on top/.test(d)) return 'top';
+  if (/^into exile$/.test(d) || d === 'exile') return 'exile';
+  return null;
+}
+/** Follow-up clauses after "Look at the top N cards of your library" (the pool is remembered under ctx.restKey). */
+const POOL_PATTERNS: Pattern[] = [
+  // "Put one of them into your hand (and the rest on the bottom of your library in a random order)"
+  [new RegExp(String.raw`^(you may )?(put|exile) (one|the other|(\w+)|up to (\w+)|any number|all|the rest) of (?:them|those cards)(?: ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
+    if (!ctx.restKey) return null;
+    const pool: Ref = { ref: 'chosen', key: ctx.restKey };
+    const out: Effect[] = [];
+    const isRest = /^(all|the rest)$/i.test(m[3]);
+    const dest = m[2].toLowerCase() === 'exile' ? 'into exile' : m[6];
+    if (!dest) return null;
+    if (isRest) {
+      const to = restDest(dest);
+      if (!to) return null;
+      out.push({ kind: 'moveRest', key: ctx.restKey, to });
+    } else {
+      const n = /^(one|the other)$/i.test(m[3]) ? 1 : m[4] ? wordToNumber(m[4]) : m[5] ? wordToNumber(m[5]) : 'X';
+      if (n === null) return null;
+      const key = `pick${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+      const anyNumber = /^any number$/i.test(m[3]);
+      out.push({ kind: 'chooseObjects', from: pool, filter: {}, count: anyNumber ? 99 : n, key, upTo: !!m[1] || !!m[5] || anyNumber });
+      const mv = moveChosen({ ref: 'chosen', key }, dest);
+      if (!mv) return null;
+      out.push(mv);
+      ctx.lastObj = { ref: 'chosen', key };
+    }
+    if (m[7]) {
+      const to = restDest(m[7]);
+      if (!to) return null;
+      out.push({ kind: 'moveRest', key: ctx.restKey, to });
+    }
+    return out;
+  }],
+  // "You may reveal a creature card from among them and put it into your hand" / "Put all land cards revealed this way onto the battlefield tapped"
+  [new RegExp(String.raw`^(you may )?(reveal|put|exile) (a|an|all|up to (\w+)|any number of|(\w+)) (.+?) (?:from among (?:them|those cards)|revealed this way|from among the revealed cards)(?:,? and put (?:it|them|that card|those cards) ${DEST_RE}| ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
+    if (!ctx.restKey) return null;
+    const pool: Ref = { ref: 'chosen', key: ctx.restKey };
+    const phrase = /\bcards?\b/i.test(m[6]) ? m[6].replace(/\bcards\b/i, 'card') : `${m[6]} card`;
+    const noun = parseNoun(`a ${phrase}`);
+    if (!noun) return null;
+    const all = /^(all|any number of)$/i.test(m[3]);
+    const n = /^(a|an)$/i.test(m[3]) ? 1 : m[4] ? wordToNumber(m[4]) : m[5] ? wordToNumber(m[5]) : 99;
+    if (n === null) return null;
+    const key = `pick${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    const out: Effect[] = [{ kind: 'chooseObjects', from: pool, filter: noun.filter, count: all ? 99 : n, key, upTo: !!m[1] || !!m[4] || /any number/i.test(m[3]) }];
+    const dest = m[2].toLowerCase() === 'exile' ? 'into exile' : m[7] ?? m[8];
+    if (dest) {
+      const mv = moveChosen({ ref: 'chosen', key }, dest);
+      if (!mv) return null;
+      out.push(mv);
+    } else if (m[2].toLowerCase() === 'put') return null;
+    ctx.lastObj = { ref: 'chosen', key };
+    if (m[9]) {
+      const to = restDest(m[9]);
+      if (!to) return null;
+      out.push({ kind: 'moveRest', key: ctx.restKey, to });
+    }
+    return out;
+  }],
+  // "Put the rest on the bottom of your library in a random order" / "Exile the rest" / "and the rest into your graveyard"
+  [new RegExp(String.raw`^(?:then )?(?:and )?(?:put )?the rest ${DEST_RE}$|^(?:then )?exile the rest$|^(?:then )?put the rest into exile$`, 'i'), (m, ctx) => {
+    if (!ctx.restKey) return null;
+    const to = restDest(m[1] ?? 'exile');
+    return to ? [{ kind: 'moveRest', key: ctx.restKey, to }] : null;
+  }],
+  // "Look at the top five cards of your library, put one of them into your hand, and exile the rest" / bare "Look at the top N cards of your library"
+  [/^(look at|reveal) the top (\w+|X) cards? of your library(?:, where X is (.+?))?(?:, (.+))?$/i, (m, ctx) => {
+    const n = m[2] === 'X' ? 'X' : wordToNumber(m[2]);
+    if (n === null) return null;
+    let amount: Amount = n;
+    if (m[3]) {
+      const a = amt(m[3], ctx);
+      if (!a) return null;
+      amount = a;
+    }
+    const key = `looked${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.restKey = key;
+    ctx.lastObj = { ref: 'chosen', key };
+    const out: Effect[] = [{ kind: 'lookAtTop', amount, then: 'hold', key, reveal: /^reveal/i.test(m[1]) }];
+    if (m[4]) {
+      for (const clause of m[4].split(/, (?:and |then )?|,? and then |,? then /i)) {
+        const r = parseSentence(clause, ctx);
+        if (!r) return null;
+        out.push(...r);
+      }
+    }
+    return out;
+  }],
+];
+
 const PATTERNS: Pattern[] = [
+  // "You and target opponent each draw two cards" → for each of those players
+  [/^you and (target opponent|target player|that player|each opponent|each other player|the chosen player|defending player) each (\w+) (.+)$/i, (m, ctx) => {
+    const other = playerRef(m[1], ctx);
+    if (!other) return null;
+    const verb = m[2].toLowerCase();
+    const third = /(ch|sh|s|x|z)$/.test(verb) ? `${verb}es` : verb === 'may' ? 'may' : `${verb}s`;
+    const sub = newCtx({ ...ctx, targets: ctx.targets });
+    sub.lastPlayer = { ref: 'iter' };
+    const inner = parseSentence(`that player ${third} ${m[3]}`, sub);
+    if (!inner) return null;
+    ctx.lastPlayer = other;
+    return [{ kind: 'forEach', over: { ref: 'players', of: [YOU, other] }, effects: inner }];
+  }],
   // Draw
   [/^(?:(.+?) )?draws? (?:(\w+|X) cards?|a card)$/i, (m, ctx) => {
     const who = m[1] ? playerRef(m[1], ctx) : YOU;
@@ -301,20 +442,13 @@ const PATTERNS: Pattern[] = [
     const who = subjectPlayer(m[1], ctx);
     const n = wordToNumber(m[3]);
     if (!who || n === null) return null;
-    const noun = parseNoun(m[4]);
-    let per: Amount | null = null;
-    if (noun) {
-      const filter = { ...noun.filter };
-      if (!filter.zone) filter.zone = 'battlefield';
-      per = { kind: 'count', filter };
-    } else per = amt(`the number of ${m[4].replace(/^of /i, '')}`, ctx);
+    const per = perEach(m[4].replace(/^of /i, ''), ctx);
     if (per === null) return null;
     return [{ kind: /gain/i.test(m[2]) ? 'gainLife' : 'loseLife', amount: { kind: 'times', a: n, b: per }, who } as Effect];
   }],
   [/^(?:(.+?) )?discards? a card for each (.+)$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
-    const noun = parseNoun(m[2]);
-    const per: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[2]}`, ctx);
+    const per: Amount | null = perEach(m[2], ctx);
     return who && per !== null ? [{ kind: 'discard', amount: per, who }] : null;
   }],
   [/^(?:(.+?) )?reveals? (?:their|your) hand and discards? all (.+?) cards$/i, (m, ctx) => {
@@ -474,6 +608,7 @@ const PATTERNS: Pattern[] = [
     const pick = m[3] ? wordToNumber(m[3]) : /^(all|any number)/i.test(m[2]) ? n : 1;
     if (pick === null) return null;
     const rest = /graveyard/.test(m[7]) ? 'Graveyard' : /bottom/.test(m[7]) ? 'Bottom' : 'Top';
+    if (/battlefield/.test(m[5]) && rest !== 'Bottom') return null;
     const then = /battlefield/.test(m[5]) ? 'battlefieldRestBottom' : (`handRest${rest}` as 'handRestBottom' | 'handRestGraveyard' | 'handRestTop');
     return [{ kind: 'lookAtTop', amount: n, then, filter: noun.filter, pick }];
   }],
@@ -562,9 +697,9 @@ const PATTERNS: Pattern[] = [
     if (n === null) return null;
     let amount: Amount = n;
     if (m[4]) {
-      const noun = parseNoun(m[4]);
-      if (!noun) return null;
-      amount = { kind: 'times', a: n, b: { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } };
+      const per = perEach(m[4], ctx);
+      if (!per) return null;
+      amount = { kind: 'times', a: n, b: per };
     }
     return damageTo(m[3], amount, ctx, src);
   }],
@@ -746,8 +881,7 @@ const PATTERNS: Pattern[] = [
   [/^create (.+?) for each (.+)$/i, (m, ctx) => {
     const t = parseTokenPhrase(m[1]);
     if (!t || t.count !== 1) return null;
-    const noun = parseNoun(m[2]);
-    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : (amt(`the number of ${m[2]}`, ctx) ?? amt(`the number of ${m[2].replace(/^(\w+) /, (w) => (/s$/.test(w.trim()) ? w : `${w.trim()}s `))}`, ctx));
+    const a: Amount | null = perEach(m[2], ctx) ?? amt(`the number of ${m[2].replace(/^(\w+) /, (w) => (/s$/.test(w.trim()) ? w : `${w.trim()}s `))}`, ctx);
     if (a === null) return null;
     ctx.lastObj = { ref: 'lastCreated' };
     return [{ kind: 'createToken', token: t.token, count: a, tapped: t.tapped, attacking: t.attacking }];
@@ -807,15 +941,14 @@ const PATTERNS: Pattern[] = [
     const who = subjectPlayer(m[1], ctx);
     if (!who) return null;
     const noun = parseNoun(m[2]);
-    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[2]}`, ctx);
+    const a: Amount | null = perEach(m[2], ctx);
     if (a === null) return null;
     return [{ kind: 'draw', amount: a, who }];
   }],
   [/^put (?:a|an|(\w+|X)) ([+-]\d+\/[+-]\d+|\w+) counters? on (.+?) for each (.+)$/i, (m, ctx) => {
     const n = m[1] ? wordToNumber(m[1]) : 1;
-    const noun = parseNoun(m[4]);
     if (n === null) return null;
-    const per: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[4]}`, ctx);
+    const per: Amount | null = perEach(m[4], ctx);
     if (per === null) return null;
     const ref = objRef(m[3], ctx);
     return ref ? [{ kind: 'addCounters', counter: m[2], amount: { kind: 'times', a: n, b: per }, on: ref }] : null;
@@ -852,8 +985,7 @@ const PATTERNS: Pattern[] = [
   [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+) for each (.+?)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
-    const noun = parseNoun(m[4]);
-    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' as const } } : amt(`the number of ${m[4]}`, ctx);
+    const a: Amount | null = perEach(m[4], ctx);
     if (a === null) return null;
     const p = parseInt(m[2], 10);
     const t = parseInt(m[3], 10);
@@ -862,8 +994,7 @@ const PATTERNS: Pattern[] = [
   [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+) until end of turn for each (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
-    const noun = parseNoun(m[4]);
-    const a: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : amt(`the number of ${m[4]}`, ctx);
+    const a: Amount | null = perEach(m[4], ctx);
     if (a === null) return null;
     return [{ kind: 'pump', power: { kind: 'times', a: parseInt(m[2], 10), b: a }, toughness: { kind: 'times', a: parseInt(m[3], 10), b: a }, on: ref, duration: 'endOfTurn' }];
   }],
@@ -1437,6 +1568,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
+  if (/\bdraft(ed|ing)?\b/i.test(text) || /^x cannot be 0\.?$/i.test(text.trim())) return true;
   return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 
@@ -1445,6 +1577,8 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   let text = s.trim().replace(/\.$/, '');
   if (!text) return [];
   text = text.replace(/^then,? /i, '');
+  text = text.replace(/^you create\b/i, 'create');
+  text = text.replace(/\bthat player or that planeswalker's controller controls\b/gi, 'that player controls');
   text = text.replace(/^(for each (?:opponent|player)), you (create|draw|gain|lose|put|exile|destroy|sacrifice|mill|scry|return)\b/i, '$1, $2');
   text = rephraseFirstPerson(text);
   let m: RegExpMatchArray | null;
@@ -1869,6 +2003,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       if (inner) return [{ kind: 'forEach', over: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: inner }];
     }
   }
+  for (const [re, fn] of POOL_PATTERNS) {
+    const pm = text.match(re);
+    if (pm) {
+      const r = fn(pm, ctx);
+      if (r) return r;
+    }
+  }
   for (const [re, fn] of PATTERNS) {
     const mm = text.match(re);
     if (!mm) continue;
@@ -1986,11 +2127,16 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // Merge "Reveal the top N cards of your library" with its follow-up sentences.
     if (/^reveal the top (?:\w+|X) cards of your library$/i.test(s)) {
       let j = i + 1;
+      let merged = s;
       while (sents[j] && /^(you may put|put (?:all|any number|a |an |up to|the rest)|and the rest)/i.test(sents[j])) {
-        s = `${s}. ${sents[j]}`;
+        merged = `${merged}. ${sents[j]}`;
         j++;
       }
-      if (j > i + 1) i = j - 1;
+      const probe = newCtx({ ...ctx, targets: [...ctx.targets] });
+      if (j > i + 1 && parseSentence(merged, probe)) {
+        s = merged;
+        i = j - 1;
+      }
     }
     // Merge "Look at the top N cards…" with its follow-up sentences.
     let whereX = '';
@@ -2001,12 +2147,31 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
     if (/^look at the top (?:\w+|X) cards of your library$/i.test(s)) {
       let j = i + 1;
+      let merged = s;
       while (sents[j] && /^(you may reveal|you may put|put (?:one|two|three|up to|any number|the rest|the other|a |an |it|them)|reveal (?:a|an|up to)|then put|and the rest)/i.test(sents[j])) {
-        s = `${s}. ${sents[j].replace(/\bthe other\b/i, 'the rest').replace(/\bone of those cards\b/i, 'one of them').replace(/on the bottom of your library$/i, 'on the bottom of your library in a random order')}`;
+        merged = `${merged}. ${sents[j].replace(/\bthe other\b/i, 'the rest').replace(/\bone of those cards\b/i, 'one of them').replace(/on the bottom of your library$/i, 'on the bottom of your library in a random order')}`;
         j++;
       }
-      if (j > i + 1) i = j - 1;
-      if (whereX) s = `${s}, where X is ${whereX}`;
+      if (whereX) merged = `${merged}, where X is ${whereX}`;
+      // Prefer the single merged effect; otherwise fall back to a held pool + compositional follow-up sentences.
+      const probe = newCtx({ ...ctx, targets: [...ctx.targets] });
+      if (j > i + 1 && parseSentence(merged, probe)) {
+        s = merged;
+        i = j - 1;
+      } else {
+        // "Look at the top X cards… You may put … from among them onto the battlefield, where X is your life total."
+        if (!whereX && /top X cards/i.test(s)) {
+          for (let k = i + 1; k < sents.length; k++) {
+            const wm = sents[k].match(/^(.+), where X is (.+?)\.?$/i);
+            if (wm) {
+              whereX = wm[2];
+              sents[k] = wm[1];
+              break;
+            }
+          }
+        }
+        if (whereX) s = `${s}, where X is ${whereX}`;
+      }
     }
     if (/^reveal the top card of your library$/i.test(s) && sents[i + 1] && /^if it is /i.test(sents[i + 1])) {
       s = `${s}. ${sents[i + 1]}`;

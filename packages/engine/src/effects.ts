@@ -747,7 +747,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const n = Math.min(amt(e.amount), pl.library.length);
         const top = pl.library.slice(0, n);
         if (!top.length) return;
-        g.log(`${pl.name} looks at the top ${n} card${n === 1 ? '' : 's'}.`);
+        g.log(`${pl.name} ${e.reveal ? 'reveals' : 'looks at'} the top ${n} card${n === 1 ? '' : 's'}${e.reveal ? `: ${top.map((id) => g.nameOf(id)).join(', ')}` : ''}.`);
+        if (e.then === 'hold') {
+          if (!e.reveal) yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Top ${n} card${n === 1 ? '' : 's'} of your library`, candidates: top, min: 0, max: 0, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+          ctx.memory[e.key ?? 'looked'] = top;
+          ctx.memory['lastMoved'] = top;
+          return;
+        }
         if (e.then === 'reorder') {
           const resp = yield* g.ask({ type: 'orderObjects', player: p, prompt: 'Put them back in any order (first = top)', objectIds: top, context: 'libraryTop' });
           if (resp.type === 'order') pl.library.splice(0, n, ...resp.ids);
@@ -1156,6 +1162,31 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       const paid = yield* offerToPay(g, who, e.cost, e.text ?? `Pay ${e.cost}? If you do: ${describe(e.effects)}`);
       if (paid) yield* executeEffects(g, e.effects, ctx);
+      return;
+    }
+    case 'moveRest': {
+      const ids = ((ctx.memory[e.key] as ObjectId[] | undefined) ?? []).filter((id) => g.state.objects[id]?.zone === 'library');
+      if (!ids.length) return;
+      const p = g.state.objects[ids[0]].controller;
+      if (e.to === 'graveyard' || e.to === 'exile' || e.to === 'hand') {
+        for (const id of ids) g.moveObject(id, e.to, e.to === 'graveyard' ? { cause: 'mill' } : {});
+        g.touch();
+        return;
+      }
+      let order = ids;
+      if (e.to === 'bottomRandom') order = g.rng.shuffle([...ids]);
+      else if (ids.length > 1) {
+        const resp = yield* g.ask({ type: 'orderObjects', player: p, prompt: e.to === 'top' ? 'Put the rest back on top in any order (first = top)' : 'Put the rest on the bottom in any order', objectIds: ids, context: 'libraryTop' });
+        if (resp.type === 'order') order = resp.ids;
+      }
+      if (e.to === 'top') {
+        const pl = g.player(p);
+        const rest = pl.library.filter((id) => !ids.includes(id));
+        pl.library.splice(0, pl.library.length, ...order, ...rest);
+      } else {
+        for (const id of order) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
+      }
+      g.touch();
       return;
     }
     case 'chooseObjects': {

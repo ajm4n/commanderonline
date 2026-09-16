@@ -54,7 +54,7 @@ export type Amount =
   /** Sum of mana values of matching objects. */
   | { kind: 'totalManaValue'; filter: ObjectFilter }
   /** Number of colors of the referenced object(s). */
-  | { kind: 'colorCount'; ref: Ref }
+  | { kind: 'colorCount'; ref?: Ref; /** Distinct colors among objects matching this filter ('colors among permanents you control'). */ filter?: ObjectFilter }
   /** A per-player turn statistic ("life you gained this turn"). */
   | { kind: 'playerTurnStat'; key: string; ref?: Ref }
   /** Number of distinct values of a stat among matching objects ("creatures with different powers"). */
@@ -93,7 +93,9 @@ export type Ref =
   /** Opponents of the controller other than the trigger's player ("each other opponent"). */
   | { ref: 'eachOtherOpponent' }
   /** The player or planeswalker the referenced creature is attacking. */
-  | { ref: 'defenderOf'; of: Ref };
+  | { ref: 'defenderOf'; of: Ref }
+  /** The union of several refs ("you and target opponent each ..."). */
+  | { ref: 'players'; of: Ref[] };
 
 export const R = {
   target: (slot = 0): Ref => ({ ref: 'target', slot }),
@@ -263,7 +265,9 @@ export type Effect =
   | { kind: 'goad'; what: Ref }
   | { kind: 'regenerate'; what: Ref }
   | { kind: 'preventDamage'; amount: Amount | 'all'; to: Ref; duration?: Duration }
-  | { kind: 'lookAtTop'; amount: Amount; who?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'topRestGraveyard' | 'graveyardRestTop' | 'handRestTop'; filter?: ObjectFilter; pick?: Amount }
+  | { kind: 'lookAtTop'; amount: Amount; who?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'topRestGraveyard' | 'graveyardRestTop' | 'handRestTop' | 'hold'; filter?: ObjectFilter; pick?: Amount; /** `hold`: leave the cards in the library and remember them under this memory key (default "looked") for follow-up effects. */ key?: string; /** Reveal the looked-at cards to all players. */ reveal?: boolean }
+  /** Move the remembered cards (see lookAtTop `hold`) that are still in their library to a destination ("put the rest on the bottom of your library"). */
+  | { kind: 'moveRest'; key: string; to: 'bottom' | 'bottomRandom' | 'graveyard' | 'exile' | 'top' | 'hand' }
   | { kind: 'revealTop'; who?: Ref; ifMatches?: ObjectFilter; then?: Effect[]; else?: Effect[]; destination?: 'hand' | 'graveyard' | 'bottom' | 'stay' }
   | { kind: 'castWithoutPaying'; what: Ref; exileAfter?: boolean }
   | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean; exileAfter?: boolean }
