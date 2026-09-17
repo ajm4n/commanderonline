@@ -1171,11 +1171,17 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'chooseCreatureType': {
-      const types = new Set<string>();
-      for (const o of Object.values(g.state.objects)) if (g.characteristics(o.id).types.includes('Creature')) g.characteristics(o.id).subtypes.forEach((s) => types.add(s));
-      const options = [...types].sort().map((t) => ({ id: t, label: t }));
-      if (!options.length) options.push({ id: 'Human', label: 'Human' });
-      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Choose a creature type', options, min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      const pool = e.pool ?? 'creature';
+      let options: { id: string; label: string }[];
+      if (pool === 'land') options = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'].map((t) => ({ id: t, label: t }));
+      else if (pool === 'cardType') options = ['Artifact', 'Creature', 'Enchantment', 'Instant', 'Land', 'Planeswalker', 'Sorcery', 'Battle'].map((t) => ({ id: t, label: t }));
+      else {
+        const types = new Set<string>();
+        for (const o of Object.values(g.state.objects)) if (g.characteristics(o.id).types.includes('Creature')) g.characteristics(o.id).subtypes.forEach((s) => types.add(s));
+        options = [...types].sort().map((t) => ({ id: t, label: t }));
+        if (!options.length) options.push({ id: 'Human', label: 'Human' });
+      }
+      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: pool === 'land' ? 'Choose a land type' : pool === 'cardType' ? 'Choose a card type' : 'Choose a creature type', options, min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
       setMemory(g, ctx, e.key, resp.type === 'options' ? resp.ids[0] : options[0].id);
       return;
     }

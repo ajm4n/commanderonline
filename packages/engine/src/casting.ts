@@ -358,7 +358,7 @@ function reduceGeneric(cost: ManaCost, n: number): ManaCost {
   return { ...cost, symbols };
 }
 
-export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: AbilityCost, x: number): Gen<boolean> {
+export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: AbilityCost, x: number, abilityText?: string): Gen<boolean> {
   const ctx = { sourceId: obj.id, controller: p, x };
   if (cost.optional) {
     const { optional: _o, ...rest } = cost;
@@ -368,7 +368,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       obj.memory['additionalCostPaid'] = false;
       return true;
     }
-    const paid = yield* payAbilityCost(g, p, obj, rest, x);
+    const paid = yield* payAbilityCost(g, p, obj, rest, x, abilityText);
     obj.memory['additionalCostPaid'] = paid;
     return paid;
   }
@@ -377,7 +377,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const label = (c: AbilityCost): string => c.mana ?? (c.sacrifice ? 'Sacrifice' : c.discard ? 'Discard' : c.payLife ? `Pay ${c.payLife} life` : c.returnToHand ? 'Return a permanent to hand' : c.exileFromGraveyard ? 'Exile from graveyard' : c.tapUntapped ? 'Tap creatures' : 'Other');
     const resp = yield* g.ask({ type: 'chooseOption', player: p, prompt: 'Choose which cost to pay', options: cost.choice.map((c, i) => ({ id: String(i), label: label(c) })), min: 1, max: 1, sourceId: obj.id });
     if (resp.type !== 'options' || !resp.ids.length) return false;
-    return yield* payAbilityCost(g, p, obj, cost.choice[parseInt(resp.ids[0], 10)], x);
+    return yield* payAbilityCost(g, p, obj, cost.choice[parseInt(resp.ids[0], 10)], x, abilityText);
   }
   // Check first
   if (cost.tap && (obj.tapped || (g.characteristics(obj.id).types.includes('Creature') && summoningSick(g, obj)))) return false;
@@ -532,7 +532,8 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     let reduce = 0;
     for (const r of g.playerRules(p)) {
       if (r.kind !== 'custom' || r.tag !== 'abilityCostReduction') continue;
-      const d = (r.data as { amount?: number; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+      const d = (r.data as { amount?: number; filter?: import('./types.js').ObjectFilter; textPrefix?: string } | undefined) ?? {};
+      if (d.textPrefix && !new RegExp(`^${d.textPrefix}`, 'i').test(abilityText ?? '')) continue;
       if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller: p })) continue;
       reduce += d.amount ?? 0;
     }
@@ -1234,13 +1235,13 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
   if (spec.manaAbility) {
     const alts = manaFromAbility(g, obj, spec);
     if (alts.length === 1 && !spec.effects.some((e) => e.kind === 'addMana' && (e.mana === 'anyColor' || e.mana === 'anyOneColor' || e.mana === 'commanderColors'))) {
-      const ok = yield* payAbilityCost(g, p, obj, spec.cost, 0);
+      const ok = yield* payAbilityCost(g, p, obj, spec.cost, 0, spec.text);
       if (!ok) return false;
       for (const c of alts[0]) g.player(p).manaPool[c]++;
       const extra = spec.effects.filter((e) => e.kind !== 'addMana');
       if (extra.length) yield* executeEffects(g, extra, { sourceId: id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
     } else {
-      const ok = yield* payAbilityCost(g, p, obj, spec.cost, 0);
+      const ok = yield* payAbilityCost(g, p, obj, spec.cost, 0, spec.text);
       if (!ok) return false;
       yield* executeEffects(g, spec.effects, { sourceId: id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
     }
@@ -1273,7 +1274,7 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
     targets = chosen.flat;
     slots = chosen.slots;
   }
-  const ok = yield* payAbilityCost(g, p, obj, spec.cost, x);
+  const ok = yield* payAbilityCost(g, p, obj, spec.cost, x, spec.text);
   if (!ok) return false;
   if (spec.cost.loyalty !== undefined) g.state.turnStats[`loyalty:${obj.id}`] = 1;
   if (spec.oncePerTurn) g.state.turnStats[`once:${obj.id}:${spec.text}`] = 1;

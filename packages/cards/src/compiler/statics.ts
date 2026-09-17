@@ -348,6 +348,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const types = words.filter((w) => /^(artifact|creature|enchantment|land|planeswalker)s?$/i.test(w)).map((w) => w.replace(/s$/i, '')).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
     const subtypes = words.filter((w) => /^[A-Z]/.test(w) && !/^(Artifact|Creature|Enchantment|Land|Planeswalker)s?$/.test(w)).map((w) => w.replace(/s$/, ''));
     if (a.ok && (types.length || subtypes.length)) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: types, addSubtypes: subtypes } }];
+    if (a.ok && /^the chosen (?:creature )?type$/i.test(m[2])) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addSubtypesFromMemory: 'creatureType' } }];
   }
   // "Kithkin spells and Soldier spells you cast cost {1} less to cast."
   if ((m = L.match(/^(.+?) spells? and (.+?) spells? you cast cost \{(\d+)\} less to cast$/i))) {
@@ -381,6 +382,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(m[1]);
     const sub = m[2].replace(/^Plains$/, 'Plains').replace(/s$/, '');
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setSubtypes: [sub === 'Plain' ? 'Plains' : sub] } }];
+  }
+  // "Equip abilities you activate cost {1} less to activate." / "Equip costs you pay cost {1} less."
+  if ((m = L.match(/^(?:Equip abilities you activate cost \{(\d+)\} less to activate|Equip costs you pay cost \{(\d+)\} less)$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: parseInt(m[1] ?? m[2], 10), textPrefix: 'Equip' } } }];
   }
   // "Activated abilities of creatures you control cost {2} less to activate."
   if ((m = L.match(/^(?:Activated )?abilities of (.+?) cost \{(\d+)\} less to activate$/i))) {

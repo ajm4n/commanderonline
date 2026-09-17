@@ -1475,13 +1475,13 @@ const PATTERNS: Pattern[] = [
     return null;
   }],
   // Counter
-  [/^counter (that spell|it)(?: unless its controller pays (\{.+\}|\d+))?$/i, (m, ctx) => {
+  [/^counter (that spell|it)(?: unless (?:its controller|that player|they|the controller|that spell's controller) pays? (\{.+\}|\d+))?$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : null);
     if (!ref) return null;
     const pays = m[2] ? (/^\d+$/.test(m[2]) ? `{${m[2]}}` : m[2]) : undefined;
     return [{ kind: 'counterSpell', what: ref, unlessPays: pays }];
   }],
-  [/^counter (.+?)(?: unless its controller pays (\{.+\}|\d+))?$/i, (m, ctx) => {
+  [/^counter (.+?)(?: unless (?:its controller|that player|they|the controller|that spell's controller) pays? (\{.+\}|\d+))?$/i, (m, ctx) => {
     const noun = parseNoun(m[1]);
     if (!noun || !noun.target) return null;
     if (noun.kind !== 'spell' && noun.kind !== 'activatedOrTriggered') return null;
@@ -1766,6 +1766,8 @@ const PATTERNS: Pattern[] = [
   }],
   [/^choose a color$/i, () => [{ kind: 'chooseColor', key: 'color' }]],
   [/^choose a creature type(?: other than \w+)?$/i, () => [{ kind: 'chooseCreatureType', key: 'creatureType' }]],
+  [/^choose a (?:basic )?land type$/i, () => [{ kind: 'chooseCreatureType', key: 'landType', pool: 'land' }]],
+  [/^choose a card type$/i, () => [{ kind: 'chooseCreatureType', key: 'cardType', pool: 'cardType' }]],
   [/^exchange life totals with (.+)$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
     return who ? [{ kind: 'exchangeLife', a: YOU, b: who }] : null;
@@ -1972,9 +1974,20 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
   return ex;
 }
 
+/**
+ * Trailing sentences that add nothing the rest of the line needs and that no other
+ * compiler branch consumes, so they can be trimmed off before a line is parsed.
+ */
+export function isTrailingNoise(text: string): boolean {
+  const t = text.trim().replace(/\.$/, '');
+  return /^(the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+}
+
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
+  if (/^the same is true for .+$/i.test(text.trim())) return true;
+  if (/^th(?:is|at) mana cannot be spent to cast .+$/i.test(text.trim())) return true;
   if (/^the flashback cost is equal to its mana cost\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?each player who searched their library this way shuffles\.?$/i.test(text.trim())) return true;
   if (/^(?:creatures|permanents|cards|they|it)(?: destroyed| exiled| sacrificed)? (?:this way )?cannot be regenerated\.?$/i.test(text.trim())) return true;
@@ -2491,6 +2504,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
     if (ok) return out;
     ctx.targets.length = saved;
+  }
+  // Flavor ability word left on a mode or line ("Gigaflare — Destroy target permanent").
+  if ((m = text.match(/^[A-Z][^\u2014]{0,40}\u2014 (.+)$/))) {
+    const inner = parseSentence(m[1], ctx);
+    if (inner) return inner;
   }
   return null;
 }

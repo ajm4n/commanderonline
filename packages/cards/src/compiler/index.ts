@@ -4,8 +4,8 @@
  */
 import type { AbilitySpec, ActivatedAbilitySpec, Amount, CardData, CardScript, Effect, TargetSpec, TriggeredAbilitySpec, Condition, CostModifier, AbilityCost } from '@commander/engine';
 import { ENFORCED_KEYWORDS } from '@commander/engine';
-import { normalizeOracle, wordToNumber } from './text.js';
-import { parseEffects, newCtx, parseSentence, isNoOpSentence, substituteX, type ParseCtx } from './effects.js';
+import { normalizeOracle, wordToNumber, sentences } from './text.js';
+import { parseEffects, newCtx, parseSentence, isNoOpSentence, isTrailingNoise, substituteX, type ParseCtx } from './effects.js';
 import { parseTriggerHead, splitTriggerRest } from './triggers.js';
 import { parseCost, parseActivationRestriction } from './costs.js';
 import { parseStatic } from './statics.js';
@@ -102,6 +102,13 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   };
   for (let li = 0; li < lines.length; li++) {
     let line = lines[li];
+    // Drop purely informational trailing sentences ("The same is true for …").
+    {
+      const ss = sentences(line);
+      const kept = [...ss];
+      while (kept.length > 1 && isTrailingNoise(kept[kept.length - 1])) kept.pop();
+      if (kept.length && kept.length < ss.length) line = kept.length === 1 ? kept[0] : `${kept.join('. ')}.`;
+    }
     // "~ costs {U}{U} less to cast ..." — colored reductions are handled as generic-count lines with the symbols remembered.
     let costSymbols: string | undefined;
     {
@@ -238,6 +245,16 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       alternativeCosts.push({ id: 'sneak', text: line, cost: { mana: m[1] }, zone: 'hand', condition: { kind: 'eventThisTurn', event: 'dealtCombatDamageToPlayer', player: 'opponent' } });
       compiledLines.push(line);
       continue;
+    }
+    // "Equip legendary creature {1}", "Equip Halfling {1}": equip with a restricted target.
+    if ((m = line.match(/^Equip ([A-Za-z][A-Za-z,' ]*?) ((?:\{[^}]+\})+)$/i))) {
+      const q = m[1].trim();
+      const noun = parseNoun(/\b(creature|planeswalker|token|commander)s?\b/i.test(q) ? `${q} you control` : `${q} creature you control`);
+      if (noun && noun.confident) {
+        abilities.push({ kind: 'activated', text: line, cost: { mana: m[2] }, sorcerySpeed: true, targets: [{ description: `target ${q} you control`, kind: 'object', filter: { ...noun.filter, zone: 'battlefield', controller: 'you' } }], effects: [{ kind: 'attach', what: { ref: 'self' }, to: { ref: 'target' } }] });
+        compiledLines.push(line);
+        continue;
+      }
     }
     if ((m = line.match(/^Firebending (\d+)$/i))) {
       abilities.push({ kind: 'triggered', text: line, event: 'beginningOfPrecombatMain', filter: { player: 'you' }, effects: [{ kind: 'addMana', mana: ['R'], amount: parseInt(m[1], 10) }, { kind: 'turnFlag', flag: 'keepMana' }] });
@@ -468,6 +485,10 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     } else if ((m = line.match(/^Choose (one|two)\. If (.+?) as you cast (?:this spell|~), you may choose (both|two|three) instead\.?$/i)) && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })?.kind !== 'manual' && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })) {
       maxModesIf = { condition: parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })!, max: m[3].toLowerCase() === 'three' ? 3 : 2 };
       line = `Choose ${m[1]}`;
+    } else if ((m = line.match(/^Choose (one|two)\. If (.+?),? (?:you may )?choose (both|two|three|an additional mode) instead\.?$/i))) {
+      const c = parseCondition(m[2].replace(/ as you cast (?:this spell|~)$/i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (c && c.kind !== 'manual') maxModesIf = { condition: c, max: /three/i.test(m[3]) ? 3 : 2 };
+      line = `Choose ${m[1]}`;
     } else if ((m = line.match(/^Choose (\w+)\. You may choose the same mode more than once\.?$/i))) {
       repeatable = true;
       line = `Choose ${m[1]}`;
@@ -497,7 +518,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     if (modal && (m = line.match(/^•\s*(.+)$/))) {
       const ctx = newCtx({ isSpell: true });
-      const { effects, unhandled } = parseEffects(m[1], ctx);
+      const { effects, unhandled } = parseEffects(stripModeLabel(m[1]), ctx);
       modal.push({ text: m[1], targets: ctx.targets, effects: modalX !== null ? effects.map((e) => substituteX(e, modalX!)) : effects });
       if (unhandled.length) unhandledLines.push(...unhandled);
       else compiledLines.push(line);

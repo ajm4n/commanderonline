@@ -208,7 +208,15 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     if (m.addColors) for (const col of m.addColors) if (!c.colors.includes(col)) c.colors.push(col);
   };
   // Layer 4: types
-  for (const e of orderLayer(4, applyTypes)) applyTypes(ch, e.mod);
+  for (const e of orderLayer(4, applyTypes)) {
+    let mod = e.mod;
+    if (mod.layer === 4 && mod.addSubtypesFromMemory) {
+      const src = e.sourceId !== null && e.sourceId !== undefined ? g.state.objects[e.sourceId] : undefined;
+      const v = src?.memory[mod.addSubtypesFromMemory];
+      mod = { ...mod, addSubtypes: [...(mod.addSubtypes ?? []), ...(typeof v === 'string' ? [v] : [])] };
+    }
+    applyTypes(ch, mod);
+  }
   // The Ring-bearer is legendary (level 1).
   if (effects.some((e) => e.mod.layer === 'rule' && e.mod.rule.kind === 'custom' && e.mod.rule.tag === 'ringBearer') && !ch.supertypes.includes('Legendary')) ch.supertypes.push('Legendary');
   // Layer 5: colors
