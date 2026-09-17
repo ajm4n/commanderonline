@@ -178,6 +178,12 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the life lost this way' || t === 'the total life lost this way' || t === 'the total amount of life lost this way' || t === 'the amount of life lost this way') return { kind: 'ctxMemory', key: 'lifeLostThisWay' };
   if (t === 'the number of cards milled this way' || t === 'the number of cards put into your graveyard this way') return { kind: 'ctxMemory', key: 'lastMoved' };
   if (t === 'the number of cards revealed this way') return { kind: 'ctxMemory', key: 'revealedCount' };
+  // "the number of red mana symbols in the mana cost of ~"
+  if ((m = t.match(/^(?:the number of )?(white|blue|black|red|green) mana symbols in (?:the mana costs? of|its mana cost) ?(.*)$/))) {
+    const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white'];
+    const ref: Ref = !m[2] || /^~$/.test(m[2].trim()) ? { ref: 'self' } : ctx.lastObj ?? { ref: 'self' };
+    return { kind: 'manaSymbolCount', ref, color: col };
+  }
   if (/^(?:the number of )?counters? removed(?: this way)?$/.test(t)) return { kind: 'ctxMemory', key: 'countersRemovedThisWay' };
   if (t === 'twice that much' || t === 'twice that many') return { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 };
   if ((m = t.match(/^(twice|three times|double) (.+)$/))) {

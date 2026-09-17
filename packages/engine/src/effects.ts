@@ -1102,7 +1102,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         const n = amt(e.count);
-        const pool = e.zones ? e.zones.flatMap((z) => (z === 'graveyard' ? pl.graveyard : pl.library)) : pl.library;
+        const pool = e.zones ? e.zones.flatMap((z) => (z === 'graveyard' ? pl.graveyard : z === 'hand' ? pl.hand : pl.library)) : pl.library;
         const cands = pool.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: e.zones ?? 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }));
         let ids: ObjectId[] = [];
         if (cands.length > 0 && e.random) {

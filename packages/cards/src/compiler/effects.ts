@@ -1695,14 +1695,15 @@ const PATTERNS: Pattern[] = [
     const dest = m[6] ? 'exile' : /hand/.test(m[4]) ? 'hand' : /battlefield/.test(m[4]) ? 'battlefield' : /top/.test(m[4]) ? 'top' : 'graveyard';
     return [{ kind: 'searchLibrary', who, filter: { ...noun.filter, zone: 'library' }, count: n, destination: dest, tapped: !!m[5], reveal: /reveal/i.test(m[0]), shuffle: true }];
   }],
-  [/^search your library and\/or graveyard for (?:a|an) (.+?)(?:, reveal (?:it|them),?)?(?: and)? put (?:it|that card) (into your hand|onto the battlefield( tapped)?)(?:\. if you search your library this way, shuffle| and shuffle| then shuffle|, then shuffle)?$/i, (m, ctx) => {
-    const nounText = /\bcards?\b/i.test(m[1]) ? m[1] : `${m[1]} card`;
+  [/^search your ((?:library|graveyard|hand)(?:(?:,|,? and|,? and\/or|,? or|\/or) (?:your )?(?:library|graveyard|hand))*) for (?:a|an) (.+?)(?:, reveal (?:it|them|that card),?)?(?:,? and| then)? put (?:it|that card) (into your hand|onto the battlefield( tapped)?)(?:\. if you search your library this way, shuffle| and shuffle| then shuffle|, then shuffle|, then shuffle your library)?$/i, (m, ctx) => {
+    const zones = [...new Set((m[1].match(/library|graveyard|hand/gi) ?? []).map((z) => z.toLowerCase()))] as ('library' | 'graveyard' | 'hand')[];
+    const nounText = /\bcards?\b/i.test(m[2]) ? m[2] : `${m[2]} card`;
     const noun = parseNoun(nounText.replace(/ cards$/i, ' card'));
-    if (!noun) return null;
+    if (!noun || !zones.length) return null;
     ctx.lastObj = { ref: 'lastMoved' };
     const f = { ...noun.filter };
     delete f.zone;
-    return [{ kind: 'searchLibrary', filter: f, count: 1, destination: /hand/.test(m[2]) ? 'hand' : 'battlefield', tapped: !!m[3], reveal: true, shuffle: true, zones: ['library', 'graveyard'] }];
+    return [{ kind: 'searchLibrary', filter: f, count: 1, destination: /hand/.test(m[3]) ? 'hand' : 'battlefield', tapped: !!m[4], reveal: true, shuffle: true, zones }];
   }],
   [/^search your library for up to two (.+?) cards, reveal (?:them|those cards), put one onto the battlefield( tapped)? and the other into your hand(?:, then shuffle)?$/i, (m, ctx) => {
     const noun = parseNoun(`a ${m[1]} card`);
@@ -4186,6 +4187,36 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 145 ----
+  // "Search your graveyard, hand, and/or library for an Aura card and put it onto the battlefield attached to ~."
+  [/^search your ((?:library|graveyard|hand)(?:(?:,|,? and|,? and\/or|,? or|\/or) (?:your )?(?:library|graveyard|hand))*) for (?:a|an) (.+?)(?:, reveal (?:it|that card),?)?(?:,? and| then)? put (?:it|that card) onto the battlefield attached to (.+?)(?:, then shuffle| and shuffle)?$/i, (m, ctx) => {
+    const zones = [...new Set((m[1].match(/library|graveyard|hand/gi) ?? []).map((z) => z.toLowerCase()))] as ('library' | 'graveyard' | 'hand')[];
+    const noun = parseNoun(/\bcards?\b/i.test(m[2]) ? m[2].replace(/ cards$/i, ' card') : `${m[2]} card`);
+    const host = /^~$/.test(m[3].trim()) ? SELF : objRef(m[3], ctx);
+    if (!noun || !host || !zones.length) return null;
+    const f = { ...noun.filter };
+    delete f.zone;
+    const key = 'searchedAttach';
+    return [
+      { kind: 'searchLibrary', filter: f, count: 1, destination: 'hold', key, reveal: true, shuffle: true, zones },
+      { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'battlefield' },
+      { kind: 'attach', what: { ref: 'lastMoved' }, to: host },
+    ];
+  }],
+  // "Put an Aura or Equipment card from your hand or graveyard onto the battlefield attached to ~."
+  [/^(?:you may )?put (?:a|an) (.+?) from your (hand|graveyard|hand or graveyard|graveyard or hand) onto the battlefield attached to (.+?)$/i, (m, ctx) => {
+    const zones: ('hand' | 'graveyard')[] = /hand or graveyard|graveyard or hand/i.test(m[2]) ? ['hand', 'graveyard'] : /graveyard/i.test(m[2]) ? ['graveyard'] : ['hand'];
+    const noun = parseNoun(/\bcards?\b/i.test(m[1]) ? m[1].replace(/ cards$/i, ' card') : `${m[1]} card`);
+    const host = /^~$/.test(m[3].trim()) ? SELF : objRef(m[3], ctx);
+    if (!noun || !host) return null;
+    const f = { ...noun.filter, zone: zones.length === 1 ? zones[0] : zones, owner: 'you' as const };
+    const key = 'handAttach';
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: f, count: 1, key, upTo: true },
+      { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'battlefield' },
+      { kind: 'attach', what: { ref: 'lastMoved' }, to: host },
+    ];
   }],
   // ---- Round 143 ----
   // "You may draw up to three cards."
