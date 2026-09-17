@@ -1756,7 +1756,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // ---- Round 107 ----
   // "~ is a black Zombie in addition to its other colors and types."
-  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) in addition to (?:its|their) other (?:colors and types|types and colors|colors|types|creature types|card types)$/i))) {
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an)? ?(.+?) in addition to (?:its|their) other (?:colors and types|types and colors|colors|types|creature types|card types)$/i))) {
     const a = affectsOf(m[1]);
     const probe = parseNoun(`a ${m[2]}`);
     if (a.ok && probe && probe.confident) {

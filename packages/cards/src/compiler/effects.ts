@@ -76,7 +76,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
   if (/^(?:the|a|an|one of the) (?:card|creature card|permanent card)s? exiled with ~$/.test(l) || /^the exiled cards?$/.test(l) || /^cards exiled with ~$/.test(l) || /^(?:a|the) card (?:you )?exiled with cards named ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
   if (/^the creature that attacked$/.test(l)) return ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF;
-  if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/.test(t)) {
+  if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/i.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
     // With no antecedent in scope, fall back to the last object this script moved ("put that card onto the battlefield").
@@ -3930,13 +3930,15 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const types = ['Creature'];
+    const subtypes: string[] = [];
     if (m[4]) {
       const extra = m[4].charAt(0).toUpperCase() + m[4].slice(1).toLowerCase();
-      if (!['Artifact', 'Enchantment', 'Land'].includes(extra)) return null;
-      types.unshift(extra);
+      if (['Artifact', 'Enchantment', 'Land'].includes(extra)) types.unshift(extra);
+      else if (/^[A-Z][a-z]+$/.test(m[4])) subtypes.push(m[4]);
+      else return null;
     }
     const out: Effect[] = [
-      { kind: 'addTypes', types, on: ref, duration: 'endOfTurn' },
+      { kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, on: ref, duration: 'endOfTurn' },
       { kind: 'setPT', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: 'endOfTurn' },
     ];
     if (m[5]) {
@@ -4084,6 +4086,35 @@ const PATTERNS: Pattern[] = [
   [/^(?:you )?loses? (.+?) life$/i, (m, ctx) => {
     const a = amt(m[1], ctx);
     return a === null ? null : [{ kind: 'loseLife', amount: a, who: YOU }];
+  }],
+  // "Triple target creature's power and toughness until end of turn."
+  [/^(double|triple) (.+?)'s power and toughness(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    if (!ref) return null;
+    const f = /triple/i.test(m[1]) ? 2 : 1;
+    return [{ kind: 'pump', power: { kind: 'times', a: f, b: { kind: 'power', ref } }, toughness: { kind: 'times', a: f, b: { kind: 'toughness', ref } }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "That creature cannot block this combat."
+  [/^(.+?) cannot (block|attack|attack or block) (?:this combat|this turn)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const kinds: ('cantAttack' | 'cantBlock')[] = /attack or block/i.test(m[2]) ? ['cantAttack', 'cantBlock'] : /attack/i.test(m[2]) ? ['cantAttack'] : ['cantBlock'];
+    return kinds.map((k) => ({ kind: 'applyRule' as const, rule: { kind: k }, on: ref, duration: 'endOfTurn' as const }));
+  }],
+  // "That creature explores, then it explores again."
+  [/^(.+?) explores, then it explores again$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'explore', what: ref }, { kind: 'explore', what: ref }];
+  }],
+  // "That spell's controller may draw a card."
+  [/^(?:that|the) (?:spell|permanent|creature|card)'s (controller|owner) (.+)$/i, (m, ctx) => {
+    const who: Ref = m[1].toLowerCase() === 'controller' ? { ref: 'controllerOf', of: ctx.lastObj ?? { ref: 'stackTarget' } } : { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'stackTarget' } };
+    const prev = ctx.lastPlayer;
+    ctx.lastPlayer = who;
+    const inner = parseSentence(`that player ${m[2]}`, ctx);
+    ctx.lastPlayer = prev;
+    return inner;
   }],
   // ---- Round 117 ----
   // "You skip your draw step this turn." / "you cannot cast spells until your next turn"

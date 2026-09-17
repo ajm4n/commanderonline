@@ -2058,6 +2058,23 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'skipTurn':
       for (const p of g.resolvePlayers(e.who, ctx)) g.player(p).flags['skipNextTurn'] = true;
       return;
+    case 'explore':
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        if (o.zone !== 'battlefield') continue;
+        const pl = g.player(o.controller);
+        if (!pl.library.length) continue;
+        const top = pl.library[0];
+        g.log(`${g.player(o.controller).name} explores and reveals ${g.nameOf(top)}.`, { kind: 'reveal', data: { ids: [top] } });
+        if (g.characteristics(top).types.includes('Land')) {
+          g.moveObject(top, 'hand');
+        } else {
+          g.addCounters(o.id, '+1/+1', 1);
+          const r = yield* g.ask({ type: 'yesNo', player: o.controller, prompt: `Put ${g.nameOf(top)} into your graveyard?`, sourceId: ctx.sourceId ?? undefined });
+          if (r.type === 'yesNo' && r.value) g.moveObject(top, 'graveyard');
+        }
+        g.emit({ name: 'explored', playerId: o.controller, objectId: o.id, sourceId: ctx.sourceId ?? undefined });
+      }
+      return;
     case 'loseAllCounters':
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);

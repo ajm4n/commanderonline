@@ -420,6 +420,8 @@ export type Effect =
   | { kind: 'skipStep'; step: string; who?: Ref }
   /** "You lose all poison counters." */
   | { kind: 'loseAllCounters'; counter: string; who?: Ref }
+  /** Explore: reveal the top card; a land goes to hand, otherwise a +1/+1 counter and a choice. */
+  | { kind: 'explore'; what: Ref }
   | { kind: 'monstrosity'; amount: Amount }
   | { kind: 'plot' }
   /** Move every card of a player's zone somewhere else ("exile target player's graveyard"). */
