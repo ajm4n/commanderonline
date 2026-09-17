@@ -1164,6 +1164,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       setMemory(g, ctx, e.key, '(named card — manual)');
       return;
     case 'setMemory':
+      if (e.on) {
+        for (const o of g.resolveObjects(e.on, ctx)) o.memory[e.key] = e.value;
+        g.touch();
+        return;
+      }
       setMemory(g, ctx, e.key, e.value);
       return;
     case 'incrementMemory': {
@@ -1376,8 +1381,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const avail = e.options.map((o, i) => ({ o, i })).filter(({ i }) => !used.includes(i));
       if (!avail.length) return;
       const pick = Math.min(n, avail.length);
-      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${pick}`, options: avail.map(({ o, i }) => ({ id: String(i), label: o.text })), min: pick, max: pick, sourceId: ctx.sourceId ?? undefined });
-      const picks = resp.type === 'options' ? resp.ids.map(Number) : [avail[0].i];
+      const low = Math.min(e.min ?? pick, pick);
+      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${low === pick ? pick : `up to ${pick}`}`, options: avail.map(({ o, i }) => ({ id: String(i), label: o.text })), min: low, max: pick, sourceId: ctx.sourceId ?? undefined });
+      const picks = resp.type === 'options' ? resp.ids.map(Number) : low === 0 ? [] : [avail[0].i];
       if (e.notChosen && src) src.memory[usedKey] = [...used, ...picks];
       for (const i of picks) yield* executeEffects(g, e.options[i].effects, ctx);
       return;

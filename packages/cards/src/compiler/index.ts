@@ -564,7 +564,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
           unhandled.push(...r.unhandled);
         }
-        effects = [{ kind: 'chooseMode', options, count: modalHead.count, notChosen: modalHead.notChosen }];
+        effects = [{ kind: 'chooseMode', options, count: modalHead.count, min: modalHead.min, notChosen: modalHead.notChosen }];
       } else ({ effects, unhandled } = parseEffects(split.rest, ctx));
       let condition: Condition | undefined;
       if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
@@ -602,7 +602,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
             options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
             unhandled.push(...r.unhandled);
           }
-          effects = [{ kind: 'chooseMode', options, count: modalHead.count, notChosen: modalHead.notChosen }];
+          effects = [{ kind: 'chooseMode', options, count: modalHead.count, min: modalHead.min, notChosen: modalHead.notChosen }];
         } else ({ effects, unhandled } = parseEffects(rest.text, ctx));
         // Class cards: "{2}{W}: Level 2" gains the level; abilities after it need that level.
         const lvl = rest.text.match(/^Level (\d+)\.?$/i);
@@ -759,11 +759,12 @@ function guessTrigger(line: string): AbilitySpec[] {
 
 
 /** A modal head, possibly with an X definition or a "that hasn't been chosen" restriction. */
-function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'game'; x?: Amount } | null {
-  const m = text.match(/^choose (one|two|one or both|one or more|any number)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
+function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number } | null {
+  const m = text.match(/^choose (one|two|one or both|one or more|any number|up to one|up to two|up to three)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
   if (!m) return null;
   const w = m[1].toLowerCase();
-  const out: { count: number; notChosen?: 'turn' | 'game'; x?: Amount } = { count: w === 'two' ? 2 : 1 };
+  const out: { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number } = { count: /two/i.test(w) ? 2 : /three/i.test(w) ? 3 : 1 };
+  if (/^up to /i.test(w)) out.min = 0;
   if (m[2] !== undefined || /been chosen/i.test(text)) out.notChosen = m[2] ? 'turn' : 'game';
   if (m[3]) {
     const a = parseAmount(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
@@ -818,6 +819,23 @@ export function compileCard(card: CardData): CompileResult {
   const room = compileRoom(card);
   if (room) return room;
   const front = compileFace(card, card.name, card.oracleText ?? '', card.typeLine);
+  // Prepared: the permanent half may cast a copy of its spell half while it is prepared.
+  if (card.faces?.length === 2 && /\bbecomes prepared\b/i.test(card.oracleText ?? '') && /^(Instant|Sorcery)\b/.test(card.faces[1].typeLine ?? '')) {
+    const spellFace = card.faces[1];
+    const r = compileFace({ ...card, ...spellFace, faces: undefined }, spellFace.name ?? card.name, spellFace.oracleText ?? '', spellFace.typeLine ?? '');
+    const spell = r.script.abilities.find((a) => a.kind === 'spell');
+    if (spell && spell.kind === 'spell' && !r.unhandledLines.length) {
+      front.script.abilities.push({
+        kind: 'activated',
+        text: `Cast a copy of ${spellFace.name ?? 'its spell'} (${spellFace.manaCost ?? ''})`,
+        cost: { mana: spellFace.manaCost ?? '' },
+        condition: { kind: 'memoryFlag', key: 'prepared' },
+        targets: spell.targets,
+        effects: [...spell.effects, { kind: 'setMemory', key: 'prepared', value: 0 }],
+      });
+      front.compiledLines.push(...r.compiledLines);
+    } else front.unhandledLines.push(...r.unhandledLines);
+  }
   if (card.faces && card.faces.length > 1) {
     const faces = card.faces.slice(1).map((f) => compileFace({ ...card, ...f, faces: undefined }, f.name, f.oracleText, f.typeLine));
     front.script.faces = faces.map((f) => f.script);

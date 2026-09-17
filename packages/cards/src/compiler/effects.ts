@@ -1722,6 +1722,10 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'chooseMode', options: [{ text: 'Tap it', effects: [{ kind: 'tap', what: ref }] }, { text: 'Untap it', effects: [{ kind: 'untap', what: ref }] }], count: 1 }] : null;
   }],
+  [/^(~|it|that creature|.+?) becomes (prepared|unprepared)$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx);
+    return ref ? [{ kind: 'setMemory', key: 'prepared', value: /^unprepared$/i.test(m[2]) ? 0 : 1, on: ref }] : null;
+  }],
   [/^it becomes (day|night)$/i, (m) => [{ kind: 'setDayNight', to: m[1].toLowerCase() as 'day' | 'night' }]],
   [/^if it is neither day nor night, it becomes (day|night)(?: as ~ enters)?$/i, (m) => [{ kind: 'setDayNight', to: m[1].toLowerCase() === 'day' ? 'startDay' : 'startNight' }]],
   // Manifest / manifest dread / cloak
