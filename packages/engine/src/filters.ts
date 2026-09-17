@@ -151,6 +151,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     if (!src || src.pairedWith !== obj.id) return false;
   }
   if (filter.blockingSource && (ctx.sourceId === null || ctx.sourceId === undefined || !obj.blocking.includes(ctx.sourceId))) return false;
+  if (filter.blockingOrBlockedBySource) {
+    const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : null;
+    if (!src) return false;
+    if (!obj.blocking.includes(src.id) && !src.blocking.includes(obj.id)) return false;
+  }
   if (filter.chosenColor) {
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     const c = src?.memory['color'] ?? src?.chosen['color'];

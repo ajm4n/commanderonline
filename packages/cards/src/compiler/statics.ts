@@ -382,6 +382,21 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: m[4].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[3], 10), filter: f } }];
     }
   }
+  if (/^You cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
+  if (/^You cannot win the game and your opponents cannot lose the game$/i.test(L)) {
+    return [
+      { kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantWin' } },
+      { kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantLose' } },
+    ];
+  }
+  if ((m = L.match(/^(.+?) spells? cannot be cast$/i))) {
+    const cc = /^spells?$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} spell`);
+    if (cc) {
+      const f = { ...cc.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantCastSpells', data: { filter: f } } }];
+    }
+  }
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];

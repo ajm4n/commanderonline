@@ -3246,6 +3246,61 @@ const PATTERNS: Pattern[] = [
     if (!noun) return null;
     return [{ kind: 'preventAll', combat: m[1] ? true : undefined, toRef: SELF, to: 'all', source: { ...noun.filter, zone: 'battlefield' } }];
   }],
+  // "Target creature gains all creature types until end of turn"
+  [/^(.+?) (?:gains?|loses?) all creature types(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [/loses/i.test(m[0]) ? { kind: 'addTypes', types: [], setSubtypes: [], on: ref, duration: dur } : { kind: 'grantKeywords', keywords: ['Changeling'], on: ref, duration: dur }];
+  }],
+  // "They are Zombies in addition to their other types"
+  [/^(?:they are|it is|those creatures are) ([A-Z][\w-]+?)s?(?: creatures?)? in addition to (?:their|its) other types$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    return [{ kind: 'addTypes', types: noun.filter.types ?? [], subtypes: noun.filter.subtypes, on: ref, duration: 'permanent' }];
+  }],
+  // "move any number of +1/+1 counters from other permanents you control onto ~"
+  [/^move (all|any number of|(\w+)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? from (.+?) onto (?:~|it)$/i, (m, ctx) => {
+    const from = objRef(m[4], ctx);
+    if (!from) return null;
+    const amount: Amount | undefined = /^all$/i.test(m[1]) || /any number of/i.test(m[1]) ? undefined : (wordToNumber(m[2]) ?? undefined);
+    return [{ kind: 'moveCounters', from, to: SELF, counter: m[3], amount }];
+  }],
+  // "Put a stun counter on one of them"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on one of them$/i, (m, ctx) => {
+    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    const key = `one${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    return [{ kind: 'chooseObjects', who: YOU, filter: {}, count: 1, key, from: src }, { kind: 'addCounters', counter: m[2], amount: n, on: { ref: 'chosen', key } }];
+  }],
+  // "Put them on top of that player's library in any order"
+  [/^put them on (?:the )?(top|bottom) of (?:that player's|their|your) library(?: in any order| in a random order)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'putOnLibrary', what: ref, position: /top/i.test(m[1]) ? 'top' : 'bottom' }];
+  }],
+  // "Prevent all combat damage a creature of your choice would deal this turn"
+  [/^prevent all (combat )?damage (?:a|an) (.+?) of your choice would deal this turn$/i, (m) => {
+    const noun = parseNoun(`a ${m[2]}`);
+    return noun ? [{ kind: 'preventAll', combat: m[1] ? true : undefined, source: { ...noun.filter, zone: 'battlefield' }, to: 'all', once: true }] : null;
+  }],
+  // "there is an additional combat phase after this phase followed by an additional main phase"
+  [/^there is an additional combat phase after this phase(?: followed by an additional main phase)?$/i, () => [{ kind: 'extraCombat' }]],
+  // "~ and another target creature each get +1/+0 until end of turn"
+  [/^(?:~|it) and (another target .+?|target .+?) each (?:gets?|get) ([+-]\d+|[+-]X)\/([+-]\d+|[+-]X)(?: until end of turn)?$/i, (m, ctx) => {
+    const other = objRef(m[1], ctx);
+    if (!other) return null;
+    const pw: Amount = m[2] === '+X' ? 'X' : parseInt(m[2], 10);
+    const tg: Amount = m[3] === '+X' ? 'X' : parseInt(m[3], 10);
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [{ kind: 'pump', power: pw, toughness: tg, on: SELF, duration: dur }, { kind: 'pump', power: pw, toughness: tg, on: other, duration: dur }];
+  }],
+  // "That opponent may cast the exiled card without paying its mana cost"
+  [/^(?:that opponent|that player|they) may cast the exiled card(?: without paying its mana cost)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'permanent', controller: 'owner', free: /without paying/i.test(m[0]) || undefined }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile

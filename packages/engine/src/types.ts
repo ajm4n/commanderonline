@@ -397,6 +397,8 @@ export interface ObjectFilter {
   damagedBySource?: boolean;
   /** Creatures blocking the filter's source object ("creatures blocking it"). */
   blockingSource?: boolean;
+  /** Blocking the source, or blocked by it ("creatures blocking or blocked by ~"). */
+  blockingOrBlockedBySource?: boolean;
   /** The creature the filter's source is paired with (soulbond). */
   pairedWithSource?: boolean;
   /** Face-down permanents (morph, manifest). */
