@@ -5304,6 +5304,32 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
     }
+    // "Do X. If you do, Y." — the follow-up belongs to the optional effect just made.
+    {
+      const fu = s.match(/^if you do, (.+)$/i);
+      const prev = effects[effects.length - 1];
+      if (fu && prev && (prev.kind === 'may' || prev.kind === 'ifPays')) {
+        const saved = ctx.targets.length;
+        const inner = parseSentence(fu[1], ctx);
+        if (inner) {
+          prev.effects = [...prev.effects, ...inner];
+          continue;
+        }
+        ctx.targets.length = saved;
+      }
+    }
+    // "Do X. If <condition>, repeat this process." — loop the previous sentence's effects.
+    {
+      const rp = s.match(/^(?:if (.+?), )?repeat this process(?: once| any number of times| again)?$/i);
+      if (rp && effects.length > lastStart) {
+        const cond = rp[1] ? parseCondition(rp[1], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer }) : { kind: 'manual' as const, text: 'Repeat this process?' };
+        if (cond) {
+          const previous = effects.slice(lastStart);
+          effects.push({ kind: 'repeatWhile', condition: cond, effects: previous, max: /once/i.test(s) ? 1 : 50 });
+          continue;
+        }
+      }
+    }
     // "X. If ~ was kicked, Y instead." → if kicked, Y; otherwise X.
     s = s.replace(/^if (.+?), instead (.+)$/i, 'If $1, $2 instead');
     if ((m = s.match(/^(.+?) instead if (.+)$/i)) && effects.length > lastStart && !/ would /i.test(m[2])) s = `If ${m[2]}, ${m[1]} instead`;
@@ -5311,11 +5337,20 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       const cond = parseCondition(m[1], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer });
       let inner = cond && cond.kind !== 'manual' ? parseSentence(m[2], ctx) : null;
       // "~ deals 5 damage instead": same targets as the previous damage effect, new amount.
-      const dm = !inner && m[2].match(/^(?:~|it) deals (\w+|X) damage$/i);
+      const dm = !inner && m[2].match(/^(?:~|it|.+?) deals (\w+|X) damage$/i);
       if (dm && cond && cond.kind !== 'manual') {
         const n = wordToNumber(dm[1]);
         const prev = effects.slice(lastStart);
         if (n !== null && prev.some((e) => e.kind === 'damage')) inner = prev.map((e) => (e.kind === 'damage' ? { ...e, amount: n } : e));
+      }
+      // "~ deals twice that much damage instead" / "draw twice that many cards instead": scale the previous amount.
+      const mult = !inner && m[2].match(/^(?:.+? )?deals (twice|three times|half) that much damage$/i);
+      if (mult && cond && cond.kind !== 'manual') {
+        const prev = effects.slice(lastStart);
+        const f = /twice/i.test(mult[1]) ? 2 : /three/i.test(mult[1]) ? 3 : 0.5;
+        if (prev.some((e) => e.kind === 'damage')) {
+          inner = prev.map((e) => (e.kind === 'damage' ? { ...e, amount: f === 0.5 ? { kind: 'half' as const, a: e.amount, round: 'down' as const } : { kind: 'times' as const, a: f, b: e.amount } } : e));
+        }
       }
       if (cond && inner) {
         const previous = effects.splice(lastStart);

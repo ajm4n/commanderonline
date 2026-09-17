@@ -1684,6 +1684,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (let i = 0; i < n; i++) yield* executeEffects(g, e.effects, ctx);
       return;
     }
+    case 'repeatWhile': {
+      const max = e.max ?? 50;
+      for (let i = 0; i < max; i++) {
+        if (!g.checkCondition(e.condition, ctx)) return;
+        yield* executeEffects(g, e.effects, ctx);
+      }
+      return;
+    }
     case 'may': {
       const players = e.who ? g.resolvePlayers(e.who, ctx) : [ctx.controller];
       if (!players.length) return;

@@ -324,6 +324,27 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 116 ----
+  if ((m = t.match(/^the (?:sacrificed|exiled|discarded|chosen|revealed|returned) (?:creature|card|permanent|land) (?:was|is) (?:a|an )?(.+)$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`) ?? parseNoun(`a ${oc(m, 1)} permanent`);
+    if (noun && noun.confident) return { kind: 'objectMatches', ref: ctx.lastObj ?? { ref: 'lastMoved' }, filter: noun.filter };
+    if (/^suspected$/i.test(m[1])) return { kind: 'memoryFlag', key: 'suspected' };
+  }
+  if ((m = t.match(/^(?:the )?((?:\{[^}]+\})+|[\w'-]+(?: [\w'-]+)?) cost was paid$/))) {
+    const label = m[1].replace(/^~'s /, '');
+    if (/^(?:\{[^}]+\})+$/.test(label)) return { kind: 'memoryFlag', key: 'additionalCostPaid' };
+    return { kind: 'memoryFlag', key: label.replace(/[^a-z]/gi, '').toLowerCase() };
+  }
+  if ((m = t.match(/^~'s (\w+) cost was paid$/))) return { kind: 'memoryFlag', key: m[1].toLowerCase() };
+  if (/^~ was cast using teamwork$/.test(t)) return { kind: 'memoryFlag', key: 'teamwork' };
+  if (/^~ has ?n[o']t been exerted this turn$/.test(t)) return { kind: 'not', c: { kind: 'memoryFlag', key: 'exerted' } };
+  if (/^~ has been exerted this turn$/.test(t)) return { kind: 'memoryFlag', key: 'exerted' };
+  if ((m = t.match(/^~ is (?:a|an) (aura|equipment|vehicle|saga|clue|food|treasure|token|commander)$/))) {
+    const w = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+    if (w === 'Token') return { kind: 'objectMatches', ref: ctx.self, filter: { isToken: true } };
+    if (w === 'Commander') return { kind: 'objectMatches', ref: ctx.self, filter: { isCommander: true } };
+    return { kind: 'objectMatches', ref: ctx.self, filter: { subtypes: [w] } };
+  }
   // ---- Round 109 ----
   if ((m = t.match(/^you(?:'ve| have)? put one or more ([+-]\d\/[+-]\d|[\w'-]+) counters? on (?:~|it) this turn$/))) return { kind: 'eventThisTurn', event: 'counterAdded', player: 'you' };
   if ((m = t.match(/^(?:~|it) has (\w+) or more counters on it$/))) {
