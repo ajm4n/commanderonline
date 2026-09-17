@@ -1054,7 +1054,26 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "Artifact spells you cast have convoke." / "Artifact creature spells you cast have affinity for artifacts."
-  if ((m = L.match(/^(.+?) you cast have (convoke|improvise|delve|affinity for (.+))$/i))) {
+  // "~ has all activated abilities of all creature cards in all graveyards."
+  if ((m = L.match(/^(.+?) (?:has|have) all activated abilities of (.+?)$/i))) {
+    const a = affectsOf(m[1]);
+    const src = m[2].replace(/ exiled with (?:~|it)$/i, ' exiled with ~');
+    const noun = /^all cards exiled with ~$/i.test(src) ? { filter: { exiledWithSource: true, zone: 'exile' } as ObjectFilter } : parseNoun(src);
+    if (a.ok && noun) {
+      const f: ObjectFilter = { ...noun.filter };
+      if (!f.zone) f.zone = 'battlefield';
+      return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addActivatedAbilitiesFrom: f } }];
+    }
+  }
+  // "Spells you cast have cascade." → a cast trigger that discovers for one less than the spell's mana value.
+  if ((m = L.match(/^(.+?) you cast(?: from (exile|your graveyard))? have cascade$/i))) {
+    const casc = /^spells$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+    if (casc) {
+      const f: ObjectFilter = { ...casc.filter, zone: undefined };
+      return [{ kind: 'triggered', text: line, event: 'cast', filter: { player: 'you', object: f, fromZone: m[2] ? (/exile/i.test(m[2]) ? 'exile' : 'graveyard') : undefined }, effects: [{ kind: 'discover', amount: { kind: 'sum', parts: [{ kind: 'manaValue', ref: { ref: 'triggerObject' } }, -1] } }] }];
+    }
+  }
+  if ((m = L.match(/^(.+?) you cast(?: from (?:exile|your graveyard))? have (convoke|improvise|delve|affinity for (.+))$/i))) {
     const spell = /^spells$/i.test(m[1]) ? { filter: {} } : parseNoun(m[1].replace(/ spells?$/i, ' spell'));
     if (spell) {
       const f = { ...spell.filter, zone: undefined };

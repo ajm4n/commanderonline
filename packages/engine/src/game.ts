@@ -511,9 +511,18 @@ export class Game {
     // Granted rules text ("gains 'When this creature dies, ...'") compiles like any other oracle text.
     const granted: string[] = [];
     for (const ce of this.state.continuousEffects) {
-      if (ce.modification.layer !== 6 || !ce.modification.addAbilityText?.length) continue;
+      if (ce.modification.layer !== 6) continue;
+      const mod = ce.modification;
+      if (!mod.addAbilityText?.length && !mod.addActivatedAbilitiesFrom) continue;
       if (ce.affected.kind === 'fixed' ? !ce.affected.ids.includes(obj.id) : !matchesFilter(this, obj, ce.affected.filter, { sourceId: ce.sourceId, controller: ce.controller })) continue;
-      granted.push(...ce.modification.addAbilityText);
+      if (mod.addAbilityText?.length) granted.push(...mod.addAbilityText);
+      if (mod.addActivatedAbilitiesFrom) {
+        const from = mod.addActivatedAbilitiesFrom;
+        for (const other of objectsMatching(this, { ...from, zone: from.zone ?? 'battlefield' }, { sourceId: ce.sourceId, controller: ce.controller })) {
+          if (other.id === obj.id) continue;
+          for (const ab of this.scriptFor(other).abilities) if (ab.kind === 'activated') granted.push(ab.text);
+        }
+      }
     }
     if (card.typeLine === 'Emblem' && obj.zone === 'command') s = { ...s, abilities: s.abilities.map((ab) => (ab.kind === 'static' || ab.kind === 'triggered' || ab.kind === 'activated' ? ({ ...ab, zone: 'command' } as typeof ab) : ab)) };
     if (!granted.length) return s;

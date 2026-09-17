@@ -1437,13 +1437,18 @@ const PATTERNS: Pattern[] = [
     if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
     return out;
   }],
-  [/^(.+?) (?:loses? all abilities and )?(?:has|have) base power and toughness (\d+|X)\/(\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) (?:loses? all abilities and )?(?:has|have) base power and toughness (\d+|X)\/(\d+|X)(?: and gains? ([\w ,]+?))?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
     const out: Effect[] = [];
     if (/loses all abilities and/i.test(m[0])) out.push({ kind: 'loseAllAbilities', on: ref, duration: dur });
     out.push({ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur });
+    if (m[4]) {
+      const kws = parseKeywordList(m[4]);
+      if (!kws) return null;
+      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
+    }
     return out;
   }],
   [/^(.+?) loses? (.+?) until end of turn$/i, (m, ctx) => {
@@ -2652,6 +2657,13 @@ const PATTERNS: Pattern[] = [
     const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
     return [{ kind: 'fight', a: ref, b: ref }];
   }],
+  // "Destroy target land unless its controller has ~ deal 2 damage to them"
+  [/^(.+?) unless (its controller|that creature's controller|that player|they) has ~ deal (\d+) damage to (?:them|him or her|that player)$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], ctx);
+    const who = playerRef(m[2], ctx);
+    if (!inner || !who) return null;
+    return [{ kind: 'may', who, prompt: `Have ~ deal ${m[3]} damage to you instead?`, effects: [{ kind: 'damage', amount: parseInt(m[3], 10), to: who, source: { ref: 'self' } }], else: inner }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -3015,7 +3027,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|(?:the|its) (?:replicate|foretell|escape|casualty|cycling|flashback|buyback) cost is .+|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
