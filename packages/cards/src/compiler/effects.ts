@@ -1668,6 +1668,20 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'log', text: 'explored', event: 'explored', objectRef: ref }, { kind: 'revealTop', ifMatches: { types: ['Land'] }, then: [{ kind: 'putIntoHand', what: { ref: 'lastMoved' } }], else: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: ref }, { kind: 'may', prompt: 'Put the revealed card into your graveyard?', effects: [{ kind: 'moveToZone', what: { ref: 'lastMoved' }, zone: 'graveyard' }] }] }] : null;
   }],
   [/^venture into the dungeon$/i, () => [{ kind: 'ventureIntoDungeon' }]],
+  // Manifest / manifest dread / cloak
+  [/^manifest(?: the top card of your library| the top (\w+|X) cards of your library)?$/i, (m, ctx) => {
+    void ctx;
+    const n = m[1] ? (m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1])) : 1;
+    return n === null ? null : [{ kind: 'manifest', amount: n as Amount }];
+  }],
+  [/^manifest dread$/i, () => [{ kind: 'manifest', amount: 1, dread: true }]],
+  [/^cloak the top card of your library$/i, () => [{ kind: 'manifest', amount: 1, ward: '{2}' }]],
+  [/^(?:you may )?turn (~|it|that creature|that permanent|equipped creature|enchanted creature|.+?) face up$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    const eff: Effect = { kind: 'turnFaceUp', what: ref };
+    return /^you may /i.test(m[0]) ? [{ kind: 'may', effects: [eff] }] : [eff];
+  }],
   [/^monstrosity (\w+|X)$/i, (m) => {
     const n = wordToNumber(m[1]);
     return n === null ? null : [{ kind: 'monstrosity', amount: n }];

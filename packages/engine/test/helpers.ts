@@ -44,7 +44,30 @@ export const MONSTER = card({ name: 'Monster', typeLine: 'Creature — Beast', m
 export const LEVELER = card({ name: 'Leveler', typeLine: 'Creature — Human', manaCost: '{W}', cmc: 1, power: '1', toughness: '1', oracleText: 'Level up {W}\nLEVEL 1-2\n2/2\nFirst strike\nLEVEL 3+\n3/3\nFirst strike, lifelink', colors: ['W'], colorIdentity: ['W'] });
 export const UPKEEP_GUY = card({ name: 'Upkeep Guy', typeLine: 'Creature — Human', manaCost: '{G}', cmc: 1, power: '1', toughness: '1', oracleText: 'At the beginning of your upkeep, you gain 1 life.', colors: ['G'], colorIdentity: ['G'] });
 
+export const MORPH_GUY = card({
+  name: 'Morph Dragon',
+  typeLine: 'Creature — Dragon',
+  manaCost: '{4}{R}',
+  cmc: 5,
+  power: '4',
+  toughness: '4',
+  oracleText: 'Flying\nWhen Morph Dragon is turned face up, it deals 2 damage to any target.\nMegamorph {5}{R}',
+  colors: ['R'],
+  colorIdentity: ['R'],
+});
+
 export const SCRIPTS: Record<string, CardScript> = {
+  'Morph Dragon': {
+    name: 'Morph Dragon',
+    coverage: 'full',
+    origin: 'hand',
+    keywords: [{ keyword: 'Flying' }],
+    alternativeCosts: [{ id: 'megamorph', text: 'Megamorph {5}{R}', cost: { mana: '{3}' }, zone: 'hand', faceDown: true }],
+    abilities: [
+      { kind: 'triggered', text: 'When Morph Dragon is turned face up, it deals 2 damage to any target.', event: 'turnedFaceUp', filter: { self: true }, targets: [T.any()], effects: [E.damage(2, R.target())] },
+      { kind: 'activated', text: 'Turn Morph Dragon face up (Megamorph {5}{R})', cost: { mana: '{5}{R}' }, faceDownOnly: true, effects: [{ kind: 'turnFaceUp', counters: { counter: '+1/+1', amount: 1 } }] },
+    ],
+  },
   'Control Magic': { name: 'Control Magic', coverage: 'full', origin: 'hand', abilities: [{ kind: 'static', text: 'You control enchanted creature.', affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }] },
   'Frogmite': { name: 'Frogmite', coverage: 'full', origin: 'hand', abilities: [], costModifiers: [{ amount: 1, direction: 'less', per: { types: ['Artifact'], controller: 'you', zone: 'battlefield' } }] },
   'Plot Bolt': { name: 'Plot Bolt', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', targets: [T.any()], effects: [E.damage(3, R.target())] }, { kind: 'activated', text: 'Plot {R}', cost: { mana: '{R}' }, effects: [{ kind: 'plot' }], zone: 'hand', sorcerySpeed: true }] },

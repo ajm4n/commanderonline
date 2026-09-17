@@ -152,6 +152,23 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
+    // Morph / megamorph / disguise: cast face down for {3}, then turn it face up for the listed cost.
+    if ((m = line.match(/^(Morph|Megamorph|Disguise) ((?:\{[^}]+\})+|[^.]+)$/i))) {
+      const kind = m[1].toLowerCase();
+      const turnUp = /^(?:\{[^}]+\})+$/.test(m[2].trim()) ? { mana: m[2].trim() } : parseCost(m[2].trim().replace(/^[a-z]/, (c) => c.toUpperCase()));
+      if (turnUp) {
+        alternativeCosts.push({ id: kind, text: line, cost: { mana: '{3}' }, zone: 'hand', faceDown: true, ward: kind === 'disguise' ? '{2}' : undefined });
+        abilities.push({
+          kind: 'activated',
+          text: `Turn ~ face up (${m[1]} ${m[2]})`,
+          cost: turnUp,
+          faceDownOnly: true,
+          effects: [{ kind: 'turnFaceUp', ...(kind === 'megamorph' ? { counters: { counter: '+1/+1', amount: 1 } } : {}) }],
+        });
+        compiledLines.push(line);
+        continue;
+      }
+    }
     if ((m = line.match(/^Overload ((?:\{[^}]+\})+)$/i))) {
       alternativeCosts.push({ id: 'overload', text: line, cost: { mana: m[1] }, zone: 'hand' });
       compiledLines.push(line);

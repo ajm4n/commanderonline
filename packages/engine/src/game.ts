@@ -889,6 +889,8 @@ export class Game {
     const lkiCh = (event.data?.lkiCh as Characteristics | undefined) ?? undefined;
     for (const obj of Object.values(this.state.objects)) {
       if (obj.phasedOut) continue;
+      // A face-down permanent has no abilities, so it triggers nothing.
+      if (obj.faceDown && obj.zone === 'battlefield') continue;
       const script = this.scriptFor(obj);
       for (const ab of script.abilities) {
         if (ab.kind !== 'triggered' || ab.event !== event.name) continue;
@@ -1273,6 +1275,10 @@ export class Game {
       case 'paired': {
         const o = this.resolveObjects(c.ref ?? { ref: 'self' }, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0];
         return !!o && o.pairedWith !== null && o.pairedWith !== undefined && !!this.state.objects[o.pairedWith] && this.state.objects[o.pairedWith].zone === 'battlefield';
+      }
+      case 'faceDown': {
+        const o = this.resolveObjects(c.ref ?? { ref: 'self' }, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0];
+        return !!o && o.faceDown;
       }
       case 'cityBlessing': {
         const pid = c.ref ? this.resolvePlayers(c.ref, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0] : ctx.controller;

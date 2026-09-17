@@ -138,6 +138,12 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     ch.oracleText = '';
     ch.manaCost = '';
     ch.manaValue = 0;
+    // Disguise / cloak: the face-down creature has ward.
+    const ward = obj.memory['faceDownWard'];
+    if (typeof ward === 'string') {
+      ch.keywords.add('Ward');
+      ch.oracleText = `Ward ${ward}`;
+    }
   } else {
     // Keywords printed on the card
     for (const k of card.keywords ?? []) ch.keywords.add(k);

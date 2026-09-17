@@ -243,6 +243,16 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     return { event: 'leavesBattlefield', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }
   // Attacks / blocks
+  // Morph: "When ~ is turned face up, ..." / "Whenever a permanent you control is turned face up, ..."
+  if ((m = L.match(/^When(?:ever)? ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an|another) (.+?) is turned face up, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) return { event: 'turnedFaceUp', filter: { object: noun.filter }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever ~ or another (.+?) you control is turned face up, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) return { event: 'turnedFaceUp', filter: { object: { ...noun.filter, controller: 'you' } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
   // Crime, dice, explore, unattach and a batch of narrower heads.
   if ((m = L.match(/^Whenever you commit a crime, (.+)$/i))) return { event: 'committedCrime', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever an opponent commits a crime, (.+)$/i))) return { event: 'committedCrime', filter: { player: 'opponent' }, hasObject: false, hasPlayer: true, rest: m[1] };

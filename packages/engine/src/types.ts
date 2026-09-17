@@ -382,6 +382,8 @@ export interface ObjectFilter {
   blockingSource?: boolean;
   /** The creature the filter's source is paired with (soulbond). */
   pairedWithSource?: boolean;
+  /** Face-down permanents (morph, manifest). */
+  faceDown?: boolean;
   /** Each chosen card must have a different name ("up to four cards with different names"). */
   differentNames?: boolean;
   /** Objects of the color the source chose (memory `color`). */
@@ -515,6 +517,7 @@ export type GameEventName =
   | 'rolledDie'
   | 'explored'
   | 'becomesUnattached'
+  | 'turnedFaceUp'
   | 'cleanup';
 
 export interface GameEvent {

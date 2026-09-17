@@ -114,6 +114,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.permanentCard && !ch.types.some((t) => ['Artifact', 'Creature', 'Enchantment', 'Land', 'Planeswalker', 'Battle'].includes(t))) return false;
   if (filter.modified && !(Object.values(obj.counters).some((n) => n > 0) || g.state.battlefield.some((id) => { const a = g.state.objects[id]; return !!a && a.attachedTo === obj.id && a.controller === obj.controller && ['Equipment', 'Aura'].some((t) => g.characteristics(a.id).subtypes.includes(t)); }))) return false;
   if (filter.customRule && !ch.rules.some((r) => r.kind === 'custom' && r.tag === filter.customRule)) return false;
+  if (filter.faceDown !== undefined && obj.faceDown !== filter.faceDown) return false;
   if (filter.pairedWithSource) {
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     if (!src || src.pairedWith !== obj.id) return false;

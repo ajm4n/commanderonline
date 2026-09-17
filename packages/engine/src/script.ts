@@ -173,6 +173,8 @@ export type Condition =
   | { kind: 'or'; cs: Condition[] }
   /** Ascend: the controller has the city's blessing (ten or more permanents at some point while controlling an Ascend source). */
   | { kind: 'cityBlessing'; ref?: Ref }
+  /** The permanent is face down (morph, manifest). */
+  | { kind: 'faceDown'; ref?: Ref }
   /** Soulbond: the object is paired with another creature. */
   | { kind: 'paired'; ref?: Ref }
   /** The named vote option got strictly more votes than every other option. */
@@ -332,6 +334,10 @@ export type Effect =
   | { kind: 'vote'; options: string[] }
   /** "Each player votes for a nonland permanent you don't control." The winners (ties included) land in memory `key`. */
   | { kind: 'voteObjects'; filter: ObjectFilter; key: string }
+  /** Morph: turn a face-down permanent face up (megamorph adds counters). */
+  | { kind: 'turnFaceUp'; what?: Ref; counters?: { counter: CounterType; amount: Amount } }
+  /** Manifest the top card(s) of a library as face-down 2/2 creatures; `dread` looks at two and mills the other. */
+  | { kind: 'manifest'; amount: Amount; who?: Ref; dread?: boolean; ward?: string }
   | { kind: 'clash' }
   | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
@@ -476,6 +482,8 @@ export interface ActivatedAbilitySpec {
   /** Produces mana and doesn't target: doesn't use the stack. */
   manaAbility?: boolean;
   sorcerySpeed?: boolean;
+  /** Only usable while the permanent is face down (the morph / disguise turn-up ability). */
+  faceDownOnly?: boolean;
   /** Zone the ability can be activated from (default battlefield). */
   zone?: ZoneName;
   oncePerTurn?: boolean;
@@ -567,7 +575,7 @@ export interface CardScript {
   /** "Cast ~ only during combat" / "only if you control a snow land": must hold to cast. */
   castCondition?: Condition;
   /** Alternative costs (e.g. warp, "You may pay {W} rather than pay this spell's mana cost if ..."). */
-  alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition; zone?: ZoneName; /** Paying this cost lets the spell be cast as though it had flash. */ instantSpeed?: boolean }[];
+  alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition; zone?: ZoneName; /** Paying this cost lets the spell be cast as though it had flash. */ instantSpeed?: boolean; /** Morph / disguise: the spell resolves as a face-down 2/2 creature. */ faceDown?: boolean; /** Disguise: the face-down creature has ward {2}. */ ward?: string }[];
   /** Cost changes the spell applies to itself ("costs {1} less to cast for each artifact you control", affinity). */
   costModifiers?: CostModifier[];
   /** How much of the card's text is automated. */

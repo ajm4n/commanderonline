@@ -1003,6 +1003,43 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.emit({ name: 'finishedVoting', playerId: ctx.controller });
       return;
     }
+    case 'turnFaceUp': {
+      for (const o of g.resolveObjects(e.what ?? { ref: 'self' }, ctx)) {
+        if (!o.faceDown || o.zone !== 'battlefield') continue;
+        o.faceDown = false;
+        delete o.memory['faceDownWard'];
+        if (e.counters) g.addCounters(o.id, e.counters.counter, g.resolveAmount(e.counters.amount, ctx));
+        g.log(`${g.nameOf(o.id)} is turned face up.`);
+        g.touch();
+        g.emit({ name: 'turnedFaceUp', objectId: o.id, playerId: o.controller });
+      }
+      return;
+    }
+    case 'manifest': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const n = amt(e.amount);
+        for (let i = 0; i < n; i++) {
+          const pl = g.player(p);
+          if (!pl.library.length) break;
+          let pick = pl.library[0];
+          if (e.dread) {
+            const top = pl.library.slice(0, 2);
+            if (top.length === 2) {
+              const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Manifest dread: choose one to manifest (the other goes to your graveyard)', candidates: top, min: 1, max: 1, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+              pick = r.type === 'objects' && r.ids[0] !== undefined ? r.ids[0] : top[0];
+              const other = top.find((id) => id !== pick);
+              if (other !== undefined) g.moveObject(other, 'graveyard', { cause: 'mill' });
+            }
+          }
+          const entered = yield* enterBattlefield(g, pick, p, { ctx, faceDown: true });
+          if (entered) {
+            if (e.ward) entered.memory['faceDownWard'] = e.ward;
+            g.log(`${g.player(p).name} manifests a card face down.`);
+          }
+        }
+      }
+      return;
+    }
     case 'clash': {
       const opps = g.activePlayers().filter((x) => x !== ctx.controller);
       if (!opps.length) return;
@@ -1501,7 +1538,7 @@ export function attach(g: Game, whatId: ObjectId, toId: ObjectId) {
  * from its own script (enters tapped, with counters, choices) and from other
  * permanents (e.g. "creatures your opponents control enter tapped").
  */
-export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, opts: { tapped?: boolean; counters?: Record<string, number>; ctx?: EffectContext; attacking?: PlayerId | ObjectId; fromStack?: boolean } = {}): Gen<GameObject | null> {
+export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, opts: { tapped?: boolean; counters?: Record<string, number>; ctx?: EffectContext; attacking?: PlayerId | ObjectId; fromStack?: boolean; faceDown?: boolean } = {}): Gen<GameObject | null> {
   const o = g.state.objects[id];
   if (!o) return null;
   const script = g.scriptFor(o);
@@ -1614,7 +1651,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
     }
     attachTo = pick;
   }
-  const result = g.moveObject(id, 'battlefield', { tapped, controller, counters, attackingFor: opts.attacking, cause: opts.fromStack ? 'resolve' : 'other' });
+  const result = g.moveObject(id, 'battlefield', { tapped, controller, counters, attackingFor: opts.attacking, cause: opts.fromStack ? 'resolve' : 'other', faceDown: opts.faceDown });
   if (!result) return null;
   Object.assign(result.chosen, chosen);
   Object.assign(result.memory, chosen);

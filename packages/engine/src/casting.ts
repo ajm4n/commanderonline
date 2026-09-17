@@ -25,11 +25,18 @@ export function abilitiesOf(g: Game, obj: GameObject): ObjectAbility[] {
   const out: ObjectAbility[] = [];
   const script = g.scriptFor(obj);
   const ch = g.characteristics(obj.id);
+  if (obj.faceDown) {
+    // A face-down permanent has no printed abilities — only its morph / disguise turn-up ability.
+    script.abilities.forEach((ab, i) => {
+      if (ab.kind === 'activated' && ab.faceDownOnly) out.push({ index: i, spec: ab });
+    });
+    return out;
+  }
   if (ch.lostAllAbilities) {
     // Still gets basic-land mana abilities from land types (intrinsic to the type)
   } else {
     script.abilities.forEach((ab, i) => {
-      if (ab.kind === 'activated') out.push({ index: i, spec: ab });
+      if (ab.kind === 'activated' && !ab.faceDownOnly) out.push({ index: i, spec: ab });
     });
   }
   let idx = 1000;
@@ -1044,6 +1051,14 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   obj.memory['kicks'] = kicks;
   obj.memory['castAtInstantSpeed'] = !canCastSorcerySpeed(g, p);
   if (altId === 'overload') obj.memory['overloaded'] = true;
+  {
+    // Morph / disguise: the spell resolves as a face-down 2/2 creature.
+    const fd = altId ? (g.scriptFor(obj).alternativeCosts ?? []).find((a) => a.id === altId && a.faceDown) : undefined;
+    if (fd) {
+      obj.memory['castFaceDown'] = true;
+      if (fd.ward) obj.memory['faceDownWard'] = fd.ward;
+    }
+  }
 
   // X
   let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
