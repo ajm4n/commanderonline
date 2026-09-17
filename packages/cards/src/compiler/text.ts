@@ -26,6 +26,8 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   let t = text ?? '';
   // Strip reminder text (parenthesized) but keep the rest.
   t = t.replace(/\s*\([^()]*\)/g, '');
+  // Rebalanced (Alchemy) cards mark their changed words with square brackets; the text inside is the real text.
+  t = t.replace(/\[([^\[\]]*)\]/g, '$1');
   const names = [faceName];
   for (const f of card.faces ?? []) if (f.name && f.name !== faceName) names.push(f.name);
   const sn = shortName(faceName);

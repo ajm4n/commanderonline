@@ -414,6 +414,22 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       { kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noGraveyardAbilities' } },
     ];
   }
+  if (/^You have protection from each of your opponents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'protectionFromOpponents' } }];
+  if (/^~ is not legendary if it is a token$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 4, removeSupertypes: ['Legendary'] }, condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { isToken: true } } }];
+  if ((m = L.match(/^(.+?) can block creatures with (\w+) as though they (?:did not|didn't) have \2$/i))) {
+    const r = objRule(m[1], { kind: 'custom', tag: 'canBlockAsThough', data: m[2].toLowerCase() });
+    if (r) return r;
+  }
+  if ((m = L.match(/^~ enters under the control of (an opponent of your choice|target opponent)$/i)))
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, effects: [{ kind: 'gainControl', what: { ref: 'self' }, who: { ref: 'eachOpponent' }, duration: 'permanent' }] }];
+  if ((m = L.match(/^Each (.+?) in your hand has (miracle|foretell|cycling|madness|escape|scavenge)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: m[2].toLowerCase(), filter: { ...f, zone: 'hand' } } } }];
+    }
+  }
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];

@@ -47,7 +47,7 @@ export function parseKeywordList(text: string): string[] | null {
   const out: string[] = [];
   for (const p of parts) {
     const q = p.replace(/^(?:your choice of )/, '');
-    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle) \d+)$/.test(q)) return null;
+    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle|afterlife|vanishing|fading|dredge|ripple|frenzy|poisonous|absorb|level up|tribute) \d+)$/.test(q)) return null;
     out.push(q.charAt(0).toUpperCase() + q.slice(1));
   }
   return out;
@@ -3340,6 +3340,23 @@ const PATTERNS: Pattern[] = [
   [/^rolls? (?:a|an) (four|six|eight|ten|twelve|twenty)-sided die$/i, (m) => {
     const sides = ({ four: 4, six: 6, eight: 8, ten: 10, twelve: 12, twenty: 20 } as Record<string, number>)[m[1].toLowerCase()];
     return [{ kind: 'rollDie', sides, results: [] }];
+  }],
+  // "It gets +2/+2 until end of turn and can block an additional creature this turn"
+  [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+)(?: until end of turn)? and can block an additional creature(?: this turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'pump', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: 'endOfTurn' },
+      { kind: 'applyRule', rule: { kind: 'custom', tag: 'extraBlock' }, on: ref, duration: 'endOfTurn' },
+    ];
+  }],
+  // "Each creature dealt damage this way attacks this turn if able"
+  [/^each (.+?) dealt damage this way attacks this turn if able$/i, () => [{ kind: 'applyRule', rule: { kind: 'mustAttack' }, on: { ref: 'chosen', key: 'lastDamaged' }, duration: 'endOfTurn' }]],
+  // "You may unattach an Equipment from a creature you control"
+  [/^(?:you may )?unattach (?:a|an) (Equipment|Aura) from (?:a|an) (.+)$/i, (m, ctx) => {
+    const c = chooseRef(`an ${m[1]} attached to a ${m[2]}`, ctx, YOU, /you may/i.test(m[0]));
+    if (!c) return null;
+    return [...c.pre, { kind: 'unattach', what: c.ref }];
   }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
