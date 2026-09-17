@@ -1265,7 +1265,7 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
   g.state.stack.push(item);
   g.touch();
   g.log(`${g.player(p).name} activates ${item.text}`, { kind: 'activate', data: { player: p, objectId: id } });
-  g.emit({ name: 'abilityActivated', objectId: id, playerId: p, data: spec.exhaust ? { exhaust: true } : undefined });
+  g.emit({ name: 'abilityActivated', objectId: id, playerId: p, data: { stackItemId: item.id, ...(spec.exhaust ? { exhaust: true } : {}) } });
   return true;
 }
 

@@ -1160,7 +1160,7 @@ const PATTERNS: Pattern[] = [
     const t = m[3].toUpperCase().includes('X') ? (m[3].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[3], 10);
     return [{ kind: 'pump', power: p, toughness: t, on: ref, duration: 'endOfTurn' }, { kind: 'grantAbility', text: m[4], on: ref, duration: 'endOfTurn' }];
   }],
-  [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) (.+?)(?: creature)? with base power and toughness (\d+|X)\/(\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) (.+?)(?: creature)? with base power and toughness (\d+|X)\/(\d+|X)(?:,? and (?:gains )?(.+?)|, (.+?))?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
@@ -1173,6 +1173,12 @@ const PATTERNS: Pattern[] = [
     out.push({ kind: 'setPT', power: m[3] === 'X' ? 'X' : parseInt(m[3], 10), toughness: m[4] === 'X' ? 'X' : parseInt(m[4], 10), on: ref, duration: dur });
     out.push({ kind: 'addTypes', types, subtypes, on: ref, duration: dur });
     if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+    const kwText = m[5] ?? m[6];
+    if (kwText) {
+      const kws = parseKeywordList(kwText);
+      if (!kws) return null;
+      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
+    }
     return out;
   }],
   [/^(.+?) becomes? an? (artifact creature|artifact|creature|enchantment creature|enchantment)(?: in addition to its other types)?(?: until end of turn)?$/i, (m, ctx) => {
@@ -1620,6 +1626,13 @@ const PATTERNS: Pattern[] = [
     const who = playerRef(m[1], ctx);
     return who ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivateAbilities', data: /mana abilities/i.test(m[0]) ? { exceptMana: true } : {} }, on: who, duration: / until end of turn$| this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
+  // "you may pay {1}. If you do, copy that ability."
+  [/^copy (?:that|the) (?:ability|spell or ability)(?: for each (.+))?$/i, (m, ctx) => {
+    void ctx;
+    if (m[1]) return null;
+    return [{ kind: 'copySpell', what: { ref: 'triggerStackItem' } }];
+  }],
+  [/^copy (?:that|the) (?:activated or triggered )?ability\. you may choose new targets for the copy$/i, () => [{ kind: 'copySpell', what: { ref: 'triggerStackItem' } }]],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -1980,6 +1993,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if (/^reveal the top card of your library$/i.test(text)) {
     ctx.lastObj = { ref: 'lastMoved' };
     return [{ kind: 'revealTop', destination: 'stay' }];
+  }
+  if ((m = text.match(/^(each player|each opponent|target player|target opponent|that player|you) reveals? the top card of (?:their|your) library$/i))) {
+    const who = playerRef(m[1], ctx);
+    if (who) {
+      ctx.lastObj = { ref: 'lastMoved' };
+      return [{ kind: 'revealTop', who, destination: 'stay' }];
+    }
   }
   if ((m = text.match(/^exert (~|it|that creature)$/i))) {
     const ref = objRef(m[1], ctx);

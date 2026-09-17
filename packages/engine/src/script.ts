@@ -96,6 +96,8 @@ export type Ref =
   | { ref: 'activePlayer' }
   | { ref: 'chosen'; key: string }
   | { ref: 'stackTarget' } // the spell targeted (for counterspells)
+  /** The spell or ability whose activation triggered this ability. */
+  | { ref: 'triggerStackItem' }
   | { ref: 'controllerOf'; of: Ref }
   | { ref: 'ownerOf'; of: Ref }
   | { ref: 'blockersOf'; of: Ref }

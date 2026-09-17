@@ -971,6 +971,7 @@ export class Game {
       triggerSnapshot: event.snapshot,
       triggerEvent: event.name,
       triggerData: event.data,
+      stackItemId: (event.data as { stackItemId?: number } | undefined)?.stackItemId,
     };
   }
 
@@ -1601,6 +1602,12 @@ export class Game {
         if (Array.isArray(v)) return objT(v);
         if (typeof v === 'string') return plT([v]);
         return [];
+      }
+      case 'triggerStackItem': {
+        const sid = (ctx.triggerContext['stackItemId'] ?? (ctx.triggerContext['triggerData'] as { stackItemId?: number } | undefined)?.stackItemId) as number | undefined;
+        if (sid !== undefined && this.state.stack.some((s) => s.id === sid)) return [{ kind: 'stackItem', id: sid }];
+        const top = this.state.stack[this.state.stack.length - 1];
+        return top ? [{ kind: 'stackItem', id: top.id }] : [];
       }
       case 'stackTarget': {
         const t = ctx.targets.find((x) => x.kind === 'stackItem');
