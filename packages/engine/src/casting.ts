@@ -591,6 +591,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     for (const id of ids) g.moveObject(id, 'exile', { cause: 'exile' });
   }
   if (cost.tapUntappedTotalPower) {
+    // Crew / saddle: the tapped creatures crewed this permanent.
     const need = cost.tapUntappedTotalPower.power;
     const cands = objectsMatching(g, { ...cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, ctx).map((o) => o.id);
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -598,7 +599,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       if (resp.type !== 'objects') return false;
       const total = resp.ids.reduce((s, id) => s + (g.characteristics(id).power ?? 0), 0);
       if (total < need) continue;
-      for (const id of resp.ids) g.tap(id);
+      for (const id of resp.ids) {
+        g.tap(id);
+        g.emit({ name: 'crewed', objectId: id, sourceId: obj.id, playerId: p });
+      }
       break;
     }
   }

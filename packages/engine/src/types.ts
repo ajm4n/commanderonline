@@ -525,6 +525,10 @@ export type GameEventName =
   | 'proliferated'
   | 'connived'
   | 'phasedIn'
+  | 'crewed'
+  | 'plotted'
+  | 'clashed'
+  | 'gotEnergy'
   | 'cleanup';
 
 export interface GameEvent {

@@ -47,7 +47,7 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   // Legendary permanents without a comma sometimes refer to themselves by their first name ("Catti-brie of Mithral Hall" → "Catti-brie").
   if (/Legendary/.test(card.typeLine) && !faceName.includes(',') && faceName.includes(' ')) {
     const first = faceName.split(' ')[0];
-    if (first.length >= 5 && /^[A-Z][a-z]/.test(first) && !/'s$/.test(first) && !/^(The|Sword|Shield|Tower|Temple|Throne|Hall|Book|Staff|Crown|Ring|Blade|Gate|Cradle|Academy|Palace|Hammer|Heart|Scroll|Mask)$/.test(first)) {
+    if (first.length >= 4 && /^[A-Z][a-zà-ÿÀ-Ÿ]/u.test(first) && !/'s$/.test(first) && !/^(The|Sword|Shield|Tower|Temple|Throne|Hall|Book|Staff|Crown|Ring|Blade|Gate|Cradle|Academy|Palace|Hammer|Heart|Scroll|Mask)$/.test(first)) {
       const esc = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       t = t.replace(new RegExp(`\\b${esc}'s\\b`, 'g'), "~'s").replace(new RegExp(`\\b${esc}\\b(?! [A-Z])`, 'g'), '~');
     }

@@ -350,7 +350,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const pl = g.player(t.id);
         if (e.counter === 'poison') pl.poison += amt(e.amount);
         else if (e.counter === 'experience') pl.experience += amt(e.amount);
-        else if (e.counter === 'energy') pl.energy += amt(e.amount);
+        else if (e.counter === 'energy') {
+          pl.energy += amt(e.amount);
+          g.emit({ name: 'gotEnergy', playerId: t.id, amount: amt(e.amount), sourceId: ctx.sourceId ?? undefined });
+        }
         g.touch();
       }
       return;
@@ -1083,6 +1086,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'clash': {
+      g.emit({ name: 'clashed', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined });
       const opps = g.activePlayers().filter((x) => x !== ctx.controller);
       if (!opps.length) return;
       let opp = opps[0];
@@ -1476,6 +1480,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       if (!src) return;
       const moved = src.zone === 'exile' ? src : g.moveObject(src.id, 'exile', { cause: 'exile', sourceId: src.id });
       if (!moved) return;
+      g.emit({ name: 'plotted', objectId: moved.id, playerId: ctx.controller });
       Object.assign(moved.memory, { plotted: g.state.turn.number, playableBy: ctx.controller, playableUntil: 'permanent', freeCast: true, sorceryOnly: true });
       g.log(`${g.player(ctx.controller).name} plots ${g.nameOf(moved.id)}.`);
       return;
