@@ -711,7 +711,10 @@ export class Game {
     if (fromZone === 'battlefield') {
       for (const aId of [...obj.attachments]) {
         const a = this.state.objects[aId];
-        if (a) a.attachedTo = null;
+        if (a) {
+          a.attachedTo = null;
+          this.emit({ name: 'becomesUnattached', objectId: aId, sourceId: id });
+        }
       }
       obj.attachments = [];
       if (obj.attachedTo !== null) {
@@ -1013,6 +1016,8 @@ export class Game {
       if (!item || !item.targets.some((t) => t.kind === 'object' && this.state.objects[t.id] && this.state.objects[t.id].controller === controller && matchesFilter(this, this.state.objects[t.id], { ...f.targetsControlled, zone: undefined }, { sourceId: obj.id, controller }))) return false;
     }
     if (f.custom === 'exhaust' && !(e.data as { exhaust?: boolean } | undefined)?.exhaust) return false;
+    if (f.custom === 'wonFlip' && !(e.data as { won?: boolean } | undefined)?.won) return false;
+    if (f.custom === 'lostFlip' && (e.data as { won?: boolean } | undefined)?.won) return false;
     if (f.custom === 'nonManaAbility' && (e.data as { mana?: boolean } | undefined)?.mana) return false;
     if (f.custom === 'chosenPlayersStep') {
       const src = this.state.objects[obj.id] ?? obj;
@@ -1141,6 +1146,18 @@ export class Game {
       else flat.push(...slotTargets);
     }
     for (const t of flat) if (t.kind === 'object') this.emit({ name: 'becomesTarget', objectId: t.id, sourceId: sourceId ?? undefined, playerId: player });
+    // Committing a crime: targeting an opponent, or anything they control or own.
+    const crime = flat.some((t) =>
+      t.kind === 'player'
+        ? t.id !== player
+        : t.kind === 'object'
+          ? (() => {
+              const o = this.state.objects[t.id];
+              return !!o && (o.controller !== player || o.owner !== player);
+            })()
+          : false,
+    );
+    if (crime) this.emit({ name: 'committedCrime', playerId: player, sourceId: sourceId ?? undefined });
     return flat;
   }
 

@@ -133,6 +133,7 @@ export function* checkStateBasedActions(g: Game): Gen {
         if (!ok) {
           if (host) host.attachments = host.attachments.filter((x) => x !== id);
           o.attachedTo = null;
+          g.emit({ name: 'becomesUnattached', objectId: id, sourceId: host?.id });
           g.touch();
           changed = true;
         }

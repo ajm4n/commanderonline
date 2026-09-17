@@ -300,7 +300,7 @@ export type Effect =
   | { kind: 'takeInitiative'; who?: Ref }
   | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number; /** "Choose one that hasn't been chosen this turn": modes already used are unavailable. */ notChosen?: 'turn' | 'game' }
   | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter; /** "Until end of turn, whenever X, Y": fires repeatedly this turn, then goes away. */ untilEndOfTurn?: boolean }
-  | { kind: 'log'; text: string }
+  | { kind: 'log'; text: string; /** Also emit this game event (for mechanics whose trigger is the action itself, e.g. exploring). */ event?: GameEventName; objectRef?: Ref }
   | { kind: 'ventureIntoDungeon' }
   | { kind: 'investigate'; count?: Amount }
   | { kind: 'treasure'; count?: Amount }

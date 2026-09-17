@@ -691,6 +691,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'rollDie': {
       const roll = 1 + g.rng.int(e.sides);
       g.log(`${g.player(ctx.controller).name} rolls a d${e.sides}: ${roll}.`);
+      ctx.memory['lastRoll'] = roll;
+      g.emit({ name: 'rolledDie', playerId: ctx.controller, amount: roll, sourceId: ctx.sourceId ?? undefined });
       const r = e.results.find((x) => roll >= x.min && roll <= x.max);
       if (r) yield* executeEffects(g, r.effects, ctx);
       return;
@@ -1311,7 +1313,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'log':
-      g.log(e.text);
+      if (e.event) {
+        const who = e.objectRef ? g.resolveObjects(e.objectRef, ctx)[0] : undefined;
+        g.emit({ name: e.event, objectId: who?.id, playerId: who ? who.controller : ctx.controller, sourceId: ctx.sourceId ?? undefined });
+      } else g.log(e.text);
       return;
     case 'ventureIntoDungeon':
       yield* venture(g, ctx.controller, ctx, ctx.triggerContext['dungeon'] as string | undefined);

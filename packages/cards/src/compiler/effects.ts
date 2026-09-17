@@ -20,6 +20,8 @@ export interface ParseCtx {
   triggerObjectIsSource?: boolean;
   /** Memory key of a looked-at / revealed pool of library cards that "the rest" refers to. */
   restKey?: string;
+  /** The creature that just explored (for "Whenever a creature you control explores"). */
+  exploreRef?: Ref;
 }
 
 export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
@@ -1662,7 +1664,8 @@ const PATTERNS: Pattern[] = [
   }],
   [/^(.+?) explores?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'revealTop', ifMatches: { types: ['Land'] }, then: [{ kind: 'putIntoHand', what: { ref: 'lastMoved' } }], else: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: ref }, { kind: 'may', prompt: 'Put the revealed card into your graveyard?', effects: [{ kind: 'moveToZone', what: { ref: 'lastMoved' }, zone: 'graveyard' }] }] }] : null;
+    if (ref) ctx.exploreRef = ref;
+    return ref ? [{ kind: 'log', text: 'explored', event: 'explored', objectRef: ref }, { kind: 'revealTop', ifMatches: { types: ['Land'] }, then: [{ kind: 'putIntoHand', what: { ref: 'lastMoved' } }], else: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: ref }, { kind: 'may', prompt: 'Put the revealed card into your graveyard?', effects: [{ kind: 'moveToZone', what: { ref: 'lastMoved' }, zone: 'graveyard' }] }] }] : null;
   }],
   [/^venture into the dungeon$/i, () => [{ kind: 'ventureIntoDungeon' }]],
   [/^monstrosity (\w+|X)$/i, (m) => {

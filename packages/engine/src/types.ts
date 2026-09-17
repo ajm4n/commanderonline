@@ -511,6 +511,10 @@ export type GameEventName =
   | 'ventures'
   | 'dungeonCompleted'
   | 'ringTempted'
+  | 'committedCrime'
+  | 'rolledDie'
+  | 'explored'
+  | 'becomesUnattached'
   | 'cleanup';
 
 export interface GameEvent {

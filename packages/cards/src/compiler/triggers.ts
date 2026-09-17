@@ -243,6 +243,26 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     return { event: 'leavesBattlefield', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }
   // Attacks / blocks
+  // Crime, dice, explore, unattach and a batch of narrower heads.
+  if ((m = L.match(/^Whenever you commit a crime, (.+)$/i))) return { event: 'committedCrime', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever an opponent commits a crime, (.+)$/i))) return { event: 'committedCrime', filter: { player: 'opponent' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you roll (?:one or more dice|a die|dice), (.+)$/i))) return { event: 'rolledDie', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|another) creature you control explores, (.+)$/i))) return { event: 'explored', filter: { objectController: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ explores, (.+)$/i))) return { event: 'explored', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ becomes unattached(?: from (?:a permanent|a creature))?, (.+)$/i))) return { event: 'becomesUnattached', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you win a coin flip, (.+)$/i))) return { event: 'coinFlipped', filter: { player: 'you', custom: 'wonFlip' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you lose a coin flip, (.+)$/i))) return { event: 'coinFlipped', filter: { player: 'you', custom: 'lostFlip' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever a source deals damage to ~, (.+)$/i))) return { event: 'dealtDamage', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ is dealt (combat )?damage, (.+)$/i))) return { event: 'dealtDamage', filter: { self: true, combat: m[1] ? true : undefined }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^When (equipped|enchanted) (?:creature|permanent|land) is dealt (combat )?damage, (.+)$/i))) return { event: 'dealtDamage', filter: { attachedToSource: true, combat: m[2] ? true : undefined }, hasObject: true, hasPlayer: true, rest: m[3] };
+  if ((m = L.match(/^When(?:ever)? (equipped|enchanted) (?:creature|permanent|land|artifact) becomes (tapped|untapped), (.+)$/i))) return { event: m[2].toLowerCase() === 'tapped' ? 'tapped' : 'untapped', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[3] };
+  if ((m = L.match(/^Whenever (?:equipped|enchanted) creature attacks alone, (.+)$/i))) return { event: 'attacks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: `if you control exactly one attacking creature, ${m[1]}` };
+  if ((m = L.match(/^Whenever enchanted player is attacked, (.+)$/i))) return { event: 'attacked', filter: { attachedToSource: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When ~ enters from a graveyard, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true, fromZone: 'graveyard' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^At the beginning of combat on each opponent's turn, (.+)$/i))) return { event: 'beginningOfCombat', filter: { player: 'opponent' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an|one or more) creatures? deals? combat damage to one of your opponents, (.+)$/i))) return { event: 'dealtDamage', filter: { toPlayer: true, player: 'opponent', combat: true }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you attack a player, (.+)$/i))) return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When ~ dies or is put into exile from the battlefield, (.+)$/i))) return { event: 'dies', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'leavesBattlefield', filter: { self: true, toZone: 'exile' }, hasObject: true, hasPlayer: false }] };
   if ((m = L.match(/^When ~ attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false }] };
   if ((m = L.match(/^When ~ blocks, (.+)$/i))) return { event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever ~ blocks or becomes blocked, (.+)$/i))) return { event: 'blocks', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'becomesBlocked', filter: { self: true }, hasObject: true, hasPlayer: false }] };
