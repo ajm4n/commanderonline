@@ -927,6 +927,11 @@ export class Game {
     this.collectRingTriggers(event);
   }
 
+  /** "Damage can't be prevented": no prevention effect applies while this is in force. */
+  preventionOff(): boolean {
+    return this.state.playerOrder.some((pl) => this.playerRules(pl).some((r) => r.kind === 'custom' && r.tag === 'noDamagePrevention'));
+  }
+
   /** The Ring's levels 2-4 are triggered abilities of the ring-bearer's controller. */
   private collectRingTriggers(event: GameEvent) {
     if (event.objectId === undefined) return;
@@ -2041,7 +2046,7 @@ export class Game {
     if (target.kind === 'player') {
       const p = this.player(target.id);
       // Prevention rules on player
-      if (!this.state.turnStats['noPrevention']) for (const r of this.playerRules(target.id)) if (r.kind === 'damagePrevention') dealt = r.amount === 'all' ? 0 : Math.max(0, dealt - r.amount);
+      if (!this.state.turnStats['noPrevention'] && !this.preventionOff()) for (const r of this.playerRules(target.id)) if (r.kind === 'damagePrevention') dealt = r.amount === 'all' ? 0 : Math.max(0, dealt - r.amount);
       if (dealt <= 0) return 0;
       if (sch?.keywords.has('Infect')) {
         p.poison += dealt;
@@ -2078,7 +2083,7 @@ export class Game {
           if (protectionApplies(prot, sch.colors, sch.types, sch.subtypes, src!.controller !== obj.controller)) return 0;
         }
       }
-      for (const r of ch.rules) if (r.kind === 'damagePrevention') dealt = r.amount === 'all' ? 0 : Math.max(0, dealt - r.amount);
+      if (!this.preventionOff()) for (const r of ch.rules) if (r.kind === 'damagePrevention') dealt = r.amount === 'all' ? 0 : Math.max(0, dealt - r.amount);
       if (dealt <= 0) return 0;
       if (ch.types.includes('Planeswalker')) {
         obj.counters['loyalty'] = Math.max(0, (obj.counters['loyalty'] ?? 0) - dealt);

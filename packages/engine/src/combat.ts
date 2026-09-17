@@ -33,6 +33,13 @@ function attackTargets(g: Game, o: GameObject): (PlayerId | ObjectId)[] {
   const unless = g.characteristics(o.id).rules.filter((r) => r.kind === 'cantAttackUnlessDefenderControls');
   for (const p of g.opponentsOf(o.controller)) {
     if (unless.some((r) => !g.state.battlefield.some((id) => g.obj(id).controller === p && g.characteristics(id).types.length > 0 && matchesFilterFor(g, id, r.filter, p)))) continue;
+    // "Creatures can't attack you": a rule on the defending player, matched against the attacker.
+    const shielded = g.playerRules(p).some((r) => {
+      if (r.kind !== 'custom' || r.tag !== 'cantBeAttacked') return false;
+      const f = (r.data as { filter?: import('./types.js').ObjectFilter } | undefined)?.filter;
+      return !f || matchesFilterFor(g, o.id, f, p);
+    });
+    if (shielded) continue;
     out.push(p);
     for (const id of g.state.battlefield) {
       const t = g.obj(id);

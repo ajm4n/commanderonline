@@ -1125,7 +1125,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costIncrease', amount: (m[2].match(/\{/g) ?? []).length, symbols: m[2], filter } }];
   }
-  if ((m = L.match(/^(.+?) you cast cost \{(\d)\} (less|more) to cast$/i)) || (m = L.match(/^(.+?) cost \{(\d)\} (less|more) to cast$/i))) {
+  if ((m = L.match(/^(.*?)creatures? cannot attack you$/i))) {
+    const pre = m[1].trim();
+    let filter: ObjectFilter | undefined;
+    if (pre) {
+      const noun = parseNoun(`a ${pre} creature`);
+      if (!noun) return null;
+      filter = { ...noun.filter };
+      delete filter.zone;
+    } else filter = { types: ['Creature'] };
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeAttacked', data: { filter } } }];
+  }
+  if (/^(?:the )?damage cannot be prevented$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noDamagePrevention' } }];
+  if ((m = L.match(/^(.+?) you cast cost ((?:\{[WUBRGC\d]\})+) (less|more) to cast$/i)) || (m = L.match(/^(.+?) cost ((?:\{[WUBRGC\d]\})+) (less|more) to cast$/i))) {
     const nounText = m[1].replace(/^Spells$/i, 'spells');
     let filter: ObjectFilter | undefined;
     if (!/^spells$/i.test(nounText)) {
@@ -1134,7 +1146,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       filter = { ...noun.filter };
       delete filter.zone;
     }
-    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[3] === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10), filter } }];
+    const generic = m[2].match(/^\{(\d)\}$/);
+    const kind = m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease';
+    if (!generic && /\d/.test(m[2])) return null;
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: generic ? { kind, amount: parseInt(generic[1], 10), filter } : { kind, amount: 0, symbols: m[2], filter } }];
   }
   if ((m = L.match(/^(.+?) your opponents cast cost \{(\d)\} more to cast$/i))) {
     let filter: ObjectFilter | undefined;
@@ -1219,6 +1234,17 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "If one or more tokens would be created under your control, twice that many of those tokens are created instead."
+  if ((m = L.match(/^If you would create one or more (.+?) tokens?, create those tokens plus an additional (.+?) token instead$/i))) {
+    const noun = /^tokens?$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} token`);
+    if (!noun) return null;
+    return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 1 }];
+  }
+  // "If ~ would enter, sacrifice an untapped Mountain instead."
+  if ((m = L.match(/^If ~ would enter, (sacrifice .+?) instead$/i))) {
+    const r = parseEffects(m[1], newCtx({ triggerHasObject: false, triggerHasPlayer: false }));
+    if (r.unhandled.length) return null;
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, effects: r.effects }];
+  }
   if (/^If one or more tokens would be created under your control, twice that many (?:of those )?tokens are created instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 1 }];
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];

@@ -305,7 +305,7 @@ export type RuleModification =
   | { kind: 'noMaxHandSize' }
   /** "Your maximum hand size is eleven" / "... is reduced by two" */
   | { kind: 'maxHandSize'; value?: number; delta?: number }
-  | { kind: 'costReduction'; amount: number; filter?: SpellFilter; /** Reduce by `amount` for each permanent matching this ("spells you cast have affinity for artifacts"). */ per?: ObjectFilter; /** Reduce by `amount` times this amount ("for each +1/+1 counter on ~"). */ perAmount?: import('./script.js').Amount }
+  | { kind: 'costReduction'; amount: number; /** Colored symbols to remove instead of generic mana ("Cleric spells you cast cost {W}{B} less to cast"). */ symbols?: string; filter?: SpellFilter; /** Reduce by `amount` for each permanent matching this ("spells you cast have affinity for artifacts"). */ per?: ObjectFilter; /** Reduce by `amount` times this amount ("for each +1/+1 counter on ~"). */ perAmount?: import('./script.js').Amount }
   | { kind: 'costIncrease'; amount: number; /** Colored symbols to add instead of generic mana ("White spells you cast cost {W} more to cast"). */ symbols?: string; filter?: SpellFilter }
   | { kind: 'entersTapped' }
   | { kind: 'cantLose' }

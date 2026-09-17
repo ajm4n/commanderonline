@@ -344,6 +344,13 @@ function parseAdjectives(wordsIn: string[], r: ParsedNoun): boolean {
     } else if (l === 'or' || l === 'and') {
       /* "artifact and/or enchantment" handled loosely */
     } else if (l === 'snow') r.filter.supertypes = ['Snow'];
+    else if (/^\d+\/\d+$/.test(l)) {
+      const [pw, tg] = l.split('/').map((n) => parseInt(n, 10));
+      r.filter.powerLE = pw;
+      r.filter.powerGE = pw;
+      r.filter.toughnessLE = tg;
+      r.filter.toughnessGE = tg;
+    }
     else return false;
   }
   return true;

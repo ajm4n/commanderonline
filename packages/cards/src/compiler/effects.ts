@@ -747,7 +747,7 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantBlockSource', data: '__self__' }, on: ref, duration: 'endOfTurn' }] : null;
   }],
-  [/^(.+?) blocks ~ this turn if able$/i, (m, ctx) => {
+  [/^(.+?) blocks (?:~|it) this (?:turn|combat) if able$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBlock', data: '__self__' }, on: ref, duration: 'endOfTurn' }] : null;
   }],
@@ -983,10 +983,10 @@ const PATTERNS: Pattern[] = [
     const key = `hand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
     return [{ kind: 'chooseObjects', filter: { ...noun.filter, zone: 'hand', owner: 'you' }, count: n, key }, { kind: 'putOnLibrary', what: { ref: 'chosen', key }, position: /top/.test(m[3]) ? 'top' : 'bottom' }];
   }],
-  [/^(?:you may )?put (?:a|an|up to (\w+)) (.+?) from your hand onto the battlefield( tapped)?$/i, (m, ctx) => {
+  [/^(?:you may )?put (?:a|an|up to (\w+)) (.+?) from your hand onto the battlefield(?: (tapped)(?: and (attacking))?)?$/i, (m, ctx) => {
     const c = chooseRef(`a ${/\bcards?\b/i.test(m[2]) ? m[2].replace(/ cards$/i, ' card') : `${m[2]} card`} from your hand`, ctx, YOU, true);
     if (!c) return null;
-    return [...c.pre, { kind: 'returnToBattlefield', what: c.ref, tapped: !!m[3] }];
+    return [...c.pre, { kind: 'returnToBattlefield', what: c.ref, tapped: !!m[3], attacking: m[4] ? true : undefined }];
   }],
   [/^(?:you may )?put (?:a|an|up to (\w+)) (.+?) cards? from your graveyard (?:onto the battlefield|into your hand)( tapped)?$/i, (m, ctx) => {
     const c = chooseRef(`a ${m[2]} card from your graveyard`, ctx, YOU, true);
@@ -1286,6 +1286,18 @@ const PATTERNS: Pattern[] = [
       out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
     }
     return out;
+  }],
+  // "it becomes a 0/0 Robot creature in addition to its other types"
+  [/^(.+?) becomes? an? (\d+)\/(\d+) ([A-Za-z][\w' -]*?) creature(?: in addition to its other types)?(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const noun = parseNoun(`a ${m[4]} creature`);
+    if (!noun) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [
+      { kind: 'addTypes', types: ['Creature'], subtypes: noun.filter.subtypes, on: ref, duration: dur },
+      { kind: 'setPT', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: dur },
+    ];
   }],
   [/^(.+?) becomes? an? (artifact creature|artifact|creature|enchantment creature|enchantment)(?: in addition to its other types)?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -2131,8 +2143,41 @@ const PATTERNS: Pattern[] = [
     const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
     return [{ kind: 'playFromExile', what: ref, duration: 'thisTurn', anyMana: /any type/i.test(m[0]) || undefined }];
   }],
+  // "The next sorcery spell you cast this turn can be cast as though it had flash"
+  [/^the next (.+?) you cast this turn can be cast as though it had flash$/i, (m) => {
+    const noun = parseNoun(`a ${m[1].replace(/ spells?$/i, ' spell')}`);
+    if (!noun) return null;
+    const f = { ...noun.filter };
+    delete f.zone;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'castAsThoughFlash', data: { filter: f } } }];
+  }],
   // "you get {E}" with no count
   [/^you get \{E\}$/i, () => [{ kind: 'addCounters', counter: 'energy', amount: 1, on: YOU }]],
+  // "You get an amount of {E} equal to its mana value"
+  [/^you get an amount of \{E\} equal to (.+)$/i, (m, ctx) => {
+    const a = amt(m[1], ctx);
+    return a == null ? null : [{ kind: 'addCounters', counter: 'energy', amount: a, on: YOU }];
+  }],
+  // "Exchange control of two target nonlegendary creatures"
+  [/^exchange control of two target (.+?)s$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const spec = toTargetSpec(noun);
+    if (!spec) return null;
+    const a = ctx.targets.length;
+    ctx.targets.push(spec, { ...spec });
+    return [{ kind: 'exchangeControl', a: { ref: 'target', index: a }, b: { ref: 'target', index: a + 1 } }];
+  }],
+  // "Unattach all Equipment from target creature"
+  [/^unattach all (Equipment|Auras) from (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    return ref ? [{ kind: 'unattach', what: ref }] : null;
+  }],
+  // "You may put one of those cards back on top of your library"
+  [/^(?:you may )?put (?:one|a card) of those cards back on top of your library$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'putOnLibrary', what: ref, position: 'top' }];
+  }],
   // "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile."
   [/^exile the top (\w+) cards of your library in a face-down pile, then exile the top \1 cards of your library in a face-up pile$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);
@@ -2804,7 +2849,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;
   if (/^you cannot cast ~ during your (?:first|second|third)(?:, (?:first|second|third))*(?:,? or (?:first|second|third))? turns? of the game\.?$/i.test(text.trim())) return true;
   if (/^~ saddles mounts and crews vehicles as though its power were \d+ greater\.?$/i.test(text.trim())) return true;
-  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
+  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 
 /** Parse one sentence; returns null if not understood. */
@@ -3162,7 +3207,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   // No-op / informational sentences
   if (isNoOpSentence(text)) return [];
-  if (/^(it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|then shuffle|shuffle|you may choose the same mode more than once|~ can be your commander|this ability costs .+? less to activate for each .+|do this .+? times?|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|that player may .+? for as long as .+)$/i.test(text)) return [];
+  if (/^(it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|then shuffle|shuffle|you may choose the same mode more than once|~ can be your commander|this ability costs .+? less to activate for each .+|do this .+? times?|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|that player may .+? for as long as .+)$/i.test(text)) return [];
   if ((m = text.match(/^(.+?) unless (.+?) pays? (\{.+?\})$/i)) && !/^counter /i.test(text)) {
     const who = playerRef(m[2], ctx);
     const inner = parseSentence(m[1], ctx);
@@ -3367,6 +3412,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ctx.targets.length = saved;
   }
   // Flavor ability word left on a mode or line ("Gigaflare — Destroy target permanent").
+  if (/^(?:he|she) /i.test(text)) {
+    const inner = parseSentence(text.replace(/^(?:he|she) /i, '~ '), ctx);
+    if (inner) return inner;
+  }
   if ((m = text.match(/^[A-Z][^\u2014]{0,40}\u2014 (.+)$/))) {
     const inner = parseSentence(m[1], ctx);
     if (inner) return inner;

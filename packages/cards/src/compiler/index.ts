@@ -1056,7 +1056,8 @@ export function compileCard(card: CardData): CompileResult {
       front.compiledLines.push(...f.compiledLines);
       front.unhandledLines.push(...f.unhandledLines);
     }
-    if (faces.some((f) => f.script.coverage !== 'full')) front.script.coverage = front.script.coverage === 'none' && faces.every((f) => f.script.coverage === 'none') ? 'none' : 'partial';
+    const allFaces = [front.script, ...faces.map((f) => f.script)];
+    front.script.coverage = allFaces.every((f) => f.coverage === 'full') ? 'full' : allFaces.every((f) => f.coverage === 'none') ? 'none' : 'partial';
   }
   return front;
 }
