@@ -216,6 +216,23 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
     t = m[1];
     tapped = true;
   }
+  // "a tapped and attacking 1/1 red Devil creature token": the flags may come before the body.
+  if ((m = t.match(/^((?:a|an|\w+|X)) tapped and attacking (.+)$/i)) && !/tokens? that/i.test(t)) {
+    t = `${m[1]} ${m[2]}`;
+    tapped = true;
+    attacking = true;
+  } else if ((m = t.match(/^((?:a|an|\w+|X)) tapped (.+)$/i)) && !/tokens? that/i.test(t)) {
+    t = `${m[1]} ${m[2]}`;
+    tapped = true;
+  }
+  // "twice X 1/1 black and green Pest creature tokens"
+  let countMul = 1;
+  if ((m = t.match(/^(twice|three times) X (.+)$/i))) {
+    countMul = /twice/i.test(m[1]) ? 2 : 3;
+    t = `X ${m[2]}`;
+  }
+  // Snow is cosmetic for tokens; drop it so the type line parses.
+  t = t.replace(/\bsnow (?=artifact|creature|enchantment|land)/i, '');
   // Copy tokens
   if ((m = t.match(/^(a|an|\w+|X) (?:tapped and attacking |tapped )?tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+)$/i))) {
     const n = wordToNumber(m[1]);
@@ -225,7 +242,7 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
     const ctx = newCtx({ triggerHasObject: true });
     const ref = objRef(m[2], ctx);
     if (!ref || ctx.targets.length) return null; // copy targets are handled by the caller pattern
-    return { count: n, token: { name: 'Copy', typeLine: '', colors: [], copyOf: ref }, tapped, attacking };
+    return { count: countMul === 1 ? n : ({ kind: 'times', a: n, b: countMul } as Amount), token: { name: 'Copy', typeLine: '', colors: [], copyOf: ref }, tapped, attacking };
   }
   // "a 2/2 red Dragon creature token with flying and \"{R}: ~ gets +1/+0 until end of turn.\""
   {
@@ -287,7 +304,7 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
   }
   if (!types.length && subtypes.length === 1 && TOKEN_PRESETS[subtypes[0]] && !spec.power) {
     const preset = TOKEN_PRESETS[subtypes[0]];
-    return { count: n, token: { ...preset, preset: subtypes[0] }, tapped, attacking };
+    return { count: countMul === 1 ? n : ({ kind: 'times', a: n, b: countMul } as Amount), token: { ...preset, preset: subtypes[0] }, tapped, attacking };
   }
   if (!types.length) types.push(spec.power ? 'Creature' : 'Artifact');
   spec.typeLine = types.join(' ') + (subtypes.length ? ` — ${subtypes.join(' ')}` : '');
@@ -299,7 +316,7 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
     else if (/^"/.test(withText)) spec.oracleText = withText.replace(/^"|"$/g, '');
     else return null;
   }
-  return { count: n, token: spec, tapped, attacking };
+  return { count: countMul === 1 ? n : ({ kind: 'times', a: n, b: countMul } as Amount), token: spec, tapped, attacking };
 }
 
 type Pattern = [RegExp, (m: RegExpMatchArray, ctx: ParseCtx) => Effect[] | null];
@@ -6152,6 +6169,29 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
           continue;
         }
         ctx.targets.length = saved;
+      }
+    }
+    // "The tokens have \"Whenever ~ attacks, you may mill a card.\"" — a rider on the tokens just created.
+    if ((m = s.match(/^(?:the tokens?|they|it) (?:has|have) "(.+)"$/i)) && effects.length) {
+      const prev = effects[effects.length - 1];
+      if (prev.kind === 'createToken') {
+        prev.token = { ...prev.token, oracleText: prev.token.oracleText ? `${prev.token.oracleText}\n${m[1]}` : m[1] };
+        continue;
+      }
+    }
+    // "The token has enchant creature and \"Whenever ...\""
+    if ((m = s.match(/^(?:the tokens?|they|it) (?:has|have) (.+)$/i)) && /"/.test(m[1]) && effects.length) {
+      const prev = effects[effects.length - 1];
+      const g = parseGrantList(m[1]);
+      if (prev.kind === 'createToken' && g) {
+        const extra = [...g.keywords.filter((k) => /^enchant /i.test(k)), ...g.abilities];
+        const kws = g.keywords.filter((k) => !/^enchant /i.test(k));
+        prev.token = {
+          ...prev.token,
+          keywords: kws.length ? [...(prev.token.keywords ?? []), ...kws] : prev.token.keywords,
+          oracleText: extra.length ? [prev.token.oracleText, ...extra].filter(Boolean).join('\n') : prev.token.oracleText,
+        };
+        continue;
       }
     }
     // "You may repeat this process any number of times." — the previous sentence loops.
