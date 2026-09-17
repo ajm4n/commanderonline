@@ -319,6 +319,8 @@ export type RuleModification =
   | { kind: 'cantAttackUnlessDefenderControls'; filter: ObjectFilter }
   /** "~ can't be blocked by creatures with flying" / "by Walls" */
   | { kind: 'cantBeBlockedBy'; filter: ObjectFilter }
+  /** "~ can't be blocked this turn except by Spirits." */
+  | { kind: 'cantBeBlockedExceptBy'; filter: ObjectFilter }
   /** "~ can't be blocked except by artifact creatures" */
   | { kind: 'canBeBlockedOnlyBy'; filter: ObjectFilter }
   /** "~ can't block creatures with power 2 or greater" */
@@ -401,6 +403,8 @@ export interface ObjectFilter {
   /** Modified: has a counter, or an Equipment/Aura attached that its controller controls. */
   modified?: boolean;
   nameIs?: string;
+  /** Matches the card name stored under this memory key ("cards with the chosen name"). */
+  nameIsChosen?: string;
   historic?: boolean;
   /** Was cast this turn / entered this turn etc. */
   enteredThisTurn?: boolean;

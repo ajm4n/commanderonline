@@ -185,6 +185,52 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'exileChoice': {
+      for (const p of g.resolvePlayers(e.who, ctx)) {
+        const n = amt(e.count);
+        const cands = objectsMatching(g, { ...e.filter, controller: p }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }).map((o) => o.id);
+        const k = Math.min(n, cands.length);
+        if (k === 0) continue;
+        let ids = cands;
+        if (cands.length > k) {
+          const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Exile ${k}`, candidates: cands, min: k, max: k, sourceId: ctx.sourceId ?? undefined });
+          ids = resp.type === 'objects' ? resp.ids : cands.slice(0, k);
+        }
+        for (const id of ids) g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
+        ctx.memory['lastMoved'] = ids;
+      }
+      return;
+    }
+    case 'revealRandomFromHand': {
+      for (const p of g.resolvePlayers(e.who, ctx)) {
+        const pl = g.player(p);
+        if (!pl.hand.length) continue;
+        const ids = g.rng.shuffle([...pl.hand]).slice(0, Math.min(amt(e.count), pl.hand.length));
+        for (const id of ids) g.log(`${pl.name} reveals ${g.nameOf(id)} at random from their hand.`);
+        ctx.memory['lastRevealed'] = ids;
+        ctx.memory['lastMoved'] = ids;
+      }
+      return;
+    }
+    case 'endure': {
+      const n = amt(e.amount);
+      for (const o of g.resolveObjects(e.on, ctx)) {
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Endure ${n}`, options: [{ id: 'counters', label: `Put ${n} +1/+1 counters on ${g.nameOf(o.id)}` }, { id: 'token', label: `Create a ${n}/${n} white Spirit creature token with flying` }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        const pick = r.type === 'options' ? r.ids[0] : 'counters';
+        if (pick === 'token') yield* executeEffect(g, { kind: 'createToken', token: { name: 'Spirit', typeLine: 'Creature — Spirit', power: String(n), toughness: String(n), colors: ['W'], keywords: ['Flying'] }, count: 1 }, ctx);
+        else yield* executeEffect(g, { kind: 'addCounters', counter: '+1/+1', amount: n, on: { ref: 'memory', key: '__endure' } }, { ...ctx, memory: { ...ctx.memory, __endure: [o.id] } });
+      }
+      return;
+    }
+    case 'topOrBottom': {
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        const owner = o.owner;
+        const r = yield* g.ask({ type: 'chooseOption', player: owner, prompt: `Put ${g.nameOf(o.id)} on the top or bottom of your library?`, options: [{ id: 'top', label: 'Top' }, { id: 'bottom', label: 'Bottom' }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        const pick = r.type === 'options' ? r.ids[0] : 'top';
+        g.moveObject(o.id, 'library', pick === 'bottom' ? { position: 'bottom' } : {});
+      }
+      return;
+    }
     case 'returnToHand': {
       const moved: ObjectId[] = [];
       for (const o of g.resolveObjects(e.what, ctx)) {
@@ -196,6 +242,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'putIntoHand': {
       for (const o of g.resolveObjects(e.what, ctx)) g.moveObject(o.id, 'hand', { skipEvents: o.zone === 'library' });
+      return;
+    }
+    case 'putIntoGraveyard': {
+      for (const o of g.resolveObjects(e.what, ctx)) g.moveObject(o.id, 'graveyard', {});
       return;
     }
     case 'returnToBattlefield': {

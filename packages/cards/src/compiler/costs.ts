@@ -190,9 +190,9 @@ export function parseCost(text: string): AbilityCost | null {
 /** Trailing restrictions: "Activate only as a sorcery." etc. */
 const STEP_WORDS: Record<string, string[]> = { upkeep: ['upkeep'], 'draw step': ['draw'], 'end step': ['end'], combat: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'], 'main phase': ['main1', 'main2'], 'precombat main phase': ['main1'], 'postcombat main phase': ['main2'], 'declare attackers step': ['declareAttackers'], 'declare blockers step': ['declareBlockers'] };
 
-export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
+export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; perTurnLimit?: number; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
   let t = text.trim().replace(/^"(.*)"$/, '$1').replace(/Activate only (.+?) and only (.+?)\.?$/i, 'Activate only $1. Activate only $2.').replace(/\s*Activate only as an instant\.?$/i, '');
-  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
+  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; perTurnLimit?: number; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
   let m: RegExpMatchArray | null;
   const addCond = (c: Condition) => {
     out.condition = out.condition ? { kind: 'and', cs: [out.condition, c] } : c;
@@ -210,6 +210,9 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only once each turn\.?$/i))) {
       out.oncePerTurn = true;
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate (?:no more than|only) (twice|three times|four times|\w+ times) each turn\.?$/i))) {
+      out.perTurnLimit = ({ twice: 2, 'three times': 3, 'four times': 4, 'five times': 5 } as Record<string, number>)[m[2].toLowerCase()] ?? 2;
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only during your turn\.?$/i))) {
       out.yourTurn = true;

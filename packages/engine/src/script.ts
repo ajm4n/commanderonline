@@ -312,6 +312,14 @@ export type Effect =
   | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
+  /** Endure N: put N +1/+1 counters on it, or create an N/N white Spirit creature token. */
+  | { kind: 'endure'; on: Ref; amount: Amount }
+  /** "puts it on their choice of the top or bottom of their library" */
+  | { kind: 'topOrBottom'; what: Ref }
+  /** "Target opponent exiles a creature they control." */
+  | { kind: 'exileChoice'; who: Ref; filter: ObjectFilter; count: Amount }
+  /** "Target player reveals a card at random from their hand." */
+  | { kind: 'revealRandomFromHand'; who: Ref; count: Amount }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
   | { kind: 'revealHand'; who: Ref }
   | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref }
@@ -327,6 +335,7 @@ export type Effect =
   | { kind: 'rollDie'; sides: number; results: { min: number; max: number; effects: Effect[] }[] }
   | { kind: 'phaseOut'; what: Ref }
   | { kind: 'putIntoHand'; what: Ref }
+  | { kind: 'putIntoGraveyard'; what: Ref }
   | { kind: 'dealsDamageEqualToPower'; source: Ref; to: Ref }
   | { kind: 'exchangeLife'; a: Ref; b: Ref }
   | { kind: 'skipTurn'; who: Ref }
@@ -508,6 +517,8 @@ export interface ActivatedAbilitySpec {
   sorcerySpeed?: boolean;
   /** Only usable while the permanent is face down (the morph / disguise turn-up ability). */
   faceDownOnly?: boolean;
+  /** "Activate no more than twice each turn." */
+  perTurnLimit?: number;
   /** Zone the ability can be activated from (default battlefield). */
   zone?: ZoneName;
   oncePerTurn?: boolean;

@@ -726,6 +726,36 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) attacks? each combat if able$/i))) return objRule(m[1], { kind: 'mustAttack' });
   if ((m = L.match(/^(.+?) (?:does not|do not) untap during (?:your|its controller's|their controllers'|their controller's) untap steps?$/i))) return objRule(m[1], { kind: 'cantUntap' });
   if ((m = L.match(/^(.+?) cannot be countered$/i))) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantBeCountered' } }];
+  // "~ cannot be the target of nongreen spells or abilities from nongreen sources."
+  if ((m = L.match(/^(.+?) cannot be the target of (.+?) spells or abilities from \2 sources$/i))) {
+    const noun = parseNoun(`a ${m[2]} spell`);
+    if (noun) return objRule(m[1], { kind: 'cantBeTargeted', filter: { ...noun.filter, zone: undefined } });
+  }
+  // "Untap all creatures you control during each other player's untap step."
+  if ((m = L.match(/^Untap (?:all|each) (.+?) during each other player's untap step$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'untapEachUntapStep', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  // "Players cannot untap more than one artifact during their untap steps."
+  if ((m = L.match(/^Players cannot untap more than (\w+) (.+?) during their untap steps$/i))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    const n = wordToNumber(m[1]);
+    if (noun && typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'untapLimit', data: { count: n, filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  // "If ~ would be put into a graveyard from anywhere, reveal ~ and shuffle it into its owner's library instead."
+  if (/^If ~ would be put into a graveyard from anywhere, (?:reveal ~ and )?shuffle it into its owner's library instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'putIntoGraveyard', self: true, instead: 'shuffleIntoLibrary' }];
+  // "Forests you control are 1/1 green Elf creatures that are still lands."
+  if ((m = L.match(/^(.+?) are (\d+)\/(\d+) (white|blue|black|red|green|colorless) ([A-Z][\w' -]*?) creatures that are still lands$/))) {
+    const a = affectsOf(m[1]);
+    const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', colorless: undefined } as Record<string, string | undefined>)[m[4].toLowerCase()];
+    if (a.ok) {
+      return [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: ['Creature'], addSubtypes: m[5].split(/\s+/) } },
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: col ? [col as never] : [] } },
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } },
+      ];
+    }
+  }
   if ((m = L.match(/^(.+?) cannot be the target of spells or abilities your opponents control$/i))) return objRule(m[1], { kind: 'cantBeTargeted', by: 'opponents' });
   if ((m = L.match(/^(.+?) cannot be the target of (.+?) spells(?: or abilities)?$/i))) {
     const noun = parseNoun(`a ${m[2]} spell`);

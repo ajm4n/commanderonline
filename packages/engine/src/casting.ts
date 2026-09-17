@@ -914,6 +914,7 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
     if (spec.cost.loyalty < 0 && (obj.counters['loyalty'] ?? 0) < -spec.cost.loyalty) return false;
   }
   if (spec.oncePerTurn && g.state.turnStats[`once:${obj.id}:${spec.text}`]) return false;
+  if (spec.perTurnLimit !== undefined && (g.state.turnStats[`uses:${obj.id}:${spec.text}`] ?? 0) >= spec.perTurnLimit) return false;
   if (spec.exhaust && obj.memory[`exhausted:${spec.text}`]) return false;
   if (spec.condition && !g.checkCondition(spec.condition, { sourceId: obj.id, controller: p })) return false;
   if (obj.zone === 'battlefield' && g.characteristics(obj.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantActivate')) return false;
@@ -1281,6 +1282,7 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
   if (!ok) return false;
   if (spec.cost.loyalty !== undefined) g.state.turnStats[`loyalty:${obj.id}`] = 1;
   if (spec.oncePerTurn) g.state.turnStats[`once:${obj.id}:${spec.text}`] = 1;
+  if (spec.perTurnLimit !== undefined) g.state.turnStats[`uses:${obj.id}:${spec.text}`] = (g.state.turnStats[`uses:${obj.id}:${spec.text}`] ?? 0) + 1;
   if (spec.exhaust) obj.memory[`exhausted:${spec.text}`] = true;
   const item: StackItem = {
     id: g.state.nextStackId++,

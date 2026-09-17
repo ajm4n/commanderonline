@@ -31,6 +31,12 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const b = parseCondition(m[2], ctx);
     if (a && b && a.kind !== 'manual' && b.kind !== 'manual') return { kind: 'and', cs: [a, b] };
   }
+  // Disjunctions: "X or Y" / "X or if Y"
+  if ((m = orig.match(/^(.+?) or (?:if )?(.+)$/i))) {
+    const a = parseCondition(m[1], ctx);
+    const b = parseCondition(m[2], ctx);
+    if (a && b && a.kind !== 'manual' && b.kind !== 'manual') return { kind: 'or', cs: [a, b] };
+  }
   const thatPlayer: import('@commander/engine').Ref = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : { ref: 'controller' });
   if (t === 'that player has no cards in hand' || t === 'they have no cards in hand') return { kind: 'handSize', ref: thatPlayer, op: '==', value: 0 };
   if ((m = t.match(/^that player has (\w+) or more cards in hand$/))) return { kind: 'handSize', ref: thatPlayer, op: '>=', value: wordToNumber(m[1]) ?? 1 };
@@ -127,6 +133,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === 'an opponent has more life than you') return { kind: 'opponentCompare', what: 'life', op: '>' };
   if (t === 'you have more life than each opponent' || t === 'you have the most life' || t === 'you have more life than each other player') return { kind: 'not', c: { kind: 'opponentCompare', what: 'life', op: '>=' } };
   if (t === 'you descended this turn') return { kind: 'eventThisTurn', event: 'putIntoGraveyard', player: 'you' };
+  if ((m = t.match(/^((?:\{[wubrgc]\})+) (?:was|were) spent to cast (?:it|~|this spell)$/))) return { kind: 'amount', a: { kind: 'manaSpent', of: 'colors', symbols: m[1].toUpperCase() }, op: '>=', b: (m[1].match(/\{/g) ?? []).length };
   if ((m = t.match(/^at least (\w+) mana was spent to cast (?:it|~|this spell)$/))) { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'amount', a: { kind: 'memory', key: 'manaSpent' }, op: '>=', b: n }; }
   if ((m = t.match(/^(?:its|that (?:creature|card|spell|permanent)'s) mana value (?:was|is) (\d+) or (less|greater)$/))) return { kind: 'objectMatches', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }), filter: m[2] === 'less' ? { cmcLE: parseInt(m[1], 10) } : { cmcGE: parseInt(m[1], 10) } };
   if ((m = t.match(/^(?:it|that card|that permanent) was (?:a|an) (.+?)(?: card)?$/))) {

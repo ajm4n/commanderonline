@@ -53,7 +53,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     const im = l.match(/^If (.+?), ((?:~|this spell) costs? \{[^}]+\} (?:less|more) to cast)\.?$/i);
     if (im) return [`${im[2].charAt(0).toUpperCase()}${im[2].slice(1)} if ${im[1]}.`];
     // "If you attacked this turn, you may pay {U} rather than pay ~'s mana cost." → "You may pay {U} rather than pay ~'s mana cost if you attacked this turn."
-    const am = l.match(/^If (.+?), you may (pay .+? rather than pay (?:~'s|this spell's) mana cost)\.?$/i);
+    const am = l.match(/^If (.+?), you may (.+? rather than pay (?:~'s|this spell's) mana cost)\.?$/i);
     if (am) return [`You may ${am[2]} if ${am[1]}.`];
     return [l];
   });
@@ -278,7 +278,13 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     // "You may pay {U} rather than pay ~'s mana cost if you attacked this turn." / "You may sacrifice a creature rather than pay ..."
     if ((m = line.match(/^You may (pay ((?:\{[^}]+\})+)|[^,]+?) rather than pay (?:~'s|this spell's) mana cost(?: if (.+?)| as long as (.+?))?\.?$/i))) {
-      const cost = m[2] ? { mana: m[2] } : parseCost(m[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
+      let cost = m[2] ? ({ mana: m[2] } as AbilityCost | null) : parseCost(m[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
+      // "pay {1} and return a basic land you control to its owner's hand"
+      const both = !cost ? m[1].match(/^pay ((?:\{[^}]+\})+) and (.+)$/i) : null;
+      if (both) {
+        const rest = parseCost(both[2].replace(/^[a-z]/, (c) => c.toUpperCase()));
+        if (rest) cost = { ...rest, mana: both[1] };
+      }
       const condText = m[3] ?? m[4];
       const cond = condText ? parseCondition(condText, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false }) : undefined;
       if (cost && (!condText || (cond && cond.kind !== 'manual'))) {
@@ -700,7 +706,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         const conds: Condition[] = [];
         if (rest.yourTurn) conds.push({ kind: 'yourTurn' });
         if (rest.condition) conds.push(rest.condition);
-        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, exhaust: rest.exhaust, anyPlayer: rest.anyPlayer, zone: cost.discardSelf || cost.revealSelf ? 'hand' : undefined, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
+        const ab: ActivatedAbilitySpec = { kind: 'activated', text: line, cost, effects, targets: ctx.targets.length ? ctx.targets : undefined, manaAbility: isMana || undefined, sorcerySpeed: rest.sorcerySpeed, oncePerTurn: rest.oncePerTurn, perTurnLimit: rest.perTurnLimit, exhaust: rest.exhaust, anyPlayer: rest.anyPlayer, zone: cost.discardSelf || cost.revealSelf ? 'hand' : undefined, condition: conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { kind: 'and', cs: conds } };
         if (cost.discardSelf || cost.exileSelf && /from your graveyard/i.test(costText)) ab.zone = cost.discardSelf ? 'hand' : 'graveyard';
         if (rest.unhandled) {
           ab.condition = { kind: 'manual', text: `${rest.unhandled}?` };

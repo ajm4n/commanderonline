@@ -69,6 +69,7 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
     if (r.kind === 'cantBeBlockedByPowerGE' && (bch.power ?? 0) >= r.power) return false;
     if (r.kind === 'cantBeBlockedByPowerLessThanSource' && (bch.power ?? 0) < (ach.power ?? 0)) return false;
     if (r.kind === 'cantBeBlockedBy' && matchesFilter(g, blocker, { ...r.filter, zone: 'battlefield' }, { sourceId: attacker.id, controller: attacker.controller })) return false;
+    if (r.kind === 'cantBeBlockedExceptBy' && !matchesFilter(g, blocker, { ...r.filter, zone: 'battlefield' }, { sourceId: attacker.id, controller: attacker.controller })) return false;
     if (r.kind === 'canBeBlockedOnlyBy' && !matchesFilter(g, blocker, { ...r.filter, zone: 'battlefield' }, { sourceId: attacker.id, controller: attacker.controller })) return false;
     if (r.kind === 'cantBeBlockedByPowerGreaterThanSource' && (bch.power ?? 0) > (ach.power ?? 0)) return false;
     if (r.kind === 'custom' && r.tag === 'ringBearer' && (bch.power ?? 0) > (ach.power ?? 0)) return false;

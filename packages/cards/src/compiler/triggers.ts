@@ -82,7 +82,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   {
     // Compound heads: "When ~ enters or transforms into ~, X" / "At the beginning of your upkeep and whenever enchanted land becomes tapped, X" / "When you cycle ~ and when ~ dies, X"
-    const cm = line.match(/^((?:When(?:ever)?|At the beginning of) [^,]+?) (?:and|or) ((?:when(?:ever)?|at the beginning of) [^,]+?), (.+)$/i) ?? line.match(/^(When(?:ever)? ~) ([^,]+?) or ([^,]+?), (.+)$/i);
+    const cm = line.match(/^((?:When(?:ever)?|At the beginning of) [^,]+?) (?:and|or) ((?:when(?:ever)?|at the beginning of) [^,]+?), (.+)$/i) ?? line.match(/^(When(?:ever)? ~) ([^,]+?) or ([^,]+?), (.+)$/i) ?? line.match(/^(When(?:ever)?) ([^,]+?) or ([^,]+?), (.+)$/i);
     if (cm) {
       const rest = cm[4] !== undefined ? cm[4] : cm[3];
       const headA = cm[4] !== undefined ? `${cm[1]} ${cm[2]}, ${rest}` : `${cm[1]}, ${rest}`;

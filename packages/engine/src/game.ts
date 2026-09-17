@@ -2219,6 +2219,7 @@ export class Game {
         for (const id of [...this.state.battlefield]) {
           const o = this.obj(id);
           if (o.controller !== pid) continue;
+          o.memory['__wasTapped'] = o.tapped || undefined;
           if (o.phasedOut) {
             o.phasedOut = false;
             this.emit({ name: 'phasedIn', objectId: id, playerId: o.controller });
@@ -2229,6 +2230,32 @@ export class Game {
           if (o.tapped) {
             o.tapped = false;
             this.touch();
+          }
+        }
+        // "Players can't untap more than one artifact during their untap steps."
+        for (const r of this.playerRules(pid)) {
+          if (r.kind !== 'custom' || r.tag !== 'untapLimit') continue;
+          const d = (r.data as { count?: number; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+          const limit = d.count ?? 1;
+          const matching = objectsMatching(this, { ...(d.filter ?? {}), zone: 'battlefield', controller: 'you' }, { sourceId: null, controller: pid }).filter((o) => o.memory['__wasTapped']);
+          if (matching.length <= limit) continue;
+          const resp = yield* this.ask({ type: 'chooseObjects', player: pid, prompt: `Untap up to ${limit}`, candidates: matching.map((o) => o.id), min: 0, max: limit });
+          const keep = new Set(resp.type === 'objects' ? resp.ids : matching.slice(0, limit).map((o) => o.id));
+          for (const o of matching) if (!keep.has(o.id)) o.tapped = true;
+          this.touch();
+        }
+        // "Untap all creatures you control during each other player's untap step."
+        for (const other of this.state.playerOrder) {
+          if (other === pid) continue;
+          for (const r of this.playerRules(other)) {
+            if (r.kind !== 'custom' || r.tag !== 'untapEachUntapStep') continue;
+            const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter ?? {};
+            for (const o of objectsMatching(this, { ...f, zone: 'battlefield', controller: 'you' }, { sourceId: null, controller: other })) {
+              if (o.tapped && !this.characteristics(o.id).rules.some((rr) => rr.kind === 'cantUntap')) {
+                o.tapped = false;
+                this.touch();
+              }
+            }
           }
         }
         this.log(`${this.player(pid).name} untaps.`);
