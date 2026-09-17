@@ -382,6 +382,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: m[4].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[3], 10), filter: f } }];
     }
   }
+  if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
+  if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
+  if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];
+  if ((m = L.match(/^(Each opponent|Each player|You) cannot draw more than (\w+) cards? each turn$/i))) {
+    const n = wordToNumber(m[2]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'static', text: line, ruleAffects: /opponent/i.test(m[1]) ? 'opponents' : /^you$/i.test(m[1]) ? 'controller' : 'allPlayers', rule: { kind: 'custom', tag: 'maxDrawsPerTurn', data: n } }];
+  }
+  // "If a source would deal damage to you or a creature you control, prevent 1 of that damage."
+  if ((m = L.match(/^If (?:a|an) (.+?) would deal (combat )?damage to you or (?:a|an) (.+?) you control, prevent (\d+|all) of that damage$/i))) {
+    return [{ kind: 'replacement', text: line, event: 'damage', prevent: m[4] === 'all' ? 'all' : parseInt(m[4], 10), to: 'controller', combatOnly: m[2] ? true : undefined }];
+  }
   if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
   // "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead."
   if ((m = L.match(/^If (?:another )?(?:a )?(\w+) sources? you control would deal (noncombat |combat )?damage to (?:an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i)) && !/^a$/i.test(m[1])) {
