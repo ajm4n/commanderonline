@@ -5125,7 +5125,8 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
     return [mk(ref)];
   }
   const ref = anyRef(t, ctx);
-  return ref ? [mk(ref)] : null;
+  if (ref) return [mk(ref)];
+  return null;
 }
 
 /** "except it has haste and it is a Nightmare in addition to its other types" → token copy exceptions. */
@@ -5324,7 +5325,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^put your choice of (?:a|an) (.+?) counter on (.+)$/i))) {
     const options = m[1].split(/,? or |, /).map((x) => x.replace(/^(?:a|an) /i, '').trim()).filter(Boolean);
     const ref = objRef(m[2], ctx);
-    return ref && options.length > 1 ? [{ kind: 'addCounters', counter: options[0], counterOptions: options, amount: 1, on: ref }] : null;
+    if (ref && options.length > 1) return [{ kind: 'addCounters', counter: options[0], counterOptions: options, amount: 1, on: ref }];
   }
   // "return target creature card from your graveyard to the battlefield tapped and attacking"
   if ((m = text.match(/^(return .+? to the battlefield) tapped and attacking$/i))) {
@@ -5351,13 +5352,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^(?:until end of turn, )?(.+?) assigns? combat damage equal to (?:its|their) toughness rather than (?:its|their) power(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'damageByToughness' }, on: ref, duration: 'endOfTurn' }] : null;
+    if (ref) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'damageByToughness' }, on: ref, duration: 'endOfTurn' }];
   }
   if (/^after this (?:phase|combat phase|main phase), there is an additional combat phase(?: followed by an additional main phase)?$/i.test(text)) return [{ kind: 'extraCombat' }];
   if (/^exile ~, then return it to the battlefield transformed under (?:your|its owner's) control$/i.test(text)) return [{ kind: 'exile', what: SELF }, { kind: 'returnToBattlefield', what: { ref: 'lastMoved' } }, { kind: 'transform', what: { ref: 'lastMoved' } }];
   if ((m = text.match(/^prevent all (combat )?damage that would be dealt to and dealt by (.+?) this turn$/i))) {
     const ref = objRef(m[2], ctx);
-    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: m[1] ? 'combat' : 'all' }, on: ref, duration: 'endOfTurn' }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'preventDamageTo', data: { combat: m[1] ? 'combat' : undefined } }, on: ref, duration: 'endOfTurn' }] : null;
+    if (ref) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: m[1] ? 'combat' : 'all' }, on: ref, duration: 'endOfTurn' }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'preventDamageTo', data: { combat: m[1] ? 'combat' : undefined } }, on: ref, duration: 'endOfTurn' }];
   }
   if ((m = text.match(/^(.+?) deals (\w+|X) damage to (target player|target opponent|any target|target player or planeswalker|that player|each opponent) and (each .+)$/i))) {
     const a = parseSentence(`${m[1]} deals ${m[2]} damage to ${m[3]}`, ctx);
@@ -5366,11 +5367,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^(.+?) can block an additional creature (?:this turn|each combat)$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'extraBlock' }, on: ref, duration: / this turn$/i.test(text) ? 'endOfTurn' : 'permanent' }] : null;
+    if (ref) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'extraBlock' }, on: ref, duration: / this turn$/i.test(text) ? 'endOfTurn' : 'permanent' }];
   }
   if ((m = text.match(/^put (.+?) into its owner's library second from the top$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'putOnLibrary', what: ref, position: 'secondFromTop' }] : null;
+    if (ref) return [{ kind: 'putOnLibrary', what: ref, position: 'secondFromTop' }];
   }
   if ((m = text.match(/^choose ((?:any number of|up to \w+|\w+) target .+)$/i))) {
     const ref = objRef(m[1], ctx);
@@ -5378,7 +5379,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^(.+?) becomes? the (basic land type|creature type) of your choice(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'setSubtypes', on: ref, choose: m[2].toLowerCase() === 'basic land type' ? 'basicLandType' : 'creatureType', duration: / until end of turn$/i.test(text) ? 'endOfTurn' : 'permanent' }] : null;
+    if (ref) return [{ kind: 'setSubtypes', on: ref, choose: m[2].toLowerCase() === 'basic land type' ? 'basicLandType' : 'creatureType', duration: / until end of turn$/i.test(text) ? 'endOfTurn' : 'permanent' }];
   }
   if ((m = text.match(/^you and (permanents|creatures) you control gain (hexproof|indestructible|hexproof and indestructible) until end of turn$/i))) {
     const kws = m[2].split(' and ').map((k) => k.charAt(0).toUpperCase() + k.slice(1));
@@ -5392,7 +5393,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^return (it|that card|~|them) to the battlefield transformed(?: under (?:your|its owner's|their owner's) control)?(?: tapped)?$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'returnToBattlefield', what: ref, transformed: true, controller: /owner's/i.test(text) ? 'owner' : 'you', tapped: / tapped$/i.test(text) || undefined }] : null;
+    if (ref) return [{ kind: 'returnToBattlefield', what: ref, transformed: true, controller: /owner's/i.test(text) ? 'owner' : 'you', tapped: / tapped$/i.test(text) || undefined }];
   }
   if (/^reveal the top card of your library$/i.test(text)) {
     ctx.lastObj = { ref: 'lastMoved' };
@@ -5407,7 +5408,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^exert (~|it|that creature)$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'exert', what: ref }] : null;
+    if (ref) return [{ kind: 'exert', what: ref }];
   }
   // Earthbend N: target land you control becomes a 0/0 creature with haste (still a land) with N +1/+1 counters; it comes back tapped if it dies or is exiled.
   if ((m = text.match(/^earthbend (\d+|X)$/i))) {
@@ -5477,11 +5478,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^(.+?) can attack this turn as though (?:it|they) didn't have defender$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'canAttackWithDefender' }, on: ref, duration: 'endOfTurn' }] : null;
+    if (ref) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'canAttackWithDefender' }, on: ref, duration: 'endOfTurn' }];
   }
   if ((m = text.match(/^(target (?:creature|permanent|artifact|nonland permanent)[^']*?)'s owner puts it on their choice of the top or bottom of their library$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'putOnLibrary', what: ref, position: 'ownerChoice' }] : null;
+    if (ref) return [{ kind: 'putOnLibrary', what: ref, position: 'ownerChoice' }];
   }
   if ((m = text.match(/^(.+?) becomes? a copy of (.+?)(?:, except (.+))?$/i)) && !/until end of turn/i.test(text)) {
     const what = objRef(m[1], ctx);
@@ -5491,26 +5492,26 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^put (it|that card|them|those cards|~) into (?:your|its owner's|their owner's|their owners') graveyards?$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] : null;
+    if (ref) return [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }];
   }
   if ((m = text.match(/^return ~ from your graveyard to the battlefield attached to (.+)$/i))) {
     const host = objRef(m[1], ctx);
-    return host ? [{ kind: 'returnToBattlefield', what: SELF, attachTo: host }] : null;
+    if (host) return [{ kind: 'returnToBattlefield', what: SELF, attachTo: host }];
   }
   if ((m = text.match(/^put (?:its|~'s) counters on (.+)$/i))) {
     const to = objRef(m[1], ctx);
-    return to ? [{ kind: 'moveCounters', from: ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF, to }] : null;
+    if (to) return [{ kind: 'moveCounters', from: ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF, to }];
   }
   if (/^~ assigns no combat damage this turn$/i.test(text)) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: 'combat' }, on: SELF, duration: 'endOfTurn' }];
   if (/^until end of turn, you (?:do not|don't) lose this mana as steps and phases end$/i.test(text) || /^you (?:do not|don't) lose this mana as steps and phases end(?: this turn)?$/i.test(text)) return [{ kind: 'turnFlag', flag: 'keepMana' }];
   if (/^clash with an opponent$/i.test(text)) return [{ kind: 'clash' }];
   if ((m = text.match(/^detain (.+)$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'applyRule', rule: { kind: 'cantAttack' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'cantBlock' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivate' }, on: ref, duration: 'untilYourNextTurn' }] : null;
+    if (ref) return [{ kind: 'applyRule', rule: { kind: 'cantAttack' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'cantBlock' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivate' }, on: ref, duration: 'untilYourNextTurn' }];
   }
   if ((m = text.match(/^double the number of ([+\-\w\/]+) counters on (.+)$/i))) {
     const ref = objRef(m[2], ctx);
-    return ref ? [{ kind: 'addCounters', counter: m[1], amount: { kind: 'countersOn', ref, counter: m[1] }, on: ref }] : null;
+    if (ref) return [{ kind: 'addCounters', counter: m[1], amount: { kind: 'countersOn', ref, counter: m[1] }, on: ref }];
   }
   // "destroy that creature at end of combat" / "sacrifice it at end of combat"
   if ((m = text.match(/^(.+?) at (?:the )?end of combat$/i))) {
@@ -5525,11 +5526,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^(.+?) becomes? the color (?:or colors )?of your choice(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'setColors', colors: [], chooseColors: true, on: ref, duration: / until end of turn$/i.test(text) ? 'endOfTurn' : 'permanent' }] : null;
+    if (ref) return [{ kind: 'setColors', colors: [], chooseColors: true, on: ref, duration: / until end of turn$/i.test(text) ? 'endOfTurn' : 'permanent' }];
   }
   if ((m = text.match(/^put (it|that card|~|them|those cards) onto the battlefield transformed(?: under (?:your|its owner's|their owner's) control)?(?: with (?:a|an|(\w+)) ([+\-\w\/]+) counters? on it)?$/i))) {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'returnToBattlefield', what: ref, transformed: true, counters: m[3] ? { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) as number) ?? 1 : 1 } : undefined }] : null;
+    if (ref) return [{ kind: 'returnToBattlefield', what: ref, transformed: true, counters: m[3] ? { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) as number) ?? 1 : 1 } : undefined }];
   }
   if ((m = text.match(/^exile the top (?:card|(\w+|X) cards)(?: of your library)?(?: face down)?$/i))) {
     const n = m[1] ? wordToNumber(m[1]) : 1;
@@ -5717,10 +5718,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       if (m[5]) cost = { payLife: parseInt(m[5], 10) };
       else if (m[4]) {
         const noun = parseNoun(`a ${m[4]}`);
-        if (!noun) return null;
-        cost = { sacrifice: { ...noun.filter, other: /another/i.test(m[0]) || undefined } };
+        if (!noun) cost = null;
+        else cost = { sacrifice: { ...noun.filter, other: /another/i.test(m[0]) || undefined } };
       } else cost = { discard: m[3] ? (wordToNumber(m[3]) as number) ?? 1 : 1 };
-      return [{ kind: 'unlessPays', who, cost, effects: inner, text: m[0].slice(m[1].length + 8) }];
+      if (cost) return [{ kind: 'unlessPays', who, cost, effects: inner, text: m[0].slice(m[1].length + 8) }];
     }
   }
   // "~ deals 2 damage to that player unless they control a commander": do it unless the condition holds.
@@ -6477,16 +6478,16 @@ function preventionSource(text: string, ctx: ParseCtx): { source?: ObjectFilter;
     const cols = qual.split(/ or |\/| and\/or /).map((c) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[c.trim() as 'white']);
     if (cols.every((c) => !!c)) return { source: { colors: cols as Color[] } };
     const noun = parseNoun(`a ${qual} permanent`);
-    return noun && noun.confident ? { source: { ...noun.filter, zone: undefined } } : null;
+    if (noun && noun.confident) return { source: { ...noun.filter, zone: undefined } };
   }
   const ofChoice = l.match(/^(?:a|an) (.+?) of your choice$/);
   if (ofChoice) {
     const noun = parseNoun(`a ${ofChoice[1]}`);
-    return noun && noun.confident ? { source: { ...noun.filter, zone: undefined } } : null;
+    if (noun && noun.confident) return { source: { ...noun.filter, zone: undefined } };
   }
   if (/^target /i.test(t)) {
     const ref = objRef(t, ctx);
-    return ref ? { sourceRef: ref } : null;
+    if (ref) return { sourceRef: ref };
   }
   const noun = parseNoun(t);
   if (noun && noun.confident && noun.kind !== 'player') {
@@ -6511,7 +6512,8 @@ function preventionTo(text: string, ctx: ParseCtx): { to?: Extract<Effect, { kin
   const noun = parseNoun(text.trim());
   if (noun && (noun.each || noun.plural) && noun.kind !== 'player') return { to: { ...noun.filter, zone: 'battlefield' } };
   const ref = anyRef(text.trim(), ctx);
-  return ref ? { to: 'all', toRef: ref } : null;
+  if (ref) return { to: 'all', toRef: ref };
+  return null;
 }
 
 /** Rewrite endOfTurn durations produced by an "until end of turn" pattern to another duration. */
