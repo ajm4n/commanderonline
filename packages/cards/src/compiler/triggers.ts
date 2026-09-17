@@ -233,7 +233,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     const tf = nounFilter(`${/^Whenever another/i.test(m[0]) ? 'another ' : 'a '}${m[1]}`);
     if (tf) return { event: 'dies', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }
-  if ((m = L.match(/^Whenever (?:a|an|another) (.+?) (?:is put into your graveyard from anywhere|is put into a graveyard from anywhere), (.+)$/i))) {
+  if ((m = L.match(/^Whenever (?:a|an|another) (.+?) (?:is put into your graveyard(?: from anywhere)?|is put into a graveyard(?: from anywhere)?), (.+)$/i))) {
     const tf = nounFilter(`a ${m[1]}`);
     if (tf) return { event: 'putIntoGraveyard', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }

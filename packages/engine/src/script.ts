@@ -239,7 +239,7 @@ export type Effect =
   | { kind: 'setLife'; amount: Amount; who?: Ref }
   | { kind: 'damage'; amount: Amount; to: Ref; source?: Ref; divided?: boolean }
   | { kind: 'destroy'; what: Ref; cantRegenerate?: boolean }
-  | { kind: 'exile'; what: Ref; untilSourceLeaves?: boolean; remember?: string; counters?: { counter: CounterType; amount: Amount } }
+  | { kind: 'exile'; what: Ref; untilSourceLeaves?: boolean; remember?: string; counters?: { counter: CounterType; amount: Amount }; /** "exile all cards from your hand face down" */ faceDown?: boolean }
   | { kind: 'sacrifice'; what: Ref }
   | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; /** "sacrifice any number of lands": the player may sacrifice fewer. */ upTo?: boolean; unlessAlso?: never }
   | { kind: 'returnToHand'; what: Ref }
@@ -301,7 +301,7 @@ export type Effect =
   | { kind: 'revealTop'; who?: Ref; ifMatches?: ObjectFilter; then?: Effect[]; else?: Effect[]; destination?: 'hand' | 'graveyard' | 'bottom' | 'stay' }
   | { kind: 'castWithoutPaying'; what: Ref; exileAfter?: boolean }
   | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean; exileAfter?: boolean }
-  | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent'; /** Airbend: castable for this cost instead of its mana cost. */ forCost?: string; /** The owner may cast it, not this effect's controller. */ owner?: boolean; /** Granted flashback: castable from the graveyard. */ fromGraveyard?: boolean; /** Exile it as it resolves. */ exileAfter?: boolean }
+  | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent'; /** Airbend: castable for this cost instead of its mana cost. */ forCost?: string; /** The owner may cast it, not this effect's controller. */ owner?: boolean; /** Granted flashback: castable from the graveyard. */ fromGraveyard?: boolean; /** Exile it as it resolves. */ exileAfter?: boolean; /** "mana of any type can be spent to cast that spell" */ anyMana?: boolean }
   | { kind: 'chooseColor'; key: string }
   | { kind: 'chooseCreatureType'; key: string; /** Which set of types to pick from (default creature subtypes). */ pool?: 'creature' | 'land' | 'cardType' }
   | { kind: 'nameCard'; key: string }
@@ -346,7 +346,7 @@ export type Effect =
   | { kind: 'exileChoice'; who: Ref; filter: ObjectFilter; count: Amount }
   /** "Target player reveals a card at random from their hand." */
   | { kind: 'revealRandomFromHand'; who: Ref; count: Amount }
-  | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
+  | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean; /** Remember the exiled cards under this memory key. */ key?: string }
   | { kind: 'revealHand'; who: Ref }
   | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref }
   | { kind: 'discardObjects'; what: Ref }
@@ -370,7 +370,7 @@ export type Effect =
   /** Move every card of a player's zone somewhere else ("exile target player's graveyard"). */
   | { kind: 'moveAll'; who: Ref; from: ZoneName; to: ZoneName }
   /** Choose a player and remember them under `key` (readable as { ref: 'chosen', key }). */
-  | { kind: 'choosePlayer'; key: string; who: 'opponent' | 'any' }
+  | { kind: 'choosePlayer'; key: string; who: 'opponent' | 'any'; /** "choose an opponent at random" */ random?: boolean }
   /** Grant rules text ("gains 'When this creature dies, ...'"). */
   | { kind: 'grantAbility'; text: string; on: Ref; duration?: Duration }
   | { kind: 'switchPT'; on: Ref; duration?: Duration }

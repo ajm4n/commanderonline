@@ -2052,6 +2052,74 @@ const PATTERNS: Pattern[] = [
   ]],
   // The matching "You may pay {W} to end this effect." is compiled as a separate ability.
   [/^you may pay ((?:\{[^}]+\})+) to end this effect$/i, () => []],
+  // "Exile the top three cards of your library. Choose one. You may play that card this turn."
+  [/^choose one$/i, (m, ctx) => {
+    const from = ctx.lastObj;
+    if (!from || (from.ref !== 'lastMoved' && from.ref !== 'memory')) return null;
+    ctx.lastObj = { ref: 'chosen', key: 'chosen' };
+    return [{ kind: 'chooseObjects', from, filter: {}, count: 1, key: 'chosen' }];
+  }],
+  // "Your life total becomes 10."
+  [/^(your|that player's|target player's|each player's) life total becomes (\d+)$/i, (m, ctx) => {
+    const who = /^your$/i.test(m[1]) ? YOU : playerRef(m[1].replace(/'s$/, ''), ctx);
+    return who ? [{ kind: 'setLife', amount: parseInt(m[2], 10), who }] : null;
+  }],
+  // "Then those creatures fight each other."
+  [/^(?:then )?those creatures fight each other$/i, (m, ctx) => {
+    if (ctx.targets.length < 2) return null;
+    return [{ kind: 'fight', a: { ref: 'target', slot: ctx.targets.length - 2 }, b: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "The player discards that card." (after "choose a card from it")
+  [/^(?:the player|that player|they) discards that card$/i, (m, ctx) => {
+    const who = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? ({ ref: 'triggerPlayer' } as Ref) : null);
+    const what = ctx.lastObj;
+    if (!who || !what) return null;
+    return [{ kind: 'discardObjects', what }];
+  }],
+  // "choose an opponent at random"
+  [/^choose an opponent at random$/i, () => [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent', random: true }]],
+  // "exile all cards from your hand face down"
+  [/^exile all cards from your hand face down$/i, () => [{ kind: 'exile', what: { ref: 'all', filter: { zone: 'hand', owner: 'you' } }, faceDown: true, withSource: true }]],
+  // "return all cards you own exiled with ~ to your hand"
+  [/^return all cards (?:you own )?exiled with ~ to (?:your|their) hand$/i, () => [{ kind: 'putIntoHand', what: { ref: 'memory', key: 'exiledWith' } }]],
+  // "the creature you control gets +1/+0 and gains indestructible until end of turn"
+  [/^the creature you (?:control|do not control) (gets?.+)$/i, (m, ctx) => {
+    const slot = /do not control/i.test(m[0]) ? ctx.targets.findIndex((t) => t.filter?.controller === 'opponent') : ctx.targets.findIndex((t) => t.filter?.controller === 'you');
+    if (slot < 0) return null;
+    const sub = { ...ctx, lastObj: { ref: 'target', slot } as Ref };
+    return parseSentence(`it ${m[1]}`, sub);
+  }],
+  // "If that spell would be put into a graveyard, exile it instead."
+  [/^if (?:that|a|an) (?:spell|card|instant or sorcery spell)(?: cast this way)? would be put into (?:your|a|its owner's) graveyard, exile it instead$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'applyRule', on: ref, rule: { kind: 'custom', tag: 'exileInsteadOfGraveyard' }, duration: 'permanent' }];
+  }],
+  // "You may cast a spell from among them without paying its mana cost."
+  [/^(?:you may )?cast (?:a|an) (.+?) from among them without paying its mana cost$/i, (m, ctx) => {
+    const pool = poolRef(ctx);
+    const noun = /^spell$/i.test(m[1]) ? { filter: { nonland: true } as ObjectFilter } : parseNoun(`a ${m[1].replace(/ spell$/i, '')} card`);
+    if (!noun) return null;
+    const key = `amid${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'may', effects: [{ kind: 'chooseObjects', from: pool, filter: { ...noun.filter, nonland: true }, count: 1, key }, { kind: 'castWithoutPaying', what: { ref: 'chosen', key } }] }];
+  }],
+  // "You may cast it this turn, and mana of any type can be spent to cast that spell."
+  [/^you may cast it this turn(?:, and mana of any type can be spent to cast that spell)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'thisTurn', anyMana: /any type/i.test(m[0]) || undefined }];
+  }],
+  // "you get {E}" with no count
+  [/^you get \{E\}$/i, () => [{ kind: 'addCounters', counter: 'energy', amount: 1, on: YOU }]],
+  // "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile."
+  [/^exile the top (\w+) cards of your library in a face-down pile, then exile the top \1 cards of your library in a face-up pile$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (n === null) return null;
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return [
+      { kind: 'exileTop', amount: { kind: 'times', a: n, b: 2 } as Amount, key: 'piled' },
+      { kind: 'separatePiles', what: { ref: 'memory', key: 'piled' }, by: YOU, faceUpDown: true },
+    ];
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2463,7 +2531,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
@@ -2526,12 +2594,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (ref && inner) return [{ kind: 'delayedTrigger', event: 'becomesBlocked', filter: { objectRef: ref }, effects: inner, text, once: true }];
   }
   // "You may cast a spell with mana value 4 or less from your hand without paying its mana cost"
-  if ((m = text.match(/^(?:you may )?cast (?:a|an) (.+?) (?:card |spell )?(?:with mana value (\d+|X) or less )?from your hand without paying its mana cost$/i))) {
+  if ((m = text.match(/^(?:you may )?cast (?:a|an) (.+?) (?:card |spell )?(?:from (your hand|your graveyard|a graveyard) )?(?:with mana value (\d+|X) or less )?(?:from (your hand|your graveyard|a graveyard) )?without paying its mana cost$/i))) {
     const noun = /^spell$/i.test(m[1]) ? { filter: { nonland: true } as ObjectFilter } : parseNoun(`a ${m[1].replace(/ spell$/i, '')} card`);
     if (noun) {
       const key = `hand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
-      const f: ObjectFilter = { ...noun.filter, zone: 'hand', owner: 'you', nonland: true };
-      if (m[2]) f.cmcLE = m[2] === 'X' ? 'X' : parseInt(m[2], 10);
+      const where = (m[2] ?? m[4] ?? 'your hand').toLowerCase();
+      const f: ObjectFilter = { ...noun.filter, zone: where.includes('graveyard') ? 'graveyard' : 'hand', nonland: true };
+      if (where === 'your hand' || where === 'your graveyard') f.owner = 'you';
+      if (m[3]) f.cmcLE = m[3] === 'X' ? 'X' : parseInt(m[3], 10);
+      ctx.lastObj = { ref: 'chosen', key };
       return [{ kind: 'may', effects: [{ kind: 'chooseObjects', filter: f, count: 1, key }, { kind: 'castWithoutPaying', what: { ref: 'chosen', key } }] }];
     }
   }

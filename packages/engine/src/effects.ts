@@ -153,6 +153,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (r) moved.push(r.id);
       }
       ctx.memory['lastMoved'] = moved;
+      if (e.faceDown) for (const id of moved) { const o = g.state.objects[id]; if (o) o.faceDown = true; }
       if (e.counters) for (const id of moved) g.addCounters(id, e.counters.counter, amt(e.counters.amount), ctx.sourceId ?? undefined);
       if (e.remember && ctx.sourceId !== null) {
         const src = g.state.objects[ctx.sourceId];
@@ -1111,6 +1112,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         o.memory['playableBy'] = e.owner ? o.owner : ctx.controller;
         o.memory['playableUntil'] = e.duration === 'permanent' ? 'permanent' : g.state.turn.number;
         if (e.forCost) o.memory['playForCost'] = e.forCost;
+        if (e.anyMana) o.memory['playAnyMana'] = true;
       }
       return;
     case 'moveAll': {
@@ -1128,7 +1130,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const cands = e.who === 'opponent' ? g.opponentsOf(ctx.controller) : g.state.playerOrder.filter((p) => !g.player(p).lost);
       if (!cands.length) return;
       let pick = cands[0];
-      if (cands.length > 1) {
+      if (e.random) {
+        pick = g.rng.shuffle([...cands])[0];
+        g.log(`${g.player(pick).name} is chosen at random.`);
+      } else if (cands.length > 1) {
         const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: e.who === 'opponent' ? 'Choose an opponent' : 'Choose a player', options: cands.map((p) => ({ id: p, label: g.player(p).name })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
         if (resp.type === 'options') pick = resp.ids[0];
       }
@@ -1531,6 +1536,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           if (r) moved.push(r.id);
         }
         ctx.memory['lastMoved'] = moved;
+        if (e.key) ctx.memory[e.key] = moved;
         if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) {
           const src = g.state.objects[ctx.sourceId];
           src.memory['exiled'] = [...((src.memory['exiled'] as ObjectId[]) ?? []), ...moved];

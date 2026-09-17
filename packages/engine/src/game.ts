@@ -704,6 +704,10 @@ export class Game {
     if (!opts.skipEvents && toZone === 'graveyard' && fromZone === 'battlefield' && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'exileIfDies')) {
       return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
     }
+    // "If that spell would be put into a graveyard, exile it instead." (from any zone)
+    if (!opts.skipEvents && toZone === 'graveyard' && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'exileInsteadOfGraveyard')) {
+      return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
+    }
     // Other permanents' replacements: "If a creature an opponent controls would die, exile it instead." / Rest in Peace
     if (!opts.skipEvents && toZone === 'graveyard') {
       for (const srcId of this.state.battlefield) {
@@ -1629,8 +1633,12 @@ export class Game {
         return objT((ctx.memory['lastMoved'] as ObjectId[]) ?? []);
       case 'lastDiscarded':
         return objT((ctx.memory['lastDiscarded'] as ObjectId[]) ?? []);
-      case 'memory':
-        return objT((ctx.memory[ref.key] as ObjectId[]) ?? []);
+      case 'memory': {
+        const fromCtx = ctx.memory[ref.key] as ObjectId[] | undefined;
+        if (fromCtx) return objT(fromCtx);
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+        return objT((src?.memory[ref.key] as ObjectId[] | undefined) ?? []);
+      }
       case 'defendingPlayer': {
         const d = ctx.triggerContext.triggerOtherPlayer as PlayerId | undefined;
         if (d) return plT([d]);

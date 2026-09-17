@@ -879,6 +879,10 @@ function stripModeLabel(text: string): string {
 
 /** A modal head, possibly with an X definition or a "that hasn't been chosen" restriction. */
 function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number } | null {
+  // A conditional upgrade ("If you have no cards in hand, choose one or more instead") is not
+  // modelled inside triggered abilities; keep the base choice.
+  text = text.replace(/\.\s*If .+?, (?:you may )?choose .+? instead\.?$/i, '');
+  text = text.replace(/\.\s*Each mode must target a different \w+\.?$/i, '');
   const m = text.match(/^choose (one|two|one or both|one or more|any number|up to one|up to two|up to three)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
   if (!m) return null;
   const w = m[1].toLowerCase();

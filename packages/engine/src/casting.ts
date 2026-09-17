@@ -1004,6 +1004,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash') || altInstant || flashRule;
   if (freeFromExile(g, obj)) opts = { ...opts, free: true };
   if (fromZone === 'exile' && obj.memory['playableBy'] !== p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playExiledWithCounter' && (r.data as { anyMana?: boolean } | undefined)?.anyMana)) opts = { ...opts, anyMana: true };
+  if (obj.memory['playAnyMana']) opts = { ...opts, anyMana: true };
   if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;
   for (const r of g.playerRules(p)) {
     if (r.kind !== 'custom') continue;
