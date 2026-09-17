@@ -4116,6 +4116,36 @@ const PATTERNS: Pattern[] = [
     ctx.lastPlayer = prev;
     return inner;
   }],
+  // "You get an additional poison counter." / "That player gets a rad counter."
+  [/^(?:you )?gets? (?:an additional|a|an|(\w+)) ([\w'-]+) counters?$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'addCounters', counter: m[2].toLowerCase(), amount: n, on: YOU }];
+  }],
+  // "That player flips a coin."
+  [/^(?:you )?flips? a coin$/i, () => [{ kind: 'flipCoin', win: [] }]],
+  // "Sacrifice ~ unless you remove a +1/+1 counter from it." / "unless any player pays {3}"
+  [/^sacrifice (~|it|that creature|that permanent) unless (you|any player|its controller|that player) (.+)$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    const who = playerRef(m[2] === 'any player' ? 'each player' : m[2], ctx);
+    if (!who) return null;
+    const pay = m[3].match(/^pays? ((?:\{[^}]+\})+|\d+ life)$/i);
+    const sac: Effect[] = [{ kind: 'sacrifice', what: ref }];
+    if (pay) {
+      const lm = pay[1].match(/^(\d+) life$/i);
+      const eff: Effect = lm ? { kind: 'unlessPays', who, cost: { payLife: parseInt(lm[1], 10) }, effects: sac } : { kind: 'unlessPays', who, cost: pay[1], effects: sac };
+      return [eff];
+    }
+    const spec = parseCost(m[3].replace(/^[a-z]/, (c) => c.toUpperCase()));
+    if (!spec) return null;
+    if (spec.mana) { const e2: Effect = { kind: 'unlessPays', who, cost: spec.mana, effects: sac }; return [e2]; }
+    if (spec.payLife !== undefined && typeof spec.payLife === 'number') { const e2: Effect = { kind: 'unlessPays', who, cost: { payLife: spec.payLife }, effects: sac }; return [e2]; }
+    if (spec.sacrifice) { const e2: Effect = { kind: 'unlessPays', who, cost: { sacrifice: spec.sacrifice.filter, count: typeof spec.sacrifice.count === 'number' ? spec.sacrifice.count : 1 }, effects: sac }; return [e2]; }
+    if (spec.discard && typeof spec.discard === 'object') { const e2: Effect = { kind: 'unlessPays', who, cost: { discard: typeof spec.discard.count === 'number' ? spec.discard.count : 1, random: spec.discard.random, filter: spec.discard.filter }, effects: sac }; return [e2]; }
+    if (spec.mill !== undefined) { const e2: Effect = { kind: 'unlessPays', who, cost: { discard: spec.mill }, effects: sac }; return [e2]; }
+    return null;
+  }],
   // ---- Round 123 ----
   // "You may play up to two additional lands this turn."
   [/^(?:you may )?play up to (\w+) additional lands?(?: on each of your turns| this turn)?$/i, (m) => {
@@ -5163,6 +5193,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
         mills: 'mill', scries: 'scry', surveils: 'surveil', puts: 'put', reveals: 'reveal',
         untaps: 'untap', taps: 'tap', sacrifices: 'sacrifice', skips: 'skip', takes: 'take',
         creates: 'create', exiles: 'exile', shuffles: 'shuffle', searches: 'search',
+        flips: 'flip', gets: 'get', plays: 'play', casts: 'cast', attaches: 'attach', removes: 'remove',
         manifests: 'manifest', explores: 'explore', connives: 'connive', proliferates: 'proliferate',
         ventures: 'venture', returns: 'return', destroys: 'destroy', chooses: 'choose', copies: 'copy',
       };

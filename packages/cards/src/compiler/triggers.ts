@@ -63,6 +63,19 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     const nm = line.match(/^Whenever you cast a spell other than your first spell each turn, (.+)$/i);
     if (nm) return { event: 'cast', filter: { player: 'you', minNthThisTurn: 2 }, hasObject: true, hasPlayer: true, rest: nm[1] };
   }
+  // "Whenever you cast an instant, sorcery, or Wizard spell, ..." — the type list contains commas.
+  {
+    const cl = line.match(/^When(?:ever)? (you cast|a player casts|an opponent casts) (?:a|an) ([^,]+(?:, [^,]+)+) spell, (.+)$/i);
+    if (cl) {
+      const noun = parseNoun(`a ${cl[2]} spell`);
+      if (noun && noun.confident) {
+        const f = { ...noun.filter };
+        delete f.zone;
+        const who = /^you cast$/i.test(cl[1]) ? ('you' as const) : /opponent/i.test(cl[1]) ? ('opponent' as const) : undefined;
+        return { event: 'cast', filter: { player: who, object: f }, hasObject: true, hasPlayer: true, rest: cl[3] };
+      }
+    }
+  }
   {
     // "Whenever ~ attacks or blocks while you control a Dinosaur, X" → the condition becomes an intervening "if".
     const wm = line.match(/^(When(?:ever)? [^,]+?) while (.+?), (.+)$/i);
@@ -569,6 +582,16 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^Whenever you cast a kicked spell, (.+)$/i))) return { event: 'cast', filter: { player: 'you', custom: 'kicked' }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you cast a spell from (exile|your graveyard|a graveyard), (.+)$/i))) return { event: 'cast', filter: { player: 'you', fromZone: /exile/.test(m[1]) ? 'exile' : 'graveyard' }, hasObject: true, hasPlayer: true, rest: m[2] };
+  // "Whenever you cast an instant, sorcery, or Wizard spell, ..." — the type list contains commas.
+  if ((m = L.match(/^Whenever (you cast|a player casts|an opponent casts) (?:a|an) ([^,]+(?:, [^,]+)+) spell, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[2]} spell`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      const who = /^you cast$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : undefined;
+      return { event: 'cast', filter: { player: who, object: f }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+  }
   if ((m = L.match(/^Whenever you cast (?:a|an|your first|your second) (.+?)(?: spell)?(?: each turn| during an opponent's turn| during each opponent's turn| from your hand| from anywhere other than your hand)?, (.+)$/i))) {
     const nounText = m[1].replace(/ spell$/, '');
     const tf: TriggerFilter = { player: 'you' };

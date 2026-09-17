@@ -733,7 +733,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         else if (e.counter === 'energy') {
           pl.energy += amt(e.amount);
           g.emit({ name: 'gotEnergy', playerId: t.id, amount: amt(e.amount), sourceId: ctx.sourceId ?? undefined });
-        }
+        } else pl.turnStats[e.counter] = (pl.turnStats[e.counter] ?? 0) + amt(e.amount);
         g.touch();
       }
       return;
