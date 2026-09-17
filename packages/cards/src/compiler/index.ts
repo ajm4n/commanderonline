@@ -118,10 +118,15 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     // "~ costs {U}{U} less to cast ..." — colored reductions are handled as generic-count lines with the symbols remembered.
     let costSymbols: string | undefined;
     {
-      const cl = line.match(/^((?:~|This spell) costs? )((?:\{[WUBRGC]\})+)( (?:less|more) to cast .+)$/i);
+      const cl = line.match(/^((?:~|This spell) costs? )((?:\{[0-9WUBRGC]\})+)( (?:less|more) to cast .+)$/i);
       if (cl) {
-        costSymbols = cl[2];
-        line = `${cl[1]}{${(cl[2].match(/\{/g) ?? []).length}}${cl[3]}`;
+        const syms = cl[2].match(/\{[^}]+\}/g) ?? [];
+        const colored = syms.filter((x) => /^\{[WUBRGC]\}$/.test(x));
+        if (colored.length) {
+          const generic = syms.filter((x) => /^\{\d+\}$/.test(x)).reduce((acc, x) => acc + parseInt(x.slice(1, -1), 10), 0);
+          costSymbols = colored.join('');
+          line = `${cl[1]}{${generic + colored.length}}${cl[3]}`;
+        }
       }
     }
     const pushCostMod = (mod: CostModifier) => costModifiers.push(costSymbols ? { ...mod, symbols: costSymbols, text: mod.text } : mod);
@@ -484,6 +489,15 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       pushCostMod({ amount: parseInt(m[1], 10), direction: m[2].toLowerCase() as 'less' | 'more', condition: cond, text: line });
       compiledLines.push(line);
       continue;
+    }
+    // "~ costs {X} less to cast, where X is the number of cards in your graveyard."
+    if ((m = line.match(/^(?:~|This spell) costs? \{X\} (less|more) to cast, where X is (.+?)\.?$/i))) {
+      const amt2 = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (amt2 !== null) {
+        pushCostMod({ amount: 1, direction: m[1].toLowerCase() as 'less' | 'more', perAmount: amt2, text: line });
+        compiledLines.push(line);
+        continue;
+      }
     }
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast if (.+?)\.?$/i))) {
       const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });

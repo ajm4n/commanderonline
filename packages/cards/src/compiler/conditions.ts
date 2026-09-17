@@ -1,10 +1,29 @@
-import type { Condition } from '@commander/engine';
+import type { Condition, Amount } from '@commander/engine';
 import { parseNoun } from './nouns.js';
 import { parseAmount, type RefCtx } from './amounts.js';
 import { wordToNumber } from './text.js';
 
 export function parseCondition(text: string, ctx: RefCtx): Condition | null {
 
+  {
+    const t1 = text.trim().toLowerCase().replace(/\.$/, '');
+    let mm: RegExpMatchArray | null;
+    if ((mm = t1.match(/^(?:a|an|one or more) (.+?) left the battlefield(?: under your control)? this turn$/))) {
+      const noun = parseNoun(`a ${mm[1]}`);
+      if (noun && noun.confident) return { kind: 'eventThisTurn', event: 'leavesBattlefield', player: 'any', op: '>=', value: 1 };
+    }
+    if ((mm = t1.match(/^(?:a|an|one or more) (.+?) (?:card )?was put into your graveyard from anywhere this turn$/))) {
+      const noun = parseNoun(`a ${mm[1]} card`);
+      if (noun && noun.confident) return { kind: 'eventThisTurn', event: 'putIntoGraveyard', player: 'you', op: '>=', value: 1 };
+    }
+    if ((mm = t1.match(/^(.+?) have total (power|toughness) (\d+) or (greater|less)$/))) {
+      const noun = parseNoun(mm[1]);
+      if (noun && noun.confident) {
+        const a: Amount = { kind: mm[2] === 'power' ? 'totalPower' : 'totalToughness', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
+        return { kind: 'amount', a, op: mm[4] === 'greater' ? '>=' : '<=', b: parseInt(mm[3], 10) };
+      }
+    }
+  }
   {
     const t0 = text.trim().toLowerCase().replace(/\.$/, '');
     if (/^(?:there are )?no (creatures|lands|artifacts|enchantments|planeswalkers|permanents) (?:are )?on the battlefield$/.test(t0)) {
