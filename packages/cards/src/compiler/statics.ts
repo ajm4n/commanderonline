@@ -1672,6 +1672,20 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 121 ----
+  if (/^You have no maximum hand size(?: until your next turn| for as long as you control ~)?$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
+  if (/^You cannot get poison counters$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'noPoison' } }];
+  if (/^You cannot play lands or cast spells from your hand$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'noPlayFromHand' } }];
+  if ((m = L.match(/^You cannot untap more than (\w+) (.+?) during your untap step$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'maxUntap', data: n } }];
+  }
+  if (/^You cannot become the monarch(?: this turn)?$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBecomeMonarch' } }];
+  if ((m = L.match(/^You can spend mana of any (?:type|color) to cast (.+)$/i))) {
+    const noun = /^spells$/i.test(m[1]) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(m[1].replace(/ spells$/i, ' spell'));
+    if (noun && noun.confident) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'anyManaFor', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  if (/^You may activate equip abilities any time you could cast an instant$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'equipAsInstant' } }];
   // ---- Round 119 ----
   // "The first spell you cast each turn has cascade." / "The next creature spell you cast this turn has cascade."
   if ((m = L.match(/^The (first|next) (.*?)spells? you cast (?:from exile )?(?:each turn|this turn) (?:has|have) (.+)$/i))) {

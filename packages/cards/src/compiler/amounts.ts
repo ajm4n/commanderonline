@@ -319,6 +319,20 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^your devotion to (white|blue|black|red|green)$/))) return { kind: 'devotion', colors: [({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white']] };
   if (t === 'the number of creatures you control') return { kind: 'count', filter: { types: ['Creature'], controller: 'you' } };
   if (t === 'the number of spells you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
+  // ---- Round 121 ----
+  if ((m = t.match(/^(?:the number of )?(.+?) (?:discarded|milled|exiled|sacrificed|destroyed|tapped|returned|revealed|chosen) this way$/))) {
+    const noun = withCtrl(parseNoun(oc(m, 1).replace(/ cards$/i, ' card')), ctx);
+    if (noun) return { kind: 'ctxMemory', key: 'lastMoved' };
+  }
+  if ((m = t.match(/^(?:the number of )?(.+?) that died this way$/))) return { kind: 'ctxMemory', key: 'lastMoved' };
+  if ((m = t.match(/^(?:the number of )?cards? you put into your hand this way$/))) return { kind: 'ctxMemory', key: 'lastMoved' };
+  if (/^(?:the )?total life lost by all players this turn$/.test(t)) return { kind: 'playerTurnStat', key: 'lifeLostAmount', opponents: true };
+  if ((m = t.match(/^(?:x|X) plus (\d+)$/))) return { kind: 'sum', parts: ['X', parseInt(m[1], 10)] };
+  if ((m = t.match(/^(\d+) plus (?:x|X)$/))) return { kind: 'sum', parts: [parseInt(m[1], 10), 'X'] };
+  if (/^twice (?:x|X)$/.test(t)) return { kind: 'times', a: 2, b: 'X' };
+  if (/^three times (?:x|X)$/.test(t)) return { kind: 'times', a: 3, b: 'X' };
+  if (/^half (?:x|X),? rounded down$/.test(t)) return { kind: 'half', a: 'X', round: 'down' };
+  if (/^half (?:x|X),? rounded up$/.test(t)) return { kind: 'half', a: 'X', round: 'up' };
   // ---- Round 112 ----
   if (/^(?:the number of )?spells countered this way$/.test(t)) return { kind: 'ctxMemory', key: 'lastMoved' };
   if ((m = t.match(/^(\w+) times x$/))) {

@@ -4076,6 +4076,15 @@ const PATTERNS: Pattern[] = [
     for (let i = 0; i < n; i++) out.push({ kind: 'extraTurn', who: YOU });
     return out;
   }],
+  // "You gain X plus 3 life." / "Target player gains twice X life."
+  [/^(?:you )?gains? (.+?) life$/i, (m, ctx) => {
+    const a = amt(m[1], ctx);
+    return a === null ? null : [{ kind: 'gainLife', amount: a, who: YOU }];
+  }],
+  [/^(?:you )?loses? (.+?) life$/i, (m, ctx) => {
+    const a = amt(m[1], ctx);
+    return a === null ? null : [{ kind: 'loseLife', amount: a, who: YOU }];
+  }],
   // ---- Round 117 ----
   // "You skip your draw step this turn." / "you cannot cast spells until your next turn"
   [/^(?:you )?skip your (draw|untap|combat|end|upkeep|first main|second main) (?:step|phase)(?: this turn)?$/i, (m) => [{ kind: 'skipStep', step: m[1].toLowerCase().replace(/ /g, ''), who: YOU }]],
@@ -5100,6 +5109,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
         ctx.lastPlayer = savedPlayer;
       }
     }
+  }
+  // "You gain control of it": "you" is the default subject, so retry without it.
+  if (/^you [a-z]/i.test(text) && !/^you may /i.test(text)) {
+    const saved = ctx.targets.length;
+    const inner = parseSentence(text.replace(/^you /i, ''), ctx);
+    if (inner) return inner;
+    ctx.targets.length = saved;
   }
   // Flavor ability word left on a mode or line ("Gigaflare — Destroy target permanent").
   if (/^(?:he|she) /i.test(text)) {
