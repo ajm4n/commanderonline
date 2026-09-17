@@ -27,6 +27,18 @@ export function* checkStateBasedActions(g: Game): Gen {
       }
     }
 
+    // Soulbond: a pair breaks when either creature leaves the battlefield or changes controller.
+    for (const id of [...g.state.battlefield]) {
+      const o = g.state.objects[id];
+      if (!o || o.pairedWith === null || o.pairedWith === undefined) continue;
+      const other = g.state.objects[o.pairedWith];
+      if (!other || other.zone !== 'battlefield' || other.controller !== o.controller || other.pairedWith !== id) {
+        o.pairedWith = null;
+        if (other && other.pairedWith === id) other.pairedWith = null;
+        changed = true;
+      }
+    }
+
     // "When you control no Islands, sacrifice ~." (a state trigger, handled like an SBA)
     for (const id of [...g.state.battlefield]) {
       const o = g.state.objects[id];

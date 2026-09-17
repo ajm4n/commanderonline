@@ -1253,6 +1253,10 @@ export class Game {
         const mine = tally[c.option] ?? 0;
         return mine > 0 && Object.entries(tally).every(([k, v]) => k === c.option || v < mine);
       }
+      case 'paired': {
+        const o = this.resolveObjects(c.ref ?? { ref: 'self' }, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0];
+        return !!o && o.pairedWith !== null && o.pairedWith !== undefined && !!this.state.objects[o.pairedWith] && this.state.objects[o.pairedWith].zone === 'battlefield';
+      }
       case 'cityBlessing': {
         const pid = c.ref ? this.resolvePlayers(c.ref, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0] : ctx.controller;
         const pl = pid !== undefined ? this.state.players[pid] : undefined;
@@ -1275,7 +1279,7 @@ export class Game {
       case 'count':
         return objectsMatching(this, this.bindFilter(a.filter, ctx), fctx).length + (a.plus ?? 0);
       case 'countersOn':
-        return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + (o.counters[a.counter] ?? 0), 0);
+        return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + (a.counter === 'any' ? Object.values(o.counters).reduce((t, v) => t + (v ?? 0), 0) : (o.counters[a.counter] ?? 0)), 0);
       case 'power':
         return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
       case 'toughness':
@@ -1797,6 +1801,7 @@ export class Game {
         const tox = parseInt(sch.oracleText.match(/Toxic (\d+)/)?.[1] ?? '1', 10);
         p.poison += tox;
       }
+      p.turnStats['damageTaken'] = (p.turnStats['damageTaken'] ?? 0) + dealt;
       this.touch();
       this.emit({ name: 'dealsDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });
       this.emit({ name: 'dealtDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });

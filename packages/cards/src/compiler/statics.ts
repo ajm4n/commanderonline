@@ -276,6 +276,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return out;
   }
   if ((m = L.match(/^While voting, you (?:may vote|get) an additional (?:time|vote)$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'extraVote', data: 1 } }];
+  // Soulbond: "As long as ~ is paired with another creature, both creatures have protection from Zombies."
+  if ((m = L.match(/^As long as ~ is paired with another creature, (?:both creatures|each of those creatures) (?:has|have) (.+)$/i))) {
+    const cond = { kind: 'paired' as const };
+    const quoted = m[1].match(/^"(.+)"$/);
+    const mod = quoted ? { layer: 6 as const, addAbilityText: [quoted[1]] } : null;
+    const kws = quoted ? null : parseKeywordList(m[1]);
+    if (!mod && !kws) return null;
+    const modification = mod ?? { layer: 6 as const, addKeywords: kws! };
+    return [
+      { kind: 'static', text: line, affects: 'self', modification, condition: cond },
+      { kind: 'static', text: line, affects: { pairedWithSource: true }, modification, condition: cond },
+    ];
+  }
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
   if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {

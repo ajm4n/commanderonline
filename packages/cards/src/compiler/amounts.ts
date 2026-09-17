@@ -185,6 +185,15 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     if (noun) return { kind: 'totalToughness', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
   }
   if ((m = t.match(/^(?:the number of )?([\w' -]+?) votes?$/)) && !/^(?:the|a|an|no)$/.test(m[1])) return { kind: 'voteCount', option: m[1].toLowerCase() };
+  if ((m = t.match(/^(?:the )?(?:excess )?damage dealt to you this turn$/))) return { kind: 'playerTurnStat', key: 'damageTaken' };
+  if ((m = t.match(/^(?:the )?number of counters on (?:it|~|that permanent|that creature)$/))) return { kind: 'countersOn', ref: /~/.test(t) ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.self), counter: 'any' };
+  if ((m = t.match(/^(?:that|the) creature's power plus its toughness$/))) {
+    const ref: Ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.self);
+    return { kind: 'sum', parts: [{ kind: 'power', ref }, { kind: 'toughness', ref }] };
+  }
+  if ((m = t.match(/^the (?:sacrificed|exiled|discarded|destroyed|chosen) \w+'s (power|toughness)$/))) return { kind: m[1] as 'power' | 'toughness', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
+  if ((m = t.match(/^the (?:sacrificed|exiled|discarded|destroyed|chosen) \w+'s mana value$/))) return { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
+  if ((m = t.match(/^(target|that|the) ([\w -]+?)'s (power|toughness|mana value)$/)) && ctx.lastObj) return { kind: m[3] === 'power' ? 'power' : m[3] === 'toughness' ? 'toughness' : 'manaValue', ref: ctx.lastObj };
   if (t === 'the number of experience counters you have' || t === 'experience counter you have' || t === 'experience counters you have') return { kind: 'turnStat', key: 'experience' };
   if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
   if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {

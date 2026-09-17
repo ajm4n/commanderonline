@@ -257,6 +257,12 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
 type Pattern = [RegExp, (m: RegExpMatchArray, ctx: ParseCtx) => Effect[] | null];
 
 function amt(text: string, ctx: ParseCtx) {
+  // "target creature's power": register the target here, since the amount parser cannot.
+  const tm = text.trim().match(/^(?:the )?(target [\w' -]+?)'s (power|toughness|mana value)$/i);
+  if (tm) {
+    const ref = objRef(tm[1], ctx);
+    if (ref) return { kind: tm[2].toLowerCase() === 'power' ? 'power' : tm[2].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref } as Amount;
+  }
   return parseAmount(text, { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, resolvePlayer: (p) => playerRef(p, ctx) });
 }
 
@@ -313,6 +319,18 @@ function restDest(dest: string): Extract<Effect, { kind: 'moveRest' }>['to'] | n
 }
 /** Follow-up clauses after "Look at the top N cards of your library" (the pool is remembered under ctx.restKey). */
 const POOL_PATTERNS: Pattern[] = [
+  // "Put the revealed cards on the bottom of your library in a random order" / "exile all other cards revealed this way"
+  [new RegExp(String.raw`^(?:then )?(?:and )?(?:put|exile) (?:the revealed cards|all other cards revealed this way|all cards revealed this way|the other cards revealed this way|the rest of the revealed cards)(?: ${DEST_RE})?$`, 'i'), (m, ctx) => {
+    if (!ctx.restKey) return null;
+    const to = restDest(m[1] ?? 'into exile');
+    return to ? [{ kind: 'moveRest', key: ctx.restKey, to }] : null;
+  }],
+  // "Put the nonland cards revealed this way into your hand" (the matches held by a reveal-until)
+  [new RegExp(String.raw`^(?:you may )?put (?:those|the) ([\w -]+?) (?:cards? )?(?:revealed this way |from among them )?${DEST_RE}$`, 'i'), (m, ctx) => {
+    if (!ctx.restKey) return null;
+    const mv = moveChosen({ ref: 'chosen', key: ctx.restKey }, m[2]);
+    return mv ? [mv] : null;
+  }],
   // "Put one of them into your hand (and the rest on the bottom of your library in a random order)"
   [new RegExp(String.raw`^(you may )?(put|exile) (one|the other|(\w+)|up to (\w+)|any number|all|the rest)(?: of (?:them|those cards))?(?: ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
     if (!ctx.restKey) return null;
@@ -448,6 +466,38 @@ const SEARCH_PATTERNS: Pattern[] = [
   }],
 ];
 
+
+/** "Reveal cards from the top of your library until you reveal a nonland card" — the destination may come later. */
+const REVEAL_UNTIL_PATTERNS: Pattern[] = [
+  [/^reveal cards from the top of your library until you reveal (?:(?:a|an) |(X|\w+) )?(.+?)(?:, where X is (.+?))?$/i, (m, ctx) => {
+    const plural = /^(?:X|two|three|four|five|\w+)$/i.test(m[1] ?? '') && !!m[1];
+    let count: Amount = 1;
+    if (plural) {
+      const n = m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1]);
+      if (n === null) return null;
+      count = n;
+    }
+    // "a Doctor card, a card with doctor's companion, or a Vehicle card" → any of these
+    const alts = m[2].split(/,\s*(?:or\s+)?|\s+or\s+/i).map((x) => x.trim().replace(/^(?:a|an) /i, '')).filter(Boolean);
+    const filters: ObjectFilter[] = [];
+    for (const a of alts) {
+      const noun = parseNoun(/\bcards?\b/i.test(a) ? a.replace(/\bcards\b/i, 'card') : `${a.replace(/s$/i, '')} card`);
+      if (!noun) return null;
+      filters.push({ ...noun.filter, zone: undefined });
+    }
+    const filter: ObjectFilter = filters.length === 1 ? filters[0] : { anyOf: filters };
+    if (m[3]) {
+      const a = amt(m[3], ctx);
+      if (a === null) return null;
+      count = a;
+    }
+    const key = `revealed${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.restKey = key;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'revealUntil', filter, destination: 'hold', rest: 'bottom', count: plural || m[3] ? count : undefined, key }];
+  }],
+];
+
 const PATTERNS: Pattern[] = [
   // Voting: "Starting with you, each player votes for death or taxes."
   [/^(?:starting with you, )?each player (?:secretly )?votes for (.+?)(?:, then those votes are revealed)?$/i, (m, ctx) => {
@@ -576,6 +626,11 @@ const PATTERNS: Pattern[] = [
     if (!who || !noun) return null;
     ctx.lastObj = { ref: 'lastMoved' };
     return [{ kind: 'revealUntil', who, filter: noun.filter, destination: 'exile', rest: 'exile' }];
+  }],
+  [/^(?:(.+?) )?(gains?|loses?) life equal to (.+?)(?:, but not more life than .+)?$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const a = amt(m[3], ctx);
+    return who && a !== null ? [{ kind: /gain/i.test(m[2]) ? 'gainLife' : 'loseLife', amount: a, who } as Effect] : null;
   }],
   [/^(?:(.+?) )?(gains?|loses?) that much life$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
@@ -2203,7 +2258,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (inner && per !== null) return [{ kind: 'repeat', times: per, effects: inner }];
     ctx.targets.length = saved;
   }
-  for (const [re, fn] of SEARCH_PATTERNS) {
+  for (const [re, fn] of [...SEARCH_PATTERNS, ...REVEAL_UNTIL_PATTERNS]) {
     const sm = text.match(re);
     if (sm) {
       const saved = ctx.targets.length;
@@ -2297,11 +2352,16 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     if (/^reveal cards from the top of your library until you reveal /i.test(s) && sents[i + 1] && /^(put|you may put) /i.test(sents[i + 1])) {
-      s = `${s}. ${sents[i + 1]}`;
-      i++;
-      if (sents[i + 1] && /^(put the rest|and the rest)/i.test(sents[i + 1])) {
-        s = `${s}. ${sents[i + 1]}`;
-        i++;
+      let merged = `${s}. ${sents[i + 1]}`;
+      let used = 1;
+      if (sents[i + 2] && /^(put the rest|and the rest)/i.test(sents[i + 2])) {
+        merged = `${merged}. ${sents[i + 2]}`;
+        used = 2;
+      }
+      // Prefer the single merged effect; otherwise leave the sentences apart so the held-pool patterns handle them.
+      if (parseSentence(merged, newCtx({ ...ctx, targets: [...ctx.targets] }))) {
+        s = merged;
+        i += used;
       }
     }
     // "Search your library for a basic land card. Put it onto the battlefield tapped, then shuffle."

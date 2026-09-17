@@ -110,6 +110,8 @@ export interface GameObject {
   deathtouchDamage: boolean;
   attachedTo: ObjectId | null;
   attachments: ObjectId[];
+  /** Soulbond: the creature this one is paired with. */
+  pairedWith?: ObjectId | null;
   isCommander: boolean;
   /** Number of times cast from the command zone (for commander tax). */
   commanderCasts: number;
@@ -378,6 +380,8 @@ export interface ObjectFilter {
   damagedBySource?: boolean;
   /** Creatures blocking the filter's source object ("creatures blocking it"). */
   blockingSource?: boolean;
+  /** The creature the filter's source is paired with (soulbond). */
+  pairedWithSource?: boolean;
   /** Each chosen card must have a different name ("up to four cards with different names"). */
   differentNames?: boolean;
   /** Objects of the color the source chose (memory `color`). */

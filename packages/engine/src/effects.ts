@@ -919,25 +919,29 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         const seen: ObjectId[] = [];
-        let hit: ObjectId | null = null;
-        for (let i = 0; i < pl.library.length; i++) {
+        const hits: ObjectId[] = [];
+        const want = e.count !== undefined ? Math.max(1, amt(e.count)) : 1;
+        for (let i = 0; i < pl.library.length && hits.length < want; i++) {
           const id = pl.library[i];
           seen.push(id);
           g.log(`${pl.name} reveals ${g.nameOf(id)}.`);
-          if (matchesFilter(g, g.obj(id), { ...e.filter, zone: 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x })) {
-            hit = id;
-            break;
-          }
-        }
-        if (hit !== null) {
-          if (e.destination === 'battlefield') yield* enterBattlefield(g, hit, p, { tapped: e.tapped, ctx });
-          else g.moveObject(hit, e.destination, { skipEvents: e.destination === 'hand', cause: e.destination === 'exile' ? 'exile' : 'other' });
-          ctx.memory['lastMoved'] = [hit];
+          if (matchesFilter(g, g.obj(id), { ...e.filter, zone: 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x })) hits.push(id);
         }
         ctx.memory['revealedCount'] = ((ctx.memory['revealedCount'] as number) ?? 0) + seen.length;
-        const rest = seen.filter((id) => id !== hit);
+        const rest = seen.filter((id) => !hits.includes(id));
+        if (e.destination === 'hold') {
+          ctx.memory[e.key ?? 'revealed'] = hits;
+          ctx.memory['lastMoved'] = hits;
+        } else {
+          for (const hit of hits) {
+            if (e.destination === 'battlefield') yield* enterBattlefield(g, hit, p, { tapped: e.tapped, ctx });
+            else g.moveObject(hit, e.destination, { skipEvents: e.destination === 'hand', cause: e.destination === 'exile' ? 'exile' : 'other' });
+          }
+          if (hits.length) ctx.memory['lastMoved'] = hits;
+        }
         if (e.rest === 'bottom') for (const id of g.rng.shuffle(rest)) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
-        else for (const id of rest) g.moveObject(id, e.rest, { cause: e.rest === 'exile' ? 'exile' : 'mill' });
+        else if (e.rest === 'top') for (const id of [...rest].reverse()) g.moveObject(id, 'library', { position: 'top', skipEvents: true });
+        else for (const id of rest) g.moveObject(id, e.rest, { skipEvents: e.rest === 'hand', cause: e.rest === 'exile' ? 'exile' : 'mill' });
       }
       return;
     }
@@ -1610,7 +1614,37 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
   Object.assign(result.chosen, chosen);
   Object.assign(result.memory, chosen);
   if (attachTo !== null) attach(g, id, attachTo);
+  yield* offerSoulbond(g, result.id, controller);
   return result;
+}
+
+/** Soulbond: when a creature enters, it may pair with an unpaired creature its controller controls. */
+function* offerSoulbond(g: Game, id: ObjectId, controller: PlayerId): Gen<void> {
+  const o = g.state.objects[id];
+  if (!o || o.zone !== 'battlefield') return;
+  const ch = g.characteristics(id);
+  if (!ch.types.includes('Creature')) return;
+  const unpaired = (x: ObjectId): boolean => {
+    const t = g.state.objects[x];
+    return !!t && t.zone === 'battlefield' && (t.pairedWith === null || t.pairedWith === undefined || !g.state.objects[t.pairedWith] || g.state.objects[t.pairedWith].zone !== 'battlefield');
+  };
+  const mine = objectsMatching(g, { types: ['Creature'], controller: 'you', zone: 'battlefield' }, { sourceId: id, controller }).map((x) => x.id).filter((x) => x !== id && unpaired(x));
+  const selfBonds = ch.keywords.has('Soulbond');
+  const cands = selfBonds ? mine : mine.filter((x) => g.characteristics(x).keywords.has('Soulbond'));
+  if (!cands.length || !unpaired(id)) return;
+  const r = yield* g.ask({ type: 'yesNo', player: controller, prompt: `Soulbond: pair ${g.nameOf(id)} with another creature?`, sourceId: id });
+  if (!(r.type === 'yesNo' && r.value)) return;
+  let pick = cands[0];
+  if (cands.length > 1) {
+    const c = yield* g.ask({ type: 'chooseObjects', player: controller, prompt: 'Pair with which creature?', candidates: cands, min: 1, max: 1, sourceId: id });
+    if (c.type !== 'objects' || !c.ids.length) return;
+    pick = c.ids[0];
+  }
+  o.pairedWith = pick;
+  const other = g.state.objects[pick];
+  if (other) other.pairedWith = id;
+  g.log(`${g.nameOf(id)} is paired with ${g.nameOf(pick)}.`);
+  g.touch();
 }
 
 /** Aura "Enchant X" → target spec. */

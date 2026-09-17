@@ -13,7 +13,7 @@ export type Amount =
   | number
   | 'X'
   | { kind: 'count'; filter: ObjectFilter; plus?: number }
-  | { kind: 'countersOn'; ref: Ref; counter: CounterType }
+  | { kind: 'countersOn'; ref: Ref; counter: CounterType | 'any' }
   | { kind: 'power'; ref: Ref }
   | { kind: 'toughness'; ref: Ref }
   | { kind: 'manaValue'; ref: Ref }
@@ -173,6 +173,8 @@ export type Condition =
   | { kind: 'or'; cs: Condition[] }
   /** Ascend: the controller has the city's blessing (ten or more permanents at some point while controlling an Ascend source). */
   | { kind: 'cityBlessing'; ref?: Ref }
+  /** Soulbond: the object is paired with another creature. */
+  | { kind: 'paired'; ref?: Ref }
   /** The named vote option got strictly more votes than every other option. */
   | { kind: 'voteMost'; option: string }
   /** A flag the current effect set earlier ("if you search your library this way", "if you win the flip"). */
@@ -333,7 +335,7 @@ export type Effect =
   | { kind: 'clash' }
   | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
-  | { kind: 'revealUntil'; filter: ObjectFilter; destination: 'hand' | 'battlefield' | 'graveyard' | 'exile'; rest: 'bottom' | 'graveyard' | 'exile'; tapped?: boolean; who?: Ref }
+  | { kind: 'revealUntil'; filter: ObjectFilter; /** `hold` leaves the matches where they are and remembers them for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'graveyard' | 'exile' | 'hold'; rest: 'bottom' | 'graveyard' | 'exile' | 'hand' | 'top'; tapped?: boolean; who?: Ref; /** Reveal until this many cards match ("until you reveal three nonland cards"). */ count?: Amount; key?: string }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
 
 // ---------------------------------------------------------------------------
