@@ -316,6 +316,10 @@ export type Effect =
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */
   | { kind: 'endTurn' }
+  /** "Choose odd or even." */
+  | { kind: 'chooseOption'; key: string; options: string[] }
+  /** "Each player shuffles the cards from their hand into their library, then draws that many cards." */
+  | { kind: 'shuffleHandIntoLibraryAndDraw'; who: Ref }
   /** Licids: end the "becomes an Aura" effect — unattach and drop the type change. */
   | { kind: 'unattach'; what: Ref }
   /** Split a remembered set of cards into two piles (stored as memory keys pile0 / pile1). */
@@ -389,6 +393,8 @@ export type Effect =
   | { kind: 'voteObjects'; filter: ObjectFilter; key: string }
   /** Morph: turn a face-down permanent face up (megamorph adds counters). */
   | { kind: 'turnFaceUp'; what?: Ref; counters?: { counter: CounterType; amount: Amount } }
+  /** "Turn ~ face down." (it becomes a 2/2 face-down creature) */
+  | { kind: 'turnFaceDown'; what: Ref }
   /** Manifest the top card(s) of a library as face-down 2/2 creatures; `dread` looks at two and mills the other. */
   | { kind: 'manifest'; amount: Amount; who?: Ref; dread?: boolean; ward?: string }
   /** Rooms: unlock one of the card's doors (faces). */

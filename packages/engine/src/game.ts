@@ -1996,6 +1996,7 @@ export class Game {
         p.poison += tox;
       }
       p.turnStats['damageTaken'] = (p.turnStats['damageTaken'] ?? 0) + dealt;
+      if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] = (this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] ?? 0) + dealt;
       this.touch();
       this.emit({ name: 'dealsDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });
       this.emit({ name: 'dealtDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });

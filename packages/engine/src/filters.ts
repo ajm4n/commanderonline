@@ -143,6 +143,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     if (typeof c !== 'string' || !ch.colors.includes(c as (typeof ch.colors)[number])) return false;
   }
   if (filter.damagedBySource && (ctx.sourceId === null || ctx.sourceId === undefined || !(g.state.damagedBy[obj.id] ?? []).includes(ctx.sourceId))) return false;
+  if (filter.attackedThisTurn && !obj.memory['attackedThisTurn']) return false;
+  if (filter.dealtDamageToYouThisTurn && !(g.state.turnStats[`damagedPlayer:${obj.id}:${ctx.controller}`] ?? 0)) return false;
   if (filter.ptSumLE !== undefined && !(ch.power !== null && ch.toughness !== null && ch.power + ch.toughness <= filter.ptSumLE)) return false;
   if (filter.chosenSubtypeKey) {
     const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;

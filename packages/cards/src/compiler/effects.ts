@@ -2206,6 +2206,35 @@ const PATTERNS: Pattern[] = [
       { kind: 'exile', what: { ref: 'chosen', key } },
     ];
   }],
+  [/^choose odd or even$/i, () => [{ kind: 'chooseOption', key: 'choice', options: ['odd', 'even'] }]],
+  [/^turn (~|it|that creature|that permanent) face down$/i, (m, ctx) => {
+    const ref = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx) ?? SELF;
+    return [{ kind: 'turnFaceDown', what: ref }];
+  }],
+  [/^exile any number of target players' graveyards$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'any number of target players', kind: 'player', playerFilter: 'any', min: 0, max: 6 });
+    return [{ kind: 'moveAll', who: { ref: 'target', slot: ctx.targets.length - 1 }, from: 'graveyard', to: 'exile' }];
+  }],
+  [/^(.+?) cannot play lands this turn$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'grantPlayerRule', who, rule: { kind: 'custom', tag: 'cantPlayLands' } }] : null;
+  }],
+  [/^your opponents cannot gain life this turn$/i, () => [{ kind: 'grantPlayerRule', who: { ref: 'eachOpponent' }, rule: { kind: 'cantGainLife' } }]],
+  [/^untap all creatures that attacked this turn$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', attackedThisTurn: true } } }]],
+  [/^destroy target creature that dealt damage to you this turn$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'target creature that dealt damage to you this turn', kind: 'object', filter: { types: ['Creature'], zone: 'battlefield', dealtDamageToYouThisTurn: true } });
+    return [{ kind: 'destroy', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  [/^each player shuffles the cards from their hand into their library, then draws that many cards$/i, () => [{ kind: 'shuffleHandIntoLibraryAndDraw', who: { ref: 'eachPlayer' } }]],
+  [/^shuffle the cards from your hand into your library, then draw that many cards$/i, () => [{ kind: 'shuffleHandIntoLibraryAndDraw', who: YOU }]],
+  [/^its owner puts it on (?:their|his or her) choice of the top or bottom of (?:their|his or her) library$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    return ref ? [{ kind: 'topOrBottom', what: ref }] : null;
+  }],
+  [/^look at target face-down creature$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'target face-down creature', kind: 'object', filter: { types: ['Creature'], zone: 'battlefield', faceDown: true } });
+    return [{ kind: 'log', text: 'looks at a face-down creature' }];
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2617,7 +2646,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|(?:the )?damage cannot be prevented|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|(?:the )?damage cannot be prevented|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
@@ -2630,6 +2659,11 @@ export function isNoOpSentence(text: string): boolean {
   if (/^(?:then )?each player who searched their library this way shuffles\.?$/i.test(text.trim())) return true;
   if (/^[\w' -]+(?: destroyed| exiled| sacrificed)? (?:this way )?cannot be regenerated\.?$/i.test(text.trim())) return true;
   if (/\bdraft(ed|ing)?\b/i.test(text) || /^x cannot be 0\.?$/i.test(text.trim())) return true;
+  if (/^(?:players|your opponents|each opponent) play with (?:their hands|the top card of their libraries) revealed\.?$/i.test(text.trim())) return true;
+  if (/^spend only \w+ mana on x\.?$/i.test(text.trim())) return true;
+  if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;
+  if (/^you cannot cast ~ during your (?:first|second|third)(?:, (?:first|second|third))*(?:,? or (?:first|second|third))? turns? of the game\.?$/i.test(text.trim())) return true;
+  if (/^~ saddles mounts and crews vehicles as though its power were \d+ greater\.?$/i.test(text.trim())) return true;
   return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 

@@ -48,6 +48,72 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const data = m[2] && typeof dn === 'number' ? { counter: m[2], amount: dn } : undefined;
     return [{ kind: 'static', text: line, affects: 'self', zone: 'hand', rule: { kind: 'custom', tag: 'discardToBattlefield', data } }];
   }
+  // "~ is all colors."
+  if (/^~ is all colors$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColors: ['W', 'U', 'B', 'R', 'G'] } }];
+  // "~ attacks or blocks each combat if able." / "~ blocks each combat if able."
+  if ((m = L.match(/^(.+?) (attacks or blocks|blocks) each combat if able$/i))) {
+    const rules: RuleModification['kind'][] = m[2].toLowerCase() === 'blocks' ? ['mustBlock'] : ['mustAttack', 'mustBlock'];
+    const out: AbilitySpec[] = [];
+    for (const k of rules) {
+      const r = objRule(m[1], { kind: k } as RuleModification);
+      if (!r) return null;
+      out.push(...r);
+    }
+    return out;
+  }
+  // "~ cannot be blocked except by creatures with flying or reach."
+  if ((m = L.match(/^(.+?) cannot be blocked except by (.+)$/i))) {
+    const kw = m[2].match(/^creatures with (.+)$/i);
+    const kws = kw ? parseKeywordList(kw[1].replace(/ or /g, ' and ')) : null;
+    const noun = kws?.length ? null : parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const filter = kws?.length ? (kws.length === 1 ? { keywords: kws } : { anyOf: kws.map((k) => ({ keywords: [k] })) }) : noun ? { ...noun.filter, zone: undefined } : null;
+    if (filter) {
+      const r = objRule(m[1], { kind: 'cantBeBlockedExceptBy', filter });
+      if (r) return r;
+    }
+  }
+  // "Lands you control enter untapped."
+  if ((m = L.match(/^(.+?) enter untapped$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'entersUntapped', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  // "Spells with the chosen name cannot be cast."
+  if (/^Spells with the chosen name cannot be cast$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantCast', data: { filter: { nameIsChosen: 'cardName' } } } }];
+  // "Each opponent can cast spells only any time they could cast a sorcery."
+  if (/^Each opponent can cast spells only any time they could cast a sorcery$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'sorcerySpeedOnly' } }];
+  // "You may activate abilities of creatures you control as though those creatures had haste."
+  if ((m = L.match(/^You may activate abilities of (.+?) as though (?:those|they had|that permanent had) .*haste$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'activateAsThoughHaste', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  // "You may cast ~ from your graveyard."
+  if (/^You may cast ~ from your graveyard$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { nameIs: '~' } } } }];
+  // "Only your opponents may activate this ability." — an activation restriction handled by the caller.
+  // "Equipped creature gets +10/+10 and loses flying."
+  if ((m = L.match(/^(Equipped|Enchanted) (creature|permanent) gets ([+-]\d+)\/([+-]\d+) and loses (.+)$/i))) {
+    const kws = parseKeywordList(m[5]);
+    if (kws) return [
+      { kind: 'static', text: line, affects: 'attachedTo', modification: { layer: '7c', power: parseInt(m[3], 10), toughness: parseInt(m[4], 10) } },
+      { kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 6, removeKeywords: kws } },
+    ];
+  }
+  // "As long as ~ is paired with another creature, each of those creatures gets +1/+1."
+  if ((m = L.match(/^As long as ~ is paired with another creature, each of those creatures gets ([+-]\d+)\/([+-]\d+)$/i))) {
+    return [
+      { kind: 'static', text: line, affects: 'self', modification: { layer: '7c', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10) }, condition: { kind: 'paired', ref: { ref: 'self' } } },
+      { kind: 'static', text: line, affects: { pairedWithSource: true, zone: 'battlefield' }, modification: { layer: '7c', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10) } },
+    ];
+  }
+  // "As long as equipped creature is a Human, it gets an additional +1/+1."
+  if ((m = L.match(/^As long as (?:equipped|enchanted) creature is (?:a|an) ([A-Z][\w' -]*), it gets an additional ([+-]\d+)\/([+-]\d+)$/))) {
+    return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) }, condition: { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { subtypes: [m[1]] } } }];
+  }
+  // "Vehicles you control have crew 1."
+  if ((m = L.match(/^(.+?) have (crew \d+|equip (?:\{[^}]+\})+|ward (?:\{[^}]+\})+)$/i))) {
+    const noun = parseNoun(m[1]);
+    const kw = m[2].charAt(0).toUpperCase() + m[2].slice(1);
+    if (noun) return [{ kind: 'static', text: line, affects: { ...noun.filter, zone: 'battlefield' }, modification: { layer: 6, addAbilityText: [kw] } }];
+  }
   if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);

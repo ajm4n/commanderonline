@@ -298,6 +298,7 @@ export type RuleModification =
   | { kind: 'cantBlock' }
   | { kind: 'cantBeBlocked' }
   | { kind: 'mustAttack' }
+  | { kind: 'mustBlock' }
   | { kind: 'cantUntap' }
   | { kind: 'cantBeTargeted'; by?: 'spells' | 'abilities' | 'opponents'; /** Only spells/abilities matching this ("cannot be the target of Aura spells"). */ filter?: ObjectFilter }
   | { kind: 'extraLandDrop'; count: number }
@@ -348,6 +349,10 @@ export interface ObjectFilter {
   isToken?: boolean;
   nonToken?: boolean;
   attacking?: boolean;
+  /** Attacked at any point this turn (even if no longer attacking). */
+  attackedThisTurn?: boolean;
+  /** Dealt damage to the effect's controller this turn. */
+  dealtDamageToYouThisTurn?: boolean;
   blocking?: boolean;
   attackingOrBlocking?: boolean;
   other?: boolean; // exclude the source object itself

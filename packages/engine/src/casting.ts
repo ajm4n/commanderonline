@@ -88,6 +88,12 @@ export function summoningSick(g: Game, obj: GameObject): boolean {
   const ch = g.characteristics(obj.id);
   if (!ch.types.includes('Creature')) return false;
   if (ch.keywords.has('Haste') || ch.rules.some((r) => r.kind === 'hasteLike')) return false;
+  // "You may activate abilities of creatures you control as though those creatures had haste."
+  for (const r of g.playerRules(obj.controller)) {
+    if (r.kind !== 'custom' || r.tag !== 'activateAsThoughHaste') continue;
+    const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
+    if (!f || matchesFilter(g, obj, { ...f, zone: 'battlefield' }, { sourceId: null, controller: obj.controller })) return false;
+  }
   // A creature is sick unless controlled continuously since the start of its controller's most recent turn.
   if (g.state.turn.activePlayer !== obj.controller) return obj.controlSinceTurn >= g.state.turn.number;
   return obj.controlSinceTurn >= g.state.turn.number;
@@ -832,6 +838,15 @@ export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
   const castCond = g.scriptFor(obj).castCondition;
   if (castCond && !g.checkCondition(castCond, { sourceId: obj.id, controller: p })) return false;
   if ((sorceryOnly || (!isInstant && !anyFaceInstant)) && !canCastSorcerySpeed(g, p)) return false;
+  // "Each opponent can cast spells only any time they could cast a sorcery."
+  if (g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'sorcerySpeedOnly') && !canCastSorcerySpeed(g, p)) return false;
+  // "Spells with the chosen name can't be cast."
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom' || r.tag !== 'cantCast') continue;
+    const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
+    const srcId = (r as { sourceId?: ObjectId }).sourceId ?? null;
+    if (f && matchesFilter(g, obj, { ...f, zone: undefined }, { sourceId: srcId, controller: p })) return false;
+  }
   // Can we afford it?
   const cost = computeCastCost(g, p, obj, 0);
   const sources = manaSourcesFor(g, p, castingKeywordsOf(g, obj));
@@ -968,6 +983,7 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
 export function* playLand(g: Game, p: PlayerId, id: ObjectId): Gen<boolean> {
   const obj = g.state.objects[id];
   if (!obj || !canPlayLandNow(g, p)) return false;
+  if (g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'cantPlayLands')) return false;
   let faceIndex = 0;
   if (!isLandCard(obj)) {
     const back = obj.card.faces?.findIndex((f, i) => i > 0 && /\bLand\b/.test(f.typeLine)) ?? -1;

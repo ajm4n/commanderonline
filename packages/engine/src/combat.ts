@@ -189,6 +189,7 @@ function* declareAttackers(g: Game, active: PlayerId): Gen {
   for (const a of attacks) {
     const o = g.obj(a.attacker);
     o.attacking = a.target;
+    o.memory['attackedThisTurn'] = true;
     const ch = g.characteristics(o.id);
     if (!ch.keywords.has('Vigilance')) g.tap(o.id);
     defenders.add(defenderOf(g, a.target));
@@ -221,7 +222,9 @@ function* declareBlockers(g: Game): Gen {
       for (const b of blocks) perBlocker.set(b.blocker, (perBlocker.get(b.blocker) ?? 0) + 1);
       const countOk = [...perBlocker].every(([id, n]) => n <= 1 + g.characteristics(id).rules.filter((r) => r.kind === 'custom' && r.tag === 'extraBlock').length);
       const blockAloneOk = blocks.length !== 1 || !g.characteristics(blocks[0].blocker).rules.some((r) => r.kind === 'custom' && (r.tag === 'cantBlockAlone' || r.tag === 'cantAttackOrBlockAlone'));
-      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && countOk && blockAloneOk;
+      // "~ blocks each combat if able."
+      const mustBlockOk = candidates.every((c) => !g.characteristics(c.id).rules.some((r) => r.kind === 'mustBlock') || blocks.some((b) => b.blocker === c.id));
+      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && countOk && blockAloneOk && mustBlockOk;
       // Block requirements: "must be blocked if able", "all creatures able to block ~ do so", "target creature blocks ~ this turn if able".
       const requirementsOk = mine.every((a) => {
         const rules = g.characteristics(a.id).rules;

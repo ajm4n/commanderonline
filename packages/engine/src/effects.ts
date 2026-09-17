@@ -331,6 +331,30 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.touch();
       return;
     }
+    case 'chooseOption': {
+      const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${e.options.join(' or ')}`, options: e.options.map((o) => ({ id: o, label: o })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      setMemory(g, ctx, e.key, r.type === 'options' ? r.ids[0] : e.options[0]);
+      return;
+    }
+    case 'shuffleHandIntoLibraryAndDraw': {
+      for (const p of g.resolvePlayers(e.who, ctx)) {
+        const pl = g.player(p);
+        const n = pl.hand.length;
+        for (const id of [...pl.hand]) g.moveObject(id, 'library', { skipEvents: true });
+        g.shuffleLibrary(p);
+        if (n > 0) g.drawCards(p, n);
+      }
+      return;
+    }
+    case 'turnFaceDown': {
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        if (o.zone !== 'battlefield' || o.faceDown) continue;
+        o.faceDown = true;
+        g.log(`${g.nameOf(o.id)} is turned face down.`);
+      }
+      g.touch();
+      return;
+    }
     case 'endTurn': {
       g.state.stack.length = 0;
       g.state.turnStats['endTheTurn'] = 1;
@@ -1884,6 +1908,13 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
   if (!o) return null;
   const script = g.scriptFor(o);
   let tapped = opts.tapped ?? false;
+  // "Lands you control enter untapped." overrides an "enters tapped" replacement.
+  let forceUntapped = false;
+  for (const r of g.playerRules(controller)) {
+    if (r.kind !== 'custom' || r.tag !== 'entersUntapped') continue;
+    const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
+    if (!f || matchesFilter(g, o, { ...f, zone: undefined }, { sourceId: null, controller })) forceUntapped = true;
+  }
   const counters: Record<string, number> = { ...(opts.counters ?? {}) };
   const chosen: Record<string, unknown> = {};
   const ectx: EffectContext = { sourceId: id, controller, targets: [], triggerContext: {}, x: o.xValue ?? 0, modes: o.modes ?? [], memory: {} };
@@ -1992,7 +2023,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
     }
     attachTo = pick;
   }
-  const result = g.moveObject(id, 'battlefield', { tapped, controller, counters, attackingFor: opts.attacking, cause: opts.fromStack ? 'resolve' : 'other', faceDown: opts.faceDown });
+  const result = g.moveObject(id, 'battlefield', { tapped: forceUntapped ? false : tapped, controller, counters, attackingFor: opts.attacking, cause: opts.fromStack ? 'resolve' : 'other', faceDown: opts.faceDown });
   if (!result) return null;
   Object.assign(result.chosen, chosen);
   Object.assign(result.memory, chosen);
