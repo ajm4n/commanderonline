@@ -324,6 +324,13 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 120 ----
+  if ((m = t.match(/^you have cast exactly (\d+) other spells this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '==', value: parseInt(m[1], 10) + 1 };
+  if ((m = t.match(/^you control (\w+) or more attacking (.+?)s?$/))) {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`a ${oc(m, 2)}`);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, attacking: true, controller: 'you', zone: 'battlefield' }, op: '>=', value: n };
+  }
   // ---- Round 116 ----
   if ((m = t.match(/^the (?:sacrificed|exiled|discarded|chosen|revealed|returned) (?:creature|card|permanent|land) (?:was|is) (?:a|an )?(.+)$/))) {
     const noun = parseNoun(`a ${oc(m, 1)}`) ?? parseNoun(`a ${oc(m, 1)} permanent`);

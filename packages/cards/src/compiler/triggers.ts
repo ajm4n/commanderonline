@@ -1009,6 +1009,64 @@ export function parseTriggerHead(line: string): TriggerHead | null {
         return { event: 'leavesBattlefield', filter: tf, hasObject: true, hasPlayer: false, leaves: true, rest: m[2] };
       }
     }
+    // ---- Round 120 heads ----
+    // "Whenever you put a +1/+1 counter on another creature, ..."
+    if ((m = L.match(/^Whenever you put (?:a|an) (?:([+-]\d\/[+-]\d|\w+) )?counters? on (.+?), (.+)$/i))) {
+      const target = m[2].trim();
+      if (/^(?:a permanent or player|a permanent|a player)$/i.test(target)) return { event: 'counterAdded', filter: { player: 'you', counterType: m[1] }, hasObject: true, hasPlayer: true, rest: m[3] };
+      const f = nf(target);
+      if (f) return { event: 'counterAdded', filter: { player: 'you', object: f, counterType: m[1] }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    // "Whenever you turn a permanent face up, ..."
+    if ((m = L.match(/^Whenever you turn (?:a|an) (.+?) face up, (.+)$/i))) {
+      const f = nf(m[1]);
+      if (f) return { event: 'turnedFaceUp', filter: { player: 'you', object: f }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    // "Whenever you tap a permanent for {C}, ..." / "Whenever you tap a land for mana, ..."
+    if ((m = L.match(/^Whenever you tap (?:a|an) (.+?) for (?:mana|(\{[^}]+\})), (.+)$/i))) {
+      const f = nf(m[1]);
+      if (f) return { event: 'tappedForMana', filter: { player: 'you', object: f }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    // "Whenever you sacrifice ~ or another artifact, ..."
+    if ((m = L.match(/^Whenever you sacrifice ~ or another (.+?), (.+)$/i))) {
+      const f = nf(m[1]);
+      if (f) {
+        delete f.other;
+        return { event: 'sacrifice', filter: { player: 'you', object: f }, hasObject: true, hasPlayer: true, leaves: true, rest: m[2] };
+      }
+    }
+    // "Whenever ~ or another permanent enters from a graveyard, ..."
+    if ((m = L.match(/^Whenever ~ or another (.+?) enters from (?:a|your) graveyard, (.+)$/i))) {
+      const f = nf(m[1]);
+      if (f) {
+        delete f.other;
+        return { event: 'entersBattlefield', filter: { object: { ...f, custom: 'fromGraveyard' } }, hasObject: true, hasPlayer: true, rest: m[2] };
+      }
+    }
+    if ((m = L.match(/^Whenever (?:a|an) (.+?) enters from (?:a|your) graveyard, (.+)$/i))) {
+      const f = nf(m[1]);
+      if (f) return { event: 'entersBattlefield', filter: { object: { ...f, custom: 'fromGraveyard' } }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    // "Whenever you copy an instant spell, ..."
+    if ((m = L.match(/^Whenever you copy (?:a|an) (.+?) spell, (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1]} spell`);
+      if (noun) return { event: 'spellCopied', filter: { player: 'you', object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    // "Whenever you cast a spell that targets one or more permanents, ..."
+    if ((m = L.match(/^Whenever you cast (?:a|an) (.*?)spell with (?:one or more targets|a single target), (.+)$/i)) || (m = L.match(/^Whenever you cast (?:a|an) (.*?)spell that targets one or more (?:permanents|creatures|players), (.+)$/i))) {
+      const noun = m[1].trim() ? parseNoun(`a ${m[1].trim()} spell`) : { filter: {} as ObjectFilter };
+      if (noun) return { event: 'cast', filter: { player: 'you', object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    // "Whenever you cast your third spell in a turn, ..."
+    if ((m = L.match(/^Whenever you cast your (second|third|fourth|fifth) spell (?:in|each) (?:a )?turn, (.+)$/i))) {
+      const nth = { second: 1, third: 2, fourth: 3, fifth: 4 }[m[1].toLowerCase() as 'second'];
+      return { event: 'cast', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: `if you have cast exactly ${nth} other spells this turn, ${m[2]}` };
+    }
+    // "Whenever ~ and at least one other Warrior attack, ..."
+    if ((m = L.match(/^Whenever ~ and at least one (?:other )?(.+?) attacks?, (.+)$/i))) {
+      const f = nf(m[1]);
+      if (f) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if you control two or more attacking ${m[1]}s, ${m[2]}` };
+    }
     // ---- Round 115 heads ----
     // "Whenever you put one or more counters on a permanent or player, ..."
     if ((m = L.match(/^Whenever you put one or more (?:([+-]\d\/[+-]\d|\w+) )?counters? on (.+?), (.+)$/i))) {

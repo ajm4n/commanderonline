@@ -77,6 +77,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const want = src?.chosen[filter.chosenColorKey] ?? src?.memory[filter.chosenColorKey];
     if (typeof want !== 'string' || !ch.colors.includes(want as 'W')) return false;
   }
+  if (filter.custom === 'fromGraveyard' && obj.lastZoneChange?.from !== 'graveyard') return false;
   if (filter.custom === 'blocked' && !obj.wasBlocked && obj.blockedBy.length === 0) return false;
   if (filter.custom === 'attackingYouOrYourPlaneswalker' && !(obj.attacking === ctx.controller || (typeof obj.attacking === 'number' && g.state.objects[obj.attacking]?.controller === ctx.controller))) return false;
   if (filter.custom === 'countersPutThisWay' && ctx.sourceId !== null) {
