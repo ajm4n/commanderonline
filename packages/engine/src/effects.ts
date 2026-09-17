@@ -8,7 +8,7 @@ import type { Effect, Ref, TokenSpec, Duration, Amount, AbilitySpec } from './sc
 import { TOKEN_PRESETS } from './tokens.js';
 import { matchesFilter, objectsMatching, legalTargets } from './filters.js';
 import { parseManaCost, solvePayment } from './mana.js';
-import { manaSourcesFor, payCost, spellTargets, chooseTargetsGrouped } from './casting.js';
+import { manaSourcesFor, payCost, spellTargets, chooseTargetsGrouped, payAbilityCost } from './casting.js';
 import { DUNGEONS } from './dungeons.js';
 
 export interface EffectContext {
@@ -415,7 +415,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'addTypes': {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
-      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 4, addTypes: e.types, addSubtypes: e.subtypes } });
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 4, addTypes: e.types, addSubtypes: e.subtypes, setTypes: e.setTypes } });
       return;
     }
     case 'setColors': {
@@ -561,7 +561,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const pool = e.zones ? e.zones.flatMap((z) => (z === 'graveyard' ? pl.graveyard : pl.library)) : pl.library;
         const cands = pool.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: e.zones ?? 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }));
         let ids: ObjectId[] = [];
-        if (cands.length > 0) {
+        if (cands.length > 0 && e.random) {
+          ids = g.rng.shuffle([...cands]).slice(0, Math.min(n, cands.length));
+        } else if (cands.length > 0) {
           const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Search your library: choose up to ${n}${e.filter.differentNames ? ' with different names' : ''}`, candidates: cands, min: 0, max: Math.min(n, cands.length), revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
           ids = resp.type === 'objects' ? resp.ids : [];
           if (e.filter.differentNames) {
@@ -1352,8 +1354,37 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         yield* executeEffects(g, e.effects, ctx);
         return;
       }
+      if (e.payCostSpec) {
+        const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
+        if (!src) return;
+        const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay the cost? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+        if (r.type !== 'yesNo' || !r.value) return;
+        const ok = yield* payAbilityCost(g, who, src, e.payCostSpec, 0);
+        if (ok) yield* executeEffects(g, e.effects, ctx);
+        return;
+      }
       const paid = yield* offerToPay(g, who, e.cost, e.text ?? `Pay ${e.cost}? If you do: ${describe(e.effects)}`);
       if (paid) yield* executeEffects(g, e.effects, ctx);
+      return;
+    }
+    case 'changeTargets': {
+      for (const t of g.resolveRef(e.what, ctx)) {
+        if (t.kind !== 'stackItem') continue;
+        const item = g.state.stack.find((s) => s.id === t.id);
+        if (!item) continue;
+        const srcObj = g.state.objects[item.sourceId];
+        if (!srcObj) continue;
+        const specs = spellTargets(g, srcObj, g.scriptFor(srcObj), srcObj.faceIndex, item.modes ?? []);
+        if (!specs.length) continue;
+        const chosen = yield* chooseTargetsGrouped(g, ctx.controller, item.sourceId, specs, `New targets for ${item.text}`, item.xValue);
+        if (chosen) {
+          item.targets = chosen.flat;
+          item.targetStamps = g.stampTargets(chosen.flat);
+          item.triggerContext = { ...(item.triggerContext ?? {}), targetSlots: chosen.slots };
+          g.log(`${g.player(ctx.controller).name} changes the target of ${item.text}.`);
+          g.touch();
+        }
+      }
       return;
     }
     case 'moveRest': {

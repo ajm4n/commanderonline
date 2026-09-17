@@ -6,6 +6,7 @@ import { parseNoun, toTargetSpec, type ParsedNoun } from './nouns.js';
 import { parseAmount } from './amounts.js';
 import { parseCondition } from './conditions.js';
 import { parseTriggerHead } from './triggers.js';
+import { parseCost } from './costs.js';
 
 export interface ParseCtx {
   targets: TargetSpec[];
@@ -216,6 +217,11 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
       }
     }
   }
+  // "a 0/1 green Wall creature token with defender named Wood" → move the name ahead of the "with" clause
+  {
+    const rm = t.match(/^(.+? tokens?) (with .+?) (named (?:~'s |[A-Z])[\w' ,-]*)$/i);
+    if (rm) t = `${rm[1]} ${rm[3]} ${rm[2]}`;
+  }
   m = t.match(/^(a|an|twice that many|that many|\w+|X) (.+?) tokens?(?: named ((?:~'s |[A-Z])[\w' ,-]*?))?(?: with (.+))?$/i);
   if (!m) return null;
   const n: Amount | null = /that many/i.test(m[1]) ? (/twice/i.test(m[1]) ? { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 } : { kind: 'triggerAmount' }) : wordToNumber(m[1]);
@@ -392,7 +398,7 @@ const POOL_PATTERNS: Pattern[] = [
     return out;
   }],
   // "You may reveal a creature card from among them and put it into your hand" / "Put all land cards revealed this way onto the battlefield tapped"
-  [new RegExp(String.raw`^(you may )?(reveal|put|exile) (a|an|all|up to (\w+)|any number of|(\w+)) (.+?) (?:from among (?:them|those cards)|revealed this way|from among the revealed cards)(?:,? and put (?:it|them|that card|those cards) ${DEST_RE}| ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
+  [new RegExp(String.raw`^(you may )?(reveal|put|exile) (a|an|all|up to (\w+)|any number of|(\w+)) (.+?) (?:from among (?:them|those cards)|revealed this way|milled this way|from among the revealed cards|from among the cards milled this way)(?:,? and put (?:it|them|that card|those cards) ${DEST_RE}| ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
     const pool: Ref = poolRef(ctx);
     const phrase = /\bcards?\b/i.test(m[6]) ? m[6].replace(/\bcards\b/i, 'card') : `${m[6]} card`;
     const noun = parseNoun(`a ${phrase}`);
@@ -684,7 +690,7 @@ const PATTERNS: Pattern[] = [
     if (n === null) return null;
     return [{ kind: 'moveCounters', from, to, counter: m[2] as import('@commander/engine').CounterType, amount: n as Amount }];
   }],
-  [/^flip ~$/i, () => [{ kind: 'transform', what: SELF }]],
+  [/^flip (~|it)$/i, () => [{ kind: 'transform', what: SELF }]],
   [/^convert (~|it|that creature|target creature)$/i, (m, ctx) => {
     const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx);
     return ref ? [{ kind: 'transform', what: ref }] : null;
@@ -1061,7 +1067,18 @@ const PATTERNS: Pattern[] = [
       return [{ kind: 'createToken', token: { name: role[1].replace(/ Role$/, ''), typeLine: '', colors: [], preset: role[1] }, count: 1, attachTo: host }];
     }
     const t = parseTokenPhrase(m[1]);
-    if (!t) return null;
+    if (!t) {
+      // "Create a 1/1 green Snake creature token, a 2/2 green Wolf creature token, and a 3/3 green Elephant creature token."
+      const parts = m[1].split(/, and |, (?=(?:a|an|two|three|four|X) )/i).map((x) => x.trim()).filter(Boolean);
+      if (parts.length > 1) {
+        const specs = parts.map((x) => parseTokenPhrase(x));
+        if (specs.every((x) => x)) {
+          ctx.lastObj = { ref: 'lastCreated' };
+          return specs.map((x) => ({ kind: 'createToken', token: x!.token, count: x!.count, tapped: x!.tapped, attacking: x!.attacking }) as Effect);
+        }
+      }
+      return null;
+    }
     ctx.lastObj = { ref: 'lastCreated' };
     return [{ kind: 'createToken', token: t.token, count: t.count, tapped: t.tapped, attacking: t.attacking }];
   }],
@@ -1553,6 +1570,23 @@ const PATTERNS: Pattern[] = [
     return a && b ? [{ kind: 'fight', a, b }] : null;
   }],
   // Copy
+  [/^copy (target (?:activated or triggered|activated|triggered) ability(?: you control| an opponent controls| you do ?n[o']t control)?(?: from an? \w+ source)?)(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun || noun.kind !== 'activatedOrTriggered') return null;
+    ctx.targets.push(toTargetSpec(noun));
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'copySpell', what: ref }];
+  }],
+  // "Change the target of target spell with a single target."
+  [/^change the targets? of (target (?:spell|spell or ability|activated or triggered ability)(?: with a single target)?)$/i, (m, ctx) => {
+    const noun = parseNoun(m[1].replace(/ with a single target$/i, ''));
+    if (!noun || !noun.target) return null;
+    ctx.targets.push(toTargetSpec(noun));
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'changeTargets', what: ref }];
+  }],
   [/^copy (.+?)(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
     const isCard = /\bcards?\b|^(?:the exiled card|that card|the revealed card|it)$/i.test(m[1]) && !/\bspell\b/i.test(m[1]);
     const ref = objRef(m[1], ctx);
@@ -1763,6 +1797,73 @@ const PATTERNS: Pattern[] = [
   [/^choose any number of (.+)$/i, (m, ctx) => {
     const ch = chooseRef(`any number of ${m[1]}`, ctx);
     return ch ? ch.pre : null;
+  }],
+  [/^(you|that player|target player|target opponent|each opponent|its controller) skips? (?:your|their|his or her) next turn$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'skipTurn', who }] : null;
+  }],
+  // "Return an instant or sorcery card at random from your graveyard to your hand."
+  [/^return (?:a|an|(\w+)) (.+?) at random from (your|that player's|their) graveyard to (?:your|their) hand$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2]}`);
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (!noun || n === null) return null;
+    const who: Ref = /^your$/i.test(m[3]) ? YOU : ctx.lastPlayer ?? YOU;
+    return [{ kind: 'searchLibrary', who, filter: { ...noun.filter, zone: 'graveyard' }, zones: ['graveyard'], count: n, destination: 'hand', random: true }];
+  }],
+  // "Target creature becomes that type until end of turn." (after "choose a creature type")
+  [/^(.+?) becomes? that type until end of turn$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'setSubtypes', on: ref, choose: 'creatureType', duration: 'endOfTurn' }];
+  }],
+  // "The next 1 damage that would be dealt to ~ this turn is dealt to target creature you control instead."
+  [/^the next (\w+) damage that would be dealt to (~|it|you|equipped creature|enchanted creature) this turn is dealt to (.+?) instead$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    const to = objRef(m[3], ctx) ?? playerRef(m[3], ctx);
+    if (!to) return null;
+    const victim = /^you$/i.test(m[2]) ? YOU : objRef(m[2], ctx) ?? SELF;
+    return [{ kind: 'preventAll', to: 'all', toRef: victim, amount: n, effects: [{ kind: 'damage', amount: { kind: 'triggerAmount' }, to, source: SELF }] }];
+  }],
+  // "The next time a source of your choice would deal damage to target creature this turn, prevent that damage."
+  [/^the next time (?:a source of your choice|a source of your choice|any source) would deal damage to (.+?) this turn, prevent that damage$/i, (m, ctx) => {
+    const to = objRef(m[1], ctx) ?? playerRef(m[1], ctx);
+    return to ? [{ kind: 'preventAll', to: 'all', toRef: to, once: true }] : null;
+  }],
+  // Ability words with fixed meanings whose reminder text is stripped.
+  [/^recruit$/i, () => {
+    const nonland = parseNoun('a nonland card');
+    if (!nonland) return null;
+    return [
+      { kind: 'draw', amount: 1 },
+      { kind: 'discard', amount: 1 },
+      { kind: 'conditional', if: { kind: 'objectMatches', ref: { ref: 'lastDiscarded' }, filter: nonland.filter }, then: [{ kind: 'createToken', token: { name: 'Human Soldier', typeLine: 'Creature — Human Soldier', power: '1', toughness: '1', colors: ['W'] }, count: 1 }] },
+    ];
+  }],
+  // "learn": the Lesson sideboard is not modelled, so only the discard-to-draw half applies.
+  [/^learn$/i, () => [{ kind: 'may', effects: [{ kind: 'discard', amount: 1 }, { kind: 'draw', amount: 1 }] }]],
+  // "It's an enchantment." / "It is a Spirit in addition to its other types."
+  [/^(?:it|that permanent|that creature|that card) is (?:a|an) ([A-Za-z][\w' -]*?)(?: in addition to its other types)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const replace = !/in addition to/i.test(m[0]);
+    const words = m[1].split(/\s+/).filter((w) => w.length);
+    const types = words.filter((w) => /^(artifact|creature|enchantment|land|planeswalker|battle)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    if (!types.length && !subtypes.length) return null;
+    if (replace && !types.length) return null;
+    return [{ kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, setTypes: replace ? types : undefined, on: ref, duration: 'permanent' }];
+  }],
+  // "If that creature or planeswalker would die this turn, exile it instead."
+  [/^if (?:that|the) (.+?) would die this turn, exile it instead$/i, (_m, ctx) => {
+    const ref = ctx.lastObj;
+    return ref ? [{ kind: 'applyRule', on: ref, rule: { kind: 'custom', tag: 'exileIfDies' }, duration: 'endOfTurn' }] : null;
+  }],
+  // "Up to two target creatures you control each deal damage equal to their power to target creature an opponent controls."
+  [/^(.+?) (?:each )?deals? damage equal to their power to (.+)$/i, (m, ctx) => {
+    const a = objRef(m[1], ctx);
+    const b = a ? objRef(m[2], ctx) ?? playerRef(m[2], ctx) : null;
+    if (!a || !b) return null;
+    return [{ kind: 'forEach', over: a, effects: [{ kind: 'damage', amount: { kind: 'power', ref: { ref: 'iter' } as Ref }, to: b, source: { ref: 'iter' } as Ref }] }];
   }],
   [/^choose a color$/i, () => [{ kind: 'chooseColor', key: 'color' }]],
   [/^choose a creature type(?: other than \w+)?$/i, () => [{ kind: 'chooseCreatureType', key: 'creatureType' }]],
@@ -1980,13 +2081,14 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
+  if (/^you may reveal (?:a|an) .+? (?:you own )?from outside the game and put it into your hand$/i.test(text.trim())) return true;
   if (/^th(?:is|at) mana cannot be spent to cast .+$/i.test(text.trim())) return true;
   if (/^the flashback cost is equal to its mana cost\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?each player who searched their library this way shuffles\.?$/i.test(text.trim())) return true;
@@ -2287,6 +2389,12 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [life ? { kind: 'ifPays', cost: '', payLife: parseInt(life[1], 10), effects: inner } : energy ? { kind: 'ifPays', cost: '', energy: (m[1].match(/\{E\}/g) ?? []).length, effects: inner } : { kind: 'ifPays', cost: m[1], effects: inner }];
     }
   }
+  // "You may tap three untapped creatures you control. If you do, Y" / "you may discard a nonland card. If you do, Y"
+  if ((m = text.match(/^(?:you may )?((?:tap|discard|sacrifice|exile|return|reveal|remove) .+?)\. if you do, (.+)$/i))) {
+    const cost = parseCost(m[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
+    const inner = cost ? parseSentence(m[2], ctx) : null;
+    if (cost && inner) return [{ kind: 'ifPays', cost: '', payCostSpec: cost, effects: inner, text: `${m[1]}?` }];
+  }
   if ((m = text.match(/^at the beginning of (the next end step|your next end step|the next turn's upkeep|your next upkeep|the next upkeep|the next cleanup step), (.+)$/i))) {
     const inner = parseSentence(m[2], ctx);
     if (inner) {
@@ -2576,6 +2684,18 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     // Merge "You may pay X." + "If you do, Y."
+    // "Tap three untapped creatures you control." + "If you do, Y." — only when the merge parses.
+    if (/^(?:you may )?(?:tap|discard|sacrifice|exile|reveal|remove) /i.test(s) && sents[i + 1] && /^(?:if|when) you do, /i.test(sents[i + 1])) {
+      const merged = `${s}. ${sents[i + 1].replace(/^when you do, /i, 'If you do, ')}`;
+      const savedT = ctx.targets.length;
+      const tryIt = parseSentence(merged, ctx);
+      if (tryIt) {
+        effects.push(...tryIt);
+        i++;
+        continue;
+      }
+      ctx.targets.length = savedT;
+    }
     if ((/^(?:you may )?pay/i.test(s) || /, pay (?:\{[^}]+\})+$/i.test(s)) && sents[i + 1] && /^(?:if|when) you do, |^if you (?:do not|don't), /i.test(sents[i + 1])) {
       s = `${s}. ${sents[i + 1].replace(/^when you do, /i, 'If you do, ')}`;
       i++;

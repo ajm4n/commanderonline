@@ -1611,6 +1611,10 @@ export class Game {
         return objT((ctx.memory['lastCreated'] as ObjectId[]) ?? []);
       case 'lastMoved':
         return objT((ctx.memory['lastMoved'] as ObjectId[]) ?? []);
+      case 'lastDiscarded':
+        return objT((ctx.memory['lastDiscarded'] as ObjectId[]) ?? []);
+      case 'memory':
+        return objT((ctx.memory[ref.key] as ObjectId[]) ?? []);
       case 'defendingPlayer': {
         const d = ctx.triggerContext.triggerOtherPlayer as PlayerId | undefined;
         if (d) return plT([d]);

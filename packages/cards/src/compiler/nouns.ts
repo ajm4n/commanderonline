@@ -60,6 +60,21 @@ export interface ParsedNoun {
 const CREATURE_TYPE_RE = /^[A-Z][a-z]+(?:-[A-Z][a-z]+)?$/;
 
 /** Words that are capitalized but not creature types. */
+/** "from a colorless source", "from a creature source": restrict the ability's source object. */
+const SOURCE_FILTERS: Record<string, ObjectFilter> = {
+  colorless: { colors: [] },
+  creature: { types: ['Creature'] },
+  artifact: { types: ['Artifact'] },
+  enchantment: { types: ['Enchantment'] },
+  land: { types: ['Land'] },
+  permanent: {},
+  white: { colors: ['W'] },
+  blue: { colors: ['U'] },
+  black: { colors: ['B'] },
+  red: { colors: ['R'] },
+  green: { colors: ['G'] },
+};
+
 const NOT_TYPES = new Set(['If', 'When', 'Whenever', 'At', 'Then', 'You', 'Your', 'Target', 'Each', 'All', 'Another', 'Other', 'Put', 'Return', 'Destroy', 'Exile', 'Create', 'Draw', 'X', 'N', 'Aura', 'Equipment', 'Vehicle', 'Saga', 'Treasure', 'Food', 'Clue', 'Gate', 'Desert', 'Commander']);
 
 export function parseNoun(raw: string): ParsedNoun | null {
@@ -92,7 +107,12 @@ export function parseNoun(raw: string): ParsedNoun | null {
   if ((m = text.match(/^(up to one )?target player or planeswalker$/i))) return { ...result, target: true, upTo: !!m[1], kind: 'objectOrPlayer', filter: { types: ['Planeswalker'] }, playerFilter: 'any' };
   if ((m = text.match(/^(up to one )?target opponent or planeswalker$/i))) return { ...result, target: true, upTo: !!m[1], kind: 'objectOrPlayer', filter: { types: ['Planeswalker'], controller: 'opponent' }, playerFilter: 'opponent' };
   if ((m = text.match(/^target opponent or battle$/i))) return { ...result, target: true, kind: 'objectOrPlayer', filter: { types: ['Battle'] }, playerFilter: 'opponent' };
-  if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)$/i))) return { ...result, target: true, kind: 'activatedOrTriggered' };
+  if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)(?: you control| an opponent controls| you do ?n[o']t control)?(?: from an? (\w+) source)?$/i))) {
+    const pf = / you control$/i.test(text) ? 'you' : /opponent controls$/i.test(text) ? 'opponent' : /n[o']t control$/i.test(text) ? 'notController' : undefined;
+    const src = m[1] ? SOURCE_FILTERS[m[1].toLowerCase()] : undefined;
+    if (m[1] && !src) return null;
+    return { ...result, target: true, kind: 'activatedOrTriggered', playerFilter: pf, filter: src ?? {} };
+  }
 
   // Quantifiers
   text = text.replace(/^each of /i, '');

@@ -765,7 +765,10 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   let delta = 0;
   for (const r of g.playerRules(p)) {
     if (r.kind === 'costReduction' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) delta -= r.amount;
-    if (r.kind === 'costIncrease' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) delta += r.amount;
+    if (r.kind === 'costIncrease' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) {
+      if (r.symbols) cost = adjustSymbols(cost, r.symbols, 1);
+      else delta += r.amount;
+    }
   }
   // The spell's own cost modifiers (affinity, "costs {1} less for each ...").
   for (const mod of script.costModifiers ?? []) {

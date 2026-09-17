@@ -305,7 +305,7 @@ export type RuleModification =
   /** "Your maximum hand size is eleven" / "... is reduced by two" */
   | { kind: 'maxHandSize'; value?: number; delta?: number }
   | { kind: 'costReduction'; amount: number; filter?: SpellFilter }
-  | { kind: 'costIncrease'; amount: number; filter?: SpellFilter }
+  | { kind: 'costIncrease'; amount: number; /** Colored symbols to add instead of generic mana ("White spells you cast cost {W} more to cast"). */ symbols?: string; filter?: SpellFilter }
   | { kind: 'entersTapped' }
   | { kind: 'cantLose' }
   | { kind: 'cantGainLife' }

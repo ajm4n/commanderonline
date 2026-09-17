@@ -92,6 +92,9 @@ export type Ref =
   | { ref: 'iter' }
   | { ref: 'lastCreated' }
   | { ref: 'lastMoved' }
+  | { ref: 'lastDiscarded' }
+  /** Objects remembered under a memory key by an earlier effect in the same resolution. */
+  | { ref: 'memory'; key: string }
   | { ref: 'defendingPlayer' }
   | { ref: 'activePlayer' }
   | { ref: 'chosen'; key: string }
@@ -257,7 +260,7 @@ export type Effect =
   | { kind: 'grantKeywords'; keywords: string[]; on: Ref; duration?: Duration; /** Grant only this many of `keywords`, chosen by the controller ("gains your choice of flying or haste"). */ choose?: number }
   | { kind: 'removeKeywords'; keywords: string[]; on: Ref; duration?: Duration }
   | { kind: 'loseAllAbilities'; on: Ref; duration?: Duration }
-  | { kind: 'addTypes'; types: string[]; on: Ref; duration?: Duration; subtypes?: string[] }
+  | { kind: 'addTypes'; types: string[]; on: Ref; duration?: Duration; subtypes?: string[]; /** Replace the object's card types instead of adding to them ("It's an enchantment"). */ setTypes?: string[] }
   | { kind: 'setColors'; colors: Color[]; on: Ref; duration?: Duration; /** "the color or colors of your choice" */ chooseColors?: boolean }
   | { kind: 'applyRule'; rule: RuleModification; on: Ref; duration?: Duration }
   | { kind: 'tap'; what: Ref }
@@ -268,7 +271,7 @@ export type Effect =
   | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter }
   | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor' | 'triggerMana'; amount?: Amount; who?: Ref }
   | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
-  | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; /** `hold`: leave the found cards where they are and remember them under `key` for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile' | 'hold'; key?: string; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your library and/or graveyard" */ zones?: ('library' | 'graveyard')[] }
+  | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; /** `hold`: leave the found cards where they are and remember them under `key` for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile' | 'hold'; key?: string; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your library and/or graveyard" */ zones?: ('library' | 'graveyard')[]; /** Pick at random instead of choosing ("return a card at random from your graveyard"). */ random?: boolean }
   | { kind: 'shuffle'; who?: Ref }
   | { kind: 'gainControl'; what: Ref; duration?: Duration; who?: Ref }
   | { kind: 'exchangeControl'; a: Ref; b: Ref }
@@ -307,7 +310,8 @@ export type Effect =
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
   | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
-  | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number }
+  | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
+  | { kind: 'changeTargets'; what: Ref }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean }
   | { kind: 'revealHand'; who: Ref }
   | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref }

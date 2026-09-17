@@ -311,6 +311,12 @@ export function legalTargets(g: Game, spec: TargetSpec, sourceId: ObjectId | nul
     case 'activatedOrTriggered': {
       for (const item of g.state.stack) {
         if (item.kind === 'spell') continue;
+        if (spec.playerFilter === 'you' && item.controller !== controller) continue;
+        if ((spec.playerFilter === 'opponent' || spec.playerFilter === 'notController') && item.controller === controller) continue;
+        if (spec.filter) {
+          const src = g.state.objects[item.sourceId];
+          if (!src || !matchesFilter(g, src, { ...spec.filter, zone: undefined }, ctx)) continue;
+        }
         out.push({ kind: 'stackItem', id: item.id });
       }
       break;
