@@ -1764,7 +1764,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'chooseMode': {
-      const n = e.count ?? 1;
+      const n = e.countAmount !== undefined ? amt(e.countAmount) : e.count ?? 1;
       const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
       const usedKey = e.notChosen === 'turn' ? `modesChosen:${g.state.turn.number}` : 'modesChosen';
       const used = e.notChosen && src ? ((src.memory[usedKey] as number[] | undefined) ?? []) : [];
@@ -1772,8 +1772,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       if (!avail.length) return;
       const pick = Math.min(n, avail.length);
       const low = Math.min(e.min ?? pick, pick);
-      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${low === pick ? pick : `up to ${pick}`}`, options: avail.map(({ o, i }) => ({ id: String(i), label: o.text })), min: low, max: pick, sourceId: ctx.sourceId ?? undefined });
-      const picks = resp.type === 'options' ? resp.ids.map(Number) : low === 0 ? [] : [avail[0].i];
+      let picks: number[];
+      if (e.random) {
+        picks = g.rng.shuffle(avail.map(({ i }) => i)).slice(0, pick);
+        g.log(`Mode chosen at random: ${picks.map((i) => e.options[i].text).join(', ')}.`);
+      } else {
+        const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${low === pick ? pick : `up to ${pick}`}`, options: avail.map(({ o, i }) => ({ id: String(i), label: o.text })), min: low, max: pick, sourceId: ctx.sourceId ?? undefined });
+        picks = resp.type === 'options' ? resp.ids.map(Number) : low === 0 ? [] : [avail[0].i];
+      }
       if (e.notChosen && src) src.memory[usedKey] = [...used, ...picks];
       for (const i of picks) yield* executeEffects(g, e.options[i].effects, ctx);
       return;

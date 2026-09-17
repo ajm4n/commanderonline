@@ -1328,6 +1328,11 @@ export class Game {
         const total = who.reduce((n, p) => n + (this.state.turnStats[`${c.event}:${p}`] ?? 0), 0);
         return cmp(total, c.op ?? '>=', c.value ?? 1);
       }
+      case 'chosenIs': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+        const v = src?.chosen[c.key] ?? src?.memory[c.key];
+        return typeof v === 'string' && v.toLowerCase() === c.value.toLowerCase();
+      }
       case 'not':
         return !this.checkCondition(c.c, ctx);
       case 'turnStep': {

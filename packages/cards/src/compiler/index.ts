@@ -494,6 +494,39 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
+    // Sieges: "As ~ enters, choose Abzan or Mardu." followed by "• Abzan \u2014 <ability>" bullets.
+    if ((m = line.match(/^As ~ enters, choose ([A-Z][\w' -]*(?:, [A-Z][\w' -]*)*(?:,? or [A-Z][\w' -]*))\.?$/)) && lines[li + 1]?.startsWith('\u2022')) {
+      const opts = m[1].split(/,? or |, /).map((w) => w.trim()).filter(Boolean);
+      const st = parseStatic(line, !isSpell);
+      if (st) abilities.push(...st);
+      compiledLines.push(line);
+      let anyBad = false;
+      while (lines[li + 1]?.startsWith('\u2022')) {
+        li++;
+        const bullet = lines[li].replace(/^\u2022\s*/, '');
+        const bm = bullet.match(/^([A-Z][\w' -]*) \u2014 (.+)$/);
+        const which = bm ? opts.find((o) => o.toLowerCase() === bm[1].toLowerCase()) : undefined;
+        if (!bm || !which) {
+          unhandledLines.push(lines[li]);
+          anyBad = true;
+          continue;
+        }
+        const inner = compileFace({ ...card, name: card.name, oracleText: bm[2] }, faceName, bm[2], typeLine);
+        if (inner.unhandledLines.length || !inner.script.abilities.length) {
+          unhandledLines.push(lines[li]);
+          anyBad = true;
+          continue;
+        }
+        for (const ab of inner.script.abilities) {
+          if (ab.kind === 'spell') continue;
+          const cond: Condition = { kind: 'chosenIs', key: 'choice', value: which };
+          abilities.push({ ...ab, condition: 'condition' in ab && ab.condition ? { kind: 'and', cs: [ab.condition, cond] } : cond } as AbilitySpec);
+        }
+        compiledLines.push(lines[li]);
+      }
+      void anyBad;
+      continue;
+    }
     // "Tiered": the bullet modes that follow form a "choose one" with per-mode costs.
     if (/^Tiered\.?$/i.test(line) && lines[li + 1]?.startsWith('•')) line = 'Choose one';
     if (isKeywordLine(line)) {
@@ -527,9 +560,9 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     } else if ((m = line.match(/^Choose (one|two)\. If (.+?) as you cast (?:this spell|~), you may choose (both|two|three) instead\.?$/i)) && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })?.kind !== 'manual' && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })) {
       maxModesIf = { condition: parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })!, max: m[3].toLowerCase() === 'three' ? 3 : 2 };
       line = `Choose ${m[1]}`;
-    } else if ((m = line.match(/^Choose (one|two)\. If (.+?),? (?:you may )?choose (both|two|three|an additional mode) instead\.?$/i))) {
+    } else if ((m = line.match(/^Choose (one|two)\. If (.+?),? (?:you may )?choose (both|two|three|any number|an additional mode) instead\.?$/i))) {
       const c = parseCondition(m[2].replace(/ as you cast (?:this spell|~)$/i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
-      if (c && c.kind !== 'manual') maxModesIf = { condition: c, max: /three/i.test(m[3]) ? 3 : 2 };
+      if (c && c.kind !== 'manual') maxModesIf = { condition: c, max: /any number/i.test(m[3]) ? 6 : /three/i.test(m[3]) ? 3 : 2 };
       line = `Choose ${m[1]}`;
     } else if ((m = line.match(/^Choose (\w+)\. You may choose the same mode more than once\.?$/i))) {
       repeatable = true;
@@ -668,7 +701,16 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const ctx = newCtx({ triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer, triggerObjectIsSource: head.objectIsSource });
       let effects: Effect[];
       let unhandled: string[];
-      const modalHead = parseModalHead(split.rest);
+      let reflexivePrefix: string | null = null;
+      let restForModal = split.rest;
+      {
+        const rm = split.rest.match(/^(.+?)\.\s*(?:When|If) you do, (choose .+)$/i);
+        if (rm && parseModalHead(rm[2]) && lines[li + 1]?.startsWith('•')) {
+          reflexivePrefix = rm[1];
+          restForModal = rm[2];
+        }
+      }
+      const modalHead = parseModalHead(restForModal);
       if (modalHead && lines[li + 1]?.startsWith('•')) {
         // Modal trigger: options follow as bullet lines.
         const options: { text: string; effects: Effect[] }[] = [];
@@ -677,10 +719,35 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           li++;
           const optText = stripModeLabel(lines[li].replace(/^•\s*/, ''));
           const r = parseEffects(optText, ctx);
+          // A mode whose body is itself a triggered ability grants that ability instead.
+          if (r.unhandled.length && parseTriggerHead(optText)) {
+            options.push({ text: optText, effects: [{ kind: 'grantAbility', text: optText, on: { ref: 'self' }, duration: 'permanent' }] });
+            continue;
+          }
           options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
           unhandled.push(...r.unhandled);
         }
-        effects = [{ kind: 'chooseMode', options, count: modalHead.count, min: modalHead.min, notChosen: modalHead.notChosen }];
+        effects = [{ kind: 'chooseMode', options, count: modalHead.count, countAmount: modalHead.xCount, min: modalHead.min, notChosen: modalHead.notChosen, random: modalHead.random }];
+        if (reflexivePrefix) {
+          // "you may pay {1}. When you do, choose one —": the modes are the payment's effects.
+          const pay = reflexivePrefix.match(/^(?:you may )?pay ((?:\{[^}]+\})+|\d+ life)$/i);
+          if (pay) {
+            const life = pay[1].match(/^(\d+) life$/);
+            effects = [life ? { kind: 'ifPays', cost: '', payLife: parseInt(life[1], 10), effects } : { kind: 'ifPays', cost: pay[1], effects }];
+            reflexivePrefix = null;
+          }
+        }
+        if (reflexivePrefix) {
+          const pre = parseEffects(reflexivePrefix, ctx);
+          if (pre.unhandled.length) unhandled.push(...pre.unhandled);
+          else {
+            const last = pre.effects[pre.effects.length - 1];
+            if (last && (last.kind === 'ifPays' || last.kind === 'may')) {
+              last.effects = [...last.effects, ...effects];
+              effects = pre.effects;
+            } else effects = [...pre.effects, ...effects];
+          }
+        }
       } else ({ effects, unhandled } = parseEffects(split.rest, ctx));
       let condition: Condition | undefined = head.stateCondition;
       if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
@@ -715,10 +782,14 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
             li++;
             const optText = stripModeLabel(lines[li].replace(/^•\s*/, ''));
             const r = parseEffects(optText, ctx);
+            if (r.unhandled.length && parseTriggerHead(optText)) {
+              options.push({ text: optText, effects: [{ kind: 'grantAbility', text: optText, on: { ref: 'self' }, duration: 'permanent' }] });
+              continue;
+            }
             options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
             unhandled.push(...r.unhandled);
           }
-          effects = [{ kind: 'chooseMode', options, count: modalHead.count, min: modalHead.min, notChosen: modalHead.notChosen }];
+          effects = [{ kind: 'chooseMode', options, count: modalHead.count, countAmount: modalHead.xCount, min: modalHead.min, notChosen: modalHead.notChosen, random: modalHead.random }];
         } else ({ effects, unhandled } = parseEffects(rest.text, ctx));
         // Class cards: "{2}{W}: Level 2" gains the level; abilities after it need that level.
         const lvl = rest.text.match(/^Level (\d+)\.?$/i);
@@ -883,15 +954,29 @@ function stripModeLabel(text: string): string {
 }
 
 /** A modal head, possibly with an X definition or a "that hasn't been chosen" restriction. */
-function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number } | null {
+function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number; xCount?: Amount; random?: boolean } | null {
+  text = text.trim().replace(/\s*\u2014\s*$/, '');
+  let atRandom = false;
+  if (/ at random$/i.test(text)) {
+    atRandom = true;
+    text = text.replace(/ at random$/i, '');
+  }
   // A conditional upgrade ("If you have no cards in hand, choose one or more instead") is not
   // modelled inside triggered abilities; keep the base choice.
   text = text.replace(/\.\s*If .+?, (?:you may )?choose .+? instead\.?$/i, '');
   text = text.replace(/\.\s*Each mode must target a different \w+\.?$/i, '');
+  {
+    const xm = text.match(/^choose up to X,? where X is (.+?)\s*(?:\u2014)?\.?$/i);
+    if (xm) {
+      const a = parseAmount(xm[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (a !== null) return { count: 6, min: 0, x: undefined, xCount: a };
+    }
+  }
   const m = text.match(/^choose (one|two|one or both|one or more|any number|up to one|up to two|up to three)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
   if (!m) return null;
   const w = m[1].toLowerCase();
-  const out: { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number } = { count: /two/i.test(w) ? 2 : /three/i.test(w) ? 3 : 1 };
+  const out: { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number; xCount?: Amount; random?: boolean } = { count: /two/i.test(w) ? 2 : /three/i.test(w) ? 3 : 1 };
+  if (atRandom) out.random = true;
   if (/^up to /i.test(w)) out.min = 0;
   if (m[2] !== undefined || /been chosen/i.test(text)) out.notChosen = m[2] ? 'turn' : 'game';
   if (m[3]) {

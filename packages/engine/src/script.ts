@@ -185,6 +185,8 @@ export type Condition =
   | { kind: 'modeChosen'; mode: number }
   | { kind: 'amount'; a: Amount; op: Comparison; b: Amount }
   | { kind: 'memoryFlag'; key: string }
+  /** The value chosen under `key` on the source equals `value` ("choose Abzan or Mardu"). */
+  | { kind: 'chosenIs'; key: string; value: string }
   | { kind: 'turnStat'; key: string; op: Comparison; value: number }
   | { kind: 'controlsCommander' }
   | { kind: 'commanderOnBattlefield' }
@@ -381,7 +383,7 @@ export type Effect =
   | { kind: 'discardObjects'; what: Ref }
   | { kind: 'ringTempts'; who?: Ref }
   | { kind: 'takeInitiative'; who?: Ref }
-  | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number; /** "Choose up to one": may choose fewer. */ min?: number; /** "Choose one that hasn't been chosen this turn": modes already used are unavailable. */ notChosen?: 'turn' | 'game' }
+  | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number; /** "Choose up to X, where X is …" */ countAmount?: Amount; /** "Choose up to one": may choose fewer. */ min?: number; /** "Choose one that hasn't been chosen this turn": modes already used are unavailable. */ notChosen?: 'turn' | 'game'; /** "Choose one at random" */ random?: boolean }
   | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter; /** "Until end of turn, whenever X, Y": fires repeatedly this turn, then goes away. */ untilEndOfTurn?: boolean }
   | { kind: 'log'; text: string; /** Also emit this game event (for mechanics whose trigger is the action itself, e.g. exploring). */ event?: GameEventName; objectRef?: Ref }
   | { kind: 'ventureIntoDungeon' }
