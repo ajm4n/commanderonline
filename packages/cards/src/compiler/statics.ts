@@ -196,6 +196,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   if ((m = L.match(/^(.+?) assigns? combat damage equal to (?:its|their) toughness rather than (?:its|their) power$/i))) return objRule(m[1], { kind: 'custom', tag: 'damageByToughness' });
+  // "Creatures cannot block unless their controller pays {1} for each of those creatures."
+  if ((m = L.match(/^(.+?) cannot block unless their controller pays ((?:\{[^}]+\})+)(?: for each of those creatures)?$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'blockTax', data: { filter: { ...noun.filter, zone: undefined }, cost: m[2] } } }];
+  }
   if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) unless (.+)$/i))) {
     const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     if (cond && cond.kind !== 'manual') {
@@ -995,10 +1000,27 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'lifeFloor', data: parseInt(m[1], 10) } }];
   }
   // "Creatures cannot attack you unless their controller pays {2} for each creature they control that is attacking you."
-  if ((m = L.match(/^(.+?) cannot attack you(?: or planeswalkers you control)? unless their controller pays ((?:\{[^}]+\})+) for each creature they control that is attacking you(?: or a planeswalker you control)?$/i))) {
+  if ((m = L.match(/^(.+?) cannot attack you(?: or planeswalkers you control)? unless their controller pays ((?:\{[^}]+\})+)(?: for each (?:creature they control that is attacking you(?: or a planeswalker you control)?|of those creatures))?$/i))) {
     const noun = parseNoun(m[1]);
     if (noun) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'attackTax', data: { filter: { ...noun.filter, zone: undefined }, cost: m[2] } } }];
   }
+  // "Creature spells you cast cost {1} less to cast for each +1/+1 counter on ~."
+  if ((m = L.match(/^(.+?) you cast cost \{(\d)\} less to cast for each (.+)$/i))) {
+    const nounText = m[1].replace(/^Spells$/i, 'spells');
+    const per = parseAmount(`the number of ${m[3]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    let filter: ObjectFilter | undefined;
+    if (!/^spells$/i.test(nounText)) {
+      const noun = parseNoun(nounText.replace(/ spells?$/i, ' spell'));
+      if (!noun) return null;
+      filter = { ...noun.filter };
+      delete filter.zone;
+    }
+    if (per !== null) {
+      if (typeof per === 'object' && per.kind === 'count') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[2], 10), filter, per: per.filter } }];
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[2], 10), filter, perAmount: per } }];
+    }
+  }
+
   if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You have hexproof$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'hexproof' } }];
   if (/^You have shroud$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'shroud' } }];

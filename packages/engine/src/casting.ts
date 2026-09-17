@@ -780,7 +780,9 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   let delta = 0;
   for (const r of g.playerRules(p)) {
     if (r.kind === 'costReduction' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) {
-      delta -= r.per ? r.amount * objectsMatching(g, { ...r.per, zone: r.per.zone ?? 'battlefield' }, { sourceId: null, controller: p }).length : r.amount;
+      const srcId = (r as { sourceId?: ObjectId }).sourceId ?? null;
+      const mult = r.per ? objectsMatching(g, { ...r.per, zone: r.per.zone ?? 'battlefield' }, { sourceId: srcId, controller: p }).length : r.perAmount !== undefined ? g.resolveAmount(r.perAmount, { sourceId: srcId, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 1;
+      delta -= r.amount * mult;
     }
     if (r.kind === 'costIncrease' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) {
       if (r.symbols) cost = adjustSymbols(cost, r.symbols, 1);

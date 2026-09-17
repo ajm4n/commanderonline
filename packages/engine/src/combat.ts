@@ -228,6 +228,24 @@ function* declareBlockers(g: Game): Gen {
       const blockAloneOk = blocks.length !== 1 || !g.characteristics(blocks[0].blocker).rules.some((r) => r.kind === 'custom' && (r.tag === 'cantBlockAlone' || r.tag === 'cantAttackOrBlockAlone'));
       // "~ blocks each combat if able."
       const mustBlockOk = candidates.every((c) => !g.characteristics(c.id).rules.some((r) => r.kind === 'mustBlock') || blocks.some((b) => b.blocker === c.id));
+      // "Creatures can't block unless their controller pays {1} for each of those creatures."
+      let blockTax: { cost: string; n: number } | null = null as { cost: string; n: number } | null;
+      for (const b of blocks) {
+        const o = g.obj(b.blocker);
+        for (const r of g.playerRules(d)) {
+          if (r.kind !== 'custom' || r.tag !== 'blockTax') continue;
+          const dd = (r.data as { filter?: import('./types.js').ObjectFilter; cost?: string } | undefined) ?? {};
+          if (!dd.cost) continue;
+          if (dd.filter && !matchesFilter(g, o, { ...dd.filter, zone: 'battlefield' }, { sourceId: (r as { sourceId?: ObjectId }).sourceId ?? null, controller: d })) continue;
+          blockTax = { cost: dd.cost, n: (blockTax?.n ?? 0) + 1 };
+        }
+      }
+      if (blockTax) {
+        for (let i = 0; i < blockTax.n; i++) {
+          const paid = yield* offerToPay(g, d, blockTax.cost, `Pay ${blockTax.cost} for a blocking creature?`);
+          if (!paid && blocks.length) blocks.pop();
+        }
+      }
       // "No more than one creature can block each combat."
       let maxBlk = Infinity;
       for (const r of g.playerRules(d)) if (r.kind === 'custom' && r.tag === 'maxBlockersTotal' && typeof r.data === 'number') maxBlk = Math.min(maxBlk, r.data);

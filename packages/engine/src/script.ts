@@ -59,7 +59,9 @@ export type Amount =
   /** Times the spell was kicked (multikicker). */
   | { kind: 'kickCount' }
   /** Number of events of a kind this turn ("creatures that died this turn", "spells your opponents cast this turn"). */
-  | { kind: 'eventsThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any' }
+  | { kind: 'eventsThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; /** Only count events whose object matched this ("each Zubera that died this turn"). */ filter?: ObjectFilter }
+  /** Number of distinct kinds of counter on an object. */
+  | { kind: 'distinctCounterKinds'; ref: Ref }
   /** Sum of mana values of matching objects. */
   | { kind: 'totalManaValue'; filter: ObjectFilter }
   /** Number of colors of the referenced object(s). */
@@ -95,6 +97,7 @@ export type Ref =
   | { ref: 'lastCreated' }
   | { ref: 'lastMoved' }
   | { ref: 'lastDiscarded' }
+  | { ref: 'lastRevealed' }
   /** Objects remembered under a memory key by an earlier effect in the same resolution. */
   | { ref: 'memory'; key: string }
   | { ref: 'defendingPlayer' }

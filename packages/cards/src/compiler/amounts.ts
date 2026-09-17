@@ -46,6 +46,47 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
       if (noun) return tp[1] === 'power' ? { kind: 'totalPower', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } } : { kind: 'totalManaValue', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
     }
   }
+  // "each counter on it" / "each kind of counter on it"
+  {
+    const t1 = text.trim().toLowerCase().replace(/^the number of /, '');
+    if (/^(?:kinds? of )?counters? on (?:it|~|that permanent|that creature|that card)$/.test(t1)) {
+      const ref = /~/.test(text) ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : ctx.self);
+      return /kinds? of/.test(t1) ? { kind: 'distinctCounterKinds', ref } : { kind: 'countersOn', ref, counter: 'any' };
+    }
+    // "each card exiled with it" / "cards exiled with ~"
+    if (/^cards? exiled with (?:it|~|this card)$/.test(t1)) return { kind: 'countRef', ref: { ref: 'memory', key: 'exiled' } };
+    // "each card revealed this way" / "cards revealed this way"
+    if (/^cards? revealed this way$/.test(t1)) return { kind: 'countRef', ref: { ref: 'lastRevealed' } };
+    // "each {E} paid this way"
+    if (/^\{e\} paid this way$/.test(t1)) return { kind: 'ctxMemory', key: 'energyPaid' };
+    // "each Aura and Equipment attached to ~"
+    const orig = text.trim().replace(/^[Tt]he number of /, '');
+    const att = orig.match(/^([\w' -]+?)(?: and ([\w' -]+?))? attached to (?:it|~|that creature|that permanent)$/i);
+    if (att) {
+      const parts = [att[1], att[2]].filter(Boolean).map((w) => { const b = String(w).replace(/s$/, ''); return parseNoun(`${/^[aeiou]/i.test(b) ? 'an' : 'a'} ${b}`); });
+      if (parts.every((x) => x)) {
+        const base: import('@commander/engine').ObjectFilter = { attachedToSource: true, zone: 'battlefield' };
+        const f = parts.length === 1 ? { ...parts[0]!.filter, ...base } : { ...base, anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
+        return { kind: 'count', filter: f };
+      }
+    }
+    // "each Zubera that died this turn"
+    const died = orig.match(/^([\w' -]+?)s? that (died|entered the battlefield|entered) this turn$/i);
+    if (died) {
+      const noun = parseNoun(`${/^[aeiou]/i.test(died[1]) ? 'an' : 'a'} ${died[1]}`);
+      if (noun) return { kind: 'eventsThisTurn', event: died[2] === 'died' ? 'dies' : 'entersBattlefield', player: 'any', filter: { ...noun.filter, zone: undefined } };
+    }
+    // "each permanent you control of that type"
+    if (/^permanents? you control of (?:that|the chosen) type$/.test(t1)) return { kind: 'count', filter: { controller: 'you', zone: 'battlefield', typeIsChosen: 'cardType' } };
+    // "each card type among spells you have cast this turn" → not modelled precisely; count the spells.
+    if (/^card types? among spells you have cast this turn$/.test(t1)) return { kind: 'eventsThisTurn', event: 'cast', player: 'you' };
+    // "each basic land type among lands they control"
+    if (/^basic land types? among lands (?:they|you) controls?$/.test(t1)) {
+      return { kind: 'distinctValues', stat: 'name', filter: { types: ['Land'], supertypes: ['Basic'], zone: 'battlefield', controller: /they/.test(t1) ? undefined : 'you' } };
+    }
+    // "each of those creatures" / "each of them"
+    if (/^(?:of )?(?:those creatures|those permanents|them)$/.test(t1)) return { kind: 'countRef', ref: ctx.lastObj ?? { ref: 'lastMoved' } };
+  }
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
   if (/^(?:the number of )?times? (?:it|~|this spell) was kicked$/i.test(text.trim())) return { kind: 'kickCount' };
   if (/^(?:the number of )?(?:creatures?|permanents?|cards?) put into your graveyard from the battlefield this turn$/i.test(text.trim())) return { kind: 'eventsThisTurn', event: 'dies', player: 'you' };

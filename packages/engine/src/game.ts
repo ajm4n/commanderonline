@@ -85,6 +85,8 @@ export interface GameState {
   /** Turn-wide damage prevention (Fog effects); cleared at cleanup. */
   /** objectId -> sources that dealt damage to it this turn. */
   damagedBy: Record<number, ObjectId[]>;
+  /** Characteristics of permanents that died this turn ("for each Zubera that died this turn"). */
+  diedThisTurn?: { controller: PlayerId; name: string; types: string[]; subtypes: string[]; colors: string[] }[];
   /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
   lastTurnStats: Record<string, number>;
   /** Player rules granted for the rest of the turn ("You may cast spells this turn as though they had flash"). */
@@ -853,7 +855,10 @@ export class Game {
       const base: Partial<GameEvent> = { objectId: id, fromZone, toZone, snapshot, sourceId: opts.sourceId, data: { cause: opts.cause, lkiCh } };
       if (fromZone === 'battlefield') {
         this.emit({ name: 'leavesBattlefield', ...base, playerId: snapshot.controller });
-        if (toZone === 'graveyard') this.emit({ name: 'dies', ...base, playerId: snapshot.controller });
+        if (toZone === 'graveyard') {
+          if (lkiCh) (this.state.diedThisTurn ??= []).push({ controller: snapshot.controller, name: lkiCh.name, types: [...lkiCh.types], subtypes: [...lkiCh.subtypes], colors: [...lkiCh.colors] });
+          this.emit({ name: 'dies', ...base, playerId: snapshot.controller });
+        }
       }
       if (toZone === 'graveyard') this.emit({ name: 'putIntoGraveyard', ...base, playerId: obj.owner });
       if (fromZone === 'graveyard') this.emit({ name: 'leftGraveyard', ...base, playerId: obj.owner });
@@ -1435,6 +1440,10 @@ export class Game {
         return this.resolveAmount(a.a, ctx) * this.resolveAmount(a.b, ctx);
       case 'max':
         return Math.max(this.resolveAmount(a.a, ctx), this.resolveAmount(a.b, ctx));
+      case 'distinctCounterKinds': {
+        const o = this.resolveObjects(a.ref, ctx)[0];
+        return o ? Object.values(o.counters).filter((v) => (v ?? 0) > 0).length : 0;
+      }
       case 'minus':
         return Math.max(0, this.resolveAmount(a.a, ctx) - this.resolveAmount(a.b, ctx));
       case 'chosenNumber':
@@ -1555,6 +1564,16 @@ export class Game {
       case 'eventsThisTurn': {
         const who = a.player ?? 'any';
         const players = who === 'you' ? [ctx.controller] : who === 'opponent' ? this.opponentsOf(ctx.controller) : this.state.playerOrder;
+        if (a.filter && a.event === 'dies') {
+          const f = a.filter;
+          return (this.state.diedThisTurn ?? []).filter((d) => {
+            if (!players.includes(d.controller)) return false;
+            if (f.types && !f.types.every((t) => d.types.includes(t))) return false;
+            if (f.subtypes && !f.subtypes.every((t) => d.subtypes.includes(t))) return false;
+            if (f.nameIs && d.name !== f.nameIs) return false;
+            return true;
+          }).length;
+        }
         return players.reduce((s, p) => s + (this.state.players[p]?.turnStats[a.event] ?? 0), 0);
       }
       case 'discardedThisWay':
@@ -1643,6 +1662,8 @@ export class Game {
         return objT((ctx.memory['lastMoved'] as ObjectId[]) ?? []);
       case 'lastDiscarded':
         return objT((ctx.memory['lastDiscarded'] as ObjectId[]) ?? []);
+      case 'lastRevealed':
+        return objT((ctx.memory['lastRevealed'] as ObjectId[]) ?? (ctx.memory['lastMoved'] as ObjectId[]) ?? []);
       case 'memory': {
         const fromCtx = ctx.memory[ref.key] as ObjectId[] | undefined;
         if (fromCtx) return objT(fromCtx);
@@ -2203,6 +2224,7 @@ export class Game {
     this.pendingTriggers = [];
     this.state.turnStats = {};
     this.state.turnRules = [];
+    this.state.diedThisTurn = [];
     for (const p of Object.values(this.state.players)) p.turnStats = {};
   }
 
