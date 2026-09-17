@@ -46,6 +46,26 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     t = t.replace(new RegExp(esc + "'s", 'g'), "~'s");
     t = t.replace(new RegExp(esc, 'g'), '~');
   }
+  // Legendary/planeswalker cards sometimes use a nickname built from their own name words
+  // ("Captain James T. Kirk" → "Captain Kirk"): replace variants keeping the first and last word.
+  if (/Legendary|Planeswalker/.test(card.typeLine) && /\s/.test(faceName)) {
+    const ws = faceName.replace(/,/g, '').split(/\s+/).filter(Boolean);
+    if (ws.length >= 3 && ws.length <= 6 && /^[A-Z]/.test(ws[0]) && /^[A-Z]/.test(ws[ws.length - 1])) {
+      const mid = ws.slice(1, -1);
+      const variants: string[] = [];
+      for (let mask = 0; mask < 1 << mid.length; mask++) {
+        const keep = mid.filter((_w, i) => (mask >> i) & 1);
+        variants.push([ws[0], ...keep, ws[ws.length - 1]].join(' '));
+      }
+      variants.sort((a, b) => b.length - a.length);
+      for (const v of variants) {
+        if (v === faceName) continue;
+        const esc = v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        t = t.replace(new RegExp(`\\b${esc}'s`, 'g'), "~'s");
+        t = t.replace(new RegExp(`\\b${esc}\\b`, 'g'), '~');
+      }
+    }
+  }
   // Legendary permanents without a comma sometimes refer to themselves by their first name ("Catti-brie of Mithral Hall" → "Catti-brie").
   if (/Legendary/.test(card.typeLine) && !faceName.includes(',') && faceName.includes(' ')) {
     const first = faceName.split(' ')[0];

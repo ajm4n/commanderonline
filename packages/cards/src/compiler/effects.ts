@@ -4610,18 +4610,40 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const ref = objRef(m[1], ctx) ?? ctx.lastObj ?? { ref: 'lastMoved' as const };
     return [{ kind: 'playFromExile', what: ref, duration: /end of turn$/i.test(m[0].split(',')[0]) ? 'thisTurn' : 'permanent' }];
   }
-  if ((m = text.match(/^if (.+?), (.+)$/i)) && !/ would /i.test(m[1])) {
-    const cond = parseCondition(m[1], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer });
-    const saved = ctx.targets.length;
-    const inner = parseSentence(m[2], ctx);
-    if (inner) return [{ kind: 'conditional', if: cond ?? { kind: 'manual', text: `Is this true: "${m[1]}"?` }, then: inner }];
-    ctx.targets.length = saved;
+  // "If <condition>, <effects>" — the condition may itself contain commas ("If you control a God, a
+  // Demigod, or a legendary enchantment, ..."), so try every split, real conditions first.
+  if (/^if /i.test(text) && !/ would /i.test(text.split(',')[0])) {
+    const cuts: number[] = [];
+    for (let k = 3; k < text.length; k++) if (text[k] === ',') cuts.push(k);
+    const rctx = { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer };
+    for (const pass of [0, 1]) {
+      for (const k of cuts) {
+        const condText = text.slice(3, k).trim();
+        const rest = text.slice(k + 1).trim();
+        if (!condText || !rest) continue;
+        const cond = parseCondition(condText, rctx);
+        if (pass === 0 ? !cond : !!cond) continue;
+        const saved = ctx.targets.length;
+        const inner = parseSentence(rest, ctx);
+        if (inner) return [{ kind: 'conditional', if: cond ?? { kind: 'manual', text: `Is this true: "${condText}"?` }, then: inner }];
+        ctx.targets.length = saved;
+      }
+    }
   }
-  if ((m = text.match(/^(.+?) if (.+)$/i)) && !/^counter /i.test(text)) {
-    const inner = parseSentence(m[1], ctx);
-    if (inner) {
-      const cond = parseCondition(m[2], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject });
-      return [{ kind: 'conditional', if: cond ?? { kind: 'manual', text: `Is this true: "${m[2]}"?` }, then: inner }];
+  // "<effects> if <condition>" — likewise try each " if " boundary.
+  if (/ if /i.test(text) && !/^counter /i.test(text)) {
+    const cuts: number[] = [];
+    for (const mm of text.matchAll(/ if /gi)) if (mm.index !== undefined) cuts.push(mm.index);
+    for (const k of cuts) {
+      const head = text.slice(0, k);
+      const condText = text.slice(k + 4);
+      const saved = ctx.targets.length;
+      const inner = parseSentence(head, ctx);
+      if (inner) {
+        const cond = parseCondition(condText, { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject });
+        return [{ kind: 'conditional', if: cond ?? { kind: 'manual', text: `Is this true: "${condText}"?` }, then: inner }];
+      }
+      ctx.targets.length = saved;
     }
   }
   text = text.replace(/^((?:any number of |up to \w+ |one or two |one, two, or three |\w+ )?(?:target |they|those creatures)[^,]*?) each (gets?|gains?|deals?|loses?|has|have|becomes?|cannot|can't|draws?|discards?|sacrifices?|mills?)\b/i, '$1 $2');

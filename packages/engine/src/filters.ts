@@ -59,6 +59,10 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
   if (filter.custom === 'createdBySource' && (ctx.sourceId === null || obj.memory.createdBy !== ctx.sourceId)) return false;
+  if (filter.custom === 'topOfLibrary') {
+    if (zone !== 'library') return false;
+    if (g.player(obj.owner).library[0] !== obj.id) return false;
+  }
   if (filter.custom === 'topOfGraveyard') {
     if (zone !== 'graveyard') return false;
     const rest: ObjectFilter = { ...filter, custom: undefined };

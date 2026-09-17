@@ -245,7 +245,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // Conditional statics: "As long as X, Y" / "During your turn, Y" / "Y as long as X"
   let condText: string | null = null;
   let innerText: string | null = null;
-  if ((m = L.match(/^(?:As long as|While) (.+?), (.+)$/i))) [condText, innerText] = [m[1], m[2]];
+  if ((m = L.match(/^(?:As long as|While) (.+?), (.+)$/i))) {
+    // The condition may contain commas ("As long as you control a God, a Demigod, or an enchantment, ...").
+    [condText, innerText] = [m[1], m[2]];
+    const head = L.match(/^(?:As long as|While) /i)![0].length;
+    for (let k = L.length - 1; k >= head; k--) {
+      if (L[k] !== ',') continue;
+      const ct = L.slice(head, k).trim();
+      const it = L.slice(k + 1).trim();
+      if (!ct || !it) continue;
+      if (parseCondition(ct, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })) { condText = ct; innerText = it; break; }
+    }
+  }
   else if ((m = L.match(/^(.+?) (?:as long as|while) (.+)$/i))) [condText, innerText] = [m[2], m[1]];
   else if ((m = L.match(/^((?:~|Enchanted \w+|Equipped \w+) (?:does not untap|cannot|gets|has) .+?) if (.+)$/i))) [condText, innerText] = [m[2], m[1]];
   if (condText && innerText) {
@@ -1552,6 +1563,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 104 ----
+  // "~ is a land." / "~ is an artifact in addition to its other types."
+  if ((m = L.match(/^(~|Enchanted \w+|Equipped \w+) (?:is|are) (?:a|an) (artifact|creature|enchantment|land|planeswalker|battle)( in addition to its other types)?$/i))) {
+    const a = affectsOf(m[1]);
+    const ty = m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase();
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: m[3] ? { layer: 4, addTypes: [ty] } : { layer: 4, setTypes: [ty] } }];
+  }
+  // "As ~ enters, <effects>" — a generic ETB replacement whose body compiles as plain effects.
+  if ((m = L.match(/^As ~ enters, (.+)$/i))) {
+    const c = newCtx({ triggerHasObject: false, triggerHasPlayer: false });
+    const r = parseEffects(m[1], c);
+    if (!r.unhandled.length && r.effects.length && !c.targets.length) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, effects: r.effects }];
+  }
   // ---- Round 103 ----
   // "You may cast ~ from exile."
   if (/^You may cast ~ from exile$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'castFromExileSelf' } }];

@@ -2217,6 +2217,11 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
       const r = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose`, options: ab.chooseOptions.map((x) => ({ id: x, label: x })), min: 1, max: 1, sourceId: id });
       chosen[ab.chooseKey ?? 'choice'] = r.type === 'options' ? r.ids[0] : ab.chooseOptions[0];
     }
+    // "As ~ enters, <effects>": run them before the permanent is on the battlefield.
+    if (ab.effects?.length) {
+      yield* executeEffects(g, ab.effects, ectx);
+      Object.assign(chosen, ectx.memory);
+    }
   }
   // Other permanents' ETB replacements (e.g. "Artifacts enter tapped").
   for (const src of g.state.battlefield.map((x) => g.obj(x))) {
