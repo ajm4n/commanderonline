@@ -324,6 +324,34 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 129 ----
+  // "If that creature has flying, ..." / "If that land is a Forest, ..." / "If it is a green creature, ..."
+  {
+    const SUBJ = /^(?:that|the|this|it)(?: (?:creature|land|permanent|card|token|spell|artifact|enchantment|planeswalker|creature card|revealed card|revealed land card|exiled card|sacrificed creature|target|other creature))? /;
+    const sm = t.match(new RegExp(`${SUBJ.source}(is|was|has|have) (.+)$`));
+    if (sm) {
+      const verb = sm[1];
+      const rest = orig.slice(orig.length - sm[2].length);
+      const ref = ctx.lastObj ?? { ref: 'lastMoved' as const };
+      if (/^(?:is|was)$/.test(verb)) {
+        if (/^blocking$/i.test(rest)) return { kind: 'objectMatches', ref, filter: { blocking: true } };
+        if (/^attacking$/i.test(rest)) return { kind: 'isAttacking', ref };
+        if (/^attacking a battle$/i.test(rest)) return { kind: 'isAttacking', ref };
+        if (/^tapped$/i.test(rest)) return { kind: 'isTapped', ref };
+        if (/^untapped$/i.test(rest)) return { kind: 'not', c: { kind: 'isTapped', ref } };
+        const noun = parseNoun(`a ${rest.replace(/^(?:a|an) /i, '')}`) ?? parseNoun(`a ${rest.replace(/^(?:a|an) /i, '')} permanent`);
+        if (noun && noun.confident) return { kind: 'objectMatches', ref, filter: noun.filter };
+      } else {
+        const kwm = rest.match(/^(?:a|an )?([\w' -]+?)(?: counter on it| ability)?$/i);
+        if (kwm && /^[\w' -]+$/.test(kwm[1]) && !/counter/i.test(rest)) {
+          const kw = kwm[1].replace(/\b[a-z]/g, (c) => c.toUpperCase());
+          return { kind: 'objectMatches', ref, filter: { keywords: [kw] } };
+        }
+        const cm = rest.match(/^(?:a|an) ([+\-\w\/]+) counter on it$/i);
+        if (cm) return { kind: 'hasCounter', ref, counter: cm[1] };
+      }
+    }
+  }
   // ---- Round 127 ----
   if ((m = t.match(/^(?:a|any) player has (\w+) or fewer cards in hand$/))) {
     const n = wordToNumber(m[1]);
