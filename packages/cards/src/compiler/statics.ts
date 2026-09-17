@@ -1672,6 +1672,50 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 126 ----
+  if ((m = L.match(/^(.+?) (?:get|gets) ([+-]\d+)\/([+-]\d+) for every (\w+) (.+)$/i))) {
+    const a = parseAmount(`every ${m[4]} ${m[5]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const aff = affectsOf(m[1]);
+    if (a !== null && aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: a } }];
+  }
+  if (/^~ cannot attack during extra turns$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantAttackExtraTurns' } }];
+  if (/^~ cannot be equipped$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantBeEquipped' } }];
+  if ((m = L.match(/^(.+?) cannot be the target of (?:spells or )?abilities your opponents control$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'cantBeTargeted', by: 'opponents' } }];
+  }
+  if ((m = L.match(/^(.+?) cannot have more than (\w+) ([\w'-]+) counters? on (?:it|them)$/i))) {
+    const n = wordToNumber(m[2]);
+    const aff = affectsOf(m[1]);
+    if (typeof n === 'number' && aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'maxCounters', data: { counter: m[3], max: n } } }];
+  }
+  if ((m = L.match(/^(.+?) can block (?:an additional (\w+) creatures?|(\w+) additional creatures?) each combat$/i))) {
+    const n = wordToNumber(m[2] ?? m[3] ?? 'one');
+    const aff = affectsOf(m[1]);
+    if (typeof n === 'number' && aff.ok) {
+      const out: AbilitySpec[] = [];
+      for (let i = 0; i < n; i++) out.push({ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'extraBlock' } });
+      return out;
+    }
+  }
+  if ((m = L.match(/^(.+?) can block (.+?) as though it had (\w+)$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'canBlockAsThough', data: m[3].toLowerCase() } }];
+  }
+  if ((m = L.match(/^(.+?) (?:has|have) (.+?) during your turn$/i))) {
+    const kws = parseKeywordList(m[2]);
+    const aff = affectsOf(m[1]);
+    if (kws && aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, modification: { layer: 6, addKeywords: kws }, condition: { kind: 'yourTurn' } }];
+  }
+  if (/^~ is every nonbasic land type$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'allNonbasicLandTypes' } }];
+  if ((m = L.match(/^(.+?) must be blocked by exactly one creature if able$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'mustBeBlocked' } }];
+  }
+  if ((m = L.match(/^(.+?) (?:crews Vehicles|saddles Mounts and crews Vehicles) using its toughness rather than its power$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'crewByToughness' } }];
+  }
   // ---- Round 121 ----
   if (/^You have no maximum hand size(?: until your next turn| for as long as you control ~)?$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You cannot get poison counters$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'noPoison' } }];
