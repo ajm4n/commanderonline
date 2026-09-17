@@ -371,7 +371,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (resp.type !== 'objects' || !resp.ids.length) return;
         if (resp.ids.reduce((sum, id) => sum + g.characteristics(id).manaValue, 0) < need) continue;
         for (const id of resp.ids) g.moveObject(id, 'exile', { cause: 'exile' });
-        (ctx as { memory?: Record<string, unknown> }).memory && ((ctx as { memory: Record<string, unknown> }).memory['evidenceCollected'] = true);
+        ctx.memory['evidenceCollected'] = true;
+        g.emit({ name: 'evidenceCollected', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined });
         return;
       }
       return;
@@ -1098,6 +1099,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           g.state.stack.push(copy);
         }
         g.log(`${g.player(ctx.controller).name} copies ${item.text}.`);
+        g.emit({ name: 'spellCopied', playerId: ctx.controller, sourceId: item.sourceId });
       }
       g.touch();
       return;
@@ -1968,6 +1970,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     case 'ventureIntoDungeon':
       yield* venture(g, ctx.controller, ctx, ctx.triggerContext['dungeon'] as string | undefined);
+      g.emit({ name: 'ventured', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined });
       return;
     case 'takeInitiative':
       for (const p of playersOf(g, e.who, ctx)) {
@@ -2003,6 +2006,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'investigate': {
       const n = e.count !== undefined ? amt(e.count) : 1;
       for (let i = 0; i < n; i++) g.createObject(tokenCard({ preset: 'Clue', name: 'Clue', typeLine: '', colors: [] }, g, ctx), ctx.controller, 'battlefield');
+      if (n > 0) g.emit({ name: 'investigated', playerId: ctx.controller, amount: n, sourceId: ctx.sourceId ?? undefined });
       return;
     }
     case 'treasure': {

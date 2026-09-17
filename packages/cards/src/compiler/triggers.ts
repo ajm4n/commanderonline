@@ -1009,6 +1009,37 @@ export function parseTriggerHead(line: string): TriggerHead | null {
         return { event: 'leavesBattlefield', filter: tf, hasObject: true, hasPlayer: false, leaves: true, rest: m[2] };
       }
     }
+    // ---- Round 115 heads ----
+    // "Whenever you put one or more counters on a permanent or player, ..."
+    if ((m = L.match(/^Whenever you put one or more (?:([+-]\d\/[+-]\d|\w+) )?counters? on (.+?), (.+)$/i))) {
+      const target = m[2].trim();
+      if (/^(?:a permanent or player|a permanent|a player)$/i.test(target)) return { event: 'counterAdded', filter: { player: 'you', counterType: m[1] }, hasObject: true, hasPlayer: true, rest: m[3] };
+      const f = nf(target);
+      if (f) return { event: 'counterAdded', filter: { player: 'you', object: f, counterType: m[1] }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    // "Whenever one or more +1/+1 counters are put on another permanent you control, ..."
+    if ((m = L.match(/^Whenever (?:one or more|a|an) (?:([+-]\d\/[+-]\d|\w+) )?counters? (?:is|are) put on (.+?)(?: for the first time each turn)?, (.+)$/i))) {
+      const f = nf(m[2]);
+      if (f) return { event: 'counterAdded', filter: { object: f, counterType: m[1], firstEachTurn: /first time each turn/i.test(L) || undefined }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    // "Whenever one or more loyalty counters are removed from ~, ..."
+    if ((m = L.match(/^Whenever (?:one or more|a|an) (?:([+-]\d\/[+-]\d|\w+) )?counters? (?:is|are) removed from (.+?), (.+)$/i))) {
+      const f = /^~$/.test(m[2].trim()) ? { self: true } : nf(m[2]);
+      if (f) return { event: 'counterRemoved', filter: /^~$/.test(m[2].trim()) ? { self: true, counterType: m[1] } : { object: f as ObjectFilter, counterType: m[1] }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    // "Whenever you cast a spell that is white, ..." / "... that is both red and white, ..."
+    if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell that is (?:both )?((?:white|blue|black|red|green)(?:(?: and| or|,) (?:white|blue|black|red|green))*), (.+)$/i)) || (m = L.match(/^Whenever you cast (?:a|an) (spell) that is (?:both )?((?:white|blue|black|red|green)(?:(?: and| or|,) (?:white|blue|black|red|green))*), (.+)$/i))) {
+      const map: Record<string, 'W' | 'U' | 'B' | 'R' | 'G'> = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' };
+      const cols = m[2].split(/(?: and | or |,\s*)/).map((w) => map[w.trim().toLowerCase()]).filter(Boolean);
+      const base = /^spell$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} spell`);
+      if (base && cols.length) return { event: 'cast', filter: { player: 'you', object: { ...base.filter, zone: undefined, colors: cols } }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    // "Whenever you copy a spell, ..." / "Whenever you collect evidence, ..."
+    if ((m = L.match(/^Whenever you (copy a spell|collect evidence|waterbend|firebend|earthbend|airbend|surveil|explore|cycle a card|proliferate|investigate|connive|venture into the dungeon), (.+)$/i))) {
+      const ev: Record<string, string> = { 'copy a spell': 'spellCopied', 'collect evidence': 'evidenceCollected', waterbend: 'waterbend', firebend: 'firebend', earthbend: 'earthbend', airbend: 'airbend', surveil: 'surveil', explore: 'explored', 'cycle a card': 'cycled', proliferate: 'proliferated', investigate: 'investigated', connive: 'connived', 'venture into the dungeon': 'ventured' };
+      const name = ev[m[1].toLowerCase()];
+      if (name) return { event: name as import('@commander/engine').GameEventName, filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[2] };
+    }
     if ((m = L.match(/^When(?:ever)? (?:a|an) (\w+), (\w+),? or (\w+) enters(?: the battlefield)?, (.+)$/i))) {
       const types = [m[1], m[2], m[3]].map((t) => `${t.charAt(0).toUpperCase()}${t.slice(1).toLowerCase()}`);
       return { event: 'entersBattlefield', filter: { object: { types } }, hasObject: true, hasPlayer: true, rest: m[4] };
