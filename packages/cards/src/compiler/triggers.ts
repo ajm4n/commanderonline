@@ -374,7 +374,8 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^When you unlock this door, (.+)$/i))) return { event: 'unlockedDoor', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   // Morph: "When ~ is turned face up, ..." / "Whenever a permanent you control is turned face up, ..."
-  if ((m = L.match(/^When(?:ever)? ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^(?:When(?:ever)?|As) ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^As ~ becomes attached to (?:a|an) (?:creature|permanent|player), (.+)$/i))) return { event: 'becomesAttached', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever (?:a|an|another) (.+?) is turned face up, (.+)$/i))) {
     const noun = parseNoun(`a ${m[1]}`);
     if (noun) return { event: 'turnedFaceUp', filter: { object: noun.filter }, hasObject: true, hasPlayer: true, rest: m[2] };

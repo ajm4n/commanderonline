@@ -920,6 +920,14 @@ function parseCastRestriction(text: string): Condition | null {
       const after = / after blockers/i.test(m[1] ?? '');
       const steps = before ? ['beginCombat', 'declareAttackers'] : after ? ['declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'] : /before the combat damage/i.test(m[1] ?? '') ? ['beginCombat', 'declareAttackers', 'declareBlockers'] : ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'];
       conds.push({ kind: 'turnStep', steps, player: / on your turn/i.test(p) ? 'you' : undefined });
+    } else if ((m = p.match(/^during (your|an opponent's|each player's) (upkeep|draw|end|untap)(?: step)?$/i))) {
+      const who = /^your$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+      conds.push({ kind: 'turnStep', steps: [m[2].toLowerCase()], player: who });
+    } else if ((m = p.match(/^during an opponent's turn after their upkeep step$/i))) {
+      conds.push({ kind: 'and', cs: [{ kind: 'notYourTurn' }, { kind: 'turnStep', steps: ['draw', 'main1', 'beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat', 'main2', 'end'] }] });
+    } else if (/^before blockers are declared$/i.test(p)) conds.push({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers'] });
+    else if ((m = p.match(/^during combat on an opponent's turn$/i))) {
+      conds.push({ kind: 'and', cs: [{ kind: 'notYourTurn' }, { kind: 'turnStep', steps: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'] }] });
     } else if (/^during an opponent's turn$/i.test(p)) conds.push({ kind: 'notYourTurn' });
     else if (/^during your turn$/i.test(p)) conds.push({ kind: 'yourTurn' });
     else if (/^before the combat damage step$/i.test(p)) conds.push({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'beginCombat', 'declareAttackers', 'declareBlockers'] });

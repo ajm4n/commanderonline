@@ -382,6 +382,8 @@ export interface ObjectFilter {
   sharesCreatureTypeWithSource?: boolean;
   /** Matches if any of these sub-filters match ("artifact or Human spell"). */
   anyOf?: ObjectFilter[];
+  /** The spell was cast from this zone. */
+  castFromZone?: ZoneName;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];

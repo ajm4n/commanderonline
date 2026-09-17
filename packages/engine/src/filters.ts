@@ -59,6 +59,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
   if (filter.custom === 'createdBySource' && (ctx.sourceId === null || obj.memory.createdBy !== ctx.sourceId)) return false;
+  if (filter.castFromZone && obj.castFromZone !== filter.castFromZone) return false;
+  if (filter.custom === 'notCast' && obj.wasCast) return false;
   if (filter.custom === 'topOfLibrary') {
     if (zone !== 'library') return false;
     if (g.player(obj.owner).library[0] !== obj.id) return false;

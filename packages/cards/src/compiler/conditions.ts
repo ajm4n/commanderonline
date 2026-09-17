@@ -324,6 +324,32 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 109 ----
+  if ((m = t.match(/^you(?:'ve| have)? put one or more ([+-]\d\/[+-]\d|[\w'-]+) counters? on (?:~|it) this turn$/))) return { kind: 'eventThisTurn', event: 'counterAdded', player: 'you' };
+  if ((m = t.match(/^(?:~|it) has (\w+) or more counters on it$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'hasCounter', ref: ctx.self, counter: 'any', op: '>=', value: n };
+  }
+  if (/^(?:~|it) has ?n[o']t dealt damage yet$/.test(t)) return { kind: 'not', c: { kind: 'objectMatches', ref: ctx.self, filter: { dealtDamageThisTurn: true } } };
+  if (/^(?:~|it) is modified$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { modified: true } };
+  if (/^(?:~|it) is your ring-bearer$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { custom: 'ringBearer' } };
+  if (/^(?:~|it) attacked this turn$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { attackedThisTurn: true } };
+  if (/^(?:enchanted|equipped) (?:creature|permanent) is face down$/.test(t)) return { kind: 'faceDown', ref: { ref: 'attachedTo' } };
+  if (/^(?:enchanted|equipped) creature is attacking alone$/.test(t)) {
+    return { kind: 'and', cs: [{ kind: 'isAttacking', ref: { ref: 'attachedTo' } }, { kind: 'count', filter: { types: ['Creature'], attacking: true, controllerRef: { ref: 'controllerOf', of: { ref: 'attachedTo' } }, zone: 'battlefield' }, op: '==', value: 1 }] };
+  }
+  if (/^(?:~|it) is attacking alone$/.test(t)) {
+    return { kind: 'and', cs: [{ kind: 'isAttacking', ref: ctx.self }, { kind: 'count', filter: { types: ['Creature'], attacking: true, controller: 'you', zone: 'battlefield' }, op: '==', value: 1 }] };
+  }
+  if ((m = t.match(/^an opponent cast (?:a|an) (.+?) spell this turn$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)} spell`);
+    if (noun) return { kind: 'eventThisTurn', event: 'cast', player: 'opponent', filter: { ...noun.filter, zone: undefined } };
+  }
+  if (/^no permanents named ~ are on the battlefield$/.test(t)) return { kind: 'count', filter: { nameIs: '~', zone: 'battlefield' }, op: '==', value: 0 };
+  if ((m = t.match(/^you control fewer (.+?) than each opponent$/))) {
+    const noun = parseNoun(oc(m, 1));
+    if (noun) return { kind: 'opponentCompare', what: { ...noun.filter, zone: 'battlefield' }, op: '>' };
+  }
   // ---- Round 108 ----
   if (/^(?:a|any) player has no cards in hand$/.test(t)) return { kind: 'not', c: { kind: 'handSize', ref: { ref: 'eachPlayer' }, op: '>=', value: 1 } };
   if (/^(?:an )?opponent has no cards in hand$/.test(t)) return { kind: 'not', c: { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '>=', value: 1 } };
