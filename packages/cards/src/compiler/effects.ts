@@ -229,7 +229,7 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
   }
   // "a 2/2 red Dragon creature token with flying and \"{R}: ~ gets +1/+0 until end of turn.\""
   {
-    const qm = t.match(/^(.+? token(?: named (?:~'s |[A-Z])[\w' ,-]*?)?(?: with [^"]+?)?)(?:,| and| with) "(.+)"$/i);
+    const qm = t.match(/^(.+? tokens?(?: named (?:~'s |[A-Z])[\w' ,-]*?)?(?: with [^"]+?)?)(?:,| and| with) "(.+)"$/i);
     if (qm) {
       const base = parseTokenPhrase(qm[1].replace(/,$/, '').replace(/ and$/, '').replace(/ with$/, ''));
       if (base) {
@@ -882,6 +882,18 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'grantAbility', text: m[2], on: ref, duration: 'endOfTurn' }] : null;
   }],
   [/^(.+?) gains? "(.+)" for as long as (.+)$/i, () => null],
+  // "It gains \"At the beginning of your end step, return ~ to its owner's hand.\" Then put the rest ..."
+  [/^(.+?) (?:gains?|has) "(.+?)"\.? (?:Then |then )?(.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const saved = ctx.targets.length;
+    const rest = parseSentence(m[3].replace(/^[a-z]/, (c) => c), ctx) ?? parseSentence(m[3].replace(/^./, (c) => c.toLowerCase()), ctx);
+    if (!rest) {
+      ctx.targets.length = saved;
+      return null;
+    }
+    return [{ kind: 'grantAbility', text: m[2], on: ref, duration: 'permanent' }, ...rest];
+  }],
   [/^adapt (\w+)$/i, (m) => {
     const n = wordToNumber(m[1]);
     return n === null ? null : [{ kind: 'conditional', if: { kind: 'not', c: { kind: 'hasCounter', ref: SELF, counter: '+1/+1' } }, then: [{ kind: 'addCounters', counter: '+1/+1', amount: n, on: SELF }] }];
@@ -5940,10 +5952,34 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   // Compound: "A and B" / "A, then B"
   const CLAUSE_VERB = /\b(?:gets?|gains?|loses?|becomes?|deals?|draws?|discards?|sacrifices?|creates?|destroys?|exiles?|returns?|puts?|taps?|untaps?|mills?|has|have|is|are|cannot|can)\b/i;
   const splitters = [/, then /i, /\. then /i, / and then /i, /, and /i, / and /i, /, (?=(?:then )?(?:discards?|loses?|gains?|draws?|sacrifices?|mills?|creates?|exiles?|destroys?|returns?|puts?|scry|untaps?|taps?)\b)/i, /, (?=(?:up to |any number of |another |each |all |target |that |those |the |you |it |they |~)[^,]*?\b(?:gets?|gains?|loses?|becomes?|deals?|draws?|discards?|sacrifices?|creates?|destroys?|exiles?|returns?|puts?|taps?|untaps?|mills?|has|have|is|are|cannot|can)\b)/i, /, (?=(?:gets?|gains?|loses?|becomes?|has|have|is|are|cannot|can|deals?|must|doesn't|does not)\s)/i];
+  const qSpans: [number, number][] = [];
+  {
+    let open = -1;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] !== '"') continue;
+      if (open < 0) open = i;
+      else {
+        qSpans.push([open, i]);
+        open = -1;
+      }
+    }
+    if (open >= 0) qSpans.push([open, text.length]);
+  }
+  const inQuote = (i: number) => qSpans.some(([a, b]) => i > a && i < b);
   for (const sp of splitters) {
-    const idx = text.search(sp);
-    if (idx <= 0) continue;
-    let parts = text.split(sp);
+    // Never split inside quoted rules text ("create a token with flying and \"~ attacks each combat if able.\"").
+    const g = new RegExp(sp.source, sp.flags.includes('g') ? sp.flags : `${sp.flags}g`);
+    let parts: string[] = [];
+    let last = 0;
+    let mm: RegExpExecArray | null;
+    while ((mm = g.exec(text)) !== null) {
+      if (mm[0].length === 0) g.lastIndex++;
+      if (mm.index <= 0 || inQuote(mm.index)) continue;
+      parts.push(text.slice(last, mm.index));
+      last = mm.index + mm[0].length;
+    }
+    if (!parts.length) continue;
+    parts.push(text.slice(last));
     if (parts.length < 2) continue;
     // "A, B, and C until end of turn": the trailing duration applies to every clause.
     {
