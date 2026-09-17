@@ -341,6 +341,18 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
 /** Non-mana costs: tap, sacrifice, discard, life, counters... Returns false if unpayable. */
 export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: AbilityCost, x: number): Gen<boolean> {
   const ctx = { sourceId: obj.id, controller: p, x };
+  if (cost.optional) {
+    const { optional: _o, ...rest } = cost;
+    void _o;
+    const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `${obj.card.name}: pay the optional additional cost?`, sourceId: obj.id });
+    if (!(r.type === 'yesNo' && r.value)) {
+      obj.memory['additionalCostPaid'] = false;
+      return true;
+    }
+    const paid = yield* payAbilityCost(g, p, obj, rest, x);
+    obj.memory['additionalCostPaid'] = paid;
+    return paid;
+  }
   if (cost.choice) {
     // "Sacrifice a creature or pay {3}": pick one option, then pay it.
     const label = (c: AbilityCost): string => c.mana ?? (c.sacrifice ? 'Sacrifice' : c.discard ? 'Discard' : c.payLife ? `Pay ${c.payLife} life` : c.returnToHand ? 'Return a permanent to hand' : c.exileFromGraveyard ? 'Exile from graveyard' : c.tapUntapped ? 'Tap creatures' : 'Other');
@@ -367,6 +379,29 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     if (cost.discard === 'hand') {
       /* ok */
     } else if (hand.filter((id) => !cost.discard || cost.discard === 'hand' || matchesFilter(g, g.obj(id), { ...cost.discard.filter, zone: 'hand' }, ctx)).length < nx(cost.discard.count)) return false;
+  }
+  if (cost.exileObjects) {
+    const cands = objectsMatching(g, cost.exileObjects.filter, ctx).map((o) => o.id);
+    const en = cost.exileObjects.count === 'any' ? cands.length : cnt(cost.exileObjects.count, cands.length);
+    let ids = cands.slice(0, en);
+    if (cands.length > 1 || cost.exileObjects.count === 'any') {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: cost.exileObjects.count === 'any' ? 'Exile any number as a cost' : `Exile ${en} as a cost`, candidates: cands, min: cost.exileObjects.count === 'any' ? 0 : en, max: en, sourceId: obj.id });
+      if (resp.type !== 'objects') return false;
+      ids = resp.ids;
+    }
+    obj.memory['exiledAsCost'] = ids;
+    for (const id of ids) g.moveObject(id, 'exile', { cause: 'exile', sourceId: obj.id });
+  }
+  if (cost.putCounters) {
+    const cands = objectsMatching(g, cost.putCounters.filter, ctx).map((o) => o.id);
+    if (!cands.length) return false;
+    let pick = cands[0];
+    if (cands.length > 1) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Put ${cost.putCounters.amount} ${cost.putCounters.counter} counter(s) as a cost`, candidates: cands, min: 1, max: 1, sourceId: obj.id });
+      if (resp.type !== 'objects' || !resp.ids.length) return false;
+      pick = resp.ids[0];
+    }
+    g.addCounters(pick, cost.putCounters.counter, cost.putCounters.amount);
   }
   if (cost.tapUntappedTotalPower) {
     const cands = objectsMatching(g, { ...cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, ctx);
@@ -444,11 +479,11 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = objectsMatching(g, { types: ['Artifact', 'Creature'], controller: 'you', untapped: true, zone: 'battlefield' }, ctx).map((o) => o.id);
     let helpers: ObjectId[] = [];
     if (cands.length) {
-      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Waterbend {${cost.waterbend}}: tap artifacts and creatures to pay {1} each (choose none to pay with mana)`, candidates: cands, min: 0, max: Math.min(cands.length, cost.waterbend), sourceId: obj.id });
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Waterbend {${cost.waterbend === 'X' ? x : cost.waterbend}}: tap artifacts and creatures to pay {1} each (choose none to pay with mana)`, candidates: cands, min: 0, max: Math.min(cands.length, cost.waterbend === 'X' ? x : cost.waterbend), sourceId: obj.id });
       if (resp.type !== 'objects') return false;
       helpers = resp.ids;
     }
-    const rest = cost.waterbend - helpers.length;
+    const rest = (cost.waterbend === 'X' ? x : cost.waterbend) - helpers.length;
     if (rest > 0) {
       const paid = yield* payCost(g, p, parseManaCost(`{${rest}}`), 0, obj.id);
       if (!paid) return false;
@@ -459,6 +494,11 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...cost.exileFromGraveyard!.filter, zone: 'graveyard' }, ctx));
     if (cands.length < cnt(cost.exileFromGraveyard.count, cands.length)) return false;
   }
+  if (cost.exileObjects) {
+    const cands = objectsMatching(g, cost.exileObjects.filter, ctx);
+    if (cost.exileObjects.count !== 'any' && cands.length < cnt(cost.exileObjects.count, cands.length)) return false;
+  }
+  if (cost.putCounters && objectsMatching(g, cost.putCounters.filter, ctx).length === 0) return false;
   if (cost.tapUntapped) {
     const cands = objectsMatching(g, { ...cost.tapUntapped.filter, controller: 'you', untapped: true }, ctx);
     if (cost.tapUntapped.count !== 'any' && cands.length < cnt(cost.tapUntapped.count, cands.length)) return false;

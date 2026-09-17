@@ -296,7 +296,7 @@ export type Effect =
   | { kind: 'discardObjects'; what: Ref }
   | { kind: 'ringTempts'; who?: Ref }
   | { kind: 'takeInitiative'; who?: Ref }
-  | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number }
+  | { kind: 'chooseMode'; options: { text: string; effects: Effect[] }[]; count?: number; /** "Choose one that hasn't been chosen this turn": modes already used are unavailable. */ notChosen?: 'turn' | 'game' }
   | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter; /** "Until end of turn, whenever X, Y": fires repeatedly this turn, then goes away. */ untilEndOfTurn?: boolean }
   | { kind: 'log'; text: string }
   | { kind: 'ventureIntoDungeon' }
@@ -414,7 +414,7 @@ export interface AbilityCost {
   /** Reveal this card from your hand (free; the ability works from the hand). */
   revealSelf?: boolean;
   /** Waterbend {N}: pay {N}, tapping untapped artifacts and creatures you control for {1} each. */
-  waterbend?: number;
+  waterbend?: number | 'X';
   /** Collect evidence N: exile cards with total mana value N or more from your graveyard (optional when "you may"). */
   collectEvidence?: { n: number; optional?: boolean };
   /** Behold a Dragon: reveal a matching creature card from your hand or choose one you control (free). */
@@ -439,6 +439,12 @@ export interface AbilityCost {
   manual?: string;
   /** "Sacrifice a creature or pay {3}": the player picks one option to pay. */
   choice?: AbilityCost[];
+  /** "you may sacrifice a creature": paying is optional (memory `additionalCostPaid` records the choice). */
+  optional?: boolean;
+  /** "Exile a creature you control" / "exile any number of creature cards from your graveyard". */
+  exileObjects?: { filter: ObjectFilter; count: number | 'any' | 'X' };
+  /** "Put a -1/-1 counter on a creature you control." */
+  putCounters?: { counter: CounterType; amount: number; filter: ObjectFilter };
 }
 
 export interface TriggeredAbilitySpec {
@@ -503,6 +509,8 @@ export interface SpellAbilitySpec {
   maxModesIf?: { condition: Condition; max: number };
   /** "You may choose the same mode more than once." */
   modesRepeatable?: boolean;
+  /** "Choose one that hasn't been chosen this turn": modes already used are unavailable. */
+  modesNotChosen?: 'turn' | 'game';
 }
 
 /** Replacement effects modeled for the common cases. */

@@ -8,6 +8,15 @@ const MANA_RE = /^(?:\{[^}]+\})+$/;
 
 export function parseCost(text: string): AbilityCost | null {
   const cost: AbilityCost = {};
+  // "you may sacrifice a creature" — an optional (additional) cost.
+  {
+    const om = text.match(/^You may (.+)$/i);
+    if (om && !/^(?:blight|collect evidence)/i.test(om[1])) {
+      const inner = parseCost(om[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
+      if (inner) return { ...inner, optional: true };
+      return null;
+    }
+  }
   // "Sacrifice a creature or pay {3}" / "discard a card or pay 3 life": a choice of costs.
   {
     const cm = text.match(/^(.+?) or (pay .+|sacrifice .+|discard .+|exile .+)$/i);
@@ -23,7 +32,27 @@ export function parseCost(text: string): AbilityCost | null {
   for (const p of parts) {
     let m: RegExpMatchArray | null;
     if (p === '{T}') cost.tap = true;
-    else if ((m = p.match(/^Waterbend \{(\d+)\}$/i))) cost.waterbend = parseInt(m[1], 10);
+    else if ((m = p.match(/^Waterbend \{(\d+|X)\}$/i))) cost.waterbend = m[1].toUpperCase() === 'X' ? 'X' : parseInt(m[1], 10);
+    else if ((m = p.match(/^Exile (?:(any number of|X|\w+) )?(.+?) (?:you control|from your graveyard)$/i))) {
+      const fromGy = /from your graveyard$/i.test(p);
+      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      if (!noun) return null;
+      const n: number | 'any' | 'X' | null = !m[1] ? 1 : /any number of/i.test(m[1]) ? 'any' : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
+      if (n === null) return null;
+      if (fromGy) cost.exileFromGraveyard = { filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: n === 'any' ? 'X' : n };
+      else cost.exileObjects = { filter: { ...noun.filter, zone: 'battlefield', controller: 'you' }, count: n };
+    }
+    else if ((m = p.match(/^Put (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on (?:a|an) (.+?) you control$/i))) {
+      const noun = parseNoun(`a ${m[3]}`);
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (!noun || n === null || n === 'X') return null;
+      cost.putCounters = { counter: m[2] as import('@commander/engine').CounterType, amount: n, filter: { ...noun.filter, zone: 'battlefield', controller: 'you' } };
+    }
+    else if ((m = p.match(/^Sacrifice (X|\w+) (.+?)s$/i)) && (m[1].toUpperCase() === 'X' || typeof wordToNumber(m[1]) === 'number')) {
+      const noun = parseNoun(`a ${m[2]}`);
+      if (!noun) return null;
+      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number) };
+    }
     else if ((m = p.match(/^(You may )?Blight (\d+)$/i))) {
       cost.blight = parseInt(m[2], 10);
       if (m[1]) cost.blightOptional = true;
@@ -70,7 +99,7 @@ export function parseCost(text: string): AbilityCost | null {
     else if (/^Discard your hand$/i.test(p)) cost.discard = 'hand';
     else if ((m = p.match(/^Discard (?:a|an|(\w+)) cards? at random$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
-      if (n === null || n === 'X') return null;
+      if (n === null) return null;
       cost.discard = { count: n, random: true };
     }
     else if ((m = p.match(/^Discard (?:a|an|(\w+)) (.+?)s?$/i))) {

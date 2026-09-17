@@ -1119,7 +1119,8 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'setPT', ...(m[2].toLowerCase() === 'power' ? { power: v } : { toughness: v }), on: ref, duration: dur }];
   }],
   // "becomes an Avatar in addition to its other types" / "becomes blue Illusions in addition to their other types"
-  [/^(.+?) becomes? (?:a |an )?([A-Za-z][\w' -]*?) in addition to (?:its|their) other types(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) becomes? (?:a |an )?([A-Za-z][\w' -]*?)(?: in addition to (?:its|their) other types)?(?: until end of turn)?$/i, (m, ctx) => {
+    const inAddition = /in addition to (?:its|their) other types/i.test(m[0]);
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
@@ -1129,9 +1130,10 @@ const PATTERNS: Pattern[] = [
     const subtypes = words.filter((w) => /^[A-Z]/.test(w)).map((w) => w.replace(/s$/, ''));
     if (!types.length && !subtypes.length && !colors.length) return null;
     const out: Effect[] = [];
-    if (types.length || subtypes.length) out.push({ kind: 'addTypes', types, subtypes, on: ref, duration: dur });
+    if (!inAddition && subtypes.length && !types.length && !colors.length) out.push({ kind: 'setSubtypes', on: ref, subtypes, duration: dur });
+    else if (types.length || subtypes.length) out.push({ kind: 'addTypes', types, subtypes, on: ref, duration: dur });
     if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
-    return out;
+    return out.length ? out : null;
   }],
   // "gains your choice of flying, vigilance, deathtouch, or haste"
   [/^(.+?) gains? your choice of (.+?)(?: until end of turn)?$/i, (m, ctx) => {
@@ -1643,6 +1645,19 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
     const a = anyRef(parts[0], ctx);
     const b = anyRef(parts[1], ctx);
     if (a && b) return [mk(a), mk(b)];
+  }
+  // "each of up to six targets" / "each of two targets" / "each of one or two targets"
+  let em: RegExpMatchArray | null;
+  if ((em = t.match(/^each of (?:(up to) )?(?:(\w+) or (\w+)|(X|\w+)) targets$/i))) {
+    const lo = em[3] ? wordToNumber(em[2]) : em[1] ? 0 : null;
+    const hiRaw = em[3] ?? em[4];
+    const hi = hiRaw.toUpperCase() === 'X' ? 'X' : wordToNumber(hiRaw);
+    if (hi === null) return null;
+    const max = hi === 'X' ? 20 : hi;
+    ctx.targets.push({ description: t, kind: 'any', min: lo === null || lo === 'X' ? max : lo, max, distinct: true });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [mk(ref)];
   }
   if (/^any other target$/i.test(t)) {
     ctx.targets.push({ description: t, kind: 'any', min: 1, max: 1, distinct: true });
@@ -2226,7 +2241,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   return null;
 }
 
-function substituteX(e: Effect, a: Amount): Effect {
+export function substituteX(e: Effect, a: Amount): Effect {
   const rep = (v: unknown): unknown => (v === 'X' ? a : v);
   const out: Record<string, unknown> = { ...e };
   for (const k of ['amount', 'power', 'toughness', 'count']) if (k in out) out[k] = rep(out[k]);

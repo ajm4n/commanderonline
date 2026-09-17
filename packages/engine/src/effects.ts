@@ -1281,8 +1281,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'chooseMode': {
       const n = e.count ?? 1;
-      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${n}`, options: e.options.map((o, i) => ({ id: String(i), label: o.text })), min: n, max: n, sourceId: ctx.sourceId ?? undefined });
-      const picks = resp.type === 'options' ? resp.ids.map(Number) : [0];
+      const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
+      const usedKey = e.notChosen === 'turn' ? `modesChosen:${g.state.turn.number}` : 'modesChosen';
+      const used = e.notChosen && src ? ((src.memory[usedKey] as number[] | undefined) ?? []) : [];
+      const avail = e.options.map((o, i) => ({ o, i })).filter(({ i }) => !used.includes(i));
+      if (!avail.length) return;
+      const pick = Math.min(n, avail.length);
+      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${pick}`, options: avail.map(({ o, i }) => ({ id: String(i), label: o.text })), min: pick, max: pick, sourceId: ctx.sourceId ?? undefined });
+      const picks = resp.type === 'options' ? resp.ids.map(Number) : [avail[0].i];
+      if (e.notChosen && src) src.memory[usedKey] = [...used, ...picks];
       for (const i of picks) yield* executeEffects(g, e.options[i].effects, ctx);
       return;
     }

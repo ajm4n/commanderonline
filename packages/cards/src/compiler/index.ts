@@ -2,10 +2,10 @@
  * Oracle text → CardScript compiler. Turns templated rules text into
  * executable scripts so the engine can automate cards nobody hand-scripted.
  */
-import type { AbilitySpec, ActivatedAbilitySpec, CardData, CardScript, Effect, TargetSpec, TriggeredAbilitySpec, Condition, CostModifier, AbilityCost } from '@commander/engine';
+import type { AbilitySpec, ActivatedAbilitySpec, Amount, CardData, CardScript, Effect, TargetSpec, TriggeredAbilitySpec, Condition, CostModifier, AbilityCost } from '@commander/engine';
 import { ENFORCED_KEYWORDS } from '@commander/engine';
 import { normalizeOracle, wordToNumber } from './text.js';
-import { parseEffects, newCtx, parseSentence, isNoOpSentence, type ParseCtx } from './effects.js';
+import { parseEffects, newCtx, parseSentence, isNoOpSentence, substituteX, type ParseCtx } from './effects.js';
 import { parseTriggerHead, splitTriggerRest } from './triggers.js';
 import { parseCost, parseActivationRestriction } from './costs.js';
 import { parseStatic } from './statics.js';
@@ -71,6 +71,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   let modalRepeatable = false;
   let castCondition: Condition | undefined;
   let additionalCost: CardScript['additionalCost'];
+  let modalX: Amount | null = null;
+  let modalNotChosen: 'turn' | 'game' | null = null;
   const alternativeCosts: NonNullable<CardScript['alternativeCosts']> = [];
   const costModifiers: CostModifier[] = [];
   /** Active LEVEL / STATION block: abilities parsed while it is open get this condition. */
@@ -395,6 +397,14 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       repeatable = true;
       line = `Choose ${m[1]}`;
     }
+    if (/^Choose (?:one|two)\b/i.test(line) && (/been chosen/i.test(line) || / X is /i.test(line))) {
+      const mh = parseModalHead(line);
+      if (mh) {
+        modalX = mh.x ?? null;
+        modalNotChosen = mh.notChosen ?? null;
+        line = `Choose ${mh.count === 2 ? 'two' : 'one'}`;
+      }
+    }
     if ((m = line.match(/^Choose (one|two|three|one or both|one or more|any number|up to two|up to three)(?: —)?$/i))) {
       modal = [];
       if (maxModesIf) modalMaxIf = maxModesIf;
@@ -413,7 +423,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if (modal && (m = line.match(/^•\s*(.+)$/))) {
       const ctx = newCtx({ isSpell: true });
       const { effects, unhandled } = parseEffects(m[1], ctx);
-      modal.push({ text: m[1], targets: ctx.targets, effects });
+      modal.push({ text: m[1], targets: ctx.targets, effects: modalX !== null ? effects.map((e) => substituteX(e, modalX!)) : effects });
       if (unhandled.length) unhandledLines.push(...unhandled);
       else compiledLines.push(line);
       continue;
@@ -520,7 +530,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const ctx = newCtx({ triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer, triggerObjectIsSource: head.objectIsSource });
       let effects: Effect[];
       let unhandled: string[];
-      const modalHead = split.rest.match(/^choose (one|two|one or both|one or more|any number)(?: —)?$/i);
+      const modalHead = parseModalHead(split.rest);
       if (modalHead && lines[li + 1]?.startsWith('•')) {
         // Modal trigger: options follow as bullet lines.
         const options: { text: string; effects: Effect[] }[] = [];
@@ -529,11 +539,10 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           li++;
           const optText = lines[li].replace(/^•\s*/, '');
           const r = parseEffects(optText, ctx);
-          options.push({ text: optText, effects: r.effects });
+          options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
           unhandled.push(...r.unhandled);
         }
-        const w = modalHead[1].toLowerCase();
-        effects = [{ kind: 'chooseMode', options, count: w === 'two' ? 2 : 1 }];
+        effects = [{ kind: 'chooseMode', options, count: modalHead.count, notChosen: modalHead.notChosen }];
       } else ({ effects, unhandled } = parseEffects(split.rest, ctx));
       let condition: Condition | undefined;
       if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
@@ -560,7 +569,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         const ctx = newCtx();
         let effects: Effect[];
         let unhandled: string[];
-        const modalHead = rest.text.match(/^choose (one|two|one or both)(?: —)?\.?$/i);
+        const modalHead = parseModalHead(rest.text);
         if (modalHead && lines[li + 1]?.startsWith('•')) {
           const options: { text: string; effects: Effect[] }[] = [];
           unhandled = [];
@@ -568,10 +577,10 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
             li++;
             const optText = lines[li].replace(/^•\s*/, '');
             const r = parseEffects(optText, ctx);
-            options.push({ text: optText, effects: r.effects });
+            options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
             unhandled.push(...r.unhandled);
           }
-          effects = [{ kind: 'chooseMode', options, count: modalHead[1].toLowerCase() === 'two' ? 2 : 1 }];
+          effects = [{ kind: 'chooseMode', options, count: modalHead.count, notChosen: modalHead.notChosen }];
         } else ({ effects, unhandled } = parseEffects(rest.text, ctx));
         // Class cards: "{2}{W}: Level 2" gains the level; abilities after it need that level.
         const lvl = rest.text.match(/^Level (\d+)\.?$/i);
@@ -640,7 +649,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   // Dice result rows ("1—9 | effect") attach to the preceding roll.
   void 0;
   if (isSpell || modal || spellEffects.length) {
-    if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, maxModesIf: modalMaxIf, modesRepeatable: modalRepeatable || undefined, effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : [] });
+    if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, maxModesIf: modalMaxIf, modesRepeatable: modalRepeatable || undefined, modesNotChosen: modalNotChosen ?? undefined, effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : [] });
     else abilities.push({ kind: 'spell', effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : undefined });
     void spellTargets;
   }
@@ -724,6 +733,22 @@ function guessTrigger(line: string): AbilitySpec[] {
   if (/^Whenever (?:a|an|another) .+? dies/i.test(line)) return [{ kind: 'triggered', text: line, event: 'dies', effects: text }];
   if (/^Whenever a land enters/i.test(line)) return [{ kind: 'triggered', text: line, event: 'entersBattlefield', filter: { object: { types: ['Land'] }, objectController: 'you' }, effects: text }];
   return [];
+}
+
+
+/** A modal head, possibly with an X definition or a "that hasn't been chosen" restriction. */
+function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'game'; x?: Amount } | null {
+  const m = text.match(/^choose (one|two|one or both|one or more|any number)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
+  if (!m) return null;
+  const w = m[1].toLowerCase();
+  const out: { count: number; notChosen?: 'turn' | 'game'; x?: Amount } = { count: w === 'two' ? 2 : 1 };
+  if (m[2] !== undefined || /been chosen/i.test(text)) out.notChosen = m[2] ? 'turn' : 'game';
+  if (m[3]) {
+    const a = parseAmount(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (a === null) return null;
+    out.x = a;
+  }
+  return out;
 }
 
 export function compileCard(card: CardData): CompileResult {
