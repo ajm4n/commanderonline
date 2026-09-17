@@ -3062,6 +3062,28 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [{ kind: 'unlessPays', who, cost: { discard: m[3] ? (wordToNumber(m[3]) as number) ?? 1 : 1, random: true }, effects: inner, text: m[0].slice(m[1].length + 8) }];
     }
   }
+  // "unless they sacrifice a nonland permanent of their choice or discard a card"
+  if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) sacrifices? (?:a|an) (.+?) of (?:their|its) choice or discards? a card$/i))) {
+    const who = playerRef(m[2], ctx);
+    const noun = parseNoun(`a ${m[3]}`);
+    const inner = who && noun ? parseSentence(m[1], ctx) : null;
+    if (who && noun && inner) {
+      return [{ kind: 'unlessPays', who, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' } }, effects: [{ kind: 'unlessPays', who, cost: { discard: 1 }, effects: inner }] }];
+    }
+  }
+  // "unless you exile the top creature card of your graveyard" / "unless you exile a card from your graveyard"
+  if ((m = text.match(/^(.+?) unless you exile (?:the top (.+?) card of your graveyard|(?:a|an) (.+?) from your graveyard)$/i))) {
+    const noun = parseNoun(`a ${(m[2] ?? m[3]).replace(/ card$/i, '')} card`);
+    const inner = noun ? parseSentence(m[1], ctx) : null;
+    if (noun && inner) return [{ kind: 'unlessPays', who: YOU, cost: { exileFromGraveyard: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: 1 }, effects: inner }];
+  }
+  // "unless you sacrifice two Islands" / "unless you sacrifice two lands"
+  if ((m = text.match(/^(.+?) unless you sacrifice (\w+) (.+?)$/i))) {
+    const n = wordToNumber(m[2]);
+    const noun = parseNoun(`a ${m[3].replace(/s$/, '')}`);
+    const inner = typeof n === 'number' && noun ? parseSentence(m[1], ctx) : null;
+    if (typeof n === 'number' && noun && inner) return [{ kind: 'unlessPays', who: YOU, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' }, count: n }, effects: inner }];
+  }
   if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) (?:discards? (?:a card|(\w+) cards?)|sacrifices? (?:a|an|another) (.+?)|pays? (\d+) life)$/i))) {
     const inner = parseSentence(m[1], ctx);
     const who = playerRef(m[2], ctx);

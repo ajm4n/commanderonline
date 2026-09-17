@@ -1544,11 +1544,23 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           }
         } else if (typeof e.cost === 'object' && 'sacrifice' in e.cost) {
           const f = e.cost.sacrifice;
+          const need = e.cost.count ?? 1;
           const cands = objectsMatching(g, { ...f, controller: p, zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).map((o) => o.id);
-          if (cands.length) {
-            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? 'Sacrifice one? (choose none to decline)', candidates: cands, min: 0, max: 1 });
-            if (r.type === 'objects' && r.ids.length) {
-              g.moveObject(r.ids[0], 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+          if (cands.length >= need) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Sacrifice ${need}? (choose none to decline)`, candidates: cands, min: 0, max: need });
+            if (r.type === 'objects' && r.ids.length === need) {
+              for (const id of r.ids) g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'exileFromGraveyard' in e.cost) {
+          const f = e.cost.exileFromGraveyard;
+          const need = e.cost.count;
+          const cands = g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...f, zone: 'graveyard' }, { sourceId: ctx.sourceId, controller: p }));
+          if (cands.length >= need) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Exile ${need} from your graveyard? (choose none to decline)`, candidates: cands, min: 0, max: need, revealToChooser: true });
+            if (r.type === 'objects' && r.ids.length === need) {
+              for (const id of r.ids) g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
               paid = true;
             }
           }

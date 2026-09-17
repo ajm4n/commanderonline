@@ -1446,6 +1446,16 @@ export class Game {
       }
       case 'minus':
         return Math.max(0, this.resolveAmount(a.a, ctx) - this.resolveAmount(a.b, ctx));
+      case 'playerStatAmount':
+        return this.resolvePlayers(a.ref, ctx).reduce((s2, p) => s2 + (a.stat === 'poison' ? this.player(p).poison : a.stat === 'experience' ? this.player(p).experience : this.player(p).energy), 0);
+      case 'totalPowerRef':
+        return this.resolveObjects(a.ref, ctx).reduce((s2, o) => s2 + (this.characteristics(o.id).power ?? 0), 0);
+      case 'playersMatching': {
+        const cands = a.who === 'opponent' ? this.opponentsOf(ctx.controller) : this.state.playerOrder;
+        return cands.filter((p) => (this.state.players[p]?.turnStats[a.stat] ?? 0) > 0).length;
+      }
+      case 'graveyardsWithAtLeast':
+        return this.state.playerOrder.filter((p) => this.player(p).graveyard.length >= a.count).length;
       case 'chosenNumber':
         return (ctx.memory['chosenNumber'] as number) ?? 0;
       case 'ctxMemory': {

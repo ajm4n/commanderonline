@@ -87,6 +87,25 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     // "each of those creatures" / "each of them"
     if (/^(?:of )?(?:those creatures|those permanents|them)$/.test(t1)) return { kind: 'countRef', ref: ctx.lastObj ?? { ref: 'lastMoved' } };
   }
+  {
+    const t2 = text.trim().toLowerCase().replace(/^the number of /, '');
+    if (/^1 damage prevented this way$/.test(t2) || /^damage prevented this way$/.test(t2)) return { kind: 'triggerAmount' };
+    if (/^(?:the )?total amount of mana (?:paid|spent) this way$/.test(t2)) return { kind: 'manaSpent', of: 'total' };
+    if (/^that excess damage$/.test(t2) || /^the amount of excess damage .*$/.test(t2)) return { kind: 'triggerAmount' };
+    if (/^the mana value of that spell$/.test(t2) || /^the milled card's mana value$/.test(t2)) return { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : ({ ref: 'lastMoved' } as Ref)) };
+    if (/^poison counters? your opponents have$/.test(t2)) return { kind: 'playerStatAmount', stat: 'poison', ref: { ref: 'eachOpponent' } };
+    if (/^(?:the amount of )?life you gained(?: this turn)?$/.test(t2)) return { kind: 'playerTurnStat', key: 'lifeGained', ref: { ref: 'controller' } };
+    if (/^their total power$/.test(t2) || /^the total power of those creatures$/.test(t2)) return { kind: 'totalPowerRef', ref: ctx.lastObj ?? { ref: 'lastMoved' } };
+    if (/^your speed$/.test(t2)) return { kind: 'turnStat', key: 'speed' };
+    if (/^(?:opponents?|players?) who (?:was|were) dealt damage this turn$/.test(t2)) return { kind: 'playersMatching', who: 'opponent', stat: 'damageTaken' };
+    if (/^(?:opponents?|players?) who lost life this turn$/.test(t2)) return { kind: 'playersMatching', who: /opponent/.test(t2) ? 'opponent' : 'any', stat: 'lifeLostAmount' };
+    if (/^(?:opponents?|players?) who (?:discarded a card|has discarded a card) this turn$/.test(t2)) return { kind: 'playersMatching', who: /opponent/.test(t2) ? 'opponent' : 'any', stat: 'discard' };
+    if (/^graveyards? with (\w+) or more cards in it$/.test(t2)) {
+      const n = wordToNumber(t2.match(/^graveyards? with (\w+) or more cards in it$/)![1]);
+      if (typeof n === 'number') return { kind: 'graveyardsWithAtLeast', count: n };
+    }
+    if (/^card types? among cards discarded this way$/.test(t2)) return { kind: 'discardedThisWay', ref: { ref: 'controller' } };
+  }
   if (/^(?:the number of )?(?:[+\-\w\/]+ )?counters? removed this way$/i.test(text.trim())) return 'X';
   if (/^(?:the number of )?times? (?:it|~|this spell) was kicked$/i.test(text.trim())) return { kind: 'kickCount' };
   if (/^(?:the number of )?(?:creatures?|permanents?|cards?) put into your graveyard from the battlefield this turn$/i.test(text.trim())) return { kind: 'eventsThisTurn', event: 'dies', player: 'you' };
@@ -270,7 +289,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^the greatest (power|toughness|mana value) (?:among|of) (?:your commanders|a commander you own(?: on the battlefield or in the command zone)?|commanders? you own)$/))) {
     return { kind: 'maxOf', stat: m[1] === 'power' ? 'power' : m[1] === 'toughness' ? 'toughness' : 'manaValue', filter: { isCommander: true, owner: 'you', zoneIn: ['battlefield', 'command'] } };
   }
-  if (t === 'the number of experience counters you have' || t === 'experience counter you have' || t === 'experience counters you have') return { kind: 'turnStat', key: 'experience' };
+  if (/^(?:the number of )?experience counters? (?:you have|you control)$/.test(t)) return { kind: 'turnStat', key: 'experience' };
   if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
   if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {
     const noun = withCtrl(parseNoun(oc(m, 1)), ctx);

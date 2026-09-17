@@ -72,6 +72,14 @@ export type Amount =
   | { kind: 'colorCount'; ref?: Ref; /** Distinct colors among objects matching this filter ('colors among permanents you control'). */ filter?: ObjectFilter }
   /** A per-player turn statistic ("life you gained this turn"). */
   | { kind: 'playerTurnStat'; key: string; ref?: Ref; /** Sum the stat across every opponent instead of one player. */ opponents?: boolean }
+  /** A player counter total, summed over the players a ref resolves to. */
+  | { kind: 'playerStatAmount'; stat: 'poison' | 'experience' | 'energy'; ref: Ref }
+  /** Total power of the objects a ref resolves to. */
+  | { kind: 'totalPowerRef'; ref: Ref }
+  /** Number of players with a non-zero turn stat ("each opponent who lost life this turn"). */
+  | { kind: 'playersMatching'; who: 'opponent' | 'any'; stat: string }
+  /** Number of graveyards with at least this many cards. */
+  | { kind: 'graveyardsWithAtLeast'; count: number }
   /** Number of distinct values of a stat among matching objects ("creatures with different powers"). */
   | { kind: 'distinctValues'; stat: 'power' | 'toughness' | 'manaValue' | 'name'; filter: ObjectFilter }
   /** Domain: basic land types among lands you control. */
@@ -318,7 +326,7 @@ export type Effect =
   | { kind: 'forEach'; over: Ref; effects: Effect[]; /** Only iterate objects matching this filter ("for each creature card exiled this way"). */ filter?: ObjectFilter }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
-  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */
