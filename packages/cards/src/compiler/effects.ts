@@ -4014,6 +4014,44 @@ const PATTERNS: Pattern[] = [
       : [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, controller: 'owner' }];
   }],
   // "return to your hand all creature cards in your graveyard that were put there from the battlefield this turn"
+  // "~ deals 1 damage to any target and 1 damage to any target of an opponent's choice"
+  // "~ deals X damage to target creature and 1 damage to each other creature with the same controller"
+  [/^(.+?) deals (\d+|X) damage to (.+?) and (\d+|X|half X, rounded (?:up|down)) damage to (.+)$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? undefined : (objRef(m[1], ctx) ?? undefined);
+    if (!/^~$/.test(m[1]) && !src) return null;
+    const amtOf = (w: string): Amount | null => {
+      if (/^\d+$/.test(w)) return parseInt(w, 10);
+      if (/^X$/i.test(w)) return 'X';
+      const half = w.match(/^half X, rounded (up|down)$/i);
+      if (half) return { kind: 'half', a: 'X', round: half[1].toLowerCase() as 'up' | 'down' };
+      return null;
+    };
+    const a1 = amtOf(m[2]);
+    const a2 = amtOf(m[4]);
+    if (a1 === null || a2 === null) return null;
+    const t1 = objRef(m[3], ctx);
+    if (!t1) return null;
+    const t2 = objRef(m[5], ctx);
+    if (!t2) return null;
+    return [
+      { kind: 'damage', amount: a1, to: t1, source: src },
+      { kind: 'damage', amount: a2, to: t2, source: src },
+    ];
+  }],
+  // "~ deals 3 damage to target creature and each other creature that shares a creature type with it"
+  [/^(.+?) deals (\d+|X) damage to (.+?) and (each other .+|each .+)$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? undefined : (objRef(m[1], ctx) ?? undefined);
+    if (!/^~$/.test(m[1]) && !src) return null;
+    const a: Amount = /^X$/i.test(m[2]) ? 'X' : parseInt(m[2], 10);
+    const t1 = objRef(m[3], ctx);
+    if (!t1) return null;
+    const t2 = objRef(m[4], ctx);
+    if (!t2) return null;
+    return [
+      { kind: 'damage', amount: a, to: t1, source: src },
+      { kind: 'damage', amount: a, to: t2, source: src },
+    ];
+  }],
   [/^return (all .+?) to your hand$/i, (m, ctx) => {
     const noun = parseNoun(m[1]);
     if (!noun || !noun.confident) return null;

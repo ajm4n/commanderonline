@@ -1563,6 +1563,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 106 ----
+  if (/^damage does not cause you to lose life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'damageNoLifeLoss' } }];
+  if ((m = L.match(/^(.+?) gets an additional ([+-]\d+)\/([+-]\d+)$/i))) {
+    const r = parseStatic(`${m[1]} gets ${m[2]}/${m[3]}`, isCreatureOrPermanent);
+    if (r) return r;
+  }
   // ---- Round 104 ----
   // "~ is a land." / "~ is an artifact in addition to its other types."
   if ((m = L.match(/^(~|Enchanted \w+|Equipped \w+) (?:is|are) (?:a|an) (artifact|creature|enchantment|land|planeswalker|battle)( in addition to its other types)?$/i))) {
@@ -1581,6 +1587,20 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^You may cast ~ from exile$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'castFromExileSelf' } }];
   // "Damage that would be dealt by ~ cannot be prevented."
   if (/^Damage that would be dealt by ~ cannot be prevented$/i.test(L) || /^Damage cannot be prevented$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'noDamagePrevention' } }];
+  // "~ gets +2/+2 and creatures you control have vigilance": two independent statics joined by "and".
+  if (/ and /i.test(L) && !/"/.test(L) && !/^(?:as long as|while|during|if)\b/i.test(L)) {
+    for (const mm of [...L.matchAll(/ and /gi)].reverse()) {
+      if (mm.index === undefined || mm.index < 4) continue;
+      const left = L.slice(0, mm.index).trim();
+      const right = L.slice(mm.index + 5).trim();
+      if (!left || !right || !/\s/.test(right)) continue;
+      const a = parseStatic(left, isCreatureOrPermanent);
+      if (!a) continue;
+      const b = parseStatic(right, isCreatureOrPermanent);
+      if (!b) continue;
+      return [...a, ...b];
+    }
+  }
   // Sagas & others are handled by the orchestrator.
   void isCreatureOrPermanent;
   return null;

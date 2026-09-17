@@ -2079,7 +2079,9 @@ export class Game {
         p.poison += dealt;
         this.log(`${this.nameOf(sourceId!)} deals ${dealt} damage to ${p.name} as poison counters (${p.poison}).`);
       } else {
-        p.life -= dealt;
+        // "Damage doesn't cause you to lose life": the damage is still dealt, but no life is lost.
+        const noLifeLoss = this.playerRules(target.id).some((r) => r.kind === 'custom' && r.tag === 'damageNoLifeLoss');
+        if (!noLifeLoss) p.life -= dealt;
         this.log(`${src ? this.nameOf(src.id) : 'Something'} deals ${dealt} damage to ${p.name} (${p.life}).`, { kind: 'damage', data: { player: target.id, amount: dealt, sourceId } });
         if (combat && src?.isCommander) {
           p.commanderDamage[src.id] = (p.commanderDamage[src.id] ?? 0) + dealt;
