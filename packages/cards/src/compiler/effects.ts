@@ -4146,6 +4146,27 @@ const PATTERNS: Pattern[] = [
     if (spec.mill !== undefined) { const e2: Effect = { kind: 'unlessPays', who, cost: { discard: spec.mill }, effects: sac }; return [e2]; }
     return null;
   }],
+  // "Counter target spell unless its controller discards their hand."
+  [/^counter (target .+?) unless (?:its controller|that player|they|the controller|that spell's controller) (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const who: Ref = { ref: 'controllerOf', of: ref };
+    const body = m[2].trim();
+    const counter: Effect[] = [{ kind: 'counterSpell', what: ref }];
+    const pay = body.match(/^pays? ((?:\{[^}]+\})+)$/i);
+    if (pay) { const e2: Effect = { kind: 'unlessPays', who, cost: pay[1], effects: counter }; return [e2]; }
+    const life = body.match(/^pays? (\d+) life$/i);
+    if (life) { const e2: Effect = { kind: 'unlessPays', who, cost: { payLife: parseInt(life[1], 10) }, effects: counter }; return [e2]; }
+    if (/^discards their hand$/i.test(body)) { const e2: Effect = { kind: 'unlessPays', who, cost: { discard: 99 }, effects: counter }; return [e2]; }
+    const sac = body.match(/^sacrifices (?:a|an) (.+)$/i);
+    if (sac) {
+      const noun = parseNoun(`a ${sac[1]}`);
+      if (!noun) return null;
+      const e2: Effect = { kind: 'unlessPays', who, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' }, count: 1 }, effects: counter };
+      return [e2];
+    }
+    return null;
+  }],
   // ---- Round 127 ----
   // "Choose a creature at random, then destroy the rest."
   [/^choose (?:a|an|(\w+)) (.+?) at random$/i, (m, ctx) => {

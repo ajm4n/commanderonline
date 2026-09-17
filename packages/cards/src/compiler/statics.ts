@@ -1672,6 +1672,50 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 128 ----
+  // "Creatures with power 2 or less cannot attack you." / "... cannot attack you or planeswalkers you control."
+  if ((m = L.match(/^(.+?) cannot attack (you|you or planeswalkers you control|you or a planeswalker you control)$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'cantAttackYou' } }];
+  }
+  if ((m = L.match(/^(.+?) cannot block (~|it|equipped creature|enchanted creature)$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'cantBlockSource' } }];
+  }
+  if ((m = L.match(/^(.+?) cannot become untapped$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'cantUntap' } }];
+  }
+  if ((m = L.match(/^(.+?) can only attack alone$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'attacksAlone' } }];
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) snow$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, modification: { layer: 4, addSupertypes: ['Snow'] } }];
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) the chosen colou?r$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, modification: { layer: 5, setColorsFromMemory: 'color' } }];
+  }
+  if ((m = L.match(/^(.+?) (?:has|have) landwalk of the chosen type$/i))) {
+    const aff = affectsOf(m[1]);
+    if (aff.ok) return [{ kind: 'static', text: line, affects: aff.affects, rule: { kind: 'custom', tag: 'chosenLandwalk' } }];
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) ([\w ,]+?) and loses all other card types$/i))) {
+    const probe = parseNoun(`a ${m[2]}`);
+    const aff = affectsOf(m[1]);
+    if (aff.ok && probe && probe.filter.types?.length) return [{ kind: 'static', text: line, affects: aff.affects, modification: { layer: 4, setTypes: probe.filter.types } }];
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) ((?:[A-Z][a-z]+)(?:, [A-Z][a-z]+)*(?:,? and [A-Z][a-z]+))$/))) {
+    const subs = m[2].split(/,? and |, /).map((x) => x.trim()).filter(Boolean);
+    const aff = affectsOf(m[1]);
+    if (aff.ok && subs.length >= 2) return [{ kind: 'static', text: line, affects: aff.affects, modification: { layer: 4, setSubtypes: subs } }];
+  }
+  if ((m = L.match(/^(.+? spells?) you cast of the chosen type costs? \{(\d+)\} (less|more) to cast$/i))) {
+    const noun = parseNoun(m[1].replace(/ spells$/i, ' spell'));
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10), filter: { ...noun.filter, zone: undefined, chosenSubtypeKey: 'creatureType' } } }];
+  }
   // ---- Round 126 ----
   if ((m = L.match(/^(.+?) (?:get|gets) ([+-]\d+)\/([+-]\d+) for every (\w+) (.+)$/i))) {
     const a = parseAmount(`every ${m[4]} ${m[5]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
