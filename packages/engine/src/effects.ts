@@ -351,6 +351,43 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       setMemory(g, ctx, e.key, r.type === 'options' ? r.ids[0] : e.options[0]);
       return;
     }
+    case 'handToLibrary': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        const n = Math.min(amt(e.count), pl.hand.length);
+        if (n <= 0) continue;
+        let ids = pl.hand.slice(0, n);
+        if (pl.hand.length > n) {
+          const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Put ${n} card(s) from your hand into your library`, candidates: [...pl.hand], min: n, max: n, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+          if (r.type === 'objects') ids = r.ids;
+        }
+        for (const id of ids) g.moveObject(id, 'library', { skipEvents: true, position: e.position });
+        if (e.shuffle) g.shuffleLibrary(p);
+      }
+      return;
+    }
+    case 'shuffleZoneIntoLibrary': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        const ids = e.zone === 'hand' ? [...pl.hand] : e.zone === 'graveyard' ? [...pl.graveyard] : [...pl.exile];
+        for (const id of ids) g.moveObject(id, 'library', { skipEvents: true });
+        g.shuffleLibrary(p);
+        g.log(`${pl.name} shuffles their ${e.zone} into their library.`);
+      }
+      return;
+    }
+    case 'millBottom': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        const n = Math.min(amt(e.amount), pl.library.length);
+        for (let i = 0; i < n; i++) {
+          const id = pl.library[pl.library.length - 1];
+          if (id === undefined) break;
+          g.moveObject(id, 'graveyard');
+        }
+      }
+      return;
+    }
     case 'shuffleHandIntoLibraryAndDraw': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
         const pl = g.player(p);

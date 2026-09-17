@@ -4167,6 +4167,56 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 131 ----
+  // "Return ~ and target creature you control to their owner's hand."
+  [/^return ~ and (.+?) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'returnToHand', what: SELF }, { kind: 'returnToHand', what: ref }];
+  }],
+  // "Return ~ from your graveyard to the battlefield transformed."
+  [/^return ~ from (?:your graveyard|exile|your graveyard or from exile) to the battlefield( tapped)?( transformed)?$/i, (m) => [
+    { kind: 'returnToBattlefield', what: SELF, tapped: m[1] ? true : undefined, transformed: m[2] ? true : undefined },
+  ]],
+  // "Put ~ from exile onto the battlefield tapped." / "Put ~ onto the battlefield from the command zone."
+  [/^put ~ (?:from (?:exile|your graveyard|your hand|the command zone) )?onto the battlefield( tapped)?( and attacking)?( transformed)?(?: from the command zone)?$/i, (m) => [
+    { kind: 'returnToBattlefield', what: SELF, tapped: m[1] ? true : undefined, attacking: m[2] ? true : undefined, transformed: m[3] ? true : undefined },
+  ]],
+  // "Shuffle a card from your hand into your library."
+  [/^shuffle (?:a|an|(\w+)) cards? from your hand into your library$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'handToLibrary', count: n, shuffle: true }];
+  }],
+  // "Shuffle your graveyard and hand into your library, then draw seven cards."
+  [/^shuffle your (graveyard|hand)(?: and (graveyard|hand))? into your library$/i, (m) => {
+    const zones = [m[1], m[2]].filter(Boolean).map((z) => (z === 'hand' ? 'hand' : 'graveyard')) as ('hand' | 'graveyard')[];
+    return zones.map((z) => ({ kind: 'shuffleZoneIntoLibrary' as const, zone: z, who: YOU }));
+  }],
+  [/^shuffle ~ into your library(?: from your graveyard)?$/i, () => [{ kind: 'moveToZone', what: SELF, zone: 'library' }, { kind: 'shuffle' }]],
+  // "Put the bottom card of your library into your graveyard."
+  [/^put the bottom card of your library into your graveyard$/i, () => [{ kind: 'millBottom', amount: 1, who: YOU }]],
+  // "Put the top card of your graveyard on the bottom of your library."
+  [/^put the top card of your graveyard on the bottom of your library$/i, () => [{ kind: 'moveToZone', what: { ref: 'all', filter: { zone: 'graveyard', owner: 'you', custom: 'topOfGraveyard' } }, zone: 'library', position: 'bottom' }]],
+  // "Put that card on top of that player's library."
+  [/^put (?:that card|it|them|those cards) on (?:top|the bottom) of (?:that player's|its owner's|their owner's|your) library$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'moveToZone', what: ref, zone: 'library', position: /bottom/i.test(m[0]) ? 'bottom' : 'top' }];
+  }],
+  // "Put a card exiled with ~ into its owner's graveyard."
+  [/^put (?:a|an|(\w+)|all|target) (?:cards?|face-up exiled cards?) exiled with ~ into (?:its|their) owners?'? graveyards?$/i, () => [
+    { kind: 'moveToZone', what: { ref: 'all', filter: { exiledWithSource: true, zone: 'exile' } }, zone: 'graveyard' },
+  ]],
+  // "Remove any number of counters from target creature you control."
+  [/^remove any number of ([+-]\d+\/[+-]\d+|[\w'-]+ )?counters? from (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    if (!ref) return null;
+    return [{ kind: 'removeCounters', counter: (m[1] ?? 'any').trim(), amount: 'all', on: ref, upTo: true }];
+  }],
+  // "Spells with the chosen name cost {3} more to cast."
+  [/^spells with the chosen name cost \{(\d+)\} (less|more) to cast(?: this turn)?$/i, (m) => [
+    { kind: 'grantPlayerRule', rule: { kind: m[2].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[1], 10), filter: { nameIsChosen: 'cardName' } }, who: { ref: 'eachPlayer' }, duration: /this turn/i.test(m[0]) ? 'thisTurn' : 'permanent' },
+  ]],
   // ---- Round 130 ----
   // "Unattach it." / "Unattach ~."
   [/^unattach (it|~|that Equipment|equipped \w+)$/i, (m, ctx) => {

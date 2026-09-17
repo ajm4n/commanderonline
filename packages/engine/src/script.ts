@@ -365,6 +365,12 @@ export type Effect =
   | { kind: 'chooseOption'; key: string; options: string[] }
   /** "Each player shuffles the cards from their hand into their library, then draws that many cards." */
   | { kind: 'shuffleHandIntoLibraryAndDraw'; who: Ref; /** Put the cards on the bottom of the library in any order instead of shuffling. */ bottom?: boolean }
+  /** "Shuffle a card from your hand into your library." */
+  | { kind: 'handToLibrary'; count: Amount; who?: Ref; position?: 'top' | 'bottom'; shuffle?: boolean }
+  /** "Shuffle your graveyard into your library." */
+  | { kind: 'shuffleZoneIntoLibrary'; zone: ZoneName; who?: Ref }
+  /** "Put the bottom card of your library into your graveyard." */
+  | { kind: 'millBottom'; amount: Amount; who?: Ref }
   /** Collect evidence N: exile cards with total mana value N or more from your graveyard. */
   | { kind: 'collectEvidence'; n: Amount }
   /** Time travel: you may remove a time counter from each suspended card you own and each permanent you control with one. */
