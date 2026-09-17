@@ -27,6 +27,16 @@ export function parseCost(text: string): AbilityCost | null {
       if (a && b) return { choice: [a, b] };
     }
   }
+  // Costs whose own text contains commas ("Tap four untapped artifacts, creatures, and/or lands you control").
+  {
+    const tm = text.match(/^Tap (\w+) untapped (.+?) you control$/i);
+    if (tm && /,/.test(tm[2])) {
+      const n = wordToNumber(tm[1]);
+      const listed = tm[2].replace(/,? and\/or /g, ', or ').replace(/\b(\w+?)s\b/g, '$1');
+      const noun = parseNoun(`an ${listed} you control`) ?? parseNoun(`a ${listed}`);
+      if (noun && n !== null && n !== 'X') return { tapUntapped: { filter: { ...noun.filter, zone: 'battlefield' }, count: n } };
+    }
+  }
   // Split on commas not inside braces
   const parts = text.split(/,\s*(?![^{]*\})/).map((p) => p.trim()).filter(Boolean);
   for (const p of parts) {
@@ -85,6 +95,29 @@ export function parseCost(text: string): AbilityCost | null {
       if (energy && energy.length === (p.match(/\{[^}]+\}/g) ?? []).length) cost.energy = energy.length;
       else cost.mana = p.replace(/\{T\}/g, '');
     } else if (/^Sacrifice ~$/i.test(p)) cost.sacrificeSelf = true;
+    else if ((m = p.match(/^Sacrifice ~ and (?:a|an) (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1]}`);
+      if (!noun) return null;
+      cost.sacrificeSelf = true;
+      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: 1 };
+    } else if ((m = p.match(/^Sacrifice (?:a|an) (.+?) attached to ~$/i))) {
+      const noun = parseNoun(`a ${m[1]}`);
+      if (!noun) return null;
+      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield', attachedToSource: true }, count: 1 };
+    } else if ((m = p.match(/^Exile (?:(any number of|X|\w+) )?(.+?) from your hand$/i))) {
+      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      if (!noun) return null;
+      const n: number | 'any' | 'X' | null = !m[1] ? 1 : /any number of/i.test(m[1]) ? 'any' : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
+      if (n === null) return null;
+      cost.exileObjects = { filter: { ...noun.filter, zone: 'hand', owner: 'you' }, count: n };
+    } else if ((m = p.match(/^Tap (\w+) untapped (.+?) you control$/i))) {
+      const n = wordToNumber(m[1]);
+      // "artifacts, creatures, and/or lands" → "an artifact, creature, or land"
+      const listed = m[2].replace(/,? and\/or /g, ', or ').replace(/\b(\w+?)s\b/g, '$1');
+      const noun = parseNoun(`an ${listed} you control`) ?? parseNoun(`a ${listed}`) ?? parseNoun(`a ${m[2]}`);
+      if (!noun || n === null || n === 'X') return null;
+      cost.tapUntapped = { filter: { ...noun.filter, zone: 'battlefield' }, count: n };
+    }
     else if ((m = p.match(/^Sacrifice (?:a|an|another|(\w+)) (.+)$/i))) {
       const noun = parseNoun(`a ${m[2]}`);
       if (!noun) return null;
@@ -94,6 +127,7 @@ export function parseCost(text: string): AbilityCost | null {
     } else if ((m = p.match(/^Pay (\d+) life$/i))) cost.payLife = parseInt(m[1], 10);
     else if (/^Pay X life$/i.test(p)) cost.payLife = 'X';
     else if ((m = p.match(/^Pay ((?:\{E\})+)$/i))) cost.energy = (m[1].match(/\{E\}/g) ?? []).length;
+    else if (/^Pay X \{E\}$/i.test(p)) cost.energy = 'X';
     else if ((m = p.match(/^Pay (\w+) \{E\}$/i)) && typeof wordToNumber(m[1]) === 'number') cost.energy = wordToNumber(m[1]) as number;
     else if (/^Discard ~$/i.test(p)) cost.discardSelf = true;
     else if (/^Discard your hand$/i.test(p)) cost.discard = 'hand';

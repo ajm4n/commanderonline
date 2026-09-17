@@ -961,6 +961,11 @@ export class Game {
     }
   }
 
+  /** Players attacked this turn, for "for each opponent you're attacking". */
+  attackedPlayerCount(pid: PlayerId): number {
+    return new Set(this.state.battlefield.map((id) => this.state.objects[id]).filter((o) => o && o.controller === pid && typeof o.attacking === 'string').map((o) => o!.attacking as PlayerId)).size;
+  }
+
   triggerContextFrom(event: GameEvent): Record<string, unknown> {
     return {
       triggerObject: event.objectId,
@@ -1428,6 +1433,7 @@ export class Game {
       case 'totalPower':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
       case 'playerTurnStat': {
+        if (a.key === 'attackedPlayers') return this.attackedPlayerCount(ctx.controller);
         if (a.opponents) return this.opponentsOf(ctx.controller).reduce((s, p) => s + (this.state.players[p]?.turnStats[a.key] ?? 0), 0);
         const pid = a.ref ? this.resolvePlayers(a.ref, ctx)[0] : ctx.controller;
         return pid !== undefined ? (this.state.players[pid]?.turnStats[a.key] ?? 0) : 0;

@@ -462,7 +462,7 @@ export interface AbilityCost {
   tapUntappedTotalPower?: { filter: ObjectFilter; power: number };
   returnToHand?: { filter: ObjectFilter; count: number };
   loyalty?: number;
-  energy?: number;
+  energy?: number | 'X';
   /** Cost text we cannot enforce; player confirms they paid. */
   manual?: string;
   /** "Sacrifice a creature or pay {3}": the player picks one option to pay. */

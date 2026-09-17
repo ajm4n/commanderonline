@@ -373,7 +373,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   const nx = (v: number | 'X' | 'all' | undefined): number => (v === 'X' ? x : v === 'all' ? (cost.removeCounters ? obj.counters[cost.removeCounters.counter] ?? 0 : 0) : (v ?? 0));
   const cnt = (v: number | 'X' | 'any' | undefined, avail: number, dflt = 1): number => (v === 'X' ? x : v === 'any' ? avail : (v ?? dflt));
   if (cost.payLife !== undefined && g.player(p).life < nx(cost.payLife)) return false;
-  if (cost.energy !== undefined && g.player(p).energy < cost.energy) return false;
+  if (cost.energy !== undefined && g.player(p).energy < (cost.energy === 'X' ? x : cost.energy)) return false;
   if (cost.removeCounters && cost.removeCounters.counter === 'any' && Object.values(obj.counters).reduce((s, v) => s + (v ?? 0), 0) < nx(cost.removeCounters.amount)) return false;
   if (cost.removeCounters && cost.removeCounters.counter !== 'any' && (obj.counters[cost.removeCounters.counter] ?? 0) < nx(cost.removeCounters.amount)) return false;
   if (cost.loyalty !== undefined && cost.loyalty < 0 && (obj.counters['loyalty'] ?? 0) < -cost.loyalty) return false;
@@ -524,7 +524,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.tap) g.tap(obj.id);
   if (cost.untap) g.untap(obj.id);
   if (cost.payLife) g.loseLife(p, nx(cost.payLife));
-  if (cost.energy) g.player(p).energy -= cost.energy;
+  if (cost.energy) g.player(p).energy -= cost.energy === 'X' ? x : cost.energy;
   if (cost.removeCounters && cost.removeCounters.counter === 'any') {
     for (let i = 0; i < nx(cost.removeCounters.amount); i++) {
       const kinds = Object.entries(obj.counters).filter(([, v]) => (v ?? 0) > 0).map(([k]) => k);

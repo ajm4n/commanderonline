@@ -175,6 +175,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const n = wordToNumber(m[1]);
     if (typeof n === 'number') return { kind: 'amount', a: { kind: 'librarySize', ref: { ref: 'controller' } }, op: /fewer/.test(t) ? '<=' : '>=', b: n };
   }
+  if (t === 'it is bargained' || t === '~ was bargained' || t === 'this spell was bargained') return { kind: 'memoryFlag', key: 'additionalCostPaid' };
+  if ((m = t.match(/^(?:a|one or more) creatures? (?:is|are) attacking you$/))) return { kind: 'count', filter: { types: ['Creature'], attacking: true, zone: 'battlefield' }, op: '>=', value: 1 };
   if (t === 'an opponent has no cards in hand') return { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '==', value: 0 };
   if ((m = t.match(/^you cast (?:another|a|one or more) spells? this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '>=', value: 1 };
   if ((m = t.match(/^there are (\w+) or more (.+?) (?:total )?in all graveyards$/))) {
