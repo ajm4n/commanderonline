@@ -48,7 +48,7 @@ export function parseKeywordList(text: string): string[] | null {
   const out: string[] = [];
   for (const p of parts) {
     const q = p.replace(/^(?:your choice of )/, '');
-    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle|afterlife|vanishing|fading|dredge|ripple|frenzy|poisonous|absorb|level up|tribute) \d+|(?:unearth|cycling|flashback|escape|scavenge|replicate|conspire|retrace|miracle|madness|outlast|encore|bestow|embalm|eternalize|evoke|emerge|prowl|blitz|dash|foretell|disturb|spectacle|surge|overload|aftermath|transmute|buyback|entwine|splice|awaken|kicker|multikicker|slivercycling|landcycling|typecycling|basic landcycling|plainscycling|islandcycling|swampcycling|mountaincycling|forestcycling|wizardcycling|slivercycling|reconfigure|equip|fortify|ninjutsu|commander ninjutsu|freerunning|impending|offspring|gift|craft|discover|plot|squad|casualty|cleave|escalate|prototype) (?:(?:\{[^}]+\})+|\d+|—.+)|(?:flashback|escape|scavenge|replicate|conspire|retrace|unearth|embalm|eternalize|miracle|madness|outlast|encore|bestow|aftermath|retrace|dredge|haunt|epic|evoke|emerge|prowl|blitz|dash|foretell|disturb|jump-start|spectacle|surge|overload|entwine|buyback|awaken|cascade|storm|delve|discover|plot|craft|forage|cloak|manifest dread))$/.test(q)) return null;
+    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle|afterlife|vanishing|fading|dredge|ripple|frenzy|poisonous|absorb|level up|tribute) \d+|(?:unearth|cycling|flashback|escape|scavenge|replicate|conspire|retrace|miracle|madness|outlast|encore|bestow|embalm|eternalize|evoke|emerge|prowl|blitz|dash|foretell|disturb|spectacle|surge|overload|aftermath|transmute|buyback|entwine|splice|awaken|kicker|multikicker|slivercycling|landcycling|typecycling|basic landcycling|plainscycling|islandcycling|swampcycling|mountaincycling|forestcycling|wizardcycling|slivercycling|reconfigure|equip|fortify|ninjutsu|commander ninjutsu|freerunning|impending|offspring|gift|craft|discover|plot|squad|casualty|cleave|escalate|prototype) (?:(?:\{[^}]+\})+|\d+|—.+)|(?:flashback|escape|scavenge|replicate|conspire|retrace|unearth|embalm|eternalize|miracle|madness|outlast|encore|bestow|aftermath|retrace|dredge|haunt|epic|evoke|emerge|prowl|blitz|dash|foretell|disturb|jump-start|spectacle|surge|overload|entwine|buyback|awaken|cascade|storm|delve|discover|plot|craft|forage|cloak|manifest dread|read ahead|hope|exploit|mono|continuous|flanking|banding|soulbond|melee|ascend|myriad|extort|convoke|improvise|riot|exalted|fear|intimidate|totem armor|split second|devoid|ingest|skulk|partner|mutate|boast|will of the council|council's dilemma|goaded|decayed|toxic|for mirrodin!|living weapon|reconfigure|compleated|daybound|nightbound|start your engines!|max speed|tap to attack))$/.test(q)) return null;
     out.push(q.charAt(0).toUpperCase() + q.slice(1));
   }
   return out;
@@ -2542,11 +2542,15 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'turnFaceUp', what: ref }] : null;
   }],
   // "Return target creature card with total mana value 3 or less from your graveyard to the battlefield."
-  [/^return (?:up to (\w+)|(\w+)) target (.+?) with total mana value (\d+) or less from your graveyard to the battlefield$/i, (m, ctx) => {
-    const n = wordToNumber(m[1] ?? m[2]);
+  [/^return (?:up to (\w+)|any number of|(\w+)) target (.+?) with total mana value (\d+) or less from your graveyard to (?:the battlefield|your hand)$/i, (m, ctx) => {
+    const n = /any number of/i.test(m[0]) ? 20 : wordToNumber(m[1] ?? m[2]);
     const noun = parseNoun(`a ${m[3].replace(/s$/, '')}`);
     if (typeof n !== 'number' || !noun) return null;
-    ctx.targets.push({ description: `target ${m[3]} from your graveyard`, kind: 'object', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, min: m[1] ? 0 : n, max: n, totalManaValueLE: parseInt(m[4], 10) });
+    if (/to your hand$/i.test(m[0])) {
+      ctx.targets.push({ description: `target ${m[3]} from your graveyard`, kind: 'object', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, min: m[1] || /any number of/i.test(m[0]) ? 0 : n, max: n, totalManaValueLE: parseInt(m[4], 10) });
+      return [{ kind: 'returnToHand', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+    }
+    ctx.targets.push({ description: `target ${m[3]} from your graveyard`, kind: 'object', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, min: m[1] || /any number of/i.test(m[0]) ? 0 : n, max: n, totalManaValueLE: parseInt(m[4], 10) });
     return [{ kind: 'returnToBattlefield', what: { ref: 'target', slot: ctx.targets.length - 1 }, controller: 'you' }];
   }],
   // "Destroy all Equipment attached to that creature."
@@ -4181,6 +4185,67 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 140 ----
+  // "Return to their owners' hands all creatures with toughness 2 or less."
+  [/^return to (?:their owners'|its owner's|your|their) hands? (all .+|each .+)$/i, (m, ctx) => parseSentence(`return ${m[1]} to their owners' hands`, ctx)],
+  // "Return two target creature cards that share a creature type from your graveyard to your hand."
+  [/^return (\w+) target (.+?) that share (?:a|an) (creature type|card type|colou?r) from your graveyard to (your hand|the battlefield)$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    if (typeof n !== 'number' || !noun) return null;
+    ctx.targets.push({ description: `target ${m[2]} from your graveyard`, kind: 'object', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, min: n, max: n, distinct: true });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    return /your hand/i.test(m[4]) ? [{ kind: 'returnToHand', what: ref }] : [{ kind: 'returnToBattlefield', what: ref, controller: 'you' }];
+  }],
+  // "Return target creature card and all other cards with the same name as that card from your graveyard to your hand."
+  [/^return (target .+?) and all other (.+?) with the same name as that \w+ from your graveyard to (your hand|the battlefield)$/i, (m, ctx) => {
+    const ref = objRef(`${m[1]} in your graveyard`, ctx) ?? objRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    if (!ref || !noun) return null;
+    const others: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', owner: 'you', sameNameAs: ref, other: true } };
+    return /your hand/i.test(m[3])
+      ? [{ kind: 'returnToHand', what: ref }, { kind: 'returnToHand', what: others }]
+      : [{ kind: 'returnToBattlefield', what: ref, controller: 'you' }, { kind: 'returnToBattlefield', what: others, controller: 'you' }];
+  }],
+  // "Return target nonland permanent and all other permanents with the same name as that permanent to their owners' hands."
+  [/^return (target .+?) and (?:all other|each other) (.+?) with the same name as that \w+ to (?:their owners'|its owner's) hands?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    if (!ref || !noun) return null;
+    return [
+      { kind: 'returnToHand', what: ref },
+      { kind: 'returnToHand', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', sameNameAs: ref, other: true } } },
+    ];
+  }],
+  // "Return target commander you own from the battlefield to your hand."
+  [/^return (target .+?) from the battlefield to (your hand|its owner's hand)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToHand', what: ref }] : null;
+  }],
+  // "Return that many creature cards from your graveyard to the battlefield."
+  [/^return that many (.+?) from your graveyard to (the battlefield|your hand)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1].replace(/s$/, '')}`);
+    if (!noun) return null;
+    const key = 'retGy';
+    const eff: Effect[] = [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: { kind: 'triggerAmount' }, key, upTo: true }];
+    eff.push(/the battlefield/i.test(m[2]) ? { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, controller: 'you' } : { kind: 'returnToHand', what: { ref: 'chosen', key } });
+    return eff;
+  }],
+  // "Return half the creatures they control to their owner's hand, rounded up."
+  [/^return (half|a third) the (.+?) (?:they|you) control to (?:their|its) owners?'? hands?(?:, rounded (up|down))?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+    const who = ctx.lastPlayer;
+    if (!noun || !who) return null;
+    const round: 'up' | 'down' = m[3]?.toLowerCase() === 'up' ? 'up' : 'down';
+    const filter: ObjectFilter = { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' };
+    const n: Amount = { kind: 'count', filter };
+    const count: Amount = m[1].toLowerCase() === 'half' ? { kind: 'half', a: n, round } : { kind: 'divide', a: n, by: 3, round };
+    const key = 'retHalf';
+    return [{ kind: 'forEach', over: who, effects: [
+      { kind: 'chooseObjects', who: { ref: 'iter' }, filter, count, key },
+      { kind: 'returnToHand', what: { ref: 'chosen', key } },
+    ] }];
   }],
   // ---- Round 139 ----
   // "Put target face-up exiled card into its owner's graveyard."

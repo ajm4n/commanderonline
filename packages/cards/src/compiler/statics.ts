@@ -40,6 +40,56 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 140 ----
+  // "Skeletons you control and other Zombies you control get +1/+1 and have deathtouch."
+  if ((m = L.match(/^(.+?(?: you control|s)) and ((?:other |another )?.+?(?: you control)?) ((?:get|gets|have|has) .+)$/i)) && !/ and /i.test(m[1])) {
+    const a = affectsOf(m[1].trim());
+    const b = affectsOf(m[2].trim());
+    if (a.ok && b.ok) {
+      const left = parseStatic(`${m[1].trim()} ${m[3]}`, isCreatureOrPermanent);
+      const right = parseStatic(`${m[2].trim()} ${m[3]}`, isCreatureOrPermanent);
+      if (left && right) return [...left, ...right];
+    }
+  }
+  // "Spells you cast with mana value 6 or greater have cascade." / "Spells you cast have ripple 4."
+  if ((m = L.match(/^(.+?) you cast(?: (with [^,]+?|that [^,]+?|from your hand))? have ([\w-]+(?: \d+| \{[^}]+\}|—.+)?)$/i))) {
+    const kws = parseKeywordList(m[3]);
+    const qual = m[2] && !/^from your hand$/i.test(m[2]) ? ` ${m[2]}` : '';
+    const label = m[1].trim();
+    const noun = /^spells?$/i.test(label) && !qual ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label.replace(/spells\b/i, 'spell')}${qual}`) : parseNoun(`a ${label} spell${qual}`);
+    if (kws && noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      if (/ from your hand /i.test(` ${L} `)) f.castFromZone = 'hand';
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'spellsHaveKeywords', data: { keywords: kws.map((k) => k.replace(/^\w/, (c) => c.toUpperCase())), filter: Object.keys(f).length ? f : undefined } } }];
+    }
+  }
+  // "Spells you cast that target a creature cost {2} less to cast."
+  if ((m = L.match(/^Spells you cast that target (.+?) costs? \{(\d+)\} (less|more) to cast$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10), filter: { spellTargets: f } } }];
+    }
+  }
+  // "Spells your opponents cast during your turn cost {1} more to cast."
+  if ((m = L.match(/^Spells (your opponents|you|each player) casts? during your turn costs? \{(\d+)\} (less|more) to cast$/i))) {
+    const who = /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
+    return [{ kind: 'static', text: line, ruleAffects: who, rule: { kind: m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10) }, condition: { kind: 'yourTurn' } }];
+  }
+  // "Spells with the chosen name cost {3} more to cast."
+  if ((m = L.match(/^Spells with the chosen name costs? \{(\d+)\} (less|more) to cast$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: m[2].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[1], 10), filter: { nameIsChosen: 'cardName' } } }];
+  }
+  // "Spells you cast but do not own cost {1} less to cast."
+  if ((m = L.match(/^Spells you cast but (?:do not|don't) own costs? \{(\d+)\} (less|more) to cast$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[2].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[1], 10), filter: { owner: 'opponent' } } }];
+  }
+  // "Tapped creatures you control can block as though they were untapped."
+  if ((m = L.match(/^(.+?) can block as though (?:they were|it were) untapped$/i))) { const _r140 = objRule(m[1], { kind: 'custom', tag: 'blockWhileTapped' }); if (_r140) return _r140; }
+  // "Stun counters cannot be removed from permanents your opponents control."
+  if ((m = L.match(/^([+\-\w\/]+) counters cannot be removed from (.+)$/i))) { const _r140b = objRule(m[2], { kind: 'custom', tag: 'countersCantBeRemoved', data: m[1] }); if (_r140b) return _r140b; }
   // ---- Round 139 ----
   // "Once each turn, you may cast an instant or sorcery spell from the top of your library."
   if ((m = L.match(/^Once (?:each turn|during each of your turns), you may cast (.+?) (?:spells? )?from the top of your library(?: if (.+))?$/i)) && !m[2]) {

@@ -434,6 +434,7 @@ export interface ObjectFilter {
   /** Matches the card type stored under this memory key ("spells of the chosen type"). */
   typeIsChosen?: string;
   historic?: boolean;
+  notHistoric?: boolean;
   /** Was cast this turn / entered this turn etc. */
   enteredThisTurn?: boolean;
   /** Has any counter of this type (e.g. exiled cards with stash counters). */
