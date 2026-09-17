@@ -944,6 +944,16 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
   if (spec.exhaust && obj.memory[`exhausted:${spec.text}`]) return false;
   if (spec.condition && !g.checkCondition(spec.condition, { sourceId: obj.id, controller: p })) return false;
   if (obj.zone === 'battlefield' && g.characteristics(obj.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantActivate')) return false;
+  // "Its activated abilities can't be activated (unless they are mana abilities)."
+  if (obj.zone === 'battlefield') {
+    for (const r of g.characteristics(obj.id).rules) {
+      if (r.kind !== 'custom' || r.tag !== 'cantActivateOwnAbilities') continue;
+      if ((r.data as { exceptMana?: boolean } | undefined)?.exceptMana && spec.manaAbility) continue;
+      return false;
+    }
+  }
+  // "Only your opponents may activate this ability."
+  if (spec.opponentsOnly && obj.controller === p) return false;
   // "That player cannot activate abilities that aren't mana abilities."
   for (const r of g.playerRules(p)) {
     if (r.kind !== 'custom' || r.tag !== 'cantActivateAbilities') continue;

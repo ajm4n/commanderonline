@@ -151,7 +151,11 @@ function* declareAttackers(g: Game, active: PlayerId): Gen {
     const mustOk = candidates.filter((c) => c.mustAttack).every((c) => attacks.some((a) => a.attacker === c.id));
     // "~ can't attack alone"
     const aloneOk = attacks.length !== 1 || !g.characteristics(attacks[0].attacker).rules.some((r) => r.kind === 'custom' && (r.tag === 'cantAttackAlone' || r.tag === 'cantAttackOrBlockAlone'));
-    if (valid && mustOk && aloneOk) break;
+    // "No more than one creature can attack each combat."
+    let maxAtk = Infinity;
+    for (const r of g.playerRules(active)) if (r.kind === 'custom' && r.tag === 'maxAttackers' && typeof r.data === 'number') maxAtk = Math.min(maxAtk, r.data);
+    const maxOk = attacks.length <= maxAtk;
+    if (valid && mustOk && aloneOk && maxOk) break;
     g.log(valid ? 'Some creatures must attack this combat.' : 'Invalid attack declaration.');
   }
   // "Creatures can't attack you unless their controller pays {2} for each creature they control that is attacking you."
@@ -224,7 +228,10 @@ function* declareBlockers(g: Game): Gen {
       const blockAloneOk = blocks.length !== 1 || !g.characteristics(blocks[0].blocker).rules.some((r) => r.kind === 'custom' && (r.tag === 'cantBlockAlone' || r.tag === 'cantAttackOrBlockAlone'));
       // "~ blocks each combat if able."
       const mustBlockOk = candidates.every((c) => !g.characteristics(c.id).rules.some((r) => r.kind === 'mustBlock') || blocks.some((b) => b.blocker === c.id));
-      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && countOk && blockAloneOk && mustBlockOk;
+      // "No more than one creature can block each combat."
+      let maxBlk = Infinity;
+      for (const r of g.playerRules(d)) if (r.kind === 'custom' && r.tag === 'maxBlockersTotal' && typeof r.data === 'number') maxBlk = Math.min(maxBlk, r.data);
+      const valid = blocks.every((b) => candidates.some((c) => c.id === b.blocker && c.canBlock.includes(b.attacker))) && countOk && blockAloneOk && mustBlockOk && blocks.length <= maxBlk;
       // Block requirements: "must be blocked if able", "all creatures able to block ~ do so", "target creature blocks ~ this turn if able".
       const requirementsOk = mine.every((a) => {
         const rules = g.characteristics(a.id).rules;

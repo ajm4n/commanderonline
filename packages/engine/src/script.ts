@@ -302,7 +302,11 @@ export type Effect =
   | { kind: 'castWithoutPaying'; what: Ref; exileAfter?: boolean }
   | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean; exileAfter?: boolean }
   | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent'; /** Airbend: castable for this cost instead of its mana cost. */ forCost?: string; /** The owner may cast it, not this effect's controller. */ owner?: boolean; /** Granted flashback: castable from the graveyard. */ fromGraveyard?: boolean; /** Exile it as it resolves. */ exileAfter?: boolean; /** "mana of any type can be spent to cast that spell" */ anyMana?: boolean }
-  | { kind: 'chooseColor'; key: string }
+  | { kind: 'chooseColor'; key: string; /** Only colors of cards in your graveyard. */ fromGraveyard?: boolean }
+  /** "you may pay any amount of {E}": remembers the amount under `key`. */
+  | { kind: 'payEnergy'; max: number; key: string }
+  /** "For each color among permanents you control, add one mana of that color." */
+  | { kind: 'addManaPerColor'; filter: ObjectFilter }
   | { kind: 'chooseCreatureType'; key: string; /** Which set of types to pick from (default creature subtypes). */ pool?: 'creature' | 'land' | 'cardType' }
   | { kind: 'nameCard'; key: string }
   | { kind: 'setMemory'; key: string; value: unknown; /** Set it on this object instead of the source. */ on?: Ref }
@@ -551,6 +555,8 @@ export interface ActivatedAbilitySpec {
   faceDownOnly?: boolean;
   /** "Activate no more than twice each turn." */
   perTurnLimit?: number;
+  /** "Only your opponents may activate this ability." */
+  opponentsOnly?: boolean;
   /** Zone the ability can be activated from (default battlefield). */
   zone?: ZoneName;
   oncePerTurn?: boolean;

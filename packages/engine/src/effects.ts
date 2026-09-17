@@ -355,6 +355,29 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.touch();
       return;
     }
+    case 'payEnergy': {
+      const have = g.player(ctx.controller).energy;
+      const max = Math.min(e.max, have);
+      if (max <= 0) {
+        ctx.memory[e.key] = 0;
+        return;
+      }
+      const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Pay how much {E}? (up to ${max})`, options: Array.from({ length: max + 1 }, (_, i) => ({ id: String(i), label: String(i) })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      const n = r.type === 'options' ? parseInt(r.ids[0] ?? '0', 10) : 0;
+      g.player(ctx.controller).energy -= n;
+      ctx.memory[e.key] = n;
+      ctx.memory['energyPaid'] = n;
+      g.touch();
+      return;
+    }
+    case 'addManaPerColor': {
+      const colors = new Set<import('./types.js').ManaColor>();
+      for (const o of objectsMatching(g, { ...e.filter, zone: e.filter.zone ?? 'battlefield' }, { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x })) {
+        for (const c of g.characteristics(o.id).colors) colors.add(c as import('./types.js').ManaColor);
+      }
+      if (colors.size) yield* executeEffect(g, { kind: 'addMana', mana: [...colors] }, ctx);
+      return;
+    }
     case 'endTurn': {
       g.state.stack.length = 0;
       g.state.turnStats['endTheTurn'] = 1;

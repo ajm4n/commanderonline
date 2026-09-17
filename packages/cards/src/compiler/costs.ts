@@ -190,9 +190,9 @@ export function parseCost(text: string): AbilityCost | null {
 /** Trailing restrictions: "Activate only as a sorcery." etc. */
 const STEP_WORDS: Record<string, string[]> = { upkeep: ['upkeep'], 'draw step': ['draw'], 'end step': ['end'], combat: ['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'], 'main phase': ['main1', 'main2'], 'precombat main phase': ['main1'], 'postcombat main phase': ['main2'], 'declare attackers step': ['declareAttackers'], 'declare blockers step': ['declareBlockers'] };
 
-export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; perTurnLimit?: number; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
+export function parseActivationRestriction(text: string): { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; perTurnLimit?: number; exhaust?: boolean; anyPlayer?: boolean; opponentsOnly?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } {
   let t = text.trim().replace(/^"(.*)"$/, '$1').replace(/Activate only (.+?) and only (.+?)\.?$/i, 'Activate only $1. Activate only $2.').replace(/\s*Activate only as an instant\.?$/i, '');
-  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; perTurnLimit?: number; exhaust?: boolean; anyPlayer?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
+  const out: { text: string; sorcerySpeed?: boolean; oncePerTurn?: boolean; perTurnLimit?: number; exhaust?: boolean; anyPlayer?: boolean; opponentsOnly?: boolean; yourTurn?: boolean; condition?: Condition; unhandled?: string } = { text: t };
   let m: RegExpMatchArray | null;
   const addCond = (c: Condition) => {
     out.condition = out.condition ? { kind: 'and', cs: [out.condition, c] } : c;
@@ -207,6 +207,16 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only once\.?$/i))) {
       out.exhaust = true;
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Only your opponents may activate this ability(?: and only as a sorcery)?\.?$/i))) {
+      out.opponentsOnly = true;
+      if (/as a sorcery/i.test(m[0])) out.sorcerySpeed = true;
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during (?:any|an) upkeep step\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['upkeep'] });
+      t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*Activate only during the end of combat step\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['endCombat'] });
       t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only once each turn\.?$/i))) {
       out.oncePerTurn = true;

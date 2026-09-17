@@ -344,6 +344,8 @@ export interface ObjectFilter {
   multicolored?: boolean;
   controller?: 'you' | 'opponent' | 'any' | PlayerId;
   owner?: 'you' | 'opponent' | 'any';
+  /** The owner must be one of the players this ref resolves to. */
+  ownerRef?: import('./script.js').Ref;
   tapped?: boolean;
   untapped?: boolean;
   isToken?: boolean;

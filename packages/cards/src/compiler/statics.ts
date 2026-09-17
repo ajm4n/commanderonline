@@ -114,6 +114,27 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const kw = m[2].charAt(0).toUpperCase() + m[2].slice(1);
     if (noun) return [{ kind: 'static', text: line, affects: { ...noun.filter, zone: 'battlefield' }, modification: { layer: 6, addAbilityText: [kw] } }];
   }
+  // "Enchanted permanent cannot attack or block, and its activated abilities cannot be activated (unless they are mana abilities)."
+  if ((m = L.match(/^(.+?)(?: (cannot (?:attack|block|attack or block|attack, block, or transform|attack, block, or crew Vehicles|attack or block, or crew Vehicles)|does not untap during its controller's untap step)),? and(?: that permanent's| its)? activated abilities cannot be activated(?: unless they are mana abilities)?$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) {
+      const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'cantActivateOwnAbilities', data: /unless they are mana abilities/i.test(L) ? { exceptMana: true } : undefined } }];
+      const what = (m[2] ?? '').toLowerCase();
+      if (/untap/.test(what)) out.push({ kind: 'static', text: line, affects: a.affects, rule: { kind: 'cantUntap' } });
+      if (/attack/.test(what)) out.push({ kind: 'static', text: line, affects: a.affects, rule: { kind: 'cantAttack' } });
+      if (/block/.test(what)) out.push({ kind: 'static', text: line, affects: a.affects, rule: { kind: 'cantBlock' } });
+      return out;
+    }
+  }
+  // "Its activated abilities cannot be activated this turn." handled as an effect; the bare static form:
+  if (/^(?:its|that permanent's) activated abilities cannot be activated$/i.test(L)) {
+    return [{ kind: 'static', text: line, affects: 'attachedTo', rule: { kind: 'custom', tag: 'cantActivateOwnAbilities' } }];
+  }
+  // "No more than one creature can attack each combat." / "... can block each combat."
+  if ((m = L.match(/^No more than (\w+) creature can (attack|block) each combat$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: m[2].toLowerCase() === 'attack' ? 'maxAttackers' : 'maxBlockersTotal', data: n } }];
+  }
   if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);

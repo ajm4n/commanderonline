@@ -144,6 +144,10 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   }
   if (filter.damagedBySource && (ctx.sourceId === null || ctx.sourceId === undefined || !(g.state.damagedBy[obj.id] ?? []).includes(ctx.sourceId))) return false;
   if (filter.attackedThisTurn && !obj.memory['attackedThisTurn']) return false;
+  if (filter.ownerRef) {
+    const owners = g.resolvePlayers(filter.ownerRef, { sourceId: ctx.sourceId ?? null, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} });
+    if (!owners.includes(obj.owner)) return false;
+  }
   if (filter.dealtDamageToYouThisTurn && !(g.state.turnStats[`damagedPlayer:${obj.id}:${ctx.controller}`] ?? 0)) return false;
   if (filter.ptSumLE !== undefined && !(ch.power !== null && ch.toughness !== null && ch.power + ch.toughness <= filter.ptSumLE)) return false;
   if (filter.chosenSubtypeKey) {
