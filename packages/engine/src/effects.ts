@@ -445,6 +445,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'anyPlayerMay': {
+      for (const p of g.activePlayers()) {
+        const resp = yield* g.ask({ type: 'yesNo', player: p, prompt: e.prompt ?? describe(e.effects), sourceId: ctx.sourceId ?? undefined });
+        if (resp.type === 'yesNo' && resp.value) yield* executeEffects(g, e.effects, { ...ctx, controller: p });
+      }
+      return;
+    }
     case 'anyPlayerMaySacrifice': {
       let any = false;
       for (const p of g.activePlayers()) {

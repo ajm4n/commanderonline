@@ -1136,6 +1136,8 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     } else filter = { types: ['Creature'] };
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeAttacked', data: { filter } } }];
   }
+  // Deck-construction rules have no in-game effect, but record them so the card counts as understood.
+  if (/^A deck with this (?:commander|card as its commander) can have .+$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'deckConstruction' } }];
   if (/^(?:the )?damage cannot be prevented$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noDamagePrevention' } }];
   if ((m = L.match(/^(.+?) you cast cost ((?:\{[WUBRGC\d]\})+) (less|more) to cast$/i)) || (m = L.match(/^(.+?) cost ((?:\{[WUBRGC\d]\})+) (less|more) to cast$/i))) {
     const nounText = m[1].replace(/^Spells$/i, 'spells');

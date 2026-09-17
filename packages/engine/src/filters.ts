@@ -55,6 +55,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.attackingOrBlocking && obj.attacking === null && obj.blocking.length === 0) return false;
   if (filter.custom === 'nonbasic' && ch.supertypes.includes('Basic')) return false;
   if (filter.custom === 'colored' && ch.colors.length === 0) return false;
+  if (filter.custom === 'hasAnyCounter' && !Object.values(obj.counters ?? {}).some((v) => (v ?? 0) > 0)) return false;
   if (filter.custom === 'hasX' && !/\{X\}/.test(obj.card.manaCost ?? '')) return false;
   if (filter.custom && /^non(white|blue|black|red|green)$/.test(filter.custom) && ch.colors.includes(({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[filter.custom.slice(3) as 'white'])) return false;
   if (filter.keywords && !filter.keywords.some((k) => ch.keywords.has(k))) return false;
