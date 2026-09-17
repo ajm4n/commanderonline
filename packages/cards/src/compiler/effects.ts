@@ -4187,6 +4187,86 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 143 ----
+  // "You may draw up to three cards."
+  [/^(?:(.+?) )?draws? up to (\w+|X) cards?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : ctx.lastPlayer ?? YOU;
+    const n = wordToNumber(m[2]);
+    if (!who || n === null) return null;
+    return [{ kind: 'may', who, effects: [{ kind: 'draw', amount: n as Amount, who }] }];
+  }],
+  // "That player puts a creature card from their hand onto the battlefield."
+  [/^(.+?) puts? (?:a|an|(\w+)) (.+?) from their (hand|graveyard) (onto the battlefield|into their hand)( tapped)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[3]}`);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || !noun || !noun.confident || typeof n !== 'number') return null;
+    const key = `plrPut${ctx.targets.length}`;
+    const zone = m[4].toLowerCase() === 'hand' ? 'hand' : 'graveyard';
+    const eff: Effect[] = [{ kind: 'chooseObjects', who, filter: { ...noun.filter, zone, ownerRef: who }, count: n, key, upTo: true }];
+    eff.push(/battlefield/i.test(m[5]) ? { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, controller: 'owner', tapped: !!m[6] } : { kind: 'putIntoHand', what: { ref: 'chosen', key } });
+    return eff;
+  }],
+  // "That player returns a creature card from their graveyard to the battlefield."
+  [/^(.+?) returns? (?:a|an|(\w+)) (.+?) from their graveyard to (the battlefield|their hand)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[3]}`);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || !noun || !noun.confident || typeof n !== 'number') return null;
+    const key = `plrRet${ctx.targets.length}`;
+    const eff: Effect[] = [{ kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'graveyard', ownerRef: who }, count: n, key, upTo: true }];
+    eff.push(/battlefield/i.test(m[4]) ? { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, controller: 'owner' } : { kind: 'putIntoHand', what: { ref: 'chosen', key } });
+    return eff;
+  }],
+  // "Put it into its owner's library third from the top."
+  [/^(?:(.+?) )?puts? (.+?) into (?:its owner's|their|your|that player's) library (\w+) from the top$/i, (m, ctx) => {
+    const ORD: Record<string, number> = { first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7, ninth: 8, tenth: 9 };
+    const depth = ORD[m[3].toLowerCase()];
+    if (depth === undefined) return null;
+    const ref = objRef(m[2], ctx) ?? (/^~$/.test(m[2].trim()) ? SELF : null);
+    if (!ref) return null;
+    return [{ kind: 'putOnLibrary', what: ref, position: depth === 0 ? 'top' : depth === 1 ? 'secondFromTop' : 'top', depth }];
+  }],
+  // "Each other player may draw up to three cards."
+  [/^each other player may (.+)$/i, (m, ctx) => {
+    const sub = newCtx({ ...ctx, targets: ctx.targets });
+    sub.lastPlayer = { ref: 'iter' };
+    const inner = parseSentence(`that player ${m[1]}`, sub) ?? parseSentence(m[1], sub);
+    if (!inner) return null;
+    return [{ kind: 'forEach', over: { ref: 'eachOpponent' }, effects: [{ kind: 'may', who: { ref: 'iter' }, effects: inner }] }];
+  }],
+  // "Each opponent sacrifices a tenth of the creatures they control of their choice, rounded up."
+  [/^(?:(each player|each opponent|you|that player|they|target player|target opponent) )?sacrifices? (half|a third|a quarter|a tenth) (?:of )?the (.+?) (?:they|you) control of (?:their|your) choice(?:, rounded (up|down))?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : ctx.lastPlayer;
+    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    if (!who || !noun || !noun.confident) return null;
+    const round: 'up' | 'down' = m[4]?.toLowerCase() === 'up' ? 'up' : 'down';
+    const by = m[2].toLowerCase() === 'half' ? 2 : m[2].toLowerCase() === 'a third' ? 3 : m[2].toLowerCase() === 'a quarter' ? 4 : 10;
+    const filter: ObjectFilter = { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' };
+    const n: Amount = { kind: 'count', filter };
+    const count: Amount = by === 2 ? { kind: 'half', a: n, round } : { kind: 'divide', a: n, by, round };
+    return [{ kind: 'forEach', over: who, effects: [{ kind: 'sacrificeChoice', who: { ref: 'iter' }, filter, count }] }];
+  }],
+  // "Counter up to one target activated or triggered ability."
+  [/^counter up to one target (activated or triggered|activated|triggered) ability$/i, (m, ctx) => {
+    ctx.targets.push({ description: `target ${m[1]} ability`, kind: m[1].toLowerCase() === 'activated or triggered' ? 'activatedOrTriggered' : 'activatedOrTriggered', min: 0, max: 1 });
+    return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "Counter target instant spell, sorcery spell, activated ability, or triggered ability."
+  [/^counter target (?:instant spell, sorcery spell, activated ability, or triggered ability|spell or ability)$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'target spell or ability', kind: 'spellOrAbility', min: 1, max: 1 });
+    return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "Create half X Food tokens, rounded up."
+  [/^create (half|a third) (X|\w+) (.+? tokens?(?: with .+)?)(?:, rounded (up|down))?$/i, (m) => {
+    const tok = parseTokenPhrase(`a ${m[3].replace(/ tokens\b/i, ' token')}`);
+    if (!tok) return null;
+    const base: Amount = m[2].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[2]) as Amount);
+    if (base === null) return null;
+    const round: 'up' | 'down' = m[4]?.toLowerCase() === 'up' ? 'up' : 'down';
+    const count: Amount = m[1].toLowerCase() === 'half' ? { kind: 'half', a: base, round } : { kind: 'divide', a: base, by: 3, round };
+    return [{ kind: 'createToken', token: tok.token, count }];
+  }],
   // ---- Round 141 ----
   // "The next time a black or red source of your choice would deal damage this turn, prevent that damage."
   [/^the next time (.+?) would deal (combat |noncombat )?damage(?: to (.+?))?(?: this turn)?, (?:prevent that damage|prevent all of that damage)$/i, (m, ctx) => {
