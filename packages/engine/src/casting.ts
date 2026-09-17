@@ -541,6 +541,23 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = objectsMatching(g, { ...cost.returnToHand.filter, controller: 'you' }, ctx);
     if (cands.length < cost.returnToHand.count) return false;
   }
+  if (cost.untapOther) {
+    const cands = objectsMatching(g, { ...cost.untapOther.filter, tapped: true }, ctx);
+    if (cands.length < cost.untapOther.count) return false;
+  }
+  if ((cost.tapAttached || cost.sacrificeAttached) && obj.attachedTo === null) return false;
+  if (cost.mill !== undefined && g.player(p).library.length < cost.mill) return false;
+  if (cost.exileTop) {
+    const pile = cost.exileTop.from === 'library' ? g.player(p).library : g.player(p).graveyard;
+    if (cost.exileTop.filter) {
+      if (!pile.some((id) => matchesFilter(g, g.obj(id), { ...cost.exileTop!.filter, zone: cost.exileTop!.from }, ctx))) return false;
+    } else if (pile.length < cost.exileTop.count) return false;
+  }
+  if (cost.handToLibrary && g.player(p).hand.length < cost.handToLibrary.count) return false;
+  if (cost.removeCountersFrom) {
+    const cands = objectsMatching(g, cost.removeCountersFrom.filter, ctx).filter((o) => (cost.removeCountersFrom!.counter === 'any' ? Object.values(o.counters).reduce((a, b) => a + (b ?? 0), 0) : o.counters[cost.removeCountersFrom!.counter] ?? 0) >= cost.removeCountersFrom!.amount);
+    if (!cands.length) return false;
+  }
   // Mana (with X), after any "activated abilities of X cost {N} less to activate" reductions.
   if (cost.mana) {
     const parsed = parseManaCost(cost.mana);
@@ -587,6 +604,65 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       ids = resp.ids;
     }
     for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
+  }
+  if (cost.tapAttached && obj.attachedTo !== null) g.tap(obj.attachedTo);
+  if (cost.sacrificeAttached && obj.attachedTo !== null) g.moveObject(obj.attachedTo, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
+  if (cost.exert) obj.memory['exerted'] = true;
+  if (cost.mill !== undefined) for (const id of g.player(p).library.slice(0, cost.mill)) g.moveObject(id, 'graveyard', { cause: 'mill' });
+  if (cost.exileTop) {
+    const pile = cost.exileTop.from === 'library' ? g.player(p).library : g.player(p).graveyard;
+    const ids = cost.exileTop.filter ? pile.filter((id) => matchesFilter(g, g.obj(id), { ...cost.exileTop!.filter, zone: cost.exileTop!.from }, ctx)).slice(0, cost.exileTop.count) : pile.slice(0, cost.exileTop.count);
+    const moved: ObjectId[] = [];
+    for (const id of ids) {
+      const mv = g.moveObject(id, 'exile', { cause: 'exile', sourceId: obj.id });
+      if (mv) moved.push(mv.id);
+    }
+    obj.memory['exiled'] = [...((obj.memory['exiled'] as ObjectId[]) ?? []), ...moved];
+  }
+  if (cost.handToLibrary) {
+    const cands = [...g.player(p).hand];
+    const n = cost.handToLibrary.count;
+    let ids = cands.slice(0, n);
+    if (cands.length > n) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Put ${n} card${n === 1 ? '' : 's'} from your hand on ${cost.handToLibrary.position} of your library`, candidates: cands, min: n, max: n, revealToChooser: true, sourceId: obj.id });
+      if (resp.type !== 'objects') return false;
+      ids = resp.ids;
+    }
+    for (const id of ids) g.moveObject(id, 'library', { position: cost.handToLibrary.position });
+  }
+  if (cost.untapOther) {
+    const cands = objectsMatching(g, { ...cost.untapOther.filter, tapped: true }, ctx).map((o) => o.id);
+    const n = cost.untapOther.count;
+    let ids = cands.slice(0, n);
+    if (cands.length > n) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Untap ${n} as a cost`, candidates: cands, min: n, max: n, sourceId: obj.id });
+      if (resp.type !== 'objects') return false;
+      ids = resp.ids;
+    }
+    for (const id of ids) g.untap(id);
+  }
+  if (cost.removeCountersFrom) {
+    const need = cost.removeCountersFrom.amount;
+    const kind = cost.removeCountersFrom.counter;
+    const cands = objectsMatching(g, cost.removeCountersFrom.filter, ctx).filter((o) => (kind === 'any' ? Object.values(o.counters).reduce((a, b) => a + (b ?? 0), 0) : o.counters[kind] ?? 0) >= need).map((o) => o.id);
+    if (!cands.length) return false;
+    let pick = cands[0];
+    if (cands.length > 1) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Remove ${need} ${kind === 'any' ? '' : `${kind} `}counter${need === 1 ? '' : 's'} as a cost`, candidates: cands, min: 1, max: 1, sourceId: obj.id });
+      if (resp.type !== 'objects' || !resp.ids.length) return false;
+      pick = resp.ids[0];
+    }
+    if (kind === 'any') {
+      let left = need;
+      for (const [k, v] of Object.entries(g.obj(pick).counters)) {
+        if (left <= 0) break;
+        const take = Math.min(left, v ?? 0);
+        if (take > 0) {
+          g.removeCounters(pick, k, take);
+          left -= take;
+        }
+      }
+    } else g.removeCounters(pick, kind, need);
   }
   if (cost.sacrificeSelf) g.moveObject(obj.id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
   if (cost.exileSelf) g.moveObject(obj.id, 'exile', { cause: 'exile', sourceId: obj.id });

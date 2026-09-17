@@ -532,6 +532,21 @@ export interface AbilityCost {
   /** "you may blight 1": the blight cost is optional (memory `additionalCostPaid` records whether it was paid). */
   blightOptional?: boolean;
   tapUntapped?: { filter: ObjectFilter; count: number | 'any' | 'X' };
+  /** "Untap two tapped blue creatures you control" */
+  untapOther?: { filter: ObjectFilter; count: number };
+  /** "Tap enchanted creature" / "Sacrifice enchanted creature" */
+  tapAttached?: boolean;
+  sacrificeAttached?: boolean;
+  /** "Mill a card" / "Mill four cards" */
+  mill?: number;
+  /** "Exile the top card of your library" / "Exile the top creature card of your graveyard" */
+  exileTop?: { count: number; from: 'library' | 'graveyard'; filter?: ObjectFilter };
+  /** "Exert ~" */
+  exert?: boolean;
+  /** "Put a card from your hand on top of your library" */
+  handToLibrary?: { count: number; position: 'top' | 'bottom' };
+  /** "Remove a +1/+1 counter from a creature you control" */
+  removeCountersFrom?: { counter: CounterType | 'any'; amount: number; filter: ObjectFilter };
   /** Crew / saddle: tap any number of untapped matching creatures with total power N or more. */
   tapUntappedTotalPower?: { filter: ObjectFilter; power: number };
   returnToHand?: { filter: ObjectFilter; count: number };

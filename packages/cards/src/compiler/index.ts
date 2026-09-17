@@ -626,6 +626,16 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       continue;
     }
     // Planeswalker loyalty abilities: "+1: ...", "−3: ...", "0: ..."
+    if ((m = line.match(/^([+−-]X): (.+)$/))) {
+      const ctx = newCtx();
+      const rest = parseActivationRestriction(m[2]);
+      const { effects, unhandled } = parseEffects(rest.text, ctx);
+      const up = m[1].startsWith('+');
+      abilities.push({ kind: 'activated', text: line, cost: up ? { loyalty: 0, manual: 'Add X loyalty counters' } : { loyalty: 0, removeCounters: { counter: 'loyalty', amount: 'X' } }, targets: ctx.targets, effects, sorcerySpeed: true });
+      if (unhandled.length) unhandledLines.push(...unhandled);
+      else compiledLines.push(line);
+      continue;
+    }
     if ((m = line.match(/^([+−-]?\d+|0): (.+)$/))) {
       const n = parseInt(m[1].replace('−', '-'), 10);
       const ctx = newCtx();

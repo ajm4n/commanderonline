@@ -182,6 +182,55 @@ export function parseCost(text: string): AbilityCost | null {
       const noun = parseNoun(`a ${m[2]}`);
       if (n === null || n === 'X' || !noun) return null;
       cost.returnToHand = { filter: noun.filter, count: n };
+    } else if ((m = p.match(/^Tap (?:an|another|X|(\w+)) untapped (.+?)(?: you control)?$/i))) {
+      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      if (!noun) return null;
+      const n: number | 'X' | null = /\bX untapped\b/.test(p) ? 'X' : m[1] ? (wordToNumber(m[1]) as number | null) : 1;
+      if (n === null) return null;
+      cost.tapUntapped = { filter: { ...noun.filter, zone: 'battlefield', controller: /you control/i.test(p) ? 'you' : undefined, other: /another/i.test(p) || undefined }, count: n };
+    } else if ((m = p.match(/^Untap (?:a|an|(\w+)) tapped (.+?)(?: (?:you|an opponent) controls?)?$/i))) {
+      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (!noun || typeof n !== 'number') return null;
+      cost.untapOther = { filter: { ...noun.filter, zone: 'battlefield', controller: /an opponent controls/i.test(p) ? 'opponent' : /you control/i.test(p) ? 'you' : undefined }, count: n };
+    } else if (/^Tap (?:enchanted|equipped) \w+$/i.test(p)) cost.tapAttached = true;
+    else if (/^Sacrifice (?:enchanted|equipped) \w+$/i.test(p)) cost.sacrificeAttached = true;
+    else if (/^Exert ~$/i.test(p)) cost.exert = true;
+    else if ((m = p.match(/^Mill (?:a|an|(\w+)) cards?$/i))) {
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (typeof n !== 'number') return null;
+      cost.mill = n;
+    } else if ((m = p.match(/^Exile the top (?:(\w+) )?(.*?)cards? of your (library|graveyard)$/i))) {
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (typeof n !== 'number') return null;
+      const f = m[2].trim() ? parseNoun(`a ${m[2].trim()} card`)?.filter : undefined;
+      if (m[2].trim() && !f) return null;
+      cost.exileTop = { count: n, from: /library/i.test(m[3]) ? 'library' : 'graveyard', filter: f ? { ...f, zone: undefined } : undefined };
+    } else if ((m = p.match(/^Put (?:a|an|(\w+)) cards? from your hand on (?:the )?(top|bottom) of your library$/i))) {
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (typeof n !== 'number') return null;
+      cost.handToLibrary = { count: n, position: /top/i.test(m[2]) ? 'top' : 'bottom' };
+    } else if ((m = p.match(/^Put (?:(\w+) )?cards? from your graveyard on (?:the )?(top|bottom) of your library$/i))) {
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (typeof n !== 'number') return null;
+      cost.exileTop = { count: n, from: 'graveyard' };
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from (?:a|an) (.+)$/i))) {
+      const noun = parseNoun(`a ${m[3]}`);
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (!noun || typeof n !== 'number') return null;
+      cost.removeCountersFrom = { counter: m[2], amount: n, filter: { ...noun.filter, zone: 'battlefield' } };
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) counters? from (?:a|an) (.+)$/i))) {
+      const noun = parseNoun(`a ${m[2]}`);
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (!noun || typeof n !== 'number') return null;
+      cost.removeCountersFrom = { counter: 'any', amount: n, filter: { ...noun.filter, zone: 'battlefield' } };
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from ~ and sacrifice it$/i))) {
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (typeof n !== 'number') return null;
+      cost.removeCounters = { counter: m[2], amount: n };
+      cost.sacrificeSelf = true;
+    } else if (/^Discard another card named ~$/i.test(p)) {
+      cost.discard = { count: 1, filter: { nameIs: '~' } };
     } else return null;
   }
   return cost;
