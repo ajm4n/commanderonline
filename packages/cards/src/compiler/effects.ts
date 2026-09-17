@@ -2830,9 +2830,9 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'doubleStat', on: ref, stat: m[1].toLowerCase() === 'power' ? 'power' : 'toughness', duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
   // "Return target creature card from your graveyard to the battlefield with an additional +1/+1 counter on it"
-  [/^return (.+?) from your graveyard to the battlefield with an additional (?:a |an |(\w+) )?([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m, ctx) => {
+  [/^return (.+?) from your graveyard to the battlefield with (?:an additional|(\w+) additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
-    const n = m[1] && m[2] ? wordToNumber(m[2]) : 1;
+    const n = m[2] ? wordToNumber(m[2]) : 1;
     if (!ref) return null;
     return [{ kind: 'returnToBattlefield', what: ref, counters: { counter: m[3], amount: typeof n === 'number' ? n : 1 } }];
   }],
@@ -2851,6 +2851,62 @@ const PATTERNS: Pattern[] = [
   [/^if it would leave the battlefield, exile it instead of putting it anywhere else$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
     return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfLeaves' }, on: ref, duration: 'permanent' }];
+  }],
+  // "Copy target instant or sorcery spell twice."
+  [/^copy (.+?) (twice|three times|(\w+) times)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const n = /twice/i.test(m[2]) ? 2 : /three times/i.test(m[2]) ? 3 : wordToNumber(m[3]);
+    if (n === null) return null;
+    return [{ kind: 'copySpell', what: ref, count: n }];
+  }],
+  // "Proliferate X times" / "Populate X times"
+  [/^(proliferate|populate|investigate) (X|\w+) times$/i, (m, ctx) => {
+    const n: Amount | null = m[2] === 'X' ? 'X' : wordToNumber(m[2]);
+    if (n === null) return null;
+    if (/investigate/i.test(m[1])) return [{ kind: 'investigate', count: n }];
+    const one: Effect = /proliferate/i.test(m[1]) ? { kind: 'proliferate' } : { kind: 'populate' };
+    return [{ kind: 'repeat', times: n, effects: [one] }];
+  }],
+  // "Move all counters from target creature onto another target creature"
+  [/^move (all|any number of|(\w+)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+ )?counters? from (.+?) onto (.+)$/i, (m, ctx) => {
+    const from = objRef(m[4], ctx);
+    const to = from ? objRef(m[5], ctx) : null;
+    if (!from || !to) return null;
+    const amount: Amount | undefined = /^all$/i.test(m[1]) ? undefined : /any number of/i.test(m[1]) ? undefined : (wordToNumber(m[2]) ?? undefined);
+    return [{ kind: 'moveCounters', from, to, counter: m[3] ? m[3].trim() : undefined, amount }];
+  }],
+  // "Its controller manifests dread"
+  [/^(.+?) manifests? dread$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'manifest', amount: 1, dread: true, who }] : null;
+  }],
+  // "Target opponent skips all combat phases of their next turn" — no combat is close enough to a skipped turn's combat.
+  [/^(.+?) skips (?:all combat phases of (?:their|his or her) next turn|their next combat phase)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'grantPlayerRule', who, rule: { kind: 'custom', tag: 'skipCombat' } }] : null;
+  }],
+  // "Shuffle ~ and target creature with a stun counter on it into their owners' libraries"
+  [/^shuffle (~|it) and (.+?) into their owners'? libraries$/i, (m, ctx) => {
+    const other = objRef(m[2], ctx);
+    if (!other) return null;
+    return [{ kind: 'moveToZone', what: SELF, zone: 'library' }, { kind: 'moveToZone', what: other, zone: 'library' }, { kind: 'shuffle' }];
+  }],
+  // "Until end of turn, it gains haste and \"<ability>\""
+  [/^(.+?) gains? ([\w ,]+?) and "(.+)"(?: until end of turn)?$/i, (m, ctx) => {
+    const kws = parseKeywordList(m[2]);
+    const ref = kws ? objRef(m[1], ctx) : null;
+    if (!kws || !ref) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [{ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur }, { kind: 'grantAbility', text: m[3], on: ref, duration: dur }];
+  }],
+  // "If it is not a land card, discard it"
+  [/^if it is not (?:a|an) (.+?), (discard|exile|sacrifice) it$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    if (!noun) return null;
+    const act: Effect = /discard/i.test(m[2]) ? { kind: 'moveToZone', what: ref, zone: 'graveyard' } : /exile/i.test(m[2]) ? { kind: 'exile', what: ref } : { kind: 'sacrifice', what: ref };
+    return [{ kind: 'conditional', if: { kind: 'not', c: { kind: 'amount', a: { kind: 'countRef', ref, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 } }, then: [act] }];
   }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
@@ -3603,7 +3659,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [{ kind: 'unlessPays', who, cost: m[3], effects: inner }];
     }
   }
-  if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) returns? (?:a|an|(\w+)) (.+?)(?: (?:you|they) control)? to (?:its|their) owner'?s'? hands?$/i))) {
+  if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) returns? (?:a|an|another|(\w+)) (.+?)(?: (?:you|they) control)? to (?:its|their) owner'?s'? hands?$/i))) {
     const inner = parseSentence(m[1], ctx);
     const who = playerRef(m[2], ctx);
     const noun = parseNoun(`a ${m[4]}`);

@@ -433,6 +433,8 @@ export interface ObjectFilter {
   ptSumLE?: number;
   /** Power equal to the greatest power among objects matching the rest of the filter for the same controller. */
   highestPower?: boolean;
+  /** Mana value equal to the greatest among objects matching the rest of the filter for the same controller. */
+  highestManaValue?: boolean;
   /** Toughness equal to the least toughness among objects matching the rest of the filter for the same controller (bolster). */
   lowestToughness?: boolean;
   /** Must have the creature type stored in the source's memory under this key ("of the chosen type"). */

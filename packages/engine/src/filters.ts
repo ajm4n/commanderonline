@@ -184,6 +184,17 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     }
     if (ch.toughness === null || ch.toughness > best) return false;
   }
+  if (filter.highestManaValue) {
+    const rest: ObjectFilter = { ...filter, highestManaValue: undefined, controller: undefined };
+    let best = -Infinity;
+    for (const other of Object.values(g.state.objects)) {
+      if (other.zone !== zone || other.controller !== obj.controller) continue;
+      if (!matchesFilter(g, other, rest, ctx)) continue;
+      const mv = other.card.cmc ?? 0;
+      if (mv > best) best = mv;
+    }
+    if ((obj.card.cmc ?? 0) < best) return false;
+  }
   if (filter.highestPower) {
     const rest: ObjectFilter = { ...filter, highestPower: undefined, controller: undefined };
     let best = -Infinity;
