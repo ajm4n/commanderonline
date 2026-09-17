@@ -4200,6 +4200,38 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 150 ----
+  // "Target creature gains flying, lifelink, and \"Whenever ~ attacks, draw a card.\" until end of turn"
+  [/^(?:until end of turn, )?(.+?) gains? (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    if (!/"/.test(m[2])) return null;
+    const ref = objRef(m[1], ctx);
+    const g = parseGrantList(m[2]);
+    if (!ref || !g) return null;
+    const out: Effect[] = [];
+    if (g.keywords.length) out.push({ kind: 'grantKeywords', keywords: g.keywords, on: ref, duration: 'endOfTurn' });
+    for (const a of g.abilities) out.push({ kind: 'grantAbility', text: a, on: ref, duration: 'endOfTurn' });
+    return out;
+  }],
+  // "~ becomes a 3/3 black Beholder creature with menace and \"Whenever ~ attacks, ...\" until end of turn"
+  [/^(.+?) becomes? (?:a|an) ([\dX]+)\/([\dX]+) (.+?) creature with (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    if (!/"/.test(m[5])) return null;
+    const ref = objRef(m[1], ctx);
+    const g = parseGrantList(m[5]);
+    if (!ref || !g) return null;
+    const words = m[4].split(/\s+/);
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+    const dur: Duration = 'endOfTurn';
+    const out: Effect[] = [
+      { kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, on: ref, duration: dur },
+      { kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur },
+    ];
+    if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+    if (g.keywords.length) out.push({ kind: 'grantKeywords', keywords: g.keywords, on: ref, duration: dur });
+    for (const a of g.abilities) out.push({ kind: 'grantAbility', text: a, on: ref, duration: dur });
+    return out;
+  }],
   // ---- Round 147 ----
   // "You may pay {E}{E}." / "You may pay {1} and 1 life."
   [/^(?:(.+?) )?may pay ((?:\{E\})+)$/i, (m, ctx) => {
@@ -6563,4 +6595,57 @@ function retime<T>(value: T, dur: Duration): T {
     return out as unknown as T;
   }
   return value;
+}
+
+/** Split a "has flying, lifelink, and \"Whenever ...\"" grant list into keywords and quoted abilities. */
+export function parseGrantList(text: string): { keywords: string[]; abilities: string[] } | null {
+  const parts: string[] = [];
+  let cur = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') quoted = !quoted;
+    // A closing quote followed directly by another item ("…+2/+0," equip {2}) also separates.
+    if (c === '"' && !quoted && text[i + 1] === ' ' && !text.startsWith(' and ', i + 1) && !text.startsWith(', ', i + 1)) {
+      parts.push(`${cur}"`);
+      cur = '';
+      i += 1;
+      continue;
+    }
+    if (!quoted) {
+      if (text.startsWith(', and ', i)) {
+        parts.push(cur);
+        cur = '';
+        i += 5;
+        continue;
+      }
+      if (text.startsWith(' and ', i)) {
+        parts.push(cur);
+        cur = '';
+        i += 4;
+        continue;
+      }
+      if (c === ',' && text[i + 1] === ' ') {
+        parts.push(cur);
+        cur = '';
+        i += 1;
+        continue;
+      }
+    }
+    cur += c;
+  }
+  if (cur.trim()) parts.push(cur);
+  const keywords: string[] = [];
+  const abilities: string[] = [];
+  for (const raw of parts.map((p) => p.trim().replace(/\.$/, '')).filter(Boolean)) {
+    const q = raw.match(/^"(.*)"$/s);
+    if (q) {
+      abilities.push(q[1]);
+      continue;
+    }
+    const kws = parseKeywordList(raw);
+    if (!kws) return null;
+    keywords.push(...kws);
+  }
+  return keywords.length || abilities.length ? { keywords, abilities } : null;
 }

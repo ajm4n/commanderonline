@@ -1,7 +1,7 @@
 /** Static abilities and replacement effects. */
 import type { AbilitySpec, Amount, Effect, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
-import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase } from './effects.js';
+import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase, parseGrantList } from './effects.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
 import { parseCost } from './costs.js';
@@ -40,6 +40,43 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 150 ----
+  // "Equipped creature gets +5/+5 and has first strike, trample, and \"Whenever ~ deals combat damage ...\""
+  if ((m = L.match(/^(.+?) (?:has|have) (.+)$/i)) && /"/.test(m[2])) {
+    const a = affectsOf(m[1]);
+    const g = parseGrantList(m[2]);
+    if (a.ok && g) {
+      const out: AbilitySpec[] = [];
+      if (g.keywords.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: g.keywords } });
+      if (g.abilities.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: g.abilities } });
+      return out;
+    }
+  }
+  if ((m = L.match(/^(.+?) gets? ([+-]\d+)\/([+-]\d+),? and (?:has|have) (.+)$/i)) && /"/.test(m[4])) {
+    const a = affectsOf(m[1]);
+    const g = parseGrantList(m[4]);
+    if (a.ok && g) {
+      const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } }];
+      if (g.keywords.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: g.keywords } });
+      if (g.abilities.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: g.abilities } });
+      return out;
+    }
+  }
+  // "Treasures you control are Equipment in addition to their other types and have \"Equipped creature gets +2/+0,\" equip {2}."
+  if ((m = L.match(/^(.+?) (?:is|are) (.+?) in addition to (?:their|its) other types and (?:has|have) (.+)$/i))) {
+    const a = affectsOf(m[1]);
+    const probe = parseNoun(`a ${m[2].replace(/^(?:a|an) /i, '')}`);
+    const g = parseGrantList(m[3]);
+    if (a.ok && probe && probe.confident && g) {
+      const mod: Record<string, unknown> = { layer: 4 };
+      if (probe.filter.types?.length) mod.addTypes = probe.filter.types;
+      if (probe.filter.subtypes?.length) mod.addSubtypes = probe.filter.subtypes;
+      const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: mod as never }];
+      if (g.keywords.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: g.keywords } });
+      if (g.abilities.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: g.abilities } });
+      return out;
+    }
+  }
   // ---- Round 148 ----
   // "During your turn, your opponents cannot cast spells or activate abilities of artifacts, creatures, or enchantments."
   if ((m = L.match(/^During your turn, (your opponents|each opponent|players) cannot cast spells or activate abilities of (.+)$/i))) {
