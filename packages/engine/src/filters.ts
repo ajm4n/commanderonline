@@ -74,6 +74,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.toughnessGE !== undefined && !(ch.toughness !== null && ch.toughness >= filter.toughnessGE)) return false;
   if (filter.cmcLE !== undefined && !(ch.manaValue <= num(filter.cmcLE))) return false;
   if (filter.cmcLEAmount !== undefined && !(ch.manaValue <= g.resolveAmount(filter.cmcLEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.cmcLTAmount !== undefined && !(ch.manaValue < g.resolveAmount(filter.cmcLTAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.toughnessLTAmount !== undefined && !(ch.toughness !== null && ch.toughness < g.resolveAmount(filter.toughnessLTAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.powerLTAmount !== undefined && !(ch.power !== null && ch.power < g.resolveAmount(filter.powerLTAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.powerLEAmount !== undefined && !(ch.power !== null && ch.power <= g.resolveAmount(filter.powerLEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.toughnessLEAmount !== undefined && !(ch.toughness !== null && ch.toughness <= g.resolveAmount(filter.toughnessLEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.damaged !== undefined && (obj.damage > 0) !== filter.damaged) return false;
   if (filter.cmcEQAmount !== undefined && ch.manaValue !== g.resolveAmount(filter.cmcEQAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} })) return false;
   if (filter.spellTargets !== undefined) {

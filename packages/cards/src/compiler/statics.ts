@@ -522,6 +522,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (typeof n !== 'number') return null;
     return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'chosenPlayerMaxHandSize', data: n } }];
   }
+  if ((m = L.match(/^You may pay ((?:\{[^}]+\})+) rather than pay the mana cost for spells you cast$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'altCostForSpells', data: { cost: m[1] } } }];
+  if ((m = L.match(/^If ~ is your commander, choose a (color|creature type) before the game begins$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'preGameChoice', data: m[1].toLowerCase() } }];
+  if (/^~ is the chosen color$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColorsFromMemory: 'color' } }];
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];

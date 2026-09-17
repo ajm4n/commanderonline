@@ -3586,6 +3586,41 @@ const PATTERNS: Pattern[] = [
     }
     return out.length ? out : null;
   }],
+  // "prevent the next 5 damage that would be dealt this turn to any number of targets, divided as you choose"
+  [/^prevent the next (\d+) damage that would be dealt this turn to any number of targets, divided as you choose$/i, (m) => [{ kind: 'preventAll', amount: parseInt(m[1], 10), to: 'all', once: true }]],
+  // "If a permanent dealt damage this way would die this turn, exile it instead"
+  [/^if (?:a|an) (.+?) dealt damage this way would (?:die|be destroyed) this turn, exile it instead$/i, () => [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfDies' }, on: { ref: 'chosen', key: 'lastDamaged' }, duration: 'endOfTurn' }]],
+  // "If a card would be put into your graveyard from anywhere this turn, exile that card instead"
+  [/^if (?:a|an) (.+?) would be put into your graveyard from anywhere this turn, exile that \w+ instead$/i, () => [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'exileInsteadOfGraveyard' } }]],
+  // "If you would roll one or more dice, roll that many dice plus one and ignore the lowest roll instead"
+  [/^if you would roll one or more dice, (?:instead )?roll that many dice plus (\w+) and ignore the lowest roll(?: instead)?$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    return typeof n === 'number' ? [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'extraDice', data: n } }] : null;
+  }],
+  // "copy it, except the copy is not legendary"
+  [/^copy it, except the copy is not legendary$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
+    return [{ kind: 'copySpell', what: ref, count: 1 }];
+  }],
+  // "Put the rest on the bottom in a random order"
+  [/^put the rest on the bottom(?: of your library)?(?: in a random order| in any order)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'putOnLibrary', what: ref, position: 'bottom' }];
+  }],
+  // "for each kind of counter on target permanent, put another counter of that kind on it" — proliferate, spelled out.
+  [/^for each kind of counter on (target permanent(?: or player)?|it|that permanent), (?:put another counter of that kind on it(?: or remove one from it)?|give that permanent or player another counter of that kind)$/i, (m, ctx) => {
+    if (/^target/i.test(m[1])) objRef('target permanent', ctx);
+    return [{ kind: 'proliferate' }];
+  }],
+  // "~ gets +3/-1 until end of turn and can attack this turn as though it didn't have defender"
+  [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+)(?: until end of turn)? and can attack(?: this turn)? as though it (?:didn't|did not) have defender$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'pump', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: 'endOfTurn' },
+      { kind: 'applyRule', rule: { kind: 'custom', tag: 'canAttackWithDefender' }, on: ref, duration: 'endOfTurn' },
+    ];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -3949,7 +3984,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|you do not lose this mana as steps end|(?:the|its) (?:replicate|foretell|escape|casualty|cycling|flashback|buyback|scavenge|unearth|embalm|eternalize|transmute) cost is .+|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|this effect cannot reduce the mana in that cost to less than one mana|you do not lose this mana as steps end|(?:the|its) (?:replicate|foretell|escape|casualty|cycling|flashback|buyback|scavenge|unearth|embalm|eternalize|transmute) cost is .+|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
