@@ -87,6 +87,8 @@ export interface GameState {
   damagedBy: Record<number, ObjectId[]>;
   /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
   lastTurnStats: Record<string, number>;
+  /** Player rules granted for the rest of the turn ("You may cast spells this turn as though they had flash"). */
+  turnRules?: { player: PlayerId; rule: import('./types.js').RuleModification }[];
   /** Day/night cycle: undefined until a card starts it. */
   dayNight?: 'day' | 'night';
   preventions: { effects?: import('./script.js').Effect[]; /** Only damage from these specific sources. */ sourceIds?: ObjectId[]; /** Shield: prevents at most this much, then wears off. */ amount?: number; combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[] }[];
@@ -649,6 +651,7 @@ export class Game {
         out.push(ab.rule);
       }
     }
+    for (const t of this.state.turnRules ?? []) if (t.player === p) out.push(t.rule);
     return out;
   }
 
@@ -1407,6 +1410,8 @@ export class Game {
         return this.resolveAmount(a.a, ctx) * this.resolveAmount(a.b, ctx);
       case 'max':
         return Math.max(this.resolveAmount(a.a, ctx), this.resolveAmount(a.b, ctx));
+      case 'minus':
+        return Math.max(0, this.resolveAmount(a.a, ctx) - this.resolveAmount(a.b, ctx));
       case 'chosenNumber':
         return (ctx.memory['chosenNumber'] as number) ?? 0;
       case 'ctxMemory': {
@@ -2142,6 +2147,7 @@ export class Game {
     }
     this.pendingTriggers = [];
     this.state.turnStats = {};
+    this.state.turnRules = [];
     for (const p of Object.values(this.state.players)) p.turnStats = {};
   }
 
@@ -2183,6 +2189,8 @@ export class Game {
       if (this.player(pid).lost) return;
       const { step, phase } = steps[i];
       if (t.skipSteps.includes(step)) continue;
+      // "End the turn.": skip straight to cleanup.
+      if (this.state.turnStats['endTheTurn'] && step !== 'cleanup') continue;
       // Skip combat steps after declare attackers if nothing attacks.
       if ((step === 'declareBlockers' || step === 'firstStrikeDamage' || step === 'combatDamage') && t.attackers.length === 0) continue;
       if (step === 'firstStrikeDamage' && !this.combatHasFirstStrike()) continue;

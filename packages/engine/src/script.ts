@@ -38,6 +38,8 @@ export type Amount =
   | { kind: 'sum'; parts: Amount[] }
   | { kind: 'times'; a: Amount; b: Amount }
   | { kind: 'max'; a: Amount; b: Amount }
+  /** a - b, never below zero ("draw cards equal to the difference"). */
+  | { kind: 'minus'; a: Amount; b: Amount }
   | { kind: 'chosenNumber' }
   | { kind: 'differenceLife'; from: Ref; to: Ref }
   | { kind: 'ctxMemory'; key: string }
@@ -312,6 +314,14 @@ export type Effect =
   | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
+  /** "End the turn." */
+  | { kind: 'endTurn' }
+  /** Grant a player rule for the rest of the turn. */
+  | { kind: 'grantPlayerRule'; who?: Ref; rule: RuleModification }
+  /** "Double ~'s power until end of turn." */
+  | { kind: 'doubleStat'; on: Ref; stat: 'power' | 'toughness' | 'both'; duration?: Duration }
+  /** "Any player may sacrifice a creature of their choice." */
+  | { kind: 'anyPlayerMaySacrifice'; filter: ObjectFilter; then?: Effect[] }
   /** Endure N: put N +1/+1 counters on it, or create an N/N white Spirit creature token. */
   | { kind: 'endure'; on: Ref; amount: Amount }
   /** "puts it on their choice of the top or bottom of their library" */

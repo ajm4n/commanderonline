@@ -495,8 +495,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const kws = parseKeywordList(m[2]);
     if (kws) {
       const a = affectsOf(m[1]);
-      if (!a.ok) return null;
-      return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } }];
+      if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } }];
     }
   }
   // "Enchanted land is a 3/3 black Ooze creature." / "~ is a 4/4 red Dragon artifact creature"
@@ -772,6 +771,37 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^Prevent all (?:combat )?damage that would be dealt to (.+)$/i))) return objRule(m[1], { kind: 'damagePrevention', amount: 'all' });
   if ((m = L.match(/^Prevent all damage that would be dealt to you$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'damagePrevention', amount: 'all' } }];
   // Player-level rules
+  // "You may cast legendary spells and artifact spells as though they had flash."
+  if ((m = L.match(/^You may cast (.+?) as though (?:they|it) had flash$/i))) {
+    if (/^spells$/i.test(m[1])) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castAsThoughFlash' } }];
+    const parts = m[1].split(/ and /i).map((x) => parseNoun(x.replace(/ spells?$/i, ' spell')));
+    if (parts.every((x) => x)) {
+      const f = parts.length === 1 ? { ...parts[0]!.filter, zone: undefined } : { anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castAsThoughFlash', data: { filter: f } } }];
+    }
+  }
+  // "Artifact spells you cast have convoke." / "Artifact creature spells you cast have affinity for artifacts."
+  if ((m = L.match(/^(.+?) you cast have (convoke|improvise|delve|affinity for (.+))$/i))) {
+    const spell = /^spells$/i.test(m[1]) ? { filter: {} } : parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+    if (spell) {
+      const f = { ...spell.filter, zone: undefined };
+      if (m[3]) {
+        const per = parseNoun(m[3]) ?? parseNoun(`a ${m[3].replace(/s$/, '')}`);
+        if (per) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: 1, filter: f, per: { ...per.filter, controller: 'you', zone: 'battlefield' } } }];
+      } else {
+        return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: m[2].toLowerCase(), filter: f } } }];
+      }
+    }
+  }
+  // "Artifact and enchantment spells your opponents cast cost {2} more to cast."
+  if ((m = L.match(/^(.+?) (?:your opponents|each opponent) casts? cost \{(\d)\} more to cast$/i))) {
+    const words = m[1].replace(/ spells?$/i, '').split(/,? and |, /i).map((w) => w.trim()).filter(Boolean);
+    const parts = words.map((w) => parseNoun(`a ${w} spell`));
+    if (parts.every((x) => x)) {
+      const f = parts.length === 1 ? { ...parts[0]!.filter, zone: undefined } : { anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
+      return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'costIncrease', amount: parseInt(m[2], 10), filter: f } }];
+    }
+  }
   if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You have hexproof$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'hexproof' } }];
   if (/^You have shroud$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'shroud' } }];

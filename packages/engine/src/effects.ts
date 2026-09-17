@@ -231,6 +231,43 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'endTurn': {
+      g.state.stack.length = 0;
+      g.state.turnStats['endTheTurn'] = 1;
+      g.log('The turn ends.');
+      g.touch();
+      return;
+    }
+    case 'grantPlayerRule': {
+      g.state.turnRules = g.state.turnRules ?? [];
+      for (const p of playersOf(g, e.who, ctx)) g.state.turnRules.push({ player: p, rule: e.rule });
+      g.touch();
+      return;
+    }
+    case 'doubleStat': {
+      for (const o of g.resolveObjects(e.on, ctx)) {
+        const ch = g.characteristics(o.id);
+        const dp = e.stat === 'toughness' ? 0 : ch.power ?? 0;
+        const dt = e.stat === 'power' ? 0 : ch.toughness ?? 0;
+        g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: durationOf(e.duration ?? 'endOfTurn'), modification: { layer: '7c', power: dp, toughness: dt } });
+      }
+      return;
+    }
+    case 'anyPlayerMaySacrifice': {
+      let any = false;
+      for (const p of g.activePlayers()) {
+        const cands = objectsMatching(g, { ...e.filter, controller: 'you' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }).map((o) => o.id);
+        if (!cands.length) continue;
+        const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Sacrifice one of these? (optional)', candidates: cands, min: 0, max: 1, sourceId: ctx.sourceId ?? undefined });
+        const ids = resp.type === 'objects' ? resp.ids : [];
+        for (const id of ids) {
+          g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+          any = true;
+        }
+      }
+      if (any && e.then) yield* executeEffects(g, e.then, ctx);
+      return;
+    }
     case 'returnToHand': {
       const moved: ObjectId[] = [];
       for (const o of g.resolveObjects(e.what, ctx)) {

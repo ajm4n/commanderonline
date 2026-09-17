@@ -680,6 +680,7 @@ export function splitTriggerRest(rest: string): { optional: boolean; condition: 
   let r = rest.trim();
   let condition: string | null = null;
   let m = r.match(/^if (.+?), (.+)$/i);
+  if (m && /\bthe difference\b/i.test(m[2])) m = null;
   if (m) {
     condition = m[1];
     r = m[2];

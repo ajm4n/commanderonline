@@ -1742,6 +1742,76 @@ const PATTERNS: Pattern[] = [
     ctx.lastObj = { ref: 'chosen', key: 'chosen' };
     return [{ kind: 'chooseObjects', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' }, count: n, key: 'chosen' }];
   }],
+  [/^end the turn$/i, () => [{ kind: 'endTurn' }]],
+  // "Choose any target." (a later sentence refers to it)
+  [/^choose (?:any target|another target)$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'any target', kind: 'any', playerFilter: 'any' });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  // "Double ~'s power until end of turn."
+  [/^double (~'s|its|that creature's|target creature's) (power|toughness|power and toughness)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = /^(?:~'s|its)$/i.test(m[1]) ? SELF : objRef(m[1].replace(/'s$/, ''), ctx);
+    if (!ref) return null;
+    const stat = /and/i.test(m[2]) ? 'both' : (m[2].toLowerCase() as 'power' | 'toughness');
+    return [{ kind: 'doubleStat', on: ref, stat, duration: 'endOfTurn' }];
+  }],
+  // "You may cast spells this turn as though they had flash."
+  [/^you may cast (.+?) this turn as though (?:they|it) had flash$/i, (m) => {
+    if (/^spells$/i.test(m[1])) return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'castAsThoughFlash' } }];
+    const parts = m[1].split(/ and /i).map((x) => parseNoun(x.replace(/ spells?$/i, ' spell')));
+    if (!parts.every((x) => x)) return null;
+    const f = parts.length === 1 ? { ...parts[0]!.filter, zone: undefined } : { anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'castAsThoughFlash', data: { filter: f } } }];
+  }],
+  // "Any player may sacrifice a land of their choice. If a player does, X"
+  [/^any player may sacrifice (?:a|an) (.+?) of (?:their|his or her) choice$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    return noun ? [{ kind: 'anyPlayerMaySacrifice', filter: { ...noun.filter, zone: 'battlefield' } }] : null;
+  }],
+  // "Target creature cannot be regenerated this turn."
+  [/^(.+?) cannot be regenerated this turn$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', on: ref, rule: { kind: 'custom', tag: 'cantRegenerate' }, duration: 'endOfTurn' }] : null;
+  }],
+  // "if you have fewer than seven cards in hand, draw cards equal to the difference"
+  [/^if you have fewer than (\w+) cards in hand,? draw cards equal to the difference$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'draw', amount: { kind: 'minus', a: n, b: { kind: 'handSize', ref: YOU } } }];
+  }],
+  // "you get six {E}"
+  [/^(?:you|that player|target player|each player|each opponent) gets? ((?:\{E\})+|\w+|that many) \{E\}$/i, (m, ctx) => {
+    const n = /^\{E\}/.test(m[1]) ? (m[1].match(/\{E\}/g) ?? []).length : /that many/i.test(m[1]) ? ({ kind: 'triggerAmount' } as Amount) : wordToNumber(m[1]);
+    if (n === null) return null;
+    const who = playerRef(m[0].replace(/ gets? .*$/i, ''), ctx) ?? YOU;
+    return [{ kind: 'addCounters', counter: 'energy', amount: n, on: who }];
+  }],
+  // "Exile that many cards from the top of your library." / "look at that many cards from the top of your library"
+  [/^(exile|look at|mill|reveal) (that many|\w+|X) cards? from the top of (your|their|that player's) library$/i, (m, ctx) => {
+    const n: Amount | null = /that many/i.test(m[2]) ? { kind: 'triggerAmount' } : wordToNumber(m[2]);
+    if (n === null) return null;
+    const who: Ref = /^your$/i.test(m[3]) ? YOU : ctx.lastPlayer ?? YOU;
+    const v = m[1].toLowerCase();
+    if (v === 'mill') return [{ kind: 'mill', amount: n, who }];
+    if (v === 'exile') {
+      ctx.lastObj = { ref: 'lastMoved' };
+      return [{ kind: 'exileTop', amount: n, who }];
+    }
+    ctx.lastObj = { ref: 'memory', key: 'looked' };
+    return [{ kind: 'lookAtTop', amount: n, who, reveal: v === 'reveal', then: 'hold', key: 'looked' }];
+  }],
+  // "sacrifice all Dragons you control"
+  [/^sacrifice all (.+)$/i, (m) => {
+    const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(m[1]);
+    if (!noun) return null;
+    return [{ kind: 'sacrifice', what: { ref: 'all', filter: { ...noun.filter, controller: noun.filter.controller ?? 'you', zone: 'battlefield' } } }];
+  }],
+  // "Target land gains \"{T}: Add {C}{C}\" until ~ is cast from exile."
+  [/^(.+?) gains? "(.+)" until ~ is cast from exile$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'grantAbility', text: m[2], on: ref, duration: 'permanent' }] : null;
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {

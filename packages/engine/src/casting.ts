@@ -130,10 +130,19 @@ export interface CastingKeywords {
 export function castingKeywordsOf(g: Game, obj: GameObject): CastingKeywords {
   const ch = g.characteristics(obj.id);
   const text = obj.card.oracleText ?? '';
+  // "Artifact spells you cast have convoke."
+  const granted = new Set<string>();
+  for (const r of g.playerRules(obj.controller)) {
+    if (r.kind !== 'custom' || r.tag !== 'grantSpellKeyword') continue;
+    const d = (r.data as { keyword?: string; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+    if (!d.keyword) continue;
+    if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: obj.controller })) continue;
+    granted.add(d.keyword.toLowerCase());
+  }
   return {
-    convoke: ch.keywords.has('Convoke') || /^Convoke\b/m.test(text),
-    improvise: ch.keywords.has('Improvise') || /^Improvise\b/m.test(text),
-    delve: ch.keywords.has('Delve') || /^Delve\b/m.test(text),
+    convoke: granted.has('convoke') || ch.keywords.has('Convoke') || /^Convoke\b/m.test(text),
+    improvise: granted.has('improvise') || ch.keywords.has('Improvise') || /^Improvise\b/m.test(text),
+    delve: granted.has('delve') || ch.keywords.has('Delve') || /^Delve\b/m.test(text),
   };
 }
 
@@ -764,7 +773,9 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   // Cost reductions / increases from static rules.
   let delta = 0;
   for (const r of g.playerRules(p)) {
-    if (r.kind === 'costReduction' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) delta -= r.amount;
+    if (r.kind === 'costReduction' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) {
+      delta -= r.per ? r.amount * objectsMatching(g, { ...r.per, zone: r.per.zone ?? 'battlefield' }, { sourceId: null, controller: p }).length : r.amount;
+    }
     if (r.kind === 'costIncrease' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) {
       if (r.symbols) cost = adjustSymbols(cost, r.symbols, 1);
       else delta += r.amount;
