@@ -449,6 +449,14 @@ export interface ObjectFilter {
   sharesColorWith?: import('./script.js').Ref;
   /** Must have the creature type stored in the source's memory under this key ("of the chosen type"). */
   chosenSubtypeKey?: string;
+  /** Must NOT have the creature type stored under this key ("creatures that aren't of the chosen type"). */
+  notChosenSubtypeKey?: string;
+  /** Has no attachment of this subtype ("creatures that aren't enchanted"). */
+  notAttachment?: string;
+  /** The object has no abilities at all ("creatures with no abilities"). */
+  noAbilities?: boolean;
+  /** Must be the colour stored under this memory key on the source ("permanents of the chosen color"). */
+  chosenColorKey?: string;
   /** Controlled by the player a Ref resolves to ("lands target player controls"); bound to `controller` when the effect runs. */
   controllerRef?: import('./script.js').Ref;
   /** Has damage marked on it ("that was dealt damage this turn"). */

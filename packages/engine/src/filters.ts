@@ -60,6 +60,25 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
   if (filter.custom === 'createdBySource' && (ctx.sourceId === null || obj.memory.createdBy !== ctx.sourceId)) return false;
   if (filter.castFromZone && obj.castFromZone !== filter.castFromZone) return false;
+  if (filter.notAttachment && obj.attachments.some((x) => g.characteristics(x).subtypes.includes(filter.notAttachment!))) return false;
+  if (filter.noAbilities && (ch.rules.length > 0 || ch.keywords.size > 0 || g.scriptFor(obj).abilities.length > 0)) return false;
+  if (filter.notChosenSubtypeKey) {
+    const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+    const want = src?.chosen[filter.notChosenSubtypeKey] ?? src?.memory[filter.notChosenSubtypeKey];
+    if (typeof want === 'string' && ch.subtypes.includes(want)) return false;
+  }
+  if (filter.chosenColorKey) {
+    const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+    const want = src?.chosen[filter.chosenColorKey] ?? src?.memory[filter.chosenColorKey];
+    if (typeof want !== 'string' || !ch.colors.includes(want as 'W')) return false;
+  }
+  if (filter.custom === 'blocked' && !obj.wasBlocked && obj.blockedBy.length === 0) return false;
+  if (filter.custom === 'powerLTSource' && ctx.sourceId !== null) { const sp = g.characteristics(ctx.sourceId).power ?? 0; if ((ch.power ?? 0) >= sp) return false; }
+  if (filter.custom === 'powerGTSource' && ctx.sourceId !== null) { const sp = g.characteristics(ctx.sourceId).power ?? 0; if ((ch.power ?? 0) <= sp) return false; }
+  if (filter.custom === 'toughnessLTSource' && ctx.sourceId !== null) { const st = g.characteristics(ctx.sourceId).toughness ?? 0; if ((ch.toughness ?? 0) >= st) return false; }
+  if (filter.custom === 'toughnessGTSource' && ctx.sourceId !== null) { const st = g.characteristics(ctx.sourceId).toughness ?? 0; if ((ch.toughness ?? 0) <= st) return false; }
+  if (filter.custom === 'cmcLTSource' && ctx.sourceId !== null && ch.manaValue >= g.characteristics(ctx.sourceId).manaValue) return false;
+  if (filter.custom === 'cmcGTSource' && ctx.sourceId !== null && ch.manaValue <= g.characteristics(ctx.sourceId).manaValue) return false;
   if (filter.custom === 'notCast' && obj.wasCast) return false;
   if (filter.custom === 'topOfLibrary') {
     if (zone !== 'library') return false;
