@@ -437,6 +437,10 @@ export interface ObjectFilter {
   highestManaValue?: boolean;
   /** Toughness equal to the least toughness among objects matching the rest of the filter for the same controller (bolster). */
   lowestToughness?: boolean;
+  /** Power equal to the least power among objects matching the rest of the filter (globally, not per controller). */
+  lowestPower?: boolean;
+  /** Shares a color with the object this ref resolves to. */
+  sharesColorWith?: import('./script.js').Ref;
   /** Must have the creature type stored in the source's memory under this key ("of the chosen type"). */
   chosenSubtypeKey?: string;
   /** Controlled by the player a Ref resolves to ("lands target player controls"); bound to `controller` when the effect runs. */

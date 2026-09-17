@@ -3027,6 +3027,131 @@ const PATTERNS: Pattern[] = [
     return a && b ? [{ kind: 'putIntoHand', what: a }, { kind: 'putIntoHand', what: b }] : null;
   }],
   // "Each opponent attacking that player does the same" — repeat the previous sentence for each of them.
+  // "They block this turn if able"
+  [/^(?:they|those creatures) blocks? this turn if able$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBlockAny' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "Target creature blocks target creature this turn if able"
+  [/^(target .+?) blocks (target .+?) this turn if able$/i, (m, ctx) => {
+    const blocker = objRef(m[1], ctx);
+    const attacker = blocker ? objRef(m[2], ctx) : null;
+    if (!blocker || !attacker) return null;
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBlock', data: '__target__' }, on: blocker, duration: 'endOfTurn' }];
+  }],
+  // "Target creature attacks target opponent this turn if able"
+  [/^(target .+?) attacks (target opponent|target player|you) this turn if able$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    if (/^target/i.test(m[2])) playerRef(m[2], ctx);
+    return [{ kind: 'applyRule', rule: { kind: 'mustAttack' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "Its activated abilities cannot be activated this turn" / "it assigns no combat damage this turn"
+  [/^(?:its|their) activated abilities cannot be activated(?: this turn)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivateOwnAbilities' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  [/^(?:it|that creature) assigns no combat damage this turn$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignsNoDamage' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "That player skips their next untap step"
+  [/^(.+?) skips (?:their|his or her|your) next untap step$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'grantPlayerRule', who, rule: { kind: 'custom', tag: 'skipUntapStep' } }] : null;
+  }],
+  // "double your life total"
+  [/^double (your|that player's|each player's) life totals?$/i, (m, ctx) => {
+    const who = /^your$/i.test(m[1]) ? YOU : playerRef(m[1].replace(/'s$/, ''), ctx) ?? YOU;
+    return [{ kind: 'setLife', amount: { kind: 'times', a: 2, b: { kind: 'life', ref: who } }, who }];
+  }],
+  // "You may put that card on the bottom of that player's library" / "into their graveyard"
+  [/^(?:you may )?put that card (?:on the bottom of (?:that player's|their|your) library|into (?:their|its owner's) graveyard)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const eff: Effect = /graveyard/i.test(m[0]) ? { kind: 'putIntoGraveyard', what: ref } : { kind: 'putOnLibrary', what: ref, position: 'bottom' };
+    return /you may/i.test(m[0]) ? [{ kind: 'may', effects: [eff] }] : [eff];
+  }],
+  // "Put the exiled cards not cast this way on the bottom of your library in a random order"
+  [/^(?:then )?put (?:the exiled cards not cast this way|all cards revealed this way that weren't put onto the battlefield|the exiled cards that weren't cast this way) (?:on the bottom of (?:your|their) library in a random order|into your graveyard)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [/graveyard/i.test(m[0]) ? { kind: 'putIntoGraveyard', what: ref } : { kind: 'putOnLibrary', what: ref, position: 'bottom' }];
+  }],
+  // "You may play those cards this turn, and you may spend mana as though it were mana of any color to cast those spells"
+  [/^(?:you may )?(?:play|cast) (?:those cards|that card|spells from among those cards|spells from among cards exiled with ~|any number of spells from among cards exiled this way)(?: (?:this turn|until your next end step|until the beginning of your next upkeep|for as long as (?:they remain|it remains) exiled|for as long as you control ~))?(?:,? and (?:you may spend mana as though it were mana of any color to cast (?:those spells|it|them)|mana of any type can be spent to cast (?:those spells|that spell|them)))?(?: without paying their mana costs)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const dur: 'thisTurn' | 'permanent' = /this turn|until your next end step|next upkeep/i.test(m[0]) ? 'thisTurn' : 'permanent';
+    return [{ kind: 'playFromExile', what: ref, duration: dur, anyMana: /any color|any type/i.test(m[0]) || undefined, free: /without paying/i.test(m[0]) || undefined }];
+  }],
+  // "that player draws two additional cards"
+  [/^(.+?) draws? (\w+) additional cards?$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const n = wordToNumber(m[2]);
+    return who && typeof n === 'number' ? [{ kind: 'draw', amount: n, who }] : null;
+  }],
+  // "If you do, discard that many cards"
+  [/^discard that many cards$/i, () => [{ kind: 'discard', amount: { kind: 'triggerAmount' } }]],
+  // "remove target attacking or blocking creature from combat"
+  [/^remove (.+?) from combat$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'removeFromCombat', what: ref }] : null;
+  }],
+  // "~ deals 4 damage to target creature and each other creature with the same name as that creature"
+  [/^(~|it) deals (\d+|X) damage to (target .+?) and each other (.+?) (?:with the same name as that \w+|that shares a color with it)$/i, (m, ctx) => {
+    const ref = objRef(m[3], ctx);
+    const noun = parseNoun(`all ${m[4]}`);
+    if (!ref || !noun) return null;
+    const amount: Amount = m[2] === 'X' ? 'X' : parseInt(m[2], 10);
+    const f: ObjectFilter = { ...noun.filter, zone: 'battlefield', other: true };
+    if (/same name/i.test(m[0])) f.sameNameAs = ref;
+    else f.sharesColorWith = ref;
+    return [{ kind: 'damage', amount, to: ref, source: SELF }, { kind: 'damage', amount, to: { ref: 'all', filter: f }, source: SELF }];
+  }],
+  // "If a creature an opponent controls would die, exile it instead" on a spell
+  [/^if (?:a|an) (.+?) would die, exile it instead$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    return noun ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfDies' }, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, duration: 'permanent' }] : null;
+  }],
+  // "Attach target Aura attached to a creature to another creature"
+  [/^attach (target .+?) to (another .+|target .+)$/i, (m, ctx) => {
+    const what = objRef(m[1], ctx);
+    const to = what ? objRef(m[2].replace(/^another /i, 'another target '), ctx) : null;
+    return what && to ? [{ kind: 'attach', what, to }] : null;
+  }],
+  // "Exile a card from your hand face down"
+  [/^exile (?:a|an|(\w+)) cards? from your hand face down$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    const key = `fd${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: { zone: 'hand', owner: 'you' }, count: n, key }, { kind: 'exile', what: { ref: 'chosen', key }, faceDown: true, remember: 'exiled' }];
+  }],
+  // "defending player may draw a card"
+  [/^(defending player|that player|target player|each opponent) may (.+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const sub = newCtx({ ...ctx, targets: ctx.targets });
+    sub.lastPlayer = who;
+    const inner = parseSentence(`${m[1]} ${m[2]}`, sub);
+    return inner ? [{ kind: 'may', who, effects: inner }] : null;
+  }],
+  // "change ~'s base power and toughness to that creature's power and toughness until end of turn"
+  [/^change (~|its|that creature)'s base power and toughness to (.+?)'s power and toughness(?: until end of turn)?$/i, (m, ctx) => {
+    const target = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? SELF;
+    const other = objRef(m[2], ctx);
+    if (!other) return null;
+    return [{ kind: 'setPT', power: { kind: 'power', ref: other }, toughness: { kind: 'toughness', ref: other }, on: target, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
+  // "It is a 2/2 Cyberman artifact creature"
+  [/^(?:it|that permanent|that card) is (?:a|an) (\d+)\/(\d+) (.+?) creature$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const noun = parseNoun(`a ${m[3]} creature`);
+    if (!noun) return null;
+    const types = ['Creature', ...(noun.filter.types ?? []).filter((t) => t !== 'Creature')];
+    return [
+      { kind: 'addTypes', types, subtypes: noun.filter.subtypes, on: ref, duration: 'permanent' },
+      { kind: 'setPT', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10), on: ref, duration: 'permanent' },
+    ];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -3412,7 +3537,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;
   if (/^you cannot cast ~ during your (?:first|second|third)(?:, (?:first|second|third))*(?:,? or (?:first|second|third))? turns? of the game\.?$/i.test(text.trim())) return true;
   if (/^~ saddles mounts and crews vehicles as though its power were \d+ greater\.?$/i.test(text.trim())) return true;
-  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|a spell cast this way costs .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
+  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|mana of any type can be spent to cast (?:spells|a spell) this way|you may spend mana as though it were mana of any color to activate those abilities|you may look at (?:it|that card) for as long as it remains exiled|you may reveal the first card you draw each turn as you draw it|a spell cast this way costs .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 
 /** Parse one sentence; returns null if not understood. */

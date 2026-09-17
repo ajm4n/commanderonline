@@ -472,7 +472,8 @@ function applyQualifier(q: string, r: ParsedNoun) {
   else if ((m = q.match(/^with total power and toughness (\d+) or less$/))) r.filter.ptSumLE = parseInt(m[1], 10);
   else if (q === 'with the greatest power') r.filter.highestPower = true;
   else if (q === 'with the least toughness') r.filter.lowestToughness = true;
-  else if (q === 'with the least power' || q === 'with the greatest toughness') r.confident = false;
+  else if (q === 'with the least power') r.filter.lowestPower = true;
+  else if (q === 'with the greatest toughness') r.confident = false;
   else if (/^with the greatest power among creatures/.test(q)) r.filter.highestPower = true;
   else if (/^with the greatest mana value among /.test(q)) r.filter.highestManaValue = true;
   else if ((m = q.match(/^with mana value (\d+|x)$/))) {

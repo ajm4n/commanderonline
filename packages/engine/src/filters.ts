@@ -184,6 +184,23 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     }
     if (ch.toughness === null || ch.toughness > best) return false;
   }
+  if (filter.lowestPower) {
+    const rest: ObjectFilter = { ...filter, lowestPower: undefined };
+    let best = Infinity;
+    for (const other of Object.values(g.state.objects)) {
+      if (other.zone !== zone) continue;
+      if (!matchesFilter(g, other, rest, ctx)) continue;
+      const pw = g.characteristics(other.id).power;
+      if (pw !== null && pw < best) best = pw;
+    }
+    if (ch.power === null || ch.power > best) return false;
+  }
+  if (filter.sharesColorWith) {
+    const others = g.resolveRef(filter.sharesColorWith, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} });
+    const colors = new Set<string>();
+    for (const t of others) if (t.kind === 'object' && g.state.objects[t.id]) for (const c of g.characteristics(t.id).colors) colors.add(c);
+    if (!ch.colors.some((c) => colors.has(c))) return false;
+  }
   if (filter.highestManaValue) {
     const rest: ObjectFilter = { ...filter, highestManaValue: undefined, controller: undefined };
     let best = -Infinity;
