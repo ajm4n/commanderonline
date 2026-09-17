@@ -355,9 +355,35 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of g.resolvePlayers(e.who, ctx)) {
         const pl = g.player(p);
         const n = pl.hand.length;
-        for (const id of [...pl.hand]) g.moveObject(id, 'library', { skipEvents: true });
-        g.shuffleLibrary(p);
+        for (const id of [...pl.hand]) g.moveObject(id, 'library', { skipEvents: true, position: e.bottom ? 'bottom' : undefined });
+        if (!e.bottom) g.shuffleLibrary(p);
         if (n > 0) g.drawCards(p, n);
+      }
+      return;
+    }
+    case 'collectEvidence': {
+      const need = g.resolveAmount(e.n, ctx);
+      const cands = [...g.player(ctx.controller).graveyard];
+      const total = cands.reduce((sum, id) => sum + g.characteristics(id).manaValue, 0);
+      if (total < need) return;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const resp = yield* g.ask({ type: 'chooseObjects', player: ctx.controller, prompt: `Collect evidence ${need}: exile cards with total mana value ${need} or more from your graveyard`, candidates: cands, min: 0, max: cands.length, sourceId: ctx.sourceId ?? undefined });
+        if (resp.type !== 'objects' || !resp.ids.length) return;
+        if (resp.ids.reduce((sum, id) => sum + g.characteristics(id).manaValue, 0) < need) continue;
+        for (const id of resp.ids) g.moveObject(id, 'exile', { cause: 'exile' });
+        (ctx as { memory?: Record<string, unknown> }).memory && ((ctx as { memory: Record<string, unknown> }).memory['evidenceCollected'] = true);
+        return;
+      }
+      return;
+    }
+    case 'timeTravel': {
+      const cands = [...g.state.battlefield, ...g.player(ctx.controller).exile].filter((id) => {
+        const o = g.state.objects[id];
+        return !!o && (o.counters['time'] ?? 0) > 0 && (o.zone === 'battlefield' ? o.controller === ctx.controller : o.owner === ctx.controller);
+      });
+      for (const id of cands) {
+        const resp = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: `Remove a time counter from ${g.characteristics(id).name}?`, sourceId: ctx.sourceId ?? undefined });
+        if (resp.type === 'yesNo' && resp.value) g.removeCounters(id, 'time', 1);
       }
       return;
     }
@@ -648,6 +674,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             attacking = src?.attacking ?? g.opponentsOf(p)[0];
           }
           const o = g.createObject(card, p, 'battlefield', { tapped: e.tapped, attacking });
+          if (ctx.sourceId !== null) o.memory.createdBy = ctx.sourceId;
           if (e.counters) g.addCounters(o.id, e.counters.counter, g.resolveAmount(e.counters.amount, ctx));
           created.push(o.id);
           if (e.attachTo) {
@@ -661,6 +688,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (count > 0) {
           for (const extra of alsoTokens) {
             const o = g.createObject(tokenCard(extra, g, ctx), p, 'battlefield', {});
+            if (ctx.sourceId !== null) o.memory.createdBy = ctx.sourceId;
             created.push(o.id);
             g.log(`${g.player(p).name} also creates a ${card_name(extra)} token.`);
           }
@@ -743,6 +771,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
       g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: '7b', ...(e.power !== undefined ? { setPower: amt(e.power) } : {}), ...(e.toughness !== undefined ? { setToughness: amt(e.toughness) } : {}) } });
+      return;
+    }
+    case 'becomeBlocked': {
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        if (o.attacking === null || o.wasBlocked) continue;
+        o.wasBlocked = true;
+        g.log(`${g.characteristics(o.id).name} becomes blocked.`);
+        g.emit({ name: 'becomesBlocked', objectId: o.id, sourceId: ctx.sourceId ?? undefined });
+      }
       return;
     }
     case 'grantKeywords': {
@@ -1144,7 +1181,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (resp.type === 'objects') pick = resp.ids[0];
       }
       const src = g.obj(pick);
-      g.createObject({ ...(src.copyOf ?? src.card), isToken: true }, ctx.controller, 'battlefield');
+      let attacking: import('./types.js').PlayerId | import('./types.js').ObjectId | undefined;
+      if (e.attacking) {
+        const own = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+        attacking = own?.attacking ?? g.opponentsOf(ctx.controller)[0];
+      }
+      const made = g.createObject({ ...(src.copyOf ?? src.card), isToken: true }, ctx.controller, 'battlefield', { tapped: e.tapped, attacking });
+      if (ctx.sourceId !== null) made.memory.createdBy = ctx.sourceId;
       return;
     }
     case 'becomeMonarch':
@@ -1551,7 +1594,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) g.player(p).landsPlayedThisTurn--;
       return;
     case 'chooseColor': {
-      const resp = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Choose a color', options: COLORS.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      const chooser = e.who ? (g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller) : ctx.controller;
+      const resp = yield* g.ask({ type: 'chooseOption', player: chooser, prompt: 'Choose a color', options: COLORS.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
       const c = resp.type === 'options' ? resp.ids[0] : 'W';
       setMemory(g, ctx, e.key, c);
       return;
@@ -2078,6 +2122,13 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
     const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
     if (!f || matchesFilter(g, o, { ...f, zone: undefined }, { sourceId: null, controller })) forceUntapped = true;
   }
+  const extraEnterCounters: { counter: string; amount: number }[] = [];
+  for (const r of g.playerRules(controller)) {
+    if (r.kind !== 'custom' || r.tag !== 'extraEnterCounters') continue;
+    const d = (r.data as { filter?: import('./types.js').ObjectFilter; counter?: string; amount?: number } | undefined) ?? {};
+    if (d.filter && !matchesFilter(g, o, { ...d.filter, zone: undefined }, { sourceId: null, controller })) continue;
+    extraEnterCounters.push({ counter: d.counter ?? '+1/+1', amount: d.amount ?? 1 });
+  }
   const counters: Record<string, number> = { ...(opts.counters ?? {}) };
   const chosen: Record<string, unknown> = {};
   const ectx: EffectContext = { sourceId: id, controller, targets: [], triggerContext: {}, x: o.xValue ?? 0, modes: o.modes ?? [], memory: {} };
@@ -2176,6 +2227,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
       if (ab.counters) counters[ab.counters.counter] = (counters[ab.counters.counter] ?? 0) + g.resolveAmount(ab.counters.amount, { ...ectx, sourceId: src.id, controller: src.controller });
     }
   }
+  for (const x of extraEnterCounters) counters[x.counter] = (counters[x.counter] ?? 0) + x.amount;
   // Auras must be attached to something as they enter.
   const ch = g.characteristics(id);
   let attachTo: ObjectId | null = null;

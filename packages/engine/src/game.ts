@@ -1357,6 +1357,14 @@ export class Game {
         if (c.beforeAttackers && t.attackers.length > 0) return false;
         return true;
       }
+      case 'sameNameGroup': {
+        const groups = new Map<string, number>();
+        for (const o of objectsMatching(this, this.bindFilter(c.filter, ectx), { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x })) {
+          const n = this.characteristics(o.id).name;
+          groups.set(n, (groups.get(n) ?? 0) + 1);
+        }
+        return cmp(Math.max(0, ...groups.values()), c.op, c.value);
+      }
       case 'abilityResolvedThisTurn': {
         const key = (ctx.triggerContext as Record<string, unknown> | undefined)?.resolvedKey as string | undefined;
         return cmp(key ? (this.state.turnStats[key] ?? 0) : 0, c.op, c.value);
@@ -1437,6 +1445,12 @@ export class Game {
       case 'triggerAmount':
         return (ctx.triggerContext.triggerAmount as number) ?? 0;
       case 'devotion': {
+        let cols: string[] = a.colors;
+        if (a.chosenKey) {
+          const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+          const ch = src?.chosen[a.chosenKey];
+          cols = typeof ch === 'string' ? [ch] : Array.isArray(ch) ? (ch as string[]) : [];
+        }
         let n = 0;
         for (const id of this.state.battlefield) {
           const o = this.obj(id);
@@ -1444,7 +1458,7 @@ export class Game {
           const cost = this.characteristics(id).manaCost;
           for (const m of cost.matchAll(/\{([^}]+)\}/g)) {
             const sym = m[1];
-            if (a.colors.some((c) => sym.includes(c))) n++;
+            if (cols.some((c) => sym.includes(c))) n++;
           }
         }
         return n;

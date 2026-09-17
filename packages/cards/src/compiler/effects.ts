@@ -3838,6 +3838,135 @@ const PATTERNS: Pattern[] = [
     return n === null ? null : [{ kind: 'monstrosity', amount: n }];
   }],
   [/^flip a coin$/i, () => [{ kind: 'flipCoin', win: [] }]],
+  // ---- Round 103 ----
+  // "Target unblocked attacking creature becomes blocked."
+  [/^(.+?) becomes blocked$/i, (m, ctx) => {
+    const r = objRef(m[1], ctx);
+    return r ? [{ kind: 'becomeBlocked', what: r }] : null;
+  }],
+  // "Return the top creature card of your graveyard to the battlefield."
+  [/^return the top (.+?) of your graveyard to the battlefield( tapped)?$/i, (m) => {
+    const noun = parseNoun(`the top ${m[1]} of your graveyard`);
+    if (!noun) return null;
+    return [{ kind: 'returnToBattlefield', what: { ref: 'all', filter: noun.filter }, tapped: m[2] ? true : undefined }];
+  }],
+  // "Each opponent who has three or more poison counters loses 3 life."
+  [/^each opponent who has (\w+) or more (poison|experience|energy) counters loses (\w+) life$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    const l = wordToNumber(m[3]);
+    if (typeof n !== 'number' || typeof l !== 'number') return null;
+    return [{ kind: 'forEach', over: { ref: 'eachOpponent' }, effects: [{ kind: 'conditional', if: { kind: 'playerStat', stat: m[2].toLowerCase() as 'poison', ref: { ref: 'iter' }, op: '>=', value: n }, then: [{ kind: 'loseLife', amount: l, who: { ref: 'iter' } }] }] }];
+  }],
+  // "each opponent loses life equal to the life they lost this turn"
+  [/^each opponent loses life equal to the life they lost this turn$/i, () => [{ kind: 'forEach', over: { ref: 'eachOpponent' }, effects: [{ kind: 'loseLife', amount: { kind: 'playerTurnStat', key: 'lifeLostAmount', ref: { ref: 'iter' } }, who: { ref: 'iter' } }] }]],
+  // "Add an amount of mana of that color equal to your devotion to that color." (after "Choose a color")
+  [/^add an amount of mana of that color equal to your devotion to that color$/i, () => [{ kind: 'addMana', mana: 'chosenColor', amount: { kind: 'devotion', colors: [], chosenKey: 'color' } }]],
+  // "~ deals damage to target spell's controller equal to that spell's mana value."
+  [/^~ deals damage to target spell's controller equal to that spell's mana value$/i, (ctxm, ctx) => {
+    void ctxm;
+    ctx.targets.push({ description: 'target spell', kind: 'spell' });
+    const slot = ctx.targets.length - 1;
+    return [{ kind: 'damage', amount: { kind: 'manaValue', ref: { ref: 'target', slot } }, to: { ref: 'controllerOf', of: { ref: 'target', slot } } }];
+  }],
+  // "Artifacts you control become artifact creatures with base power and toughness 5/5 until end of turn."
+  [/^(.+?) become (?:(\w+) )?creatures with base power and toughness (\d+)\/(\d+)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const types = ['Creature'];
+    if (m[2]) {
+      const extra = m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase();
+      if (!['Artifact', 'Enchantment', 'Land'].includes(extra)) return null;
+      types.unshift(extra);
+    }
+    return [
+      { kind: 'addTypes', types, on: ref, duration: 'endOfTurn' },
+      { kind: 'setPT', power: parseInt(m[3], 10), toughness: parseInt(m[4], 10), on: ref, duration: 'endOfTurn' },
+    ];
+  }],
+  // "Target creature gains protection from the color of its controller's choice until end of turn."
+  [/^(.+?) gains protection from the color of (its controller's|your|their) choice until end of turn$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const who: Ref | undefined = /its controller's/i.test(m[2]) ? { ref: 'controllerOf', of: ref } : undefined;
+    return [
+      { kind: 'chooseColor', key: 'protColor', who },
+      { kind: 'grantKeywords', keywords: ['protection from the chosen color'], on: ref, duration: 'endOfTurn' },
+    ];
+  }],
+  // "put the cards in your hand on the bottom of your library in any order, then draw that many cards"
+  [/^put the cards in your hand on the bottom of your library in any order, then draw that many cards$/i, () => [{ kind: 'shuffleHandIntoLibraryAndDraw', who: YOU, bottom: true }]],
+  // "Then you may attach an Equipment you control to ~."
+  [/^(?:then )?you may attach (?:a|an) (.+?) you control to (~|it|that creature|enchanted creature|equipped creature)$/i, (m, ctx) => {
+    const c = chooseRef(`a ${m[1]} you control`, ctx);
+    const to = /^~$/.test(m[2]) ? SELF : objRef(m[2], ctx);
+    if (!c || !to) return null;
+    return [{ kind: 'may', effects: [...c.pre, { kind: 'attach', what: c.ref, to }] }];
+  }],
+  // "If target opponent has more cards in hand than you, draw cards equal to the difference."
+  [/^if (that player|target opponent|target player|an opponent) has more cards in hand than you, draw cards equal to the difference$/i, (m, ctx) => {
+    const who = objRef(m[1], ctx) ?? playerRef(m[1], ctx);
+    if (!who) return null;
+    return [{ kind: 'draw', amount: { kind: 'minus', a: { kind: 'handSize', ref: who }, b: { kind: 'handSize', ref: YOU } }, who: YOU }];
+  }],
+  // "This turn, each creature you control enters with an additional +1/+1 counter on it."
+  [/^this turn, (?:each|all) (.+?) enters? with an additional ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on (?:it|them)$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'extraEnterCounters', data: { filter: { ...noun.filter, zone: undefined }, counter: m[2], amount: 1 } }, duration: 'thisTurn' }];
+  }],
+  // "it gets -2/-1 until end of turn for each creature blocking it beyond the first"
+  [/^(.+?) gets ([+-]\d+)\/([+-]\d+) until end of turn for each creature blocking it beyond the first$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const n: Amount = { kind: 'minus', a: { kind: 'count', filter: { blockingSource: true, zone: 'battlefield' } }, b: 1 };
+    return [{ kind: 'pump', power: { kind: 'times', a: parseInt(m[2], 10), b: n }, toughness: { kind: 'times', a: parseInt(m[3], 10), b: n }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "Exile ~ and target creature without flying that is attacking you."
+  [/^exile ~ and (target .+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'exile', what: SELF }, { kind: 'exile', what: ref }];
+  }],
+  // Time travel / collect evidence as effects.
+  [/^time travel$/i, () => [{ kind: 'timeTravel' }]],
+  [/^time travel, then time travel$/i, () => [{ kind: 'timeTravel' }, { kind: 'timeTravel' }]],
+  [/^collect evidence (\d+)$/i, (m) => [{ kind: 'collectEvidence', n: parseInt(m[1], 10) }]],
+  // "Until your next end step, you may play that card." — the duration leads instead of trailing.
+  [/^until (?:your next (?:end step|turn)|the beginning of your next upkeep|end of combat on your next turn|end of turn), ((?:you may )?(?:play|cast) (?:that card|those cards|it|them)(?: without paying (?:its|their) mana costs?)?)$/i, (m, ctx) => parseSentence(`${m[1]} this turn`, ctx)],
+  // "Search your library for an Equipment card, put it onto the battlefield, attach it to a creature you control, then shuffle."
+  [/^search your library for (?:a|an) (.+?), put it onto the battlefield, attach it to (.+?), then shuffle$/i, (m, ctx) => {
+    const noun = parseNoun(/\bcards?\b/i.test(m[1]) ? m[1] : `a ${m[1]} card`);
+    if (!noun) return null;
+    const host = chooseRef(m[2], ctx);
+    if (!host) return null;
+    return [
+      { kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: 1, destination: 'battlefield', shuffle: true },
+      ...host.pre,
+      { kind: 'attach', what: { ref: 'lastMoved' }, to: host.ref },
+    ];
+  }],
+  // "Return to the battlefield tapped all artifact and creature cards in your graveyard that were put there from the battlefield this turn."
+  [/^return to (your hand|the battlefield)( tapped)? (all .+)$/i, (m, ctx) => {
+    const noun = parseNoun(m[3]);
+    if (!noun || !noun.confident) return null;
+    const f: ObjectFilter = { ...noun.filter };
+    if (!f.zone && !f.zoneIn) f.zone = 'graveyard';
+    const ref: Ref = { ref: 'all', filter: f };
+    ctx.lastObj = ref;
+    return /hand/i.test(m[1])
+      ? [{ kind: 'returnToHand', what: ref }]
+      : [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, controller: 'owner' }];
+  }],
+  // "return to your hand all creature cards in your graveyard that were put there from the battlefield this turn"
+  [/^return (all .+?) to your hand$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun || !noun.confident) return null;
+    const f: ObjectFilter = { ...noun.filter };
+    if (!f.zone && !f.zoneIn) f.zone = 'graveyard';
+    const ref: Ref = { ref: 'all', filter: f };
+    ctx.lastObj = ref;
+    return [{ kind: 'returnToHand', what: ref }];
+  }],
 ];
 
 function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref): Effect[] | null {
@@ -3983,8 +4112,8 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  * compiler branch consumes, so they can be trimmed off before a line is parsed.
  */
 export function isTrailingNoise(text: string): boolean {
-  const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|this effect cannot reduce the mana in that cost to less than one mana|you do not lose this mana as steps end|(?:the|its) (?:replicate|foretell|escape|casualty|cycling|flashback|buyback|scavenge|unearth|embalm|eternalize|transmute) cost is .+|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  const t = text.trim().replace(/\.$/, '').replace(/^until (?:end of (?:turn|combat)|your next turn)(?: on your next turn)?, /i, '');
+  return /^(x cannot be 0|this effect cannot reduce the mana in that cost to less than one mana|you do not lose this mana as steps end|(?:the|its) (?:replicate|foretell|escape|casualty|cycling|flashback|buyback|scavenge|unearth|embalm|eternalize|transmute) cost is .+|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|each copy targets a different one of those \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
@@ -4713,7 +4842,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     {
       const ta = s.match(/^(?:the token|the tokens|it|they|[A-Z][\w' ,-]*) enters? (tapped and attacking|tapped|attacking)$/i);
       const prev = effects[effects.length - 1];
-      if (ta && prev && prev.kind === 'createToken') {
+      if (ta && prev && (prev.kind === 'createToken' || prev.kind === 'populate')) {
         if (/tapped/i.test(ta[1])) (prev as { tapped?: boolean }).tapped = true;
         if (/attacking/i.test(ta[1])) (prev as { attacking?: boolean }).attacking = true;
         continue;

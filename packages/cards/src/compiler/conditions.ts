@@ -324,5 +324,17 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 103 ----
+  if ((m = t.match(/^you have at least (\d+) life more than your starting life total$/))) return { kind: 'life', ref: { ref: 'controller' }, op: '>=', value: 40 + parseInt(m[1], 10) };
+  if ((m = t.match(/^you have at least (\d+) life less than your starting life total$/))) return { kind: 'life', ref: { ref: 'controller' }, op: '<=', value: 40 - parseInt(m[1], 10) };
+  if ((m = t.match(/^(?:enchanted|equipped) (?:creature|permanent|land|artifact|planeswalker) is (untapped|tapped)$/))) {
+    const c: Condition = { kind: 'isTapped', ref: { ref: 'attachedTo' } };
+    return m[1] === 'tapped' ? c : { kind: 'not', c };
+  }
+  if ((m = t.match(/^you control (\w+) or more (.+?) with the same name$/))) {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(oc(m, 2));
+    if (noun && typeof n === 'number') return { kind: 'sameNameGroup', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, op: '>=', value: n };
+  }
   return null;
 }

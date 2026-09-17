@@ -789,6 +789,8 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
     }
     return false;
   }
+  // "You may cast ~ from exile." (the permission is printed on the card itself)
+  if (obj.zone === 'exile' && obj.owner === p && /^You may cast .+ from exile\.?$/mi.test(obj.card.oracleText)) return true;
   if (obj.zone === 'exile' && obj.memory['playableBy'] !== p) {
     // "You may play cards you don't own with stash counters on them from exile" style permissions.
     for (const r of g.playerRules(p)) {

@@ -85,6 +85,17 @@ export function parseNoun(raw: string): ParsedNoun | null {
   const result: ParsedNoun = { filter: {}, target: false, count: 1, upTo: false, each: false, other: false, indefinite: false, isCard: false, kind: 'object', confident: true, text: raw.trim(), plural: false };
   let m: RegExpMatchArray | null;
 
+  // "an instant card or a card with flash" — a disjunction whose right side is a keyword clause.
+  if ((m = text.match(/^(.+?) or (?:a |an )?(?:card|permanent|creature|spell)s? with ([\w' -]+)$/i))) {
+    const left = parseNoun(m[1]);
+    const kwRaw = m[2].trim().toLowerCase();
+    if (left && /^[a-z][a-z' -]*$/.test(kwRaw)) {
+      const kw = kwRaw.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+      const zone = left.filter.zone;
+      return { ...left, filter: { anyOf: [{ ...left.filter, zone: undefined }, { keywords: [kw] }], zone } };
+    }
+  }
+
   // Special targets
   if (/^any target$/i.test(text)) return { ...result, target: true, kind: 'any' };
   if ((m = text.match(/^any number of target (players|opponents)$/i))) return { ...result, target: true, kind: 'player', playerFilter: /opponent/i.test(m[1]) ? 'opponent' : 'any', count: 6, upTo: true };
@@ -172,12 +183,22 @@ export function parseNoun(raw: string): ParsedNoun | null {
 
   // Trailing qualifiers
   const quals: string[] = [];
-  const QUAL_RE = /\s+(from graveyards|in graveyards|from all graveyards|that (?:does not|doesn't) have (?:a|an) [+-]?[\w/+-]+ counters? on it|that has (?:a|an) [+-]?[\w/+-]+ counters? on it|except for tokens you control|except for tokens|of (?:their|your|its controller's|his or her) choice|with different names|in all graveyards|attacking you or a planeswalker you control|attacking you or planeswalkers you control|attacking you|from defending player's graveyard|in defending player's graveyard|in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|exiled with (?:~|it)|with counters on (?:it|them)|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control but do not own|you control but don't own|you control|you own|you do not control|on the battlefield|attached to (?:it|~)|that targets (?:a|an) [^,]+?|that targets you|that targets an opponent|with mana value equal to [^,]+?|that dealt damage this turn|that was dealt damage this turn|dealt damage this turn|attached to a creature|attached to a permanent|with mana value less than or equal to [^,]+?|with (?:mana value|power|toughness) less than (?:that|its|your|the) [^,]+?|with (?:equal or lesser|lesser) (?:mana value|power|toughness)|an opponent controls|each opponent controls|your opponents control|target player controls|target opponent controls|its controller controls|they control|that is (?:a|an) [A-Z][a-z]+(?:, [A-Z][a-z]+)*(?:,? or (?:a |an )?[A-Z][a-z]+)*|named ~|named [A-Z][\w' ,-]+?|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from a single graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that (?:is|are) enchanted|that (?:is|are) equipped|that (?:is|are) modified|that (?:has|have) an Adventure|with an Adventure|with toughness greater than (?:its|their) power|that (?:has|have) (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash|convoke|cascade|storm|delve|kicker|flashback|cycling|prowess|ward|escape|foretell|adventure|mutate|evoke|emerge|ninjutsu|madness|morph|disguise|plot|offspring|impending|gift|bargain|overload|spree|surge|prowl|blitz|dash|riot|exploit|devoid|changeling|toxic|afflict|mentor|amass|enlist|casualty|craft)|with \{X\} in (?:its|their) mana costs?|that entered the battlefield this turn|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash|modular|exalted|persist|undying|changeling|prowess|ward|cascade|storm|convoke|delve|evolve|kicker|cycling|flashback|morph|fabricate|afflict|riot|mentor|toxic|decayed|training|backup|offspring|foretell|escape|bushido|shadow|horsemanship|fear|intimidate|skulk|wither|deathtouch|landfall|a kicker ability|a cycling ability|a flashback ability|a morph ability)|without flying|without \w+|that (?:is|are) not enchanted|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|with total power and toughness \d+ or less|of the chosen type|of the chosen creature type|of the creature type of your choice|with the (?:least|greatest) (?:power|toughness)|with the greatest power among creatures (?:that player|you|they) controls?|with the greatest mana value among [\w ,]+ (?:that player|you|they) controls?|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|that (?:is|are) one or more colors|that (?:was|were) put there this turn|that (?:was|were) put there from the battlefield this turn|other than ~|not named ~|other than (?:a|an) [\w -]+ card|blocking it|blocking ~|blocking or blocked by it|blocking or blocked by ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
+  const QUAL_RE = /\s+(from graveyards|in graveyards|from all graveyards|that (?:does not|doesn't) have (?:a|an) [+-]?[\w/+-]+ counters? on it|that has (?:a|an) [+-]?[\w/+-]+ counters? on it|except for tokens you control|except for tokens|of (?:their|your|its controller's|his or her) choice|with different names|in all graveyards|attacking you or a planeswalker you control|attacking you or planeswalkers you control|attacking you|from defending player's graveyard|in defending player's graveyard|in an opponent's graveyard|from an opponent's graveyard|in that player's graveyard|from that player's graveyard|in their graveyard|from their graveyard|that was put there from (?:their|your|a) library this turn|that were put there from (?:their|your|a) library this turn|put into (?:a|your|their) graveyard from (?:a|your|their) library this turn|exiled with (?:~|it)|created with (?:~|it)|that (?:is|are) attacking you|that (?:aren't|are not|isn't|is not) on the battlefield|with counters on (?:it|them)|with (?:a |an )?[+\-\w\/]+ counters? on (?:it|them)|you control but do not own|you control but don't own|you control|you own|you do not control|on the battlefield|attached to (?:it|~)|that targets (?:a|an) [^,]+?|that targets you|that targets an opponent|with mana value equal to [^,]+?|that dealt damage this turn|that was dealt damage this turn|dealt damage this turn|attached to a creature|attached to a permanent|with mana value less than or equal to [^,]+?|with (?:mana value|power|toughness) less than (?:that|its|your|the) [^,]+?|with (?:equal or lesser|lesser) (?:mana value|power|toughness)|an opponent controls|each opponent controls|your opponents control|target player controls|target opponent controls|its controller controls|they control|that is (?:a|an) [A-Z][a-z]+(?:, [A-Z][a-z]+)*(?:,? or (?:a |an )?[A-Z][a-z]+)*|named ~|named [A-Z][\w' ,-]+?|an opponent owns|you do not own|from your graveyard|in your graveyard|from a graveyard|in a graveyard|from a single graveyard|from your hand|in your hand|from your library|in your library|from exile|in exile|that is attacking|that is blocking|that is tapped|that is untapped|that has flying|that (?:is|are) enchanted|that (?:is|are) equipped|that (?:is|are) modified|that (?:has|have) an Adventure|with an Adventure|with toughness greater than (?:its|their) power|that (?:has|have) (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash|convoke|cascade|storm|delve|kicker|flashback|cycling|prowess|ward|escape|foretell|adventure|mutate|evoke|emerge|ninjutsu|madness|morph|disguise|plot|offspring|impending|gift|bargain|overload|spree|surge|prowl|blitz|dash|riot|exploit|devoid|changeling|toxic|afflict|mentor|amass|enlist|casualty|craft)|with \{X\} in (?:its|their) mana costs?|that entered the battlefield this turn|that entered this turn|with (?:power|toughness|mana value) (?:\d+|X) or (?:greater|less)|with (?:power|toughness|mana value) (?:less than|greater than) (?:\d+|X)|with (?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|infect|flash|modular|exalted|persist|undying|changeling|prowess|ward|cascade|storm|convoke|delve|evolve|kicker|cycling|flashback|morph|fabricate|afflict|riot|mentor|toxic|decayed|training|backup|offspring|foretell|escape|bushido|shadow|horsemanship|fear|intimidate|skulk|wither|deathtouch|landfall|a kicker ability|a cycling ability|a flashback ability|a morph ability)|without flying|without \w+|that (?:is|are) not enchanted|with a (?:\+1\/\+1|-1\/-1|loyalty|charge) counter on (?:it|them)|with mana value (?:\d+|X)|with total power \d+ or less|with total power and toughness \d+ or less|of the chosen type|of the chosen creature type|of the creature type of your choice|with the (?:least|greatest) (?:power|toughness)|with the greatest power among creatures (?:that player|you|they) controls?|with the greatest mana value among [\w ,]+ (?:that player|you|they) controls?|that shares a creature type with ~|that (?:is not|is) a (?:token|commander)|that (?:is|are) one or more colors|that (?:was|were) put there this turn|that (?:was|were) put there from the battlefield this turn|other than ~|not named ~|other than (?:a|an) [\w -]+ card|blocking it|blocking ~|blocking or blocked by it|blocking or blocked by ~|from among them|of that color|that player controls|that opponent controls|defending player controls|an opponent controls with flying|you control with flying)$/i;
   for (;;) {
     const q = text.match(QUAL_RE);
     if (!q) break;
     quals.unshift(/^(?:named |that is )/i.test(q[1]) ? q[1].replace(/^(named|that is)/i, (w) => w.toLowerCase()) : q[1].toLowerCase());
     text = text.slice(0, q.index).trim();
+  }
+  // "the top creature card of your graveyard"
+  if ((m = text.match(/^the top (.+?) of (?:your|a) graveyard$/i))) {
+    const inner = parseNoun(`a ${m[1]}`);
+    if (inner) {
+      inner.filter.zone = 'graveyard';
+      inner.filter.owner = 'you';
+      inner.filter.custom = 'topOfGraveyard';
+      return { ...inner, plural: false };
+    }
   }
   // Spells
   if ((m = text.match(/^(.*?)\s*spells?(?: (you control|an opponent controls|you do not control))?$/i))) {
@@ -213,6 +234,15 @@ export function parseNoun(raw: string): ParsedNoun | null {
   // "token"/"tokens" head
   if (/^tokens?$/i.test(head)) {
     result.filter.isToken = true;
+    // "a creature or token" — either the left-hand noun or any token.
+    if (adjWords.length >= 2 && /^or$/i.test(adjWords[adjWords.length - 1])) {
+      const left = parseNoun(`a ${adjWords.slice(0, -1).join(' ')}`);
+      if (!left) return null;
+      delete result.filter.isToken;
+      result.filter.anyOf = [left.filter, { isToken: true }];
+      for (const q of quals) applyQualifier(q, result);
+      return result;
+    }
     if (adjWords.length) {
       head = adjWords[adjWords.length - 1];
       adjWords = adjWords.slice(0, -1);
@@ -352,6 +382,7 @@ function parseAdjectives(wordsIn: string[], r: ParsedNoun): boolean {
     else if (l === 'face-down') r.filter.faceDown = true;
     else if (l === 'nonsnow') r.filter.custom = 'nonsnow';
     else if (l === 'suspected') r.filter.customRule = 'suspected';
+    else if (l === 'unblocked') r.filter.custom = 'unblocked';
     else if (l === 'nonattacking') r.filter.attacking = false;
     else if (l === 'nonblocking') r.filter.blocking = false;
     else if (/^\d+\/\d+$/.test(l)) {
@@ -437,6 +468,9 @@ function applyQualifier(q: string, r: ParsedNoun) {
   else if ((m = q.match(/^that is (?:a|an) (.+)$/))) r.filter.subtypes = m[1].split(/,? or (?:a |an )?|, /).map((w) => w.charAt(0).toUpperCase() + w.slice(1));
   else if ((m = q.match(/^that (?:does not|doesn't) have (?:a|an) ([+-]?[\w/+-]+) counters? on it$/))) r.filter.withoutCounter = m[1];
   else if ((m = q.match(/^that has (?:a|an) ([+-]?[\w/+-]+) counters? on it$/))) r.filter.counterAtLeast = { counter: m[1], n: 1 };
+  else if (/^created with (?:~|it)$/.test(q)) r.filter.custom = 'createdBySource';
+  else if (/^that (?:is|are) attacking you$/.test(q)) r.filter.custom = 'attackingYou';
+  else if (/^that (?:aren't|are not|isn't|is not) on the battlefield$/.test(q)) r.filter.zoneIn = ['hand', 'library', 'graveyard', 'exile'];
   else if (/^except for tokens(?: you control)?$/.test(q)) r.filter.nonToken = true;
   else if (/^of (?:their|your|its controller's|his or her) choice$/.test(q)) {
     // "a creature of their choice": the chooser is already the sentence's subject.

@@ -21,7 +21,7 @@ export type Amount =
   | { kind: 'handSize'; ref: Ref }
   | { kind: 'graveyardSize'; ref: Ref; filter?: ObjectFilter }
   | { kind: 'triggerAmount' } // damage dealt / life gained / etc. captured by trigger
-  | { kind: 'devotion'; colors: Color[] }
+  | { kind: 'devotion'; colors: Color[]; /** Devotion to the color chosen under this key on the source. */ chosenKey?: string }
   | { kind: 'landsYouControl' }
   | { kind: 'opponents' }
   | { kind: 'commanderTax' }
@@ -219,6 +219,8 @@ export type Condition =
   | { kind: 'opponentCompare'; what: 'life' | ObjectFilter; op: Comparison }
   /** "This is the second time this ability has resolved this turn" (counts the current resolution). */
   | { kind: 'abilityResolvedThisTurn'; op: Comparison; value: number }
+  /** The largest group of same-named matching permanents ("three or more lands with the same name"). */
+  | { kind: 'sameNameGroup'; filter: ObjectFilter; op: Comparison; value: number }
   | { kind: 'manual'; text: string }; // engine asks the controller yes/no
 
 // ---------------------------------------------------------------------------
@@ -276,6 +278,8 @@ export type Effect =
   | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref; /** "Remove up to three counters": the controller may remove fewer. */ upTo?: boolean }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
   | { kind: 'setPT'; power?: Amount; toughness?: Amount; on: Ref; duration?: Duration }
+  /** "Target unblocked attacking creature becomes blocked." */
+  | { kind: 'becomeBlocked'; what: Ref }
   | { kind: 'grantKeywords'; keywords: string[]; on: Ref; duration?: Duration; /** Grant only this many of `keywords`, chosen by the controller ("gains your choice of flying or haste"). */ choose?: number }
   /** "~ loses defender until end of turn." */
   | { kind: 'loseKeywords'; keywords: string[]; on: Ref; duration?: Duration }
@@ -309,7 +313,7 @@ export type Effect =
   | { kind: 'winGame'; who?: Ref }
   | { kind: 'loseGame'; who?: Ref }
   | { kind: 'proliferate' }
-  | { kind: 'populate' }
+  | { kind: 'populate'; tapped?: boolean; attacking?: boolean }
   | { kind: 'becomeMonarch'; who?: Ref }
   | { kind: 'goad'; what: Ref }
   | { kind: 'regenerate'; what: Ref }
@@ -321,7 +325,7 @@ export type Effect =
   | { kind: 'castWithoutPaying'; what: Ref; exileAfter?: boolean }
   | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean; exileAfter?: boolean }
   | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent'; /** Airbend: castable for this cost instead of its mana cost. */ forCost?: string; /** The owner may cast it, not this effect's controller. */ owner?: boolean; /** Granted flashback: castable from the graveyard. */ fromGraveyard?: boolean; /** Exile it as it resolves. */ exileAfter?: boolean; /** "mana of any type can be spent to cast that spell" */ anyMana?: boolean }
-  | { kind: 'chooseColor'; key: string; /** Only colors of cards in your graveyard. */ fromGraveyard?: boolean }
+  | { kind: 'chooseColor'; key: string; /** Only colors of cards in your graveyard. */ fromGraveyard?: boolean; /** Who chooses (default: the controller). */ who?: Ref }
   /** "you may pay any amount of {E}": remembers the amount under `key`. */
   | { kind: 'payEnergy'; max: number; key: string }
   /** "For each color among permanents you control, add one mana of that color." */
@@ -346,7 +350,11 @@ export type Effect =
   /** "Choose odd or even." */
   | { kind: 'chooseOption'; key: string; options: string[] }
   /** "Each player shuffles the cards from their hand into their library, then draws that many cards." */
-  | { kind: 'shuffleHandIntoLibraryAndDraw'; who: Ref }
+  | { kind: 'shuffleHandIntoLibraryAndDraw'; who: Ref; /** Put the cards on the bottom of the library in any order instead of shuffling. */ bottom?: boolean }
+  /** Collect evidence N: exile cards with total mana value N or more from your graveyard. */
+  | { kind: 'collectEvidence'; n: Amount }
+  /** Time travel: you may remove a time counter from each suspended card you own and each permanent you control with one. */
+  | { kind: 'timeTravel' }
   /** Licids: end the "becomes an Aura" effect — unattach and drop the type change. */
   | { kind: 'unattach'; what: Ref }
   /** Split a remembered set of cards into two piles (stored as memory keys pile0 / pile1). */

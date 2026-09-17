@@ -56,6 +56,19 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'nonbasic' && ch.supertypes.includes('Basic')) return false;
   if (filter.custom === 'nonsnow' && ch.supertypes.includes('Snow')) return false;
   if (filter.custom === 'colored' && ch.colors.length === 0) return false;
+  if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
+  if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
+  if (filter.custom === 'createdBySource' && (ctx.sourceId === null || obj.memory.createdBy !== ctx.sourceId)) return false;
+  if (filter.custom === 'topOfGraveyard') {
+    if (zone !== 'graveyard') return false;
+    const rest: ObjectFilter = { ...filter, custom: undefined };
+    let top: ObjectId | null = null;
+    for (const id of g.player(obj.owner).graveyard) {
+      const o = g.state.objects[id];
+      if (o && matchesFilter(g, o, rest, ctx)) { top = id; break; }
+    }
+    if (top !== obj.id) return false;
+  }
   if (filter.custom === 'hasAnyCounter' && !Object.values(obj.counters ?? {}).some((v) => (v ?? 0) > 0)) return false;
   if (filter.exiledWithSource) {
     const holder = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : null;

@@ -110,7 +110,7 @@ export function parseCost(text: string): AbilityCost | null {
       const n: number | 'any' | 'X' | null = !m[1] ? 1 : /any number of/i.test(m[1]) ? 'any' : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
       if (n === null) return null;
       cost.exileObjects = { filter: { ...noun.filter, zone: 'hand', owner: 'you' }, count: n };
-    } else if ((m = p.match(/^Tap (\w+) untapped (.+?) you control$/i))) {
+    } else if ((m = p.match(/^Tap (\w+) untapped (.+?) you control$/i)) && typeof wordToNumber(m[1]) === 'number') {
       const n = wordToNumber(m[1]);
       // "artifacts, creatures, and/or lands" → "an artifact, creature, or land"
       const listed = m[2].replace(/,? and\/or /g, ', or ').replace(/\b(\w+?)s\b/g, '$1');
@@ -170,7 +170,7 @@ export function parseCost(text: string): AbilityCost | null {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (n === null || n === 'X') return null;
       cost.exileFromGraveyard = { filter: {}, count: n };
-    } else if ((m = p.match(/^Tap (?:an|(\w+)) untapped (.+?) you control$/i))) {
+    } else if ((m = p.match(/^Tap (?:an|(\w+)) untapped (.+?) you control$/i)) && (!m[1] || typeof wordToNumber(m[1]) === 'number')) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       const noun = parseNoun(`a ${m[2]}`);
       if (n === null || n === 'X' || !noun) return null;
@@ -214,21 +214,26 @@ export function parseCost(text: string): AbilityCost | null {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (typeof n !== 'number') return null;
       cost.exileTop = { count: n, from: 'graveyard' };
-    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from (?:a|an) (.+)$/i))) {
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from (?:a|an|another) (.+)$/i))) {
       const noun = parseNoun(`a ${m[3]}`);
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (!noun || typeof n !== 'number') return null;
-      cost.removeCountersFrom = { counter: m[2], amount: n, filter: { ...noun.filter, zone: 'battlefield' } };
-    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) counters? from (?:a|an) (.+)$/i))) {
+      cost.removeCountersFrom = { counter: m[2], amount: n, filter: { ...noun.filter, zone: 'battlefield', other: /from another /i.test(p) || undefined } };
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) counters? from (?:a|an|another) (.+)$/i))) {
       const noun = parseNoun(`a ${m[2]}`);
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (!noun || typeof n !== 'number') return null;
-      cost.removeCountersFrom = { counter: 'any', amount: n, filter: { ...noun.filter, zone: 'battlefield' } };
+      cost.removeCountersFrom = { counter: 'any', amount: n, filter: { ...noun.filter, zone: 'battlefield', other: /from another /i.test(p) || undefined } };
     } else if ((m = p.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from ~ and sacrifice it$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (typeof n !== 'number') return null;
       cost.removeCounters = { counter: m[2], amount: n };
       cost.sacrificeSelf = true;
+    } else if ((m = p.match(/^Remove (X|\d+|\w+) ([+-]\d\/[+-]\d|[\w'-]+) counters? from ~ and exile it$/i))) {
+      const n: number | 'X' | null = m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
+      if (n === null) return null;
+      cost.removeCounters = { counter: m[2], amount: n };
+      cost.exileSelf = true;
     } else if (/^Discard another card named ~$/i.test(p)) {
       cost.discard = { count: 1, filter: { nameIs: '~' } };
     } else return null;

@@ -21,7 +21,7 @@ function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: b
   if (!noun) return { affects: undefined, ok: false };
   const f: ObjectFilter = { ...noun.filter };
   if (noun.other) f.other = true;
-  if (!f.zone) f.zone = 'battlefield';
+  if (!f.zone && !f.zoneIn) f.zone = 'battlefield';
   // Plural nouns without "you control" default to all (e.g. "Creatures get -1/-1")
   return { affects: f, ok: noun.confident };
 }
@@ -1552,6 +1552,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 103 ----
+  // "You may cast ~ from exile."
+  if (/^You may cast ~ from exile$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'castFromExileSelf' } }];
+  // "Damage that would be dealt by ~ cannot be prevented."
+  if (/^Damage that would be dealt by ~ cannot be prevented$/i.test(L) || /^Damage cannot be prevented$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'noDamagePrevention' } }];
   // Sagas & others are handled by the orchestrator.
   void isCreatureOrPermanent;
   return null;
