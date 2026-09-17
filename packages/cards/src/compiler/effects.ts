@@ -4116,6 +4116,47 @@ const PATTERNS: Pattern[] = [
     ctx.lastPlayer = prev;
     return inner;
   }],
+  // ---- Round 123 ----
+  // "You may play up to two additional lands this turn."
+  [/^(?:you may )?play up to (\w+) additional lands?(?: on each of your turns| this turn)?$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'extraLandDrop', count: n }, duration: / this turn$/i.test(m[0]) ? 'thisTurn' : 'permanent' }];
+  }],
+  [/^(?:you may )?play any number of lands on each of your turns$/i, () => [{ kind: 'grantPlayerRule', rule: { kind: 'extraLandDrop', count: 99 } }]],
+  // "You may play lands and cast spells from your graveyard." / "You may play Forests from your graveyard."
+  [/^(?:you may )?(?:play|cast) (?:lands and cast |)(.+?) from your graveyard(?: as long as (.+))?$/i, (m, ctx) => {
+    void ctx;
+    const what = m[1].trim();
+    let filter: ObjectFilter | undefined;
+    if (!/^(?:spells|cards)$/i.test(what)) {
+      const noun = parseNoun(what.replace(/ spells$/i, ' spell'));
+      if (!noun || !noun.confident) return null;
+      filter = { ...noun.filter, zone: undefined };
+    }
+    if (/^you may (?:play lands and cast|play lands)/i.test(m[0])) filter = undefined;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'playFromGraveyard', data: { filter } } }];
+  }],
+  // "You may play cards exiled this way until the end of your next turn."
+  [/^(?:you may )?(?:play|cast) (it|them|that card|those cards|the exiled cards?|cards exiled this way|cards exiled with ~|up to \w+ of those cards|lands from among those cards|lands and cast spells from among cards exiled with ~|lands and cast spells from among the exiled cards)(?: (?:this turn|until the end of your next turn|until your next end step|until your next turn|until the beginning of your next upkeep|for as long as (?:it remains|they remain) exiled|for as long as you control ~|until you exile another card with ~))?(?: without paying (?:its|their) mana costs?)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const dur: 'thisTurn' | 'permanent' = /this turn|next end step|next turn|next upkeep/i.test(m[0]) ? 'thisTurn' : 'permanent';
+    return [{ kind: 'playFromExile', what: ref, duration: dur, free: /without paying/i.test(m[0]) || undefined }];
+  }],
+  // "cast it from your graveyard this turn"
+  [/^cast (it|that card|them) from your graveyard(?: this turn| as an Adventure until the end of your next turn| until the end of your next turn)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: /this turn|next turn/i.test(m[0]) ? 'thisTurn' : 'permanent', fromGraveyard: true }];
+  }],
+  // "destroy all Auras attached to target land"
+  [/^destroy all (.+?) attached to (.+)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+    if (!noun) return null;
+    const host = /^you$/i.test(m[2]) ? null : objRef(m[2], ctx);
+    if (!host && !/^you$/i.test(m[2])) return null;
+    const f: ObjectFilter = { ...noun.filter, zone: 'battlefield', ...(host ? { attachedToRef: host } : { attachedToRef: YOU }) };
+    return [{ kind: 'destroy', what: { ref: 'all', filter: f } }];
+  }],
   // ---- Round 117 ----
   // "You skip your draw step this turn." / "you cannot cast spells until your next turn"
   [/^(?:you )?skip your (draw|untap|combat|end|upkeep|first main|second main) (?:step|phase)(?: this turn)?$/i, (m) => [{ kind: 'skipStep', step: m[1].toLowerCase().replace(/ /g, ''), who: YOU }]],
