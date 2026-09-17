@@ -177,6 +177,15 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   if (t === 'it is bargained' || t === '~ was bargained' || t === 'this spell was bargained') return { kind: 'memoryFlag', key: 'additionalCostPaid' };
   if ((m = t.match(/^(?:a|one or more) creatures? (?:is|are) attacking you$/))) return { kind: 'count', filter: { types: ['Creature'], attacking: true, zone: 'battlefield' }, op: '>=', value: 1 };
+  if ((m = t.match(/^you control (?:a|an|another) (.+?) with (\w+) or more ([+-]\d\/[+-]\d|[\w' -]+?) counters on it$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    const n = wordToNumber(m[2]);
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, controller: 'you', zone: 'battlefield', counterAtLeast: { counter: m[3], n } }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^(?:a|an|one or more) (.+?) died under your control this turn$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'eventThisTurn', event: 'dies', who: { ref: 'controller' }, op: '>=', value: 1 };
+  }
   if (t === 'an opponent has no cards in hand') return { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '==', value: 0 };
   if ((m = t.match(/^you cast (?:another|a|one or more) spells? this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '>=', value: 1 };
   if ((m = t.match(/^there are (\w+) or more (.+?) (?:total )?in all graveyards$/))) {

@@ -115,6 +115,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.modified && !(Object.values(obj.counters).some((n) => n > 0) || g.state.battlefield.some((id) => { const a = g.state.objects[id]; return !!a && a.attachedTo === obj.id && a.controller === obj.controller && ['Equipment', 'Aura'].some((t) => g.characteristics(a.id).subtypes.includes(t)); }))) return false;
   if (filter.customRule && !ch.rules.some((r) => r.kind === 'custom' && r.tag === filter.customRule)) return false;
   if (filter.faceDown !== undefined && obj.faceDown !== filter.faceDown) return false;
+  if (filter.counterAtLeast && (obj.counters[filter.counterAtLeast.counter] ?? 0) < filter.counterAtLeast.n) return false;
   if (filter.pairedWithSource) {
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     if (!src || src.pairedWith !== obj.id) return false;
@@ -216,8 +217,9 @@ export function canTarget(g: Game, target: Target, sourceId: ObjectId | null, co
       if (sourceId !== null) {
         const src = g.state.objects[sourceId];
         const isSpell = src?.zone === 'stack';
-        if (rule.by === 'spells' && isSpell) return false;
-        if (rule.by === 'abilities' && !isSpell) return false;
+        const matchesSrc = !rule.filter || (src ? matchesFilter(g, src, { ...rule.filter, zone: undefined }, { sourceId, controller }) : false);
+        if (rule.by === 'spells' && isSpell && matchesSrc) return false;
+        if (rule.by === 'abilities' && !isSpell && matchesSrc) return false;
       }
     }
   }

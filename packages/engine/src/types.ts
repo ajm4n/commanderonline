@@ -297,7 +297,7 @@ export type RuleModification =
   | { kind: 'cantBeBlocked' }
   | { kind: 'mustAttack' }
   | { kind: 'cantUntap' }
-  | { kind: 'cantBeTargeted'; by?: 'spells' | 'abilities' | 'opponents' }
+  | { kind: 'cantBeTargeted'; by?: 'spells' | 'abilities' | 'opponents'; /** Only spells/abilities matching this ("cannot be the target of Aura spells"). */ filter?: ObjectFilter }
   | { kind: 'extraLandDrop'; count: number }
   | { kind: 'noMaxHandSize' }
   /** "Your maximum hand size is eleven" / "... is reduced by two" */
@@ -384,6 +384,8 @@ export interface ObjectFilter {
   pairedWithSource?: boolean;
   /** Face-down permanents (morph, manifest). */
   faceDown?: boolean;
+  /** At least n counters of a kind ("a creature with three or more level counters on it"). */
+  counterAtLeast?: { counter: string; n: number };
   /** Each chosen card must have a different name ("up to four cards with different names"). */
   differentNames?: boolean;
   /** Objects of the color the source chose (memory `color`). */

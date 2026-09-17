@@ -188,7 +188,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(Players|Each player|Your opponents|Each opponent|You) cannot draw cards$/i))) return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'cantDraw' } }];
   if ((m = L.match(/^(.+?) (?:is|are) every creature type$/i))) {
     const a = affectsOf(m[1]);
-    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: ['Changeling'] } }] : null;
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: ['Changeling'] } }];
   }
 
   if ((m = L.match(/^The (first|second|third|fourth) (.*?)spell you cast each turn costs \{(\d+)\} (less|more) to cast$/i))) {
@@ -231,6 +231,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return out;
   }
   if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) return objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' });
+  if ((m = L.match(/^Prevent all (combat )?damage that would be dealt to (.+?) during (your|each opponent's) turn$/i))) {
+    const a = affectsOf(m[2]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'preventDamageTo', data: { combat: m[1] ? 'combat' : undefined } }, condition: /^your$/i.test(m[3]) ? { kind: 'yourTurn' } : { kind: 'notYourTurn' } }];
+  }
   // Static damage prevention: "Prevent all damage that would be dealt to ~ by artifact creatures." / "Prevent all combat damage that would be dealt by enchanted creature."
   if ((m = L.match(/^Prevent all (combat |noncombat )?damage that would be dealt(?: to (.+?))?(?: by (.+?))?$/i)) && (m[2] || m[3])) {
     const combat = m[1] ? (m[1].trim().toLowerCase() as 'combat' | 'noncombat') : undefined;
@@ -251,7 +255,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (/^you$/i.test(who)) return [{ kind: 'static', text: line, rule, ruleAffects: 'controller' }];
     if (/^you and (creatures|permanents) you control$/i.test(who)) {
       const a = affectsOf(who.replace(/^you and /i, ''));
-      return a.ok ? [{ kind: 'static', text: line, rule, ruleAffects: 'controller' }, { kind: 'static', text: line, affects: a.affects, rule }] : null;
+      if (a.ok) return [{ kind: 'static', text: line, rule, ruleAffects: 'controller' }, { kind: 'static', text: line, affects: a.affects, rule }];
     }
     if (/^(you and )?(?:your )?planeswalkers you control$/i.test(who)) return null;
     return objRule(who, rule);
@@ -259,11 +263,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) (?:is|are) goaded$/i))) return objRule(m[1], { kind: 'custom', tag: 'goaded', data: '__controller__' });
   if ((m = L.match(/^(.+?) loses? all abilities$/i))) {
     const a = affectsOf(m[1]);
-    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, loseAllAbilities: true } }] : null;
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, loseAllAbilities: true } }];
   }
   if ((m = L.match(/^(.+?) (?:has|have) base power and toughness (\d+)\/(\d+)$/i))) {
     const a = affectsOf(m[1]);
-    return a.ok ? [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } }] : null;
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } }];
   }
   if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) creatures? with base power and toughness (\d+)\/(\d+)$/i))) {
     const a = affectsOf(m[1]);
@@ -472,16 +476,16 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^Creatures with power less than ~'s power cannot block it$/i.test(L)) return objRule('~', { kind: 'cantBeBlockedByPowerLessThanSource' });
   if ((m = L.match(/^(.+?) cannot attack unless defending player controls (?:a|an) (.+)$/i))) {
     const noun = parseNoun(`a ${m[2]}`);
-    return noun ? objRule(m[1], { kind: 'cantAttackUnlessDefenderControls', filter: noun.filter }) : null;
+    if (noun) return objRule(m[1], { kind: 'cantAttackUnlessDefenderControls', filter: noun.filter });
   }
   if ((m = L.match(/^(.+?) must be blocked if able$/i))) return objRule(m[1], { kind: 'custom', tag: 'mustBeBlocked' });
   if ((m = L.match(/^(.+?) cannot be blocked except by (.+)$/i))) {
     const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
-    return noun ? objRule(m[1], { kind: 'canBeBlockedOnlyBy', filter: noun.filter }) : null;
+    if (noun) return objRule(m[1], { kind: 'canBeBlockedOnlyBy', filter: noun.filter });
   }
   if ((m = L.match(/^(.+?) cannot block (.+?)$/i)) && !/^(alone|unless|if)\b/i.test(m[2])) {
     const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
-    return noun ? objRule(m[1], { kind: 'cantBlockFilter', filter: noun.filter }) : null;
+    if (noun) return objRule(m[1], { kind: 'cantBlockFilter', filter: noun.filter });
   }
   if ((m = L.match(/^(.+?) cannot be blocked by creatures with greater power$/i))) return objRule(m[1], { kind: 'cantBeBlockedByPowerGreaterThanSource' });
   if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) unless (.+)$/i))) {
@@ -557,7 +561,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) alone$/i))) return objRule(m[1], { kind: 'custom', tag: m[2].toLowerCase() === 'attack or block' ? 'cantAttackOrBlockAlone' : m[2].toLowerCase() === 'attack' ? 'cantAttackAlone' : 'cantBlockAlone' });
   if ((m = L.match(/^(.+?) cannot be blocked by (.+)$/i)) && !/power|more than one|two or more/i.test(m[2])) {
     const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
-    return noun ? objRule(m[1], { kind: 'cantBeBlockedBy', filter: noun.filter }) : null;
+    if (noun) return objRule(m[1], { kind: 'cantBeBlockedBy', filter: noun.filter });
   }
   if ((m = L.match(/^~ enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it if (.+)$/i))) {
     const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
@@ -565,7 +569,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if ((m = L.match(/^When you control no (.+?), sacrifice ~$/i))) {
     const noun = parseNoun(m[1]);
-    return noun ? [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'sacrificeUnlessControl', data: noun.filter } }] : null;
+    if (noun) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'sacrificeUnlessControl', data: noun.filter } }];
   }
   if (/^Living metal$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 4, addTypes: ['Artifact', 'Creature'] }, condition: { kind: 'yourTurn' } }];
   if ((m = L.match(/^~ enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it for each time it was kicked$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: { kind: 'times', a: m[1] ? (wordToNumber(m[1]) as number) : 1, b: { kind: 'kickCount' } } } }];
@@ -652,6 +656,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) does not untap during (?:your|its controller's) untap step$/i))) return objRule(m[1], { kind: 'cantUntap' });
   if ((m = L.match(/^(.+?) cannot be countered$/i))) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantBeCountered' } }];
   if ((m = L.match(/^(.+?) cannot be the target of spells or abilities your opponents control$/i))) return objRule(m[1], { kind: 'cantBeTargeted', by: 'opponents' });
+  if ((m = L.match(/^(.+?) cannot be the target of (.+?) spells(?: or abilities)?$/i))) {
+    const noun = parseNoun(`a ${m[2]} spell`);
+    if (noun) return objRule(m[1], { kind: 'cantBeTargeted', by: 'spells', filter: { ...noun.filter, zone: undefined } });
+  }
+  if ((m = L.match(/^(.+?) cannot (attack|block|attack or block) unless (.+)$/i))) {
+    const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond && cond.kind !== 'manual') {
+      const tag = m[2].toLowerCase() === 'attack' ? 'cantAttack' : m[2].toLowerCase() === 'block' ? 'cantBlock' : 'cantAttackOrBlock';
+      const a = affectsOf(m[1]);
+      if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag }, condition: { kind: 'not', c: cond } }];
+    }
+  }
   if ((m = L.match(/^Prevent all (?:combat )?damage that would be dealt to (.+)$/i))) return objRule(m[1], { kind: 'damagePrevention', amount: 'all' });
   if ((m = L.match(/^Prevent all damage that would be dealt to you$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'damagePrevention', amount: 'all' } }];
   // Player-level rules
@@ -742,6 +758,16 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // Doublers
   if (/^If (?:you would create|an effect would create) one or more tokens(?: under your control)?, (?:create|it creates) twice that many (?:of those )?tokens instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 1 }];
   if (/^If (?:an effect would place|you would put) one or more counters on a permanent you control, (?:it places|put) twice that many (?:of each of those kinds of counters )?(?:counters )?on (?:that permanent|it) instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: 0, multiply: 2 }];
+  // "If one or more +1/+1 counters would be put on a creature you control, twice that many … instead."
+  if ((m = L.match(/^If one or more ([+-]\d\/[+-]\d|\w+) counters would be put on (?:a|an|another) (.+?) you control, (twice that many|that many plus (?:one|two|three)) (?:(?:[+-]\d\/[+-]\d|\w+) )?counters? are put on (?:it|that creature|that permanent) instead$/i))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (noun) {
+      const spec: AbilitySpec = { kind: 'replacement', text: line, event: 'counterAdded', counterType: m[1], filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, multiply: /twice/i.test(m[3]) ? 2 : 1, extra: /plus one/i.test(m[3]) ? 1 : /plus two/i.test(m[3]) ? 2 : /plus three/i.test(m[3]) ? 3 : 0 };
+      return [spec];
+    }
+  }
+  // "If one or more tokens would be created under your control, twice that many of those tokens are created instead."
+  if (/^If one or more tokens would be created under your control, twice that many (?:of those )?tokens are created instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 1 }];
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
