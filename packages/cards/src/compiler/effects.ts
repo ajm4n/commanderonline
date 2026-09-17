@@ -4688,6 +4688,33 @@ export function isNoOpSentence(text: string): boolean {
   return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|you may spend mana as though it were mana of any color|mana of any type can be spent to cast (?:spells|a spell) this way|you may spend mana as though it were mana of any color to activate those abilities|you may look at (?:it|that card|those cards) for as long as (?:it remains|they remain) exiled|reveal the first card you draw each turn|this change in ownership is permanent|the new target must be a player|you may reveal the first card you draw each turn as you draw it|a spell cast this way costs .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 
+/** Rewrite an effect compiled for "you" so it applies to another player instead. */
+function retargetToPlayer<T>(value: T, who: Ref): T {
+  if (Array.isArray(value)) return value.map((v) => retargetToPlayer(v, who)) as unknown as T;
+  if (value === null || typeof value !== 'object') return value;
+  const src = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (k === 'owner' && v === 'you') {
+      out.ownerRef = who;
+      continue;
+    }
+    if (k === 'controller' && v === 'you') {
+      out.controllerRef = who;
+      continue;
+    }
+    if (k === 'who' && (v === undefined || (typeof v === 'object' && v !== null && (v as { ref?: string }).ref === 'controller'))) {
+      out.who = who;
+      continue;
+    }
+    out[k] = retargetToPlayer(v, who);
+  }
+  if (typeof src.kind === 'string' && !('who' in src) && ['draw', 'gainLife', 'loseLife', 'setLife', 'discard', 'mill', 'millBottom', 'scry', 'surveil', 'investigate', 'treasure', 'createToken', 'shuffle', 'skipTurn', 'skipStep', 'extraTurn', 'revealHand', 'manifest', 'searchLibrary', 'exileTop', 'loseAllCounters', 'handToLibrary', 'shuffleZoneIntoLibrary', 'chooseObjects', 'lookAtTop'].includes(src.kind as string)) {
+    out.who = who;
+  }
+  return out as unknown as T;
+}
+
 /** Parse one sentence; returns null if not understood. */
 export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   let text = s.trim().replace(/\.$/, '');
@@ -5324,10 +5351,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
         const saved = ctx.targets.length;
         const savedPlayer = ctx.lastPlayer;
         const inner = parseSentence(`you ${base}${vm![2]}`, ctx);
-        const RETARGETABLE = new Set(['draw', 'gainLife', 'loseLife', 'setLife', 'discard', 'mill', 'scry', 'surveil', 'investigate', 'treasure', 'createToken', 'shuffle', 'skipTurn', 'skipStep', 'extraTurn', 'revealHand', 'manifest', 'searchLibrary', 'exileTop', 'addPoison', 'loseAllCounters', 'ventureIntoDungeon', 'explore', 'proliferate', 'connive', 'clue', 'food', 'lookAtTop']);
+        const RETARGETABLE = new Set(['draw', 'gainLife', 'loseLife', 'setLife', 'discard', 'mill', 'millBottom', 'scry', 'surveil', 'investigate', 'treasure', 'createToken', 'shuffle', 'skipTurn', 'skipStep', 'extraTurn', 'revealHand', 'manifest', 'searchLibrary', 'exileTop', 'addPoison', 'loseAllCounters', 'ventureIntoDungeon', 'explore', 'proliferate', 'connive', 'clue', 'food', 'lookAtTop', 'handToLibrary', 'shuffleZoneIntoLibrary', 'addCounters', 'flipCoin', 'sacrifice', 'exile', 'destroy', 'returnToHand', 'moveToZone', 'tap', 'untap', 'chooseObjects', 'putIntoGraveyard']);
         if (inner && inner.length && inner.every((e) => RETARGETABLE.has(e.kind))) {
           ctx.lastPlayer = who;
-          return inner.map((e) => ({ ...(e as object), who }) as Effect);
+          return inner.map((e) => retargetToPlayer(e, who));
         }
         ctx.targets.length = saved;
         ctx.lastPlayer = savedPlayer;
