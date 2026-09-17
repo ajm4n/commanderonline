@@ -78,6 +78,17 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     if (typeof want !== 'string' || !ch.colors.includes(want as 'W')) return false;
   }
   if (filter.custom === 'blocked' && !obj.wasBlocked && obj.blockedBy.length === 0) return false;
+  if (filter.custom === 'attackingYouOrYourPlaneswalker' && !(obj.attacking === ctx.controller || (typeof obj.attacking === 'number' && g.state.objects[obj.attacking]?.controller === ctx.controller))) return false;
+  if (filter.custom === 'countersPutThisWay' && ctx.sourceId !== null) {
+    const src = g.state.objects[ctx.sourceId];
+    const list = src?.memory['countersPutThisWay'];
+    if (!Array.isArray(list) || !(list as ObjectId[]).includes(obj.id)) return false;
+  }
+  if (filter.custom === 'blockedRelated' && obj.blocking.length === 0 && obj.blockedBy.length === 0 && !obj.wasBlocked) return false;
+  if (filter.custom === 'highestToughness') {
+    const all = g.state.battlefield.map((x) => g.characteristics(x).toughness ?? 0);
+    if ((ch.toughness ?? 0) < Math.max(0, ...all)) return false;
+  }
   if (filter.custom === 'attackingOpponent' && (obj.attacking === null || obj.attacking === ctx.controller)) return false;
   if (filter.custom === 'powerLTSource' && ctx.sourceId !== null) { const sp = g.characteristics(ctx.sourceId).power ?? 0; if ((ch.power ?? 0) >= sp) return false; }
   if (filter.custom === 'powerGTSource' && ctx.sourceId !== null) { const sp = g.characteristics(ctx.sourceId).power ?? 0; if ((ch.power ?? 0) <= sp) return false; }
@@ -89,6 +100,17 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'topOfLibrary') {
     if (zone !== 'library') return false;
     if (g.player(obj.owner).library[0] !== obj.id) return false;
+  }
+  if (filter.custom === 'bottomOfGraveyard') {
+    if (zone !== 'graveyard') return false;
+    const rest: ObjectFilter = { ...filter, custom: undefined };
+    const gy = g.player(obj.owner).graveyard;
+    let bottom: ObjectId | null = null;
+    for (let i = gy.length - 1; i >= 0; i--) {
+      const o = g.state.objects[gy[i]];
+      if (o && matchesFilter(g, o, rest, ctx)) { bottom = gy[i]; break; }
+    }
+    if (bottom !== obj.id) return false;
   }
   if (filter.custom === 'topOfGraveyard') {
     if (zone !== 'graveyard') return false;
@@ -121,6 +143,9 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.cmcLTAmount !== undefined && !(ch.manaValue < g.resolveAmount(filter.cmcLTAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.toughnessLTAmount !== undefined && !(ch.toughness !== null && ch.toughness < g.resolveAmount(filter.toughnessLTAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.powerLTAmount !== undefined && !(ch.power !== null && ch.power < g.resolveAmount(filter.powerLTAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.cmcGEAmount !== undefined && !(ch.manaValue >= g.resolveAmount(filter.cmcGEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.powerGEAmount !== undefined && !(ch.power !== null && ch.power >= g.resolveAmount(filter.powerGEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
+  if (filter.toughnessGEAmount !== undefined && !(ch.toughness !== null && ch.toughness >= g.resolveAmount(filter.toughnessGEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.powerLEAmount !== undefined && !(ch.power !== null && ch.power <= g.resolveAmount(filter.powerLEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.toughnessLEAmount !== undefined && !(ch.toughness !== null && ch.toughness <= g.resolveAmount(filter.toughnessLEAmount, { sourceId: ctx.sourceId, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} }))) return false;
   if (filter.damaged !== undefined && (obj.damage > 0) !== filter.damaged) return false;

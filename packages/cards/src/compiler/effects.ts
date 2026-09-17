@@ -3925,6 +3925,38 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'damage', amount: { kind: 'manaValue', ref: { ref: 'target', slot } }, to: { ref: 'controllerOf', of: { ref: 'target', slot } } }];
   }],
   // "Artifacts you control become artifact creatures with base power and toughness 5/5 until end of turn."
+  // "Forests you control become 2/3 creatures until end of turn."
+  [/^(.+?) becomes? (\d+)\/(\d+) (?:(\w+) )?creatures?(?: with (.+?))?(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const types = ['Creature'];
+    if (m[4]) {
+      const extra = m[4].charAt(0).toUpperCase() + m[4].slice(1).toLowerCase();
+      if (!['Artifact', 'Enchantment', 'Land'].includes(extra)) return null;
+      types.unshift(extra);
+    }
+    const out: Effect[] = [
+      { kind: 'addTypes', types, on: ref, duration: 'endOfTurn' },
+      { kind: 'setPT', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: 'endOfTurn' },
+    ];
+    if (m[5]) {
+      const kws = parseKeywordList(m[5]);
+      if (!kws) return null;
+      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: 'endOfTurn' });
+    }
+    return out;
+  }],
+  // "Exile the bottom card of target player's graveyard."
+  [/^(exile|destroy|return) the (top|bottom) (.+?) of target (player|opponent)'s graveyard(?: to their hand)?$/i, (m, ctx) => {
+    const inner = parseNoun(`a ${m[3]}`);
+    if (!inner) return null;
+    const who = playerRef(`target ${m[4]}`, ctx);
+    if (!who) return null;
+    const f: ObjectFilter = { ...inner.filter, zone: 'graveyard', ownerRef: who, custom: m[2].toLowerCase() === 'top' ? 'topOfGraveyard' : 'bottomOfGraveyard' };
+    const ref: Ref = { ref: 'all', filter: f };
+    ctx.lastObj = ref;
+    return [m[1].toLowerCase() === 'exile' ? { kind: 'exile', what: ref } : m[1].toLowerCase() === 'destroy' ? { kind: 'destroy', what: ref } : { kind: 'returnToHand', what: ref }];
+  }],
   [/^(.+?) become (?:(\w+) )?creatures with base power and toughness (\d+)\/(\d+)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;

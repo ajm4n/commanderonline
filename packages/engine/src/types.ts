@@ -471,6 +471,7 @@ export interface ObjectFilter {
   monstrous?: boolean;
   /** Mana value at most an amount ("with mana value less than or equal to the number of lands you control"). */
   cmcLEAmount?: import('./script.js').Amount;
+  cmcGEAmount?: import('./script.js').Amount;
   /** Mana value strictly less than this amount. */
   cmcLTAmount?: import('./script.js').Amount;
   /** Toughness strictly less than this amount. */
@@ -479,8 +480,10 @@ export interface ObjectFilter {
   powerLTAmount?: import('./script.js').Amount;
   /** Power at most this amount. */
   powerLEAmount?: import('./script.js').Amount;
+  powerGEAmount?: import('./script.js').Amount;
   /** Toughness at most this amount. */
   toughnessLEAmount?: import('./script.js').Amount;
+  toughnessGEAmount?: import('./script.js').Amount;
   cmcEQAmount?: import('./script.js').Amount;
   /** For spells on the stack: targets an object matching / you ("spell that targets a creature you control"). */
   spellTargets?: ObjectFilter | 'you' | 'opponent';
