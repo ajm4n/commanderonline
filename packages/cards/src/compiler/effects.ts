@@ -3115,13 +3115,25 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [{ kind: 'delayedTrigger', event: upkeep ? 'beginningOfUpkeep' : /cleanup/i.test(m[1]) ? 'cleanup' : 'beginningOfEndStep', filter: /your next/i.test(m[1]) ? { player: 'you' } : undefined, effects: inner, text, once: true }];
     }
   }
-  if ((m = text.match(/^when you next cast (an instant or sorcery spell|a spell|a creature spell|an instant spell|a sorcery spell) this turn, (.+)$/i))) {
+  if ((m = text.match(/^when you next cast (.+?) this turn, (.+)$/i))) {
     const sub = newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: true });
     const inner = parseSentence(m[2].replace(/\bcopy it\b/i, 'copy that spell'), sub);
     if (inner) {
-      const types = /instant or sorcery/i.test(m[1]) ? ['Instant', 'Sorcery'] : /creature/i.test(m[1]) ? ['Creature'] : /instant/i.test(m[1]) ? ['Instant'] : /sorcery/i.test(m[1]) ? ['Sorcery'] : undefined;
-      return [{ kind: 'delayedTrigger', event: 'cast', filter: { player: 'you', object: types ? { types } : undefined }, effects: inner, text, once: true }];
+      const types = /instant or sorcery/i.test(m[1]) ? ['Instant', 'Sorcery'] : /^a spell$/i.test(m[1]) ? undefined : /^an instant spell$/i.test(m[1]) ? ['Instant'] : /^a sorcery spell$/i.test(m[1]) ? ['Sorcery'] : null;
+      if (types !== null) return [{ kind: 'delayedTrigger', event: 'cast', filter: { player: 'you', object: types ? { types } : undefined }, effects: inner, text, once: true }];
+      const noun = parseNoun(m[1].replace(/ spells$/i, ' spell'));
+      if (noun) {
+        const f = { ...noun.filter };
+        delete f.zone;
+        return [{ kind: 'delayedTrigger', event: 'cast', filter: { player: 'you', object: f }, effects: inner, text, once: true }];
+      }
     }
+  }
+  // "At this turn's next end of combat, X" / "At end of combat, X" on a spell.
+  if ((m = text.match(/^at (?:this turn's next end of combat|the end of combat|end of combat), (.+)$/i))) {
+    const sub = newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: true });
+    const inner = parseSentence(m[1], sub);
+    if (inner) return [{ kind: 'delayedTrigger', event: 'endOfCombat', effects: inner, text, once: true }];
   }
   // "When you discard a nonland card this way, X" (same paragraph as the discard): X happens if a matching card moved.
   if ((m = text.match(/^when (?:you )?(?:discard|exile|sacrifice|reveal|mill|destroy|return) (?:a|an|one or more) (.+?) this way, (.+)$/i))) {
