@@ -85,6 +85,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   }
   if (filter.custom === 'fromGraveyard' && obj.lastZoneChange?.from !== 'graveyard') return false;
   if (filter.custom === 'transformed' && obj.faceIndex === 0) return false;
+  if (filter.custom === 'suspected' && obj.memory['suspected'] !== true) return false;
+  if (filter.custom === 'goaded' && !g.characteristics(obj.id).rules.some((r) => r.kind === 'custom' && r.tag === 'goaded')) return false;
   if (filter.custom === 'blocked' && !obj.wasBlocked && obj.blockedBy.length === 0) return false;
   if (filter.custom === 'attackingYouOrYourPlaneswalker' && !(obj.attacking === ctx.controller || (typeof obj.attacking === 'number' && g.state.objects[obj.attacking]?.controller === ctx.controller))) return false;
   if (filter.custom === 'countersPutThisWay' && ctx.sourceId !== null) {

@@ -40,6 +40,26 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 152 ----
+  // "Enchanted permanent is a colorless Clue artifact with \"{2}, Sacrifice ~: Draw a card\" and loses all other abilities."
+  if ((m = L.match(/^(.+?) (?:is|are) (.+?) with "(.+?)" and loses? all (?:other )?(?:card types and abilities|abilities|types|card types)$/i))) {
+    const a = affectsOf(m[1]);
+    const probe = parseNoun(`a ${m[2].replace(/^(?:a|an) /i, '')}`);
+    if (a.ok && probe && probe.confident && probe.filter.types?.length) {
+      const out: AbilitySpec[] = [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setTypes: probe.filter.types, setSubtypes: probe.filter.subtypes ?? [] } },
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 6, loseAllAbilities: true, addAbilityText: [m[3]] } },
+      ];
+      if (probe.filter.colorless) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: [] } });
+      return out;
+    }
+  }
+  // "All lands have \"{T}: Add one mana of any color\" and lose all other abilities."
+  if ((m = L.match(/^(.+?) (?:has|have) (".+?") and loses? all (?:other )?abilities$/i))) {
+    const a = affectsOf(m[1]);
+    const g = parseGrantList(m[2]);
+    if (a.ok && g) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, loseAllAbilities: true, addAbilityText: g.abilities, addKeywords: g.keywords.length ? g.keywords : undefined } }];
+  }
   // ---- Round 150 ----
   // "Equipped creature gets +5/+5 and has first strike, trample, and \"Whenever ~ deals combat damage ...\""
   if ((m = L.match(/^(.+?) (?:has|have) (.+)$/i)) && /"/.test(m[2])) {
