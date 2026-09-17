@@ -102,6 +102,10 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
     if (entered && obj.additionalCostsPaid.includes('warp')) {
       g.state.delayedTriggers.push({ id: g.state.nextEffectId++, event: 'beginningOfEndStep', effects: [{ kind: 'exile', what: { ref: 'self' } }, { kind: 'playFromExile', what: { ref: 'self' }, duration: 'permanent' }], text: `Warp: exile ${face.name}`, controller: item.controller, sourceId: entered.id, once: true, context: {}, sourceZone: 'battlefield' });
     }
+    if (entered && /\bRoom\b/.test(face.typeLine)) {
+      // Casting a Room unlocks the door you cast.
+      yield* executeEffects(g, [{ kind: 'unlockDoor', door: faceIndex }], { ...ctx, sourceId: entered.id });
+    }
     if (entered && /\bAura\b/.test(face.typeLine)) {
       const t = item.targets.find((x) => x.kind === 'object');
       if (t && t.kind === 'object' && g.state.objects[t.id]) attach(g, entered.id, t.id);

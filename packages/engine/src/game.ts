@@ -87,6 +87,8 @@ export interface GameState {
   damagedBy: Record<number, ObjectId[]>;
   /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
   lastTurnStats: Record<string, number>;
+  /** Day/night cycle: undefined until a card starts it. */
+  dayNight?: 'day' | 'night';
   preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[] }[];
   log: LogEntry[];
   monarch: PlayerId | null;
@@ -192,6 +194,7 @@ export class Game {
       turn: { number: 0, activePlayer: order[0], phase: 'beginning', step: 'untap', extraTurns: [], skipSteps: [], firstStrikeHappened: false, attackers: [] },
       continuousEffects: [],
       delayedTriggers: [],
+      dayNight: undefined,
       preventions: [],
       damagedBy: {},
       lastTurnStats: {},
@@ -421,6 +424,15 @@ export class Game {
     let n = 0;
     for (const r of this.playerRules(p)) if (r.kind === 'custom' && r.tag === 'extraVote') n += typeof r.data === 'number' ? r.data : 1;
     return n;
+  }
+  /** Day/night: set the cycle and fire "whenever day becomes night" triggers. */
+  setDayNight(to: 'day' | 'night'): void {
+    const from = this.state.dayNight;
+    if (from === to) return;
+    this.state.dayNight = to;
+    this.log(`It becomes ${to}.`);
+    this.touch();
+    if (from !== undefined) this.emit({ name: 'dayNightChanged', data: { from, to } });
   }
   nextPlayerAfter(p: PlayerId): PlayerId {
     const order = this.state.playerOrder;
@@ -1019,6 +1031,9 @@ export class Game {
     }
     if (f.custom === 'exhaust' && !(e.data as { exhaust?: boolean } | undefined)?.exhaust) return false;
     if (f.custom === 'wonFlip' && !(e.data as { won?: boolean } | undefined)?.won) return false;
+    if (f.custom === 'becomesNight' && (e.data as { to?: string } | undefined)?.to !== 'night') return false;
+    if (f.custom === 'becomesDay' && (e.data as { to?: string } | undefined)?.to !== 'day') return false;
+    if (f.custom?.startsWith('door:') && (e.data as { door?: number } | undefined)?.door !== Number(f.custom.slice(5))) return false;
     if (f.custom === 'lostFlip' && (e.data as { won?: boolean } | undefined)?.won) return false;
     if (f.custom === 'nonManaAbility' && (e.data as { mana?: boolean } | undefined)?.mana) return false;
     if (f.custom === 'chosenPlayersStep') {
@@ -1279,6 +1294,15 @@ export class Game {
       case 'faceDown': {
         const o = this.resolveObjects(c.ref ?? { ref: 'self' }, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0];
         return !!o && o.faceDown;
+      }
+      case 'doorUnlocked': {
+        const o = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : undefined;
+        const doors = (o?.memory['unlockedDoors'] as number[] | undefined) ?? [];
+        return c.not ? !doors.includes(c.door) : doors.includes(c.door);
+      }
+      case 'dayNight': {
+        const v = this.state.dayNight;
+        return c.is === 'neither' ? v === undefined : v === c.is;
       }
       case 'cityBlessing': {
         const pid = c.ref ? this.resolvePlayers(c.ref, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0] : ctx.controller;
@@ -2117,6 +2141,13 @@ export class Game {
         return;
       }
       case 'upkeep':
+        // Day/night: if it was day and the previous player cast no spells, it becomes night (and vice versa).
+        if (this.state.dayNight !== undefined && this.state.turn.number > 1) {
+          const prev = this.state.lastTurnStats ?? {};
+          const spells = Object.entries(prev).filter(([k]) => k.startsWith('cast:')).reduce((n, [, v]) => n + v, 0);
+          if (this.state.dayNight === 'day' && spells === 0) this.setDayNight('night');
+          else if (this.state.dayNight === 'night' && spells >= 2) this.setDayNight('day');
+        }
         this.emit({ name: 'beginningOfUpkeep', playerId: pid });
         if (this.state.initiative === pid) {
           this.pendingTriggers.push({ sourceId: -1, controller: pid, ability: { kind: 'triggered', text: 'Initiative: venture into Undercity', event: 'beginningOfUpkeep', effects: [{ kind: 'ventureIntoDungeon' }] }, context: { dungeon: 'Undercity' } });

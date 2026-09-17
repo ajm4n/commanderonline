@@ -768,7 +768,50 @@ function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'ga
   return out;
 }
 
+/** Rooms are split enchantments whose two doors unlock separately; both doors live on one permanent. */
+function compileRoom(card: CardData): CompileResult | null {
+  const faces = card.faces;
+  if (!faces || faces.length !== 2 || !faces.every((f) => /\bRoom\b/.test(f.typeLine ?? ''))) return null;
+  const abilities: AbilitySpec[] = [];
+  const compiledLines: string[] = [];
+  const unhandledLines: string[] = [];
+  for (let i = 0; i < faces.length; i++) {
+    const f = faces[i];
+    const doorOpen: Condition = { kind: 'doorUnlocked', door: i };
+    const r = compileFace({ ...card, ...f, faces: undefined }, f.name ?? card.name, f.oracleText ?? '', f.typeLine ?? card.typeLine);
+    compiledLines.push(...r.compiledLines);
+    unhandledLines.push(...r.unhandledLines);
+    for (const ab of r.script.abilities) {
+      if (ab.kind === 'triggered' && /^When you unlock this door/i.test(ab.text)) {
+        abilities.push({ ...ab, event: 'unlockedDoor', filter: { self: true, custom: `door:${i}` } });
+        continue;
+      }
+      if (ab.kind === 'spell') continue; // a Room is a permanent; its halves have no spell effects
+      const guard = (c?: Condition): Condition => (c ? { kind: 'and', cs: [doorOpen, c] } : doorOpen);
+      if (ab.kind === 'triggered' || ab.kind === 'activated' || ab.kind === 'static') abilities.push({ ...ab, condition: guard(ab.condition) } as AbilitySpec);
+      else abilities.push(ab);
+    }
+    // "As a sorcery, you may pay the mana cost of a locked door to unlock it."
+    abilities.push({
+      kind: 'activated',
+      text: `Unlock ${f.name ?? card.name} (${f.manaCost ?? ''})`,
+      cost: { mana: f.manaCost ?? '' },
+      sorcerySpeed: true,
+      condition: { kind: 'doorUnlocked', door: i, not: true },
+      effects: [{ kind: 'unlockDoor', door: i }],
+    });
+  }
+  const coverage = unhandledLines.length ? (compiledLines.length ? 'partial' : 'none') : 'full';
+  return {
+    script: { name: card.name, abilities, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined },
+    compiledLines,
+    unhandledLines,
+  };
+}
+
 export function compileCard(card: CardData): CompileResult {
+  const room = compileRoom(card);
+  if (room) return room;
   const front = compileFace(card, card.name, card.oracleText ?? '', card.typeLine);
   if (card.faces && card.faces.length > 1) {
     const faces = card.faces.slice(1).map((f) => compileFace({ ...card, ...f, faces: undefined }, f.name, f.oracleText, f.typeLine));

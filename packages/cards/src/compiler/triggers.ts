@@ -243,6 +243,10 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     return { event: 'leavesBattlefield', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }
   // Attacks / blocks
+  if ((m = L.match(/^Whenever day becomes night or night becomes day, (.+)$/i))) return { event: 'dayNightChanged', hasObject: false, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever day becomes night, (.+)$/i))) return { event: 'dayNightChanged', filter: { custom: 'becomesNight' }, hasObject: false, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever night becomes day, (.+)$/i))) return { event: 'dayNightChanged', filter: { custom: 'becomesDay' }, hasObject: false, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When you unlock this door, (.+)$/i))) return { event: 'unlockedDoor', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   // Morph: "When ~ is turned face up, ..." / "Whenever a permanent you control is turned face up, ..."
   if ((m = L.match(/^When(?:ever)? ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever (?:a|an|another) (.+?) is turned face up, (.+)$/i))) {

@@ -1040,6 +1040,26 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'unlockDoor': {
+      if (ctx.sourceId === null) return;
+      const o = g.state.objects[ctx.sourceId];
+      if (!o) return;
+      const doors = ((o.memory['unlockedDoors'] as number[] | undefined) ?? []).slice();
+      if (doors.includes(e.door)) return;
+      doors.push(e.door);
+      o.memory['unlockedDoors'] = doors;
+      const name = e.door > 0 ? o.card.faces?.[e.door]?.name ?? o.card.name : o.card.name;
+      g.log(`${g.player(o.controller).name} unlocks ${name}.`);
+      g.touch();
+      g.emit({ name: 'unlockedDoor', objectId: o.id, playerId: o.controller, data: { door: e.door } });
+      return;
+    }
+    case 'setDayNight': {
+      if (e.to === 'startDay' || e.to === 'startNight') {
+        if (g.state.dayNight === undefined) g.setDayNight(e.to === 'startDay' ? 'day' : 'night');
+      } else g.setDayNight(e.to);
+      return;
+    }
     case 'clash': {
       const opps = g.activePlayers().filter((x) => x !== ctx.controller);
       if (!opps.length) return;

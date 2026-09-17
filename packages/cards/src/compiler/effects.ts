@@ -1668,6 +1668,12 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'log', text: 'explored', event: 'explored', objectRef: ref }, { kind: 'revealTop', ifMatches: { types: ['Land'] }, then: [{ kind: 'putIntoHand', what: { ref: 'lastMoved' } }], else: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: ref }, { kind: 'may', prompt: 'Put the revealed card into your graveyard?', effects: [{ kind: 'moveToZone', what: { ref: 'lastMoved' }, zone: 'graveyard' }] }] }] : null;
   }],
   [/^venture into the dungeon$/i, () => [{ kind: 'ventureIntoDungeon' }]],
+  [/^tap or untap (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'chooseMode', options: [{ text: 'Tap it', effects: [{ kind: 'tap', what: ref }] }, { text: 'Untap it', effects: [{ kind: 'untap', what: ref }] }], count: 1 }] : null;
+  }],
+  [/^it becomes (day|night)$/i, (m) => [{ kind: 'setDayNight', to: m[1].toLowerCase() as 'day' | 'night' }]],
+  [/^if it is neither day nor night, it becomes (day|night)(?: as ~ enters)?$/i, (m) => [{ kind: 'setDayNight', to: m[1].toLowerCase() === 'day' ? 'startDay' : 'startNight' }]],
   // Manifest / manifest dread / cloak
   [/^manifest(?: the top card of your library| the top (\w+|X) cards of your library)?$/i, (m, ctx) => {
     void ctx;

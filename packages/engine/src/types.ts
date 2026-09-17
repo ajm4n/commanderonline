@@ -518,6 +518,8 @@ export type GameEventName =
   | 'explored'
   | 'becomesUnattached'
   | 'turnedFaceUp'
+  | 'unlockedDoor'
+  | 'dayNightChanged'
   | 'cleanup';
 
 export interface GameEvent {

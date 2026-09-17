@@ -173,6 +173,10 @@ export type Condition =
   | { kind: 'or'; cs: Condition[] }
   /** Ascend: the controller has the city's blessing (ten or more permanents at some point while controlling an Ascend source). */
   | { kind: 'cityBlessing'; ref?: Ref }
+  /** Day/night cycle state. */
+  | { kind: 'dayNight'; is: 'day' | 'night' | 'neither' }
+  /** Rooms: this door (face index) is unlocked. */
+  | { kind: 'doorUnlocked'; door: number; not?: boolean }
   /** The permanent is face down (morph, manifest). */
   | { kind: 'faceDown'; ref?: Ref }
   /** Soulbond: the object is paired with another creature. */
@@ -338,6 +342,10 @@ export type Effect =
   | { kind: 'turnFaceUp'; what?: Ref; counters?: { counter: CounterType; amount: Amount } }
   /** Manifest the top card(s) of a library as face-down 2/2 creatures; `dread` looks at two and mills the other. */
   | { kind: 'manifest'; amount: Amount; who?: Ref; dread?: boolean; ward?: string }
+  /** Rooms: unlock one of the card's doors (faces). */
+  | { kind: 'unlockDoor'; door: number }
+  /** Day/night: set the cycle, or start it when it is neither. */
+  | { kind: 'setDayNight'; to: 'day' | 'night' | 'startDay' | 'startNight' }
   | { kind: 'clash' }
   | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
