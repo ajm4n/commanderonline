@@ -2842,7 +2842,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'returnToBattlefield', what: ref, counters: { counter: m[3], amount: typeof n === 'number' ? n : 1 } }];
   }],
   // "Creatures target player controls do not untap during that player's next untap step"
-  [/^(.+?) (?:do not|don't|doesn't|does not) untap during (?:that player's|their|your) next untap step$/i, (m, ctx) => {
+  [/^(.+?) (?:do not|don't|doesn't|does not) untap during (?:that player's|target player's|their|your) next untap step$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilYourNextTurn' }] : null;
   }],
@@ -2874,7 +2874,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'repeat', times: n, effects: [one] }];
   }],
   // "Move all counters from target creature onto another target creature"
-  [/^move (all|any number of|(\w+)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+ )?counters? from (.+?) onto (.+)$/i, (m, ctx) => {
+  [/^move (all|any number of|(\w+)) (?:([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) )?counters? from (.+?) onto (.+?)(?: with the same controller)?$/i, (m, ctx) => {
     const from = objRef(m[4], ctx);
     const to = from ? objRef(m[5], ctx) : null;
     if (!from || !to) return null;
@@ -3437,6 +3437,40 @@ const PATTERNS: Pattern[] = [
   }],
   // "have it connive"
   [/^have (it|that creature|~) connives?$/i, (m, ctx) => parseSentence(`${m[1]} connives`, ctx)],
+  // "You gain hexproof until your next turn"
+  [/^(?:you|that player|target player) gains? (hexproof|shroud|protection from everything)(?: until your next turn| until end of turn)?$/i, (m, ctx) => {
+    const who = /^you /i.test(m[0]) ? YOU : ctx.lastPlayer ?? YOU;
+    return [{ kind: 'grantPlayerRule', who, rule: { kind: 'custom', tag: m[1].toLowerCase().replace(/ /g, '') } }];
+  }],
+  // "Put ~ from your graveyard into your library third from the top"
+  [/^put (~|it|that card) from your graveyard into your library (\w+) from the top$/i, (m, ctx) => {
+    const depth = wordToNumber(m[2].replace(/^(first|second|third|fourth|fifth|sixth|seventh)$/i, (w) => ({ first: 'one', second: 'two', third: 'three', fourth: 'four', fifth: 'five', sixth: 'six', seventh: 'seven' } as Record<string, string>)[w.toLowerCase()] ?? w));
+    if (typeof depth !== 'number') return null;
+    const ref = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'putOnLibrary', what: ref, position: 'top', depth: depth - 1 }];
+  }],
+  // "Put up to four target cards from your graveyard on the bottom of your library in any order"
+  [/^put (up to \w+ target .+?|target .+?) from your graveyard on (?:the )?(top|bottom) of your library(?: in any order)?$/i, (m, ctx) => {
+    const ref = objRef(`${m[1]} in your graveyard`, ctx);
+    return ref ? [{ kind: 'putOnLibrary', what: ref, position: /top/i.test(m[2]) ? 'top' : 'bottom' }] : null;
+  }],
+  // "Destroy up to one target artifact, up to one target creature, and up to one target land"
+  [/^(destroy|exile|tap) ((?:up to one target|target) [\w -]+?), ((?:up to one target|target) [\w -]+?),? and ((?:up to one target|target) [\w -]+)$/i, (m, ctx) => {
+    const refs = [m[2], m[3], m[4]].map((t) => objRef(t, ctx));
+    if (refs.some((r) => !r)) return null;
+    const verb = m[1].toLowerCase();
+    return refs.map((r) => (verb === 'destroy' ? { kind: 'destroy', what: r! } : verb === 'exile' ? { kind: 'exile', what: r! } : { kind: 'tap', what: r! }) as Effect);
+  }],
+  // "Simultaneously untap all tapped creatures and tap all untapped creatures"
+  [/^simultaneously untap all tapped (.+?) and tap all untapped (.+)$/i, (m) => {
+    const a = parseNoun(`all ${m[1]}`);
+    const b = parseNoun(`all ${m[2]}`);
+    if (!a || !b) return null;
+    return [
+      { kind: 'untap', what: { ref: 'all', filter: { ...a.filter, zone: 'battlefield', tapped: true } } },
+      { kind: 'tap', what: { ref: 'all', filter: { ...b.filter, zone: 'battlefield', untapped: true } } },
+    ];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile

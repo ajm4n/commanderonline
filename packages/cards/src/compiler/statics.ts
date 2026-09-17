@@ -457,6 +457,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const r = objRule(m[1], { kind: 'custom', tag: 'cantBeSacrificed' });
     if (r) return r;
   }
+  if (/^All lands lose all abilities except mana abilities$/i.test(L)) return [{ kind: 'static', text: line, affects: { types: ['Land'], zone: 'battlefield' }, modification: { layer: 6, loseAllAbilities: true } }];
+  if ((m = L.match(/^Each (.+?) in your hand without (\w+) has \2$/i))) {
+    const hn = parseNoun(`a ${m[1]}`);
+    if (hn) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: m[2].toLowerCase(), filter: { ...hn.filter, zone: 'hand' } } } }];
+  }
+  if ((m = L.match(/^(Exhaust|Equip|Crew|Channel|Cycling) abilities (?:you activate )?of (.+?) cost \{(\d+)\} less to activate$/i))) {
+    const an = parseNoun(m[2]);
+    if (an) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: parseInt(m[3], 10), textPrefix: m[1], filter: { ...an.filter, zone: an.filter.zone ?? 'battlefield' } } } }];
+  }
+  if ((m = L.match(/^Creatures attacking (?:your opponents|you) have (.+)$/i))) {
+    const kws = parseKeywordList(m[1]);
+    if (kws) return [{ kind: 'static', text: line, affects: { types: ['Creature'], zone: 'battlefield', attacking: true }, modification: { layer: 6, addKeywords: kws } }];
+  }
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];
