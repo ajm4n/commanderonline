@@ -169,6 +169,14 @@ const COLOR_MAP: Record<string, Color> = { white: 'W', blue: 'U', black: 'B', re
 
 /** Parse "a 1/1 white Soldier creature token with vigilance" etc. */
 export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpec; tapped?: boolean; attacking?: boolean } | null {
+  {
+    // "Guenhwyvar, a legendary 4/1 green Cat creature token with trample"
+    const nm = text.trim().match(/^([A-Z][\w' -]*(?:, [A-Z][\w' -]*)?), ((?:a|an) .+ token.*)$/);
+    if (nm && !/^(?:a|an|two|three|four|five|X)\b/i.test(nm[1])) {
+      const inner = parseTokenPhrase(nm[2]);
+      if (inner) return { ...inner, token: { ...inner.token, name: nm[1], legendary: true } };
+    }
+  }
   let t = text.trim().replace(/\.$/, '');
   let tapped = false;
   let attacking = false;
@@ -314,13 +322,13 @@ function subjectPlayer(subj: string | undefined, ctx: ParseCtx): Ref | null {
 }
 
 
-const DEST_RE = String.raw`(into (?:your|their) hand|into (?:your|their) graveyard|onto the battlefield(?: tapped)?(?: under your control)?|on the bottom of (?:your|their) library(?: in (?:a random|any) order)?|on top of (?:your|their) library(?: in any order)?|into exile)`;
+const DEST_RE = String.raw`(into (?:your|their) hand|into (?:your|their) graveyard|onto the battlefield(?: tapped)?(?: and attacking)?(?: under your control)?|on the bottom of (?:your|their) library(?: in (?:a random|any) order)?|on top of (?:your|their) library(?: in any order)?|into exile)`;
 /** Effects that move a chosen ref to a destination phrase (see DEST_RE). */
 function moveChosen(ref: Ref, dest: string): Effect | null {
   const d = dest.toLowerCase();
   if (/^into (?:your|their) hand$/.test(d)) return { kind: 'putIntoHand', what: ref };
   if (/^into (?:your|their) graveyard$/.test(d)) return { kind: 'moveToZone', what: ref, zone: 'graveyard' };
-  if (/^onto the battlefield/.test(d)) return { kind: 'returnToBattlefield', what: ref, tapped: /tapped/.test(d) };
+  if (/^onto the battlefield/.test(d)) return { kind: 'returnToBattlefield', what: ref, tapped: /tapped/.test(d), attacking: /attacking/.test(d) || undefined };
   if (/^on the bottom/.test(d)) return { kind: 'putOnLibrary', what: ref, position: 'bottom' };
   if (/^on top/.test(d)) return { kind: 'putOnLibrary', what: ref, position: 'top' };
   if (/^into exile$/.test(d)) return { kind: 'exile', what: ref };
@@ -336,6 +344,11 @@ function restDest(dest: string): Extract<Effect, { kind: 'moveRest' }>['to'] | n
   return null;
 }
 /** Follow-up clauses after "Look at the top N cards of your library" (the pool is remembered under ctx.restKey). */
+/** The pool that "them" / "the rest" refers to: a held look/search pool, else the cards just moved. */
+function poolRef(ctx: ParseCtx): Ref {
+  return ctx.restKey ? { ref: 'chosen', key: ctx.restKey } : { ref: 'lastMoved' };
+}
+
 const POOL_PATTERNS: Pattern[] = [
   // "Put the revealed cards on the bottom of your library in a random order" / "exile all other cards revealed this way"
   [new RegExp(String.raw`^(?:then )?(?:and )?(?:put|exile) (?:the revealed cards|all other cards revealed this way|all cards revealed this way|the other cards revealed this way|the rest of the revealed cards)(?: ${DEST_RE})?$`, 'i'), (m, ctx) => {
@@ -344,15 +357,14 @@ const POOL_PATTERNS: Pattern[] = [
     return to ? [{ kind: 'moveRest', key: ctx.restKey, to }] : null;
   }],
   // "Put the nonland cards revealed this way into your hand" (the matches held by a reveal-until)
-  [new RegExp(String.raw`^(?:you may )?put (?:those|the) ([\w -]+?) (?:cards? )?(?:revealed this way |from among them )?${DEST_RE}$`, 'i'), (m, ctx) => {
+  [new RegExp(String.raw`^(?:you may )?put (?:those|the) ((?!rest\b)[\w -]+?) (?:cards? )?(?:revealed this way |from among them )?${DEST_RE}$`, 'i'), (m, ctx) => {
     if (!ctx.restKey) return null;
     const mv = moveChosen({ ref: 'chosen', key: ctx.restKey }, m[2]);
     return mv ? [mv] : null;
   }],
   // "Put one of them into your hand (and the rest on the bottom of your library in a random order)"
   [new RegExp(String.raw`^(you may )?(put|exile) (one|the other|(\w+)|up to (\w+)|any number|all|the rest)(?: of (?:them|those cards))?(?: ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
-    if (!ctx.restKey) return null;
-    const pool: Ref = { ref: 'chosen', key: ctx.restKey };
+    const pool: Ref = poolRef(ctx);
     const out: Effect[] = [];
     const isRest = /^(all|the rest)$/i.test(m[3]);
     const dest = m[2].toLowerCase() === 'exile' ? 'into exile' : m[6];
@@ -360,7 +372,7 @@ const POOL_PATTERNS: Pattern[] = [
     if (isRest) {
       const to = restDest(dest);
       if (!to) return null;
-      out.push({ kind: 'moveRest', key: ctx.restKey, to });
+      out.push({ kind: 'moveRest', key: ctx.restKey ?? 'lastMoved', to });
     } else {
       const n = /^(one|the other)$/i.test(m[3]) ? 1 : m[4] ? wordToNumber(m[4]) : m[5] ? wordToNumber(m[5]) : 'X';
       if (n === null) return null;
@@ -375,14 +387,13 @@ const POOL_PATTERNS: Pattern[] = [
     if (m[7]) {
       const to = restDest(m[7]);
       if (!to) return null;
-      out.push({ kind: 'moveRest', key: ctx.restKey, to });
+      out.push({ kind: 'moveRest', key: ctx.restKey ?? 'lastMoved', to });
     }
     return out;
   }],
   // "You may reveal a creature card from among them and put it into your hand" / "Put all land cards revealed this way onto the battlefield tapped"
   [new RegExp(String.raw`^(you may )?(reveal|put|exile) (a|an|all|up to (\w+)|any number of|(\w+)) (.+?) (?:from among (?:them|those cards)|revealed this way|from among the revealed cards)(?:,? and put (?:it|them|that card|those cards) ${DEST_RE}| ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
-    if (!ctx.restKey) return null;
-    const pool: Ref = { ref: 'chosen', key: ctx.restKey };
+    const pool: Ref = poolRef(ctx);
     const phrase = /\bcards?\b/i.test(m[6]) ? m[6].replace(/\bcards\b/i, 'card') : `${m[6]} card`;
     const noun = parseNoun(`a ${phrase}`);
     if (!noun) return null;
@@ -401,7 +412,7 @@ const POOL_PATTERNS: Pattern[] = [
     if (m[9]) {
       const to = restDest(m[9]);
       if (!to) return null;
-      out.push({ kind: 'moveRest', key: ctx.restKey, to });
+      out.push({ kind: 'moveRest', key: ctx.restKey ?? 'lastMoved', to });
     }
     return out;
   }],

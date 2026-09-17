@@ -354,6 +354,27 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const b = parseNoun(`a ${m[2]} spell`);
     if (a && b) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[3], 10), filter: { anyOf: [{ ...a.filter, zone: undefined }, { ...b.filter, zone: undefined }] } } }];
   }
+  // "Partner with <name>": when this enters you may search for that card.
+  if ((m = L.match(/^Partner with (.+)$/i))) {
+    return [{ kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true }, optional: true, effects: [{ kind: 'searchLibrary', filter: { nameIs: m[1], zone: 'library' }, count: 1, destination: 'hand', reveal: true, shuffle: true }] }];
+  }
+  // "If a source an opponent controls would deal damage to you, prevent 1 of that damage."
+  if ((m = L.match(/^If (?:a|an) (.+?) would deal (combat |noncombat )?damage to you, prevent (\w+) of that damage$/i))) {
+    const st = m[1].replace(/\bsources?\b/i, 'permanent');
+    const noun = parseNoun(st) ?? parseNoun(`a ${st}`);
+    const n = wordToNumber(m[3]);
+    if (noun && typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'preventDamageTo', data: { combat: m[2] ? (m[2].trim().toLowerCase() as 'combat' | 'noncombat') : undefined, source: { ...noun.filter, zone: undefined }, amount: n } } }];
+  }
+  // "Enchanted creature is a Flagbearer." / "Enchanted land is a Swamp."
+  if ((m = L.match(/^(Enchanted|Equipped) (creature|land|permanent|artifact) is (?:a|an) ([A-Z][\w' -]*)$/))) {
+    const sub = m[3].replace(/s$/, '');
+    const basics = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
+    if (basics.includes(sub)) return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 4, setSubtypes: [sub] } }];
+    return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 4, addSubtypes: [sub] } }];
+  }
+  // Deck-construction and ante lines have no in-game effect.
+  if (/^A deck can have any number of cards named ~$/i.test(L)) return [];
+  if (/^Remove ~ from your deck before playing if you(?:'re| are) not playing for ante$/i.test(L)) return [];
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
   if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {

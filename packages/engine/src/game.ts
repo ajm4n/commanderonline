@@ -1828,7 +1828,7 @@ export class Game {
     }
     // "Prevent all damage that would be dealt to ~ by artifact creatures." (a static on the recipient)
     {
-      type PD = { data?: { combat?: 'combat' | 'noncombat'; source?: import('./types.js').ObjectFilter } };
+      type PD = { data?: { combat?: 'combat' | 'noncombat'; source?: import('./types.js').ObjectFilter; amount?: number } };
       const rules = target.kind === 'object' && this.state.objects[target.id]?.zone === 'battlefield' ? this.characteristics(target.id).rules : target.kind === 'player' ? this.playerRules(target.id) : [];
       for (const r of rules) {
         if (r.kind !== 'custom' || r.tag !== 'preventDamageTo') continue;
@@ -1836,7 +1836,8 @@ export class Game {
         if (d.combat === 'combat' && !combat) continue;
         if (d.combat === 'noncombat' && combat) continue;
         if (d.source && (!src || !matchesFilter(this, src, { ...d.source, zone: undefined }, { sourceId: target.kind === 'object' ? target.id : src.id, controller: src.controller }))) continue;
-        return Infinity;
+        // "prevent 1 of that damage" only stops part of it.
+        return d.amount !== undefined ? Math.min(d.amount, amount) : Infinity;
       }
     }
     if (!this.state.preventions.length) return 0;
