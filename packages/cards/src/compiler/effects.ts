@@ -1596,6 +1596,22 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'preventAll', to: 'all', sourceRef: ref, once: true }] : null;
   }],
+  // "Until end of turn, target player cannot cast instant or sorcery spells"
+  [/^(.+?) cannot cast (.+?)(?: until end of turn| this turn)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const data: Record<string, unknown> = {};
+    if (!/^spells$/i.test(m[2])) {
+      const noun = /^spells? /i.test(m[2]) ? parseNoun(`a spell ${m[2].replace(/^spells? /i, '')}`) : parseNoun(`a ${m[2].replace(/ spells?$/i, '')} spell`);
+      if (!noun) return null;
+      data.filter = { ...noun.filter, zone: undefined };
+    }
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantCastSpells', data }, on: who, duration: / until end of turn$| this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
+  [/^(.+?) cannot activate abilities(?: that are not mana abilities| that aren't mana abilities)?(?: until end of turn| this turn)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivateAbilities', data: /mana abilities/i.test(m[0]) ? { exceptMana: true } : {} }, on: who, duration: / until end of turn$| this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {

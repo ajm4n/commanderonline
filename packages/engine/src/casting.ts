@@ -887,6 +887,13 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
   if (spec.exhaust && obj.memory[`exhausted:${spec.text}`]) return false;
   if (spec.condition && !g.checkCondition(spec.condition, { sourceId: obj.id, controller: p })) return false;
   if (obj.zone === 'battlefield' && g.characteristics(obj.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantActivate')) return false;
+  // "That player cannot activate abilities that aren't mana abilities."
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom' || r.tag !== 'cantActivateAbilities') continue;
+    const d = (r.data as { exceptMana?: boolean } | undefined) ?? {};
+    if (d.exceptMana && spec.manaAbility) continue;
+    return false;
+  }
   if (spec.cost.tap && !canUseTapAbility(g, obj)) return false;
   if (spec.cost.untap && !obj.tapped) return false;
   if (spec.cost.sacrificeSelf && obj.zone !== 'battlefield') return false;
@@ -955,11 +962,18 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     if (r.kind !== 'custom') continue;
     if (r.tag === 'maxSpellsPerTurn' && (g.state.turnStats[`cast:${p}`] ?? 0) >= ((r.data as number | undefined) ?? 1)) return false;
     if (r.tag === 'cantCastSpells') {
-      const d = (r.data as { filter?: import('./types.js').ObjectFilter; sourceTurnOnly?: boolean; notFromHand?: boolean; chosenNameKey?: string } | undefined) ?? {};
+      const d = (r.data as { filter?: import('./types.js').ObjectFilter; sourceTurnOnly?: boolean; notFromHand?: boolean; chosenNameKey?: string; duringCombat?: boolean; fromGraveyard?: boolean; sameNameAsExiled?: boolean } | undefined) ?? {};
       const srcId = (r as { sourceId?: ObjectId }).sourceId;
       const srcController = (r as { sourceController?: PlayerId }).sourceController;
       if (d.sourceTurnOnly && g.state.turn.activePlayer !== srcController) continue;
       if (d.notFromHand && fromZone === 'hand') continue;
+      if (d.duringCombat && g.state.turn.phase !== 'combat') continue;
+      if (d.fromGraveyard && fromZone !== 'graveyard') continue;
+      if (d.sameNameAsExiled) {
+        const src = srcId !== undefined ? g.state.objects[srcId] : undefined;
+        const exiled = (src?.memory['exiled'] as ObjectId[] | undefined) ?? [];
+        if (!exiled.some((x) => g.state.objects[x] && g.characteristics(x).name === face.name)) continue;
+      }
       if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: srcId ?? null, controller: srcController ?? p })) continue;
       if (d.chosenNameKey) {
         const src = srcId !== undefined ? g.state.objects[srcId] : undefined;

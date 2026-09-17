@@ -285,6 +285,8 @@ function parseAdjectives(wordsIn: string[], r: ParsedNoun): boolean {
     else if (l === 'basic') r.filter.supertypes = ['Basic'];
     else if (l === 'nonbasic') r.filter.custom = 'nonbasic';
     else if (l === 'token') r.filter.isToken = true;
+    else if (l === 'commander') r.filter.isCommander = true;
+    else if (l === 'noncommander') r.filter.isCommander = false;
     else if (l === 'nontoken') r.filter.nonToken = true;
     else if (l === 'tapped') r.filter.tapped = true;
     else if (l === 'modified') r.filter.modified = true;

@@ -142,12 +142,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (typeof n !== 'number') return null;
     return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: n } }];
   }  // "Your opponents cannot cast spells with the chosen name / with mana value 3 or less / during your turn / from anywhere other than their hands."
-  if ((m = L.match(/^(Your opponents|Each opponent|Players|Each player|You) cannot cast (.+?)(?: (during your turn|from anywhere other than (?:their|your) hands?|with the chosen name))?$/i))) {
+  if ((m = L.match(/^(Your opponents|Each opponent|Players|Each player|You) cannot cast (.+?)(?: (during your turn|during combat|from graveyards|from anywhere other than (?:their|your) hands?|with the chosen name|with the same name as the exiled card))?$/i))) {
     const who = /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
     const data: Record<string, unknown> = {};
     if (m[3]) {
       if (/during your turn/i.test(m[3])) data.sourceTurnOnly = true;
+      else if (/during combat/i.test(m[3])) data.duringCombat = true;
+      else if (/from graveyards/i.test(m[3])) data.fromGraveyard = true;
       else if (/anywhere other than/i.test(m[3])) data.notFromHand = true;
+      else if (/same name as the exiled card/i.test(m[3])) data.sameNameAsExiled = true;
       else data.chosenNameKey = 'cardName';
     }
     if (!/^spells$/i.test(m[2])) {
