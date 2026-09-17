@@ -378,6 +378,8 @@ export interface ObjectFilter {
   damagedBySource?: boolean;
   /** Creatures blocking the filter's source object ("creatures blocking it"). */
   blockingSource?: boolean;
+  /** Each chosen card must have a different name ("up to four cards with different names"). */
+  differentNames?: boolean;
   /** Objects of the color the source chose (memory `color`). */
   chosenColor?: boolean;
   /** Has a custom rule with this tag ("saddled", "goaded"). */
@@ -468,6 +470,7 @@ export type GameEventName =
   | 'dealtCombatDamageToPlayer'
   | 'lifeGained'
   | 'lifeLost'
+  | 'finishedVoting'
   | 'drawCard'
   | 'discard'
   | 'discardBatch'

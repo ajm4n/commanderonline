@@ -184,6 +184,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const noun = withCtrl(parseNoun(oc(m, 1)), ctx);
     if (noun) return { kind: 'totalToughness', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
   }
+  if ((m = t.match(/^(?:the number of )?([\w' -]+?) votes?$/)) && !/^(?:the|a|an|no)$/.test(m[1])) return { kind: 'voteCount', option: m[1].toLowerCase() };
   if (t === 'the number of experience counters you have' || t === 'experience counter you have' || t === 'experience counters you have') return { kind: 'turnStat', key: 'experience' };
   if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
   if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {

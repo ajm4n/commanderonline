@@ -79,6 +79,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   }
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker|enchantment)$/.test(l) || /^(?:enchanted|equipped) [A-Z]\w+$/i.test(t)) return { ref: 'attachedTo' };
   if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
+  if (/^each (?:\w+ )?(?:permanent|card|creature|player)s? with the most votes(?: or tied for most votes)?$/.test(l)) return { ref: 'chosen', key: 'votes' };
   if (/^(that|those) tokens?$/.test(l) || l === 'the tokens' || l === 'the token') return { ref: 'lastCreated' };
   if (/^(that|the) spell$/.test(l)) return ctx.lastObj ?? { ref: 'stackTarget' };
   if (l === 'the chosen creature' || l === 'the chosen permanent') return { ref: 'chosen', key: 'chosen' };
@@ -313,7 +314,7 @@ function restDest(dest: string): Extract<Effect, { kind: 'moveRest' }>['to'] | n
 /** Follow-up clauses after "Look at the top N cards of your library" (the pool is remembered under ctx.restKey). */
 const POOL_PATTERNS: Pattern[] = [
   // "Put one of them into your hand (and the rest on the bottom of your library in a random order)"
-  [new RegExp(String.raw`^(you may )?(put|exile) (one|the other|(\w+)|up to (\w+)|any number|all|the rest) of (?:them|those cards)(?: ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
+  [new RegExp(String.raw`^(you may )?(put|exile) (one|the other|(\w+)|up to (\w+)|any number|all|the rest)(?: of (?:them|those cards))?(?: ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
     if (!ctx.restKey) return null;
     const pool: Ref = { ref: 'chosen', key: ctx.restKey };
     const out: Effect[] = [];
@@ -399,7 +400,85 @@ const POOL_PATTERNS: Pattern[] = [
   }],
 ];
 
+
+/** "up to two basic land cards" / "a creature card" / "three cards" → count and filter for a library search. */
+function searchTarget(phrase: string, ctx: ParseCtx): { count: Amount; upTo: boolean; filter: ObjectFilter } | null {
+  let t = phrase.trim().replace(/[.,]$/, '');
+  let upTo = false;
+  let count: Amount = 1;
+  let m: RegExpMatchArray | null;
+  if ((m = t.match(/^up to (that many|X|\w+) (.+)$/i))) {
+    upTo = true;
+    const n = /that many/i.test(m[1]) ? 'X' : m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1]);
+    if (n === null) return null;
+    count = n;
+    t = m[2];
+  } else if ((m = t.match(/^(?:a|an) (.+)$/i))) {
+    t = m[1];
+  } else if ((m = t.match(/^any number of (.+)$/i))) {
+    count = 99;
+    upTo = true;
+    t = m[1];
+  } else if ((m = t.match(/^(X|\w+) (.+)$/i)) && (m[1].toUpperCase() === 'X' || typeof wordToNumber(m[1]) === 'number')) {
+    count = m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number);
+    t = m[2];
+  }
+  const noun = parseNoun(/\bcards?\b/i.test(t) ? t.replace(/\bcards\b/i, 'card') : `${t.replace(/s$/i, '')} card`);
+  if (!noun) return null;
+  const filter: ObjectFilter = { ...noun.filter, zone: 'library' };
+  if (noun.controllerPhrase) {
+    const pr = playerRef(noun.controllerPhrase, ctx);
+    if (!pr) return null;
+    filter.controllerRef = pr;
+  }
+  return { count, upTo, filter };
+}
+
+/** Library searches whose destination comes in a later sentence ("Search your library for two cards and reveal them. Put one ..."). */
+const SEARCH_PATTERNS: Pattern[] = [
+  [/^search (your|their|that player's|target player's|target opponent's) library for (.+?)(?:,? and reveal (?:it|them|those cards)| and reveal them)?(?:, then shuffle| and shuffle|,? then shuffle your library)?$/i, (m, ctx) => {
+    const who = /^your$/i.test(m[1]) ? YOU : playerRef(m[1].replace(/'s$/, ''), ctx);
+    if (!who) return null;
+    const tgt = searchTarget(m[2], ctx);
+    if (!tgt) return null;
+    const key = `searched${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.restKey = key;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'searchLibrary', who: who.ref === 'controller' ? undefined : who, filter: tgt.filter, count: tgt.count, destination: 'hold', key, reveal: /reveal/i.test(m[0]), shuffle: true }];
+  }],
+];
+
 const PATTERNS: Pattern[] = [
+  // Voting: "Starting with you, each player votes for death or taxes."
+  [/^(?:starting with you, )?each player (?:secretly )?votes for (.+?)(?:, then those votes are revealed)?$/i, (m, ctx) => {
+    const list = m[1];
+    // "a nonland permanent you don't control" / "an artifact, creature, or enchantment card in your graveyard"
+    const noun = parseNoun(list);
+    if (noun && !noun.target) {
+      const f: ObjectFilter = { ...noun.filter };
+      if (!f.zone) f.zone = 'battlefield';
+      if (noun.controllerPhrase) {
+        const pr = playerRef(noun.controllerPhrase, ctx);
+        if (!pr) return null;
+        f.controllerRef = pr;
+      }
+      ctx.lastObj = { ref: 'chosen', key: 'votes' };
+      return [{ kind: 'voteObjects', filter: f, key: 'votes' }];
+    }
+    const options = list.split(/,\s*(?:or\s+)?|\s+or\s+/i).map((x) => x.trim()).filter(Boolean);
+    if (options.length < 2 || options.some((o) => !/^[\w' -]+$/.test(o))) return null;
+    return [{ kind: 'vote', options }];
+  }],
+  // "For each death vote, each opponent sacrifices a creature."
+  [/^for each ([\w' -]+?) vote, (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(m[2], ctx);
+    return inner ? [{ kind: 'repeat', times: { kind: 'voteCount', option: m[1].toLowerCase() }, effects: inner }] : null;
+  }],
+  // "If dominion gets more votes, the Ring tempts you."
+  [/^if ([\w' -]+?) gets? more votes, (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(m[2], ctx);
+    return inner ? [{ kind: 'conditional', if: { kind: 'voteMost', option: m[1].toLowerCase() }, then: inner }] : null;
+  }],
   // "You and target opponent each draw two cards" → for each of those players
   [/^you and (target opponent|target player|that player|each opponent|each other player|the chosen player|defending player) each (\w+) (.+)$/i, (m, ctx) => {
     const other = playerRef(m[1], ctx);
@@ -2100,6 +2179,23 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^you ((?:scry|surveil|mill|proliferate|investigate|explore|manifest|venture|amass|adapt|monstrosity|bolster|support|fateseal|clash|populate|learn|discover|incubate|connive) .*|(?:proliferate|investigate|populate|learn|connive))$/i))) {
     const r = parseSentence(m[1], ctx);
     if (r) return r;
+  }
+  // "each opponent sacrifices a creature for each death vote" → repeat the action once per unit.
+  if ((m = text.match(/^(.+?) for each ([^,]+)$/i)) && !/^(?:draw|you gain|you lose|create|put|exile|mill|scry)\b/i.test(text)) {
+    const saved = ctx.targets.length;
+    const inner = parseSentence(m[1], ctx);
+    const per = inner ? perEach(m[2], ctx) : null;
+    if (inner && per !== null) return [{ kind: 'repeat', times: per, effects: inner }];
+    ctx.targets.length = saved;
+  }
+  for (const [re, fn] of SEARCH_PATTERNS) {
+    const sm = text.match(re);
+    if (sm) {
+      const saved = ctx.targets.length;
+      const r = fn(sm, ctx);
+      if (r) return r;
+      ctx.targets.length = saved;
+    }
   }
   // Compound: "A and B" / "A, then B"
   const splitters = [/, then /i, /\. then /i, / and then /i, /, and /i, / and /i, /, (?=(?:then )?(?:discards?|loses?|gains?|draws?|sacrifices?|mills?|creates?|exiles?|destroys?|returns?|puts?|scry|untaps?|taps?)\b)/i];

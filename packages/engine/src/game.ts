@@ -410,6 +410,18 @@ export class Game {
     if (i < 0) return order;
     return [...order.slice(i), ...order.slice(0, i)];
   }
+  /** Players in turn order, starting with the given player ("starting with you, each player votes"). */
+  votingOrder(start: PlayerId): PlayerId[] {
+    const order = this.activePlayers();
+    const i = order.indexOf(start);
+    return i < 0 ? order : [...order.slice(i), ...order.slice(0, i)];
+  }
+  /** Extra votes granted by static abilities ("While voting, you get an additional vote"). */
+  extraVotes(p: PlayerId): number {
+    let n = 0;
+    for (const r of this.playerRules(p)) if (r.kind === 'custom' && r.tag === 'extraVote') n += typeof r.data === 'number' ? r.data : 1;
+    return n;
+  }
   nextPlayerAfter(p: PlayerId): PlayerId {
     const order = this.state.playerOrder;
     let i = order.indexOf(p);
@@ -1235,6 +1247,12 @@ export class Game {
           return cmp(theirs, c.op, mine);
         });
       }
+      case 'voteMost': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : undefined;
+        const tally = ((src?.memory['votes'] ?? ctx.triggerContext?.['votes']) as Record<string, number> | undefined) ?? {};
+        const mine = tally[c.option] ?? 0;
+        return mine > 0 && Object.entries(tally).every(([k, v]) => k === c.option || v < mine);
+      }
       case 'cityBlessing': {
         const pid = c.ref ? this.resolvePlayers(c.ref, { targets: [], triggerContext: {}, x: 0, modes: [], memory: {}, ...ctx })[0] : ctx.controller;
         const pl = pid !== undefined ? this.state.players[pid] : undefined;
@@ -1397,6 +1415,11 @@ export class Game {
           return times.length ? Math.min(...times) : 0;
         }
         return Object.entries(pool).filter(([k, v]) => k !== 'C' && v > 0).length;
+      }
+      case 'voteCount': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : undefined;
+        const tally = ((ctx.memory['votes'] ?? src?.memory['votes'] ?? ctx.triggerContext['votes']) as Record<string, number> | undefined) ?? {};
+        return tally[a.option] ?? 0;
       }
       case 'colorCount': {
         if (a.filter) {

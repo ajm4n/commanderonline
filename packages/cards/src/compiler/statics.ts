@@ -275,6 +275,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (colors.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: colors } });
     return out;
   }
+  if ((m = L.match(/^While voting, you (?:may vote|get) an additional (?:time|vote)$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'extraVote', data: 1 } }];
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
   if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {

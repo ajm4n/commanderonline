@@ -57,6 +57,8 @@ export type Amount =
   /** Number of colors of the referenced object(s). */
   /** Mana spent to cast the source: distinct colors, total, or how many times a symbol group was paid. */
   | { kind: 'manaSpent'; of: 'colors' | 'total'; symbols?: string }
+  /** How many votes an option received (see the `vote` effect). */
+  | { kind: 'voteCount'; option: string }
   | { kind: 'colorCount'; ref?: Ref; /** Distinct colors among objects matching this filter ('colors among permanents you control'). */ filter?: ObjectFilter }
   /** A per-player turn statistic ("life you gained this turn"). */
   | { kind: 'playerTurnStat'; key: string; ref?: Ref; /** Sum the stat across every opponent instead of one player. */ opponents?: boolean }
@@ -171,6 +173,8 @@ export type Condition =
   | { kind: 'or'; cs: Condition[] }
   /** Ascend: the controller has the city's blessing (ten or more permanents at some point while controlling an Ascend source). */
   | { kind: 'cityBlessing'; ref?: Ref }
+  /** The named vote option got strictly more votes than every other option. */
+  | { kind: 'voteMost'; option: string }
   /** A flag the current effect set earlier ("if you search your library this way", "if you win the flip"). */
   | { kind: 'ctxFlag'; key: string }
   /** Count of events during the previous turn ("if a player cast two or more spells last turn"). */
@@ -246,7 +250,7 @@ export type Effect =
   | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter }
   | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor' | 'triggerMana'; amount?: Amount; who?: Ref }
   | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
-  | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile'; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your library and/or graveyard" */ zones?: ('library' | 'graveyard')[] }
+  | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; /** `hold`: leave the found cards where they are and remember them under `key` for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile' | 'hold'; key?: string; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your library and/or graveyard" */ zones?: ('library' | 'graveyard')[] }
   | { kind: 'shuffle'; who?: Ref }
   | { kind: 'gainControl'; what: Ref; duration?: Duration; who?: Ref }
   | { kind: 'exchangeControl'; a: Ref; b: Ref }
@@ -322,6 +326,10 @@ export type Effect =
   | { kind: 'turnFlag'; flag: 'noPrevention' | 'keepMana' }
   /** Fog effects: "Prevent all (combat) damage that would be dealt this turn [by X] [to Y]". */
   /** Clash with an opponent: each reveals the top card; the controller's source remembers whether they won (memory flag `clashWon`). */
+  /** "Starting with you, each player votes for death or taxes." Tallies land in memory `votes`. */
+  | { kind: 'vote'; options: string[] }
+  /** "Each player votes for a nonland permanent you don't control." The winners (ties included) land in memory `key`. */
+  | { kind: 'voteObjects'; filter: ObjectFilter; key: string }
   | { kind: 'clash' }
   | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */

@@ -540,8 +540,24 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const cands = pool.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: e.zones ?? 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }));
         let ids: ObjectId[] = [];
         if (cands.length > 0) {
-          const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Search your library: choose up to ${n}`, candidates: cands, min: 0, max: Math.min(n, cands.length), revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+          const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Search your library: choose up to ${n}${e.filter.differentNames ? ' with different names' : ''}`, candidates: cands, min: 0, max: Math.min(n, cands.length), revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
           ids = resp.type === 'objects' ? resp.ids : [];
+          if (e.filter.differentNames) {
+            const seen = new Set<string>();
+            ids = ids.filter((id) => {
+              const nm = g.characteristics(id).name;
+              if (seen.has(nm)) return false;
+              seen.add(nm);
+              return true;
+            });
+          }
+        }
+        if (e.destination === 'hold') {
+          ctx.memory[e.key ?? 'searchedCards'] = ids;
+          ctx.memory['lastMoved'] = ids;
+          if (e.reveal) for (const id of ids) g.log(`${pl.name} reveals ${g.nameOf(id)}.`);
+          if (e.shuffle) g.shuffleLibrary(p);
+          continue;
         }
         const moved: ObjectId[] = [];
         for (const id of ids) {
@@ -939,6 +955,48 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'turnFlag':
       g.state.turnStats[e.flag === 'keepMana' ? `keepMana:${ctx.controller}` : e.flag] = 1;
       return;
+    case 'vote': {
+      const order = g.votingOrder(ctx.controller);
+      const tally: Record<string, number> = {};
+      for (const o of e.options) tally[o] = 0;
+      const by: Record<string, string> = {};
+      for (const p of order) {
+        const times = 1 + g.extraVotes(p);
+        for (let i = 0; i < times; i++) {
+          const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: `Vote: ${e.options.join(' or ')}`, options: e.options.map((o) => ({ id: o, label: o })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+          const pick = r.type === 'options' && r.ids[0] && e.options.includes(r.ids[0]) ? r.ids[0] : e.options[0];
+          tally[pick]++;
+          if (i === 0) by[p] = pick;
+          g.log(`${g.player(p).name} votes for ${pick}.`);
+        }
+      }
+      ctx.memory['votes'] = tally;
+      ctx.memory['votesBy'] = by;
+      if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) g.state.objects[ctx.sourceId].memory['votes'] = tally;
+      g.emit({ name: 'finishedVoting', playerId: ctx.controller });
+      return;
+    }
+    case 'voteObjects': {
+      const cands = objectsMatching(g, g.bindFilter(e.filter, ctx), { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }, e.filter.zone ? undefined : ['battlefield']).map((o) => o.id);
+      if (!cands.length) {
+        ctx.memory[e.key] = [];
+        return;
+      }
+      const tally = new Map<ObjectId, number>();
+      for (const p of g.votingOrder(ctx.controller)) {
+        const times = 1 + g.extraVotes(p);
+        for (let i = 0; i < times; i++) {
+          const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Vote for one', candidates: cands, min: 1, max: 1, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+          const pick = r.type === 'objects' && r.ids[0] !== undefined ? r.ids[0] : cands[0];
+          tally.set(pick, (tally.get(pick) ?? 0) + 1);
+          g.log(`${g.player(p).name} votes for ${g.nameOf(pick)}.`);
+        }
+      }
+      const best = Math.max(...tally.values());
+      ctx.memory[e.key] = [...tally].filter(([, n]) => n === best).map(([id]) => id);
+      g.emit({ name: 'finishedVoting', playerId: ctx.controller });
+      return;
+    }
     case 'clash': {
       const opps = g.activePlayers().filter((x) => x !== ctx.controller);
       if (!opps.length) return;
