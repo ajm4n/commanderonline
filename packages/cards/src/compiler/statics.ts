@@ -39,6 +39,109 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 134 ----
+  // "Enchanted creature cannot attack, block, or crew Vehicles."
+  if ((m = L.match(/^(.+?) cannot ((?:attack|block|be blocked|crew(?: Vehicles)?|transform|become suspected|be regenerated|untap|be enchanted|be equipped)(?:, |,? (?:or|and) ).+)$/i))) {
+    const CANT: Record<string, RuleModification> = {
+      attack: { kind: 'cantAttack' },
+      block: { kind: 'cantBlock' },
+      'be blocked': { kind: 'cantBeBlocked' },
+      'crew vehicles': { kind: 'custom', tag: 'cantCrew' },
+      crew: { kind: 'custom', tag: 'cantCrew' },
+      transform: { kind: 'custom', tag: 'cantTransform' },
+      'become suspected': { kind: 'custom', tag: 'cantBecomeSuspected' },
+      'be regenerated': { kind: 'custom', tag: 'cantBeRegenerated' },
+      untap: { kind: 'cantUntap' },
+      'be enchanted': { kind: 'custom', tag: 'cantBeEnchanted' },
+      'be equipped': { kind: 'custom', tag: 'cantBeEquipped' },
+    };
+    const parts = m[2].split(/,? (?:or|and) |, /i).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    const rules = parts.map((x) => CANT[x]);
+    const a = affectsOf(m[1]);
+    if (a.ok && parts.length > 1 && rules.every((r) => !!r)) return rules.map((rule) => ({ kind: 'static' as const, text: line, affects: a.affects, rule }));
+  }
+  // "Each nonland permanent you control is all colors."
+  if ((m = L.match(/^(.+?) (?:is|are) all colors$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: ['W', 'U', 'B', 'R', 'G'] } }];
+  }
+  // "Enchanted creature gets +2/+2 and cannot become suspected." — a pump plus a rule on the same subject.
+  if ((m = L.match(/^(.+?) ((?:gets?|get) [+-][\dX]+\/[+-][\dX]+|(?:has|have) [\w ]+?) and (cannot .+)$/i))) {
+    const left = parseStatic(`${m[1]} ${m[2]}`, isCreatureOrPermanent);
+    const right = parseStatic(`${m[1]} ${m[3]}`, isCreatureOrPermanent);
+    if (left && right) return [...left, ...right];
+  }
+  // "Enchanted creature gets -1/-1, and its activated abilities cannot be activated."
+  if ((m = L.match(/^(.+?), and (?:its|their) activated abilities cannot be activated$/i))) {
+    const subj = m[1].match(/^(.+?) (?:gets?|has|have|is|are|cannot)\b/i);
+    const left = parseStatic(m[1], isCreatureOrPermanent);
+    const a = subj ? affectsOf(subj[1]) : { affects: undefined, ok: false };
+    if (left && a.ok) return [...left, { kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'cantActivate' } }];
+  }
+  // "Each spell you cast that is red or green costs {1} less to cast."
+  if ((m = L.match(/^Each spell you cast that (?:is|are) ((?:white|blue|black|red|green)(?:(?:,? or | and\/or )(?:white|blue|black|red|green))*) costs? \{(\d+)\} (less|more) to cast$/i))) {
+    const cols = m[1].split(/,? or | and\/or /i).map((c) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[c.trim().toLowerCase() as 'white']);
+    if (cols.every((c) => !!c)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10), filter: { colors: cols } } }];
+  }
+  // "Each player cannot cast more than one noncreature spell each turn."
+  if ((m = L.match(/^(You|Each player|Each opponent|Players|Your opponents) cannot cast more than (one|two|three) (.+?) spells? each turn$/i))) {
+    const n = wordToNumber(m[2]);
+    const noun = parseNoun(`a ${m[3]} spell`);
+    if (noun && noun.confident && typeof n === 'number') {
+      const who = /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: who, rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: { count: n, filter: f } } }];
+    }
+  }
+  // "Each player who has cast a nonartifact spell this turn cannot cast additional nonartifact spells."
+  if ((m = L.match(/^Each player who has cast (?:a|an) (.+?) spell this turn cannot cast additional (.+?) spells$/i)) && m[1].toLowerCase() === m[2].toLowerCase()) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: { count: 1, filter: f } } }];
+    }
+  }
+  // "Each opponent must attack you or a planeswalker you control with at least one creature each combat if able."
+  if ((m = L.match(/^(Each opponent|Each player|Players|Your opponents) must attack( you or a planeswalker you control| you)? with at least one creature each combat if able$/i))) {
+    const who = /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
+    return [{ kind: 'static', text: line, ruleAffects: who, rule: { kind: 'custom', tag: 'mustAttackWithOne', data: m[2] ? { you: true } : {} } }];
+  }
+  // "Each creature gets +1/+1 for each other creature on the battlefield that shares at least one creature type with it."
+  if ((m = L.match(/^(.+?) gets? \+(\d+)\/\+(\d+) for each other (.+?) that shares (?:at least one|a) creature type with it$/i))) {
+    const a = affectsOf(m[1]);
+    const per = parseNoun(`a ${m[4]}`);
+    if (a.ok && per && per.confident) {
+      const pf = { ...per.filter, other: true, sharesCreatureTypeWithSource: true };
+      if (!pf.zone) pf.zone = 'battlefield';
+      return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perCount: pf, perSelf: true } }];
+    }
+  }
+  // "Each creature you control gets +1/+1 for each white mana symbol in its mana cost."
+  if ((m = L.match(/^(.+?) gets? \+(\d+)\/\+(\d+) for each (white|blue|black|red|green) mana symbol in (?:its|their) mana costs?$/i))) {
+    const a = affectsOf(m[1]);
+    const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[4].toLowerCase() as 'white'];
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: { kind: 'manaSymbolCount', ref: { ref: 'self' }, color: col }, perSelf: true } }];
+  }
+  // "Each non-Human creature you control gets +1/+1 for each of its creature types."
+  if ((m = L.match(/^(.+?) gets? \+(\d+)\/\+(\d+) for each of (?:its|their) creature types$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: { kind: 'creatureTypeCount', ref: { ref: 'self' } }, perSelf: true } }];
+  }
+  // "Each noncreature artifact is an artifact creature with power and toughness each equal to its mana value."
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) with power and toughness each equal to (?:its|their) mana value$/i))) {
+    const a = affectsOf(m[1]);
+    const probe = parseNoun(`a ${m[2]}`);
+    if (a.ok && probe && probe.confident && probe.filter.types?.length) {
+      return [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: probe.filter.types } },
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', powerAmount: { kind: 'manaValue', ref: { ref: 'self' } }, toughnessAmount: { kind: 'manaValue', ref: { ref: 'self' } } } },
+      ];
+    }
+  }
+  // "Each creature assigns combat damage equal to its mana value rather than its power."
+  if ((m = L.match(/^(.+?) assigns? combat damage equal to (?:its|their) mana value rather than (?:its|their) power$/i))) { const _r134a = objRule(m[1], { kind: 'custom', tag: 'damageByManaValue' }); if (_r134a) return _r134a; }
   // "If a creature dealt damage by ~ this turn would die, exile it instead."
   if ((m = L.match(/^If (?:a|an) (.+?) dealt damage by ~ this turn would die, exile it instead$/i))) {
     const noun = parseNoun(`a ${m[1]}`);
@@ -167,7 +270,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // "Each player may play an additional land on each of their turns."
   sx1: {
-  if (/^Each player may play an additional land on each of their turns$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'extraLandDrop', count: 1 } }];
+  if (/^Each player may play an additional land (?:on|during) each of their turns$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'extraLandDrop', count: 1 } }];
   // "During turns other than yours, spells you cast cost {1} less to cast."
   if ((m = L.match(/^During turns other than yours, (.+?) you cast cost \{(\d)\} less to cast$/i))) {
     const nounText = m[1].replace(/^Spells$/i, 'spells');

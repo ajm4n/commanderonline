@@ -264,12 +264,13 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     for (const e of effects) {
       if (e.mod.layer !== '7c') continue;
       let times = 1;
+      const perSrc = e.mod.perSelf ? obj.id : e.sourceId;
       if (e.mod.perCount) {
-        const src = e.sourceId !== null ? g.state.objects[e.sourceId] : undefined;
-        times = objectsMatching(g, e.mod.perCount, { sourceId: e.sourceId, controller: src?.controller ?? obj.controller }).length;
+        const src = perSrc !== null ? g.state.objects[perSrc] : undefined;
+        times = objectsMatching(g, e.mod.perCount, { sourceId: perSrc, controller: src?.controller ?? obj.controller }).length;
       } else if (e.mod.perAmount !== undefined) {
-        const src = e.sourceId !== null ? g.state.objects[e.sourceId] : undefined;
-        times = g.resolveAmount(e.mod.perAmount, { sourceId: e.sourceId, controller: src?.controller ?? obj.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
+        const src = perSrc !== null ? g.state.objects[perSrc] : undefined;
+        times = g.resolveAmount(e.mod.perAmount, { sourceId: perSrc, controller: src?.controller ?? obj.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
       }
       dp += e.mod.power * times;
       dt += e.mod.toughness * times;

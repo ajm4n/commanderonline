@@ -5,6 +5,16 @@ import { summoningSick, payAbilityCost } from './casting.js';
 import { protectionApplies, matchesFilter } from './filters.js';
 import { BASIC_LAND_TYPES } from './typeline.js';
 
+/** Combat damage a creature assigns: its power, unless a rule substitutes another characteristic. */
+function assignedPower(ch: ReturnType<Game['characteristics']>): number {
+  for (const r of ch.rules) {
+    if (r.kind !== 'custom') continue;
+    if (r.tag === 'damageByToughness') return ch.toughness ?? 0;
+    if (r.tag === 'damageByManaValue') return ch.manaValue;
+  }
+  return ch.power ?? 0;
+}
+
 function matchesFilterFor(g: Game, id: ObjectId, filter: import('./types.js').ObjectFilter, controller: PlayerId): boolean {
   return matchesFilter(g, g.obj(id), { ...filter, zone: 'battlefield' }, { sourceId: null, controller });
 }
@@ -168,7 +178,17 @@ function* declareAttackers(g: Game, active: PlayerId): Gen {
     let maxAtk = Infinity;
     for (const r of g.playerRules(active)) if (r.kind === 'custom' && r.tag === 'maxAttackers' && typeof r.data === 'number') maxAtk = Math.min(maxAtk, r.data);
     const maxOk = attacks.length <= maxAtk;
-    if (valid && mustOk && aloneOk && maxOk) break;
+    // "Each opponent must attack you or a planeswalker you control with at least one creature each combat if able."
+    let oneOk = true;
+    for (const r of g.playerRules(active)) {
+      if (r.kind !== 'custom' || r.tag !== 'mustAttackWithOne') continue;
+      const who = (r as { sourceController?: PlayerId }).sourceController;
+      const wantYou = (r.data as { you?: boolean } | undefined)?.you === true && who !== undefined;
+      const hits = (t: PlayerId | ObjectId) => !wantYou || t === who || (typeof t === 'number' && g.state.objects[t]?.controller === who);
+      const able = candidates.some((c) => c.canAttack.some(hits));
+      if (able && !attacks.some((a) => hits(a.target))) oneOk = false;
+    }
+    if (valid && mustOk && aloneOk && maxOk && oneOk) break;
     g.log(valid ? 'Some creatures must attack this combat.' : 'Invalid attack declaration.');
   }
   // "Creatures can't attack you unless their controller pays {2} for each creature they control that is attacking you."
@@ -374,7 +394,7 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
   for (const a of attackers) {
     if (!dealsNow(a)) continue;
     const ch = g.characteristics(a.id);
-    const power = (ch.rules.some((r) => r.kind === 'custom' && r.tag === 'damageByToughness') ? ch.toughness : ch.power) ?? 0;
+    const power = assignedPower(ch);
     if (power <= 0) continue;
     const deathtouch = ch.keywords.has('Deathtouch');
     const blockers = a.blockedBy.map((id) => g.state.objects[id]).filter((b): b is GameObject => !!b && b.zone === 'battlefield');
@@ -453,7 +473,7 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
     const b = g.obj(id);
     if (!b.blocking.length || !dealsNow(b)) continue;
     const bch = g.characteristics(b.id);
-    const power = (bch.rules.some((r) => r.kind === 'custom' && r.tag === 'damageByToughness') ? bch.toughness : bch.power) ?? 0;
+    const power = assignedPower(bch);
     if (power <= 0) continue;
     const alive = b.blocking.filter((aid) => g.state.objects[aid]?.zone === 'battlefield');
     if (!alive.length) continue;

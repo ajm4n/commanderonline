@@ -705,7 +705,9 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.tapUntappedTotalPower) {
     // Crew / saddle: the tapped creatures crewed this permanent.
     const need = cost.tapUntappedTotalPower.power;
-    const cands = objectsMatching(g, { ...cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, ctx).map((o) => o.id);
+    const cands = objectsMatching(g, { ...cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, ctx)
+      .filter((o) => !g.characteristics(o.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantCrew'))
+      .map((o) => o.id);
     for (let attempt = 0; attempt < 3; attempt++) {
       const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Tap untapped creatures with total power ${need} or more`, candidates: cands, min: 1, max: cands.length, sourceId: obj.id });
       if (resp.type !== 'objects') return false;
@@ -1135,7 +1137,23 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;
   for (const r of g.playerRules(p)) {
     if (r.kind !== 'custom') continue;
-    if (r.tag === 'maxSpellsPerTurn' && (g.state.turnStats[`cast:${p}`] ?? 0) >= ((r.data as number | undefined) ?? 1)) return false;
+    if (r.tag === 'maxSpellsPerTurn') {
+      const d = r.data;
+      if (typeof d === 'object' && d !== null) {
+        const { count, filter } = d as { count?: number; filter?: import('./types.js').ObjectFilter };
+        const f = filter ?? {};
+        const already = (g.state.castThisTurn ?? []).filter((c) => {
+          if (c.controller !== p) return false;
+          if (f.types && !f.types.every((t) => c.types.includes(t))) return false;
+          if (f.notTypes && f.notTypes.some((t) => c.types.includes(t))) return false;
+          if (f.subtypes && !f.subtypes.every((t) => c.subtypes.includes(t))) return false;
+          if (f.notSubtypes && f.notSubtypes.some((t) => c.subtypes.includes(t))) return false;
+          if (f.colors && !f.colors.some((col) => c.colors.includes(col))) return false;
+          return true;
+        }).length;
+        if (already >= (count ?? 1) && matchesFilter(g, obj, { ...(filter ?? {}), zone: undefined }, { sourceId: null, controller: p })) return false;
+      } else if ((g.state.turnStats[`cast:${p}`] ?? 0) >= ((d as number | undefined) ?? 1)) return false;
+    }
     if (r.tag === 'cantCastSpells') {
       const d = (r.data as { filter?: import('./types.js').ObjectFilter; sourceTurnOnly?: boolean; notFromHand?: boolean; chosenNameKey?: string; duringCombat?: boolean; fromGraveyard?: boolean; sameNameAsExiled?: boolean } | undefined) ?? {};
       const srcId = (r as { sourceId?: ObjectId }).sourceId;

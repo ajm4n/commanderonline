@@ -142,6 +142,14 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   // With no antecedent, "that player" means whoever controls the object this script last touched.
   if (l === 'that player' || l === 'that opponent' || l === 'they' || l === 'the player') return ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : ctx.triggerHasObject ? { ref: 'triggerController' } : { ref: 'controllerOf', of: { ref: 'lastMoved' } });
   if (l === 'each other player' || l === 'all other players' || l === 'each of your opponents') return { ref: 'eachOpponent' };
+  // "Each player other than its controller" / "... other than target player"
+  {
+    const ot = phrase.trim().match(/^each (?:player|other player) other than (.+)$/i);
+    if (ot) {
+      const except = playerRef(ot[1], ctx);
+      if (except) return { ref: 'playersExcept', except };
+    }
+  }
   if (l === 'each other opponent' || l === 'each of their opponents' || l === 'each other player who is an opponent') return { ref: 'eachOtherOpponent' };
   if (l === 'its controller' || /^(?:that|the) [\w ]+'s controller$/.test(l) || l === 'the controller of that creature' || l === 'the controller of that permanent') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (l === "~'s controller") return { ref: 'controllerOf', of: SELF };
@@ -4167,6 +4175,92 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 134 ----
+  // "Each player discards all the cards in their hand, then creates that many 2/2 black Zombie creature tokens."
+  [/^each (player|opponent) discards (?:all the cards in their hand|their hand), then creates that many (.+? tokens?(?: with .+)?)$/i, (m) => {
+    const tok = parseTokenPhrase(`a ${m[2].replace(/ tokens\b/i, ' token')}`);
+    if (!tok) return null;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    return [{ kind: 'forEach', over, effects: [
+      { kind: 'discard', amount: 'hand', who: { ref: 'iter' } },
+      { kind: 'createToken', token: tok.token, count: { kind: 'ctxMemory', key: 'discardedCount' }, who: { ref: 'iter' } },
+    ] }];
+  }],
+  // "Each opponent loses all counters."
+  [/^(each player|each opponent|you|that player|they|target player|target opponent) loses? all counters$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'loseAllCounters', counter: 'all', who }] : null;
+  }],
+  // "Each player discards half the cards in their hand, rounded down."
+  [/^(?:(each player|each opponent|you|that player|they|target player|target opponent) )?discards? (half|a third|a quarter) (?:of )?the cards in (?:their|your) hand(?:, rounded (up|down))?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : ctx.lastPlayer;
+    if (!who) return null;
+    const round: 'up' | 'down' = m[3]?.toLowerCase() === 'up' ? 'up' : 'down';
+    const n: Amount = { kind: 'handSize', ref: { ref: 'iter' } };
+    const amount: Amount = m[2].toLowerCase() === 'half' ? { kind: 'half', a: n, round } : { kind: 'divide', a: n, by: m[2].toLowerCase() === 'a third' ? 3 : 4, round };
+    return [{ kind: 'forEach', over: who, effects: [{ kind: 'discard', amount, who: { ref: 'iter' } }] }];
+  }],
+  // "Each player sacrifices half the creatures they control, rounded down."
+  [/^(?:(each player|each opponent|you|that player|they|target player|target opponent) )?sacrifices? (half|a third|a quarter) (?:of )?the (.+?) (?:they|you) control(?:, rounded (up|down))?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : ctx.lastPlayer;
+    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    if (!who || !noun || !noun.confident) return null;
+    const round: 'up' | 'down' = m[4]?.toLowerCase() === 'up' ? 'up' : 'down';
+    const filter: ObjectFilter = { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' };
+    const n: Amount = { kind: 'count', filter };
+    const count: Amount = m[2].toLowerCase() === 'half' ? { kind: 'half', a: n, round } : { kind: 'divide', a: n, by: m[2].toLowerCase() === 'a third' ? 3 : 4, round };
+    return [{ kind: 'forEach', over: who, effects: [{ kind: 'sacrificeChoice', who: { ref: 'iter' }, filter, count }] }];
+  }],
+  // "Each player loses a third of their life."
+  [/^(?:(each player|each opponent|you|that player|they|target player|target opponent) )?loses? (a third|a quarter) of (?:their|your) life(?:, rounded (up|down))?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : ctx.lastPlayer;
+    if (!who) return null;
+    const round: 'up' | 'down' = m[3]?.toLowerCase() === 'up' ? 'up' : 'down';
+    return [{ kind: 'forEach', over: who, effects: [{ kind: 'loseLife', amount: { kind: 'divide', a: { kind: 'life', ref: { ref: 'iter' } }, by: m[2].toLowerCase() === 'a third' ? 3 : 4, round }, who: { ref: 'iter' } }] }];
+  }],
+  // "Each opponent chooses two cards in their graveyard and exiles the rest."
+  [/^each (player|opponent) chooses (?:up to )?(\w+) (.+?) (they control|in their graveyard|in their hand)(?:, then | and )(sacrifices|exiles|discards) (?:the rest|all (?:the )?others|all other .+)$/i, (m) => {
+    const n = wordToNumber(m[2]);
+    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    if (!noun || !noun.confident || typeof n !== 'number') return null;
+    const where = m[4].toLowerCase();
+    const base: ObjectFilter = where === 'they control'
+      ? { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' }
+      : { ...noun.filter, ownerRef: { ref: 'iter' }, zone: where === 'in their graveyard' ? 'graveyard' : 'hand' };
+    const key = `keep_${m[5].toLowerCase()}_${n}`;
+    const rest: Ref = { ref: 'all', filter: { ...base, notChosenKey: key } };
+    const act = m[5].toLowerCase();
+    const doIt: Effect = act === 'sacrifices' ? { kind: 'sacrifice', what: rest } : act === 'exiles' ? { kind: 'exile', what: rest } : { kind: 'discardObjects', what: rest };
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    return [{ kind: 'forEach', over, effects: [
+      { kind: 'chooseObjects', who: { ref: 'iter' }, filter: base, count: n, key, upTo: true },
+      doIt,
+    ] }];
+  }],
+  // "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest."
+  [/^each (player|opponent) chooses (?:from among |from )(?:the )?(.+?) they control ((?:a|an) .+?), then (sacrifices|exiles) the rest$/i, (m) => buildKeepList(m[1], m[2], m[3], m[4])],
+  // "Each opponent chooses an artifact, a creature, an enchantment, and a planeswalker from among the nonland permanents they control, then sacrifices the rest."
+  [/^each (player|opponent) chooses ((?:a|an) .+?) from among (?:the )?(.+?) they control, then (sacrifices|exiles) the rest$/i, (m) => buildKeepList(m[1], m[3], m[2], m[4])],
+  // "Each player chooses a land they control of each basic land type, then sacrifices the rest."
+  [/^each (player|opponent) chooses (?:from )?(?:the )?(?:a |an )?(.+?) they control of each basic land type, then (sacrifices|exiles) the rest$/i, (m) => buildKeepList(m[1], m[2], 'a Plains, an Island, a Swamp, a Mountain, and a Forest', m[3])],
+  // "Each player sacrifices an artifact, a creature, an enchantment, a land, and a planeswalker of their choice."
+  [/^each (player|opponent) (sacrifices|exiles) ((?:a|an) [\w -]+(?:, (?:a|an) [\w -]+)*,? and (?:a|an) [\w -]+)(?: of (?:their|its) choice)?$/i, (m) => {
+    const items = splitItemList(m[3]);
+    const nouns = items.map((x) => parseNoun(x));
+    if (!nouns.length || nouns.some((n) => !n || !n.confident)) return null;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    const effects: Effect[] = nouns.map((n) => ({ kind: 'sacrificeChoice', who: { ref: 'iter' }, filter: { ...n!.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' }, count: 1 }));
+    return [{ kind: 'forEach', over, effects }];
+  }],
+  // "Each player returns all black and all red creature cards from their graveyard to the battlefield."
+  [/^each (player|opponent) returns all (.+?) and all (.+?) cards? from their graveyard to the battlefield$/i, (m) => {
+    const a = parseNoun(`a ${m[2]} card`);
+    const b = parseNoun(`a ${m[3]} card`);
+    if (!a || !b || !a.confident || !b.confident) return null;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    const filter: ObjectFilter = { anyOf: [{ ...a.filter, zone: undefined }, { ...b.filter, zone: undefined }], ownerRef: { ref: 'iter' }, zone: 'graveyard' };
+    return [{ kind: 'forEach', over, effects: [{ kind: 'returnToBattlefield', what: { ref: 'all', filter }, controller: 'owner' }] }];
+  }],
   // ---- Round 131 ----
   // "Return ~ and target creature you control to their owner's hand."
   [/^return ~ and (.+?) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
@@ -4393,17 +4487,21 @@ const PATTERNS: Pattern[] = [
   ]],
   // ---- Round 112 ----
   // "Each player who controls a multicolored creature draws a card."
-  [/^each (player|opponent) who (controls .+|discarded a card this way|drew a card this turn|lost life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.+)$/i, (m, ctx) => {
+  [/^each (player|opponent) who (controls .+?|discarded a card this way|drew a card this way|drew a card this turn|lost life this turn|gained life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.*)$/i, (m, ctx) => {
     const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
     let cond: Condition | null = null;
     const cm = m[2].match(/^controls (.+)$/i);
     if (cm) {
-      const noun = parseNoun(cm[1]);
+      const most = cm[1].match(/^the most (.+)$/i);
+      const noun = parseNoun(most ? `a ${most[1].replace(/s$/i, '')}` : cm[1]) ?? parseNoun(`a ${cm[1]}`);
       if (!noun || !noun.confident) return null;
-      cond = { kind: 'count', filter: { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' }, op: '>=', value: 1 };
+      cond = most
+        ? { kind: 'controlsMost', filter: { ...noun.filter, zone: 'battlefield' }, who: { ref: 'iter' } }
+        : { kind: 'count', filter: { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' }, op: '>=', value: 1 };
     } else if (/discarded a card this way/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'discard', who: { ref: 'iter' } };
-    else if (/drew a card this turn/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'drawCard', who: { ref: 'iter' } };
+    else if (/drew a card this (?:turn|way)/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'drawCard', who: { ref: 'iter' } };
     else if (/lost life this turn/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'lifeLost', who: { ref: 'iter' } };
+    else if (/gained life this turn/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'lifeGained', who: { ref: 'iter' } };
     if (!cond) return null;
     const saved = ctx.targets.length;
     const prevPlayer = ctx.lastPlayer;
@@ -5128,6 +5226,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // "unless they sacrifice a nonland permanent of their choice or discard a card"
+  // "Each opponent loses 3 life unless they discard a card or sacrifice a creature."
+  if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) discards? a card or sacrifices? (?:a|an) (.+?)(?: of (?:their|its) choice)?$/i))) {
+    const who = playerRef(m[2], ctx);
+    const noun = parseNoun(`a ${m[3]}`);
+    const inner = who && noun ? parseSentence(m[1], ctx) : null;
+    if (who && noun && inner) {
+      return [{ kind: 'unlessPays', who, cost: { discard: 1 }, effects: [{ kind: 'unlessPays', who, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' } }, effects: inner }] }];
+    }
+  }
   if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) sacrifices? (?:a|an) (.+?) of (?:their|its) choice or discards? a card$/i))) {
     const who = playerRef(m[2], ctx);
     const noun = parseNoun(`a ${m[3]}`);
@@ -5430,6 +5537,20 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
       ctx.targets.length = saved;
+    }
+    // "Each opponent sacrifices a creature." + "Each opponent who cannot loses 3 life."
+    if ((m = s.match(/^each (?:player|opponent) who (?:cannot|can't|does not|doesn't) (.+)$/i)) && effects.length) {
+      const prev = effects[effects.length - 1];
+      if (prev.kind === 'sacrificeChoice' || prev.kind === 'discard') {
+        const saved = ctx.targets.length;
+        const inner = parseSentence(`that player ${m[1]}`, ctx) ?? parseSentence(m[1], ctx);
+        if (inner) {
+          const cost = prev.kind === 'sacrificeChoice' ? { sacrifice: prev.filter, count: 1 } : { discard: 1 };
+          effects[effects.length - 1] = { kind: 'unlessPays', who: prev.who ?? { ref: 'eachOpponent' }, cost, effects: inner };
+          continue;
+        }
+        ctx.targets.length = saved;
+      }
     }
     // "Otherwise, X" completes the previous conditional, optional effect or payment.
     if (/^otherwise, /i.test(s) && effects.length) {
@@ -5771,4 +5892,35 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
   }
   return { effects, unhandled };
+}
+
+/** "an artifact, a creature, an enchantment, and a land" → the individual noun phrases. */
+function splitItemList(text: string): string[] {
+  return text
+    .split(/,? and |, /i)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * "Each player chooses from among the permanents they control an artifact, a creature, ...,
+ * then sacrifices the rest": keep one of each listed kind, lose everything else matching the base noun.
+ */
+function buildKeepList(whoWord: string, baseText: string, listText: string, act: string): Effect[] | null {
+  const base = parseNoun(`a ${baseText.replace(/s$/i, '')}`) ?? parseNoun(`a ${baseText}`);
+  const items = splitItemList(listText).map((x) => parseNoun(x));
+  if (!base || !base.confident || !items.length || items.some((n) => !n || !n.confident)) return null;
+  const key = `keep_${baseText.replace(/\W+/g, '')}`;
+  const over: Ref = /opponent/i.test(whoWord) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+  const effects: Effect[] = items.map((n) => ({
+    kind: 'chooseObjects',
+    who: { ref: 'iter' },
+    filter: { ...base.filter, ...n!.filter, zone: 'battlefield', controllerRef: { ref: 'iter' } },
+    count: 1,
+    key,
+    upTo: true,
+  }));
+  const rest: Ref = { ref: 'all', filter: { ...base.filter, zone: 'battlefield', controllerRef: { ref: 'iter' }, notChosenKey: key } };
+  effects.push(act.toLowerCase() === 'exiles' ? { kind: 'exile', what: rest } : { kind: 'sacrifice', what: rest });
+  return [{ kind: 'forEach', over, effects }];
 }

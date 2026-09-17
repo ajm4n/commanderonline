@@ -34,6 +34,10 @@ export type Amount =
   | { kind: 'cardsDrawnThisTurn' }
   | { kind: 'spellsCastThisTurn' }
   | { kind: 'turnStat'; key: string }
+  /** Number of mana symbols of a colour in an object's mana cost ("for each white mana symbol in its mana cost"). */
+  | { kind: 'manaSymbolCount'; ref: Ref; color?: string }
+  /** Number of distinct creature types an object has ("for each of its creature types"). */
+  | { kind: 'creatureTypeCount'; ref: Ref }
   | { kind: 'memory'; key: string }
   | { kind: 'sum'; parts: Amount[] }
   | { kind: 'times'; a: Amount; b: Amount }
@@ -132,7 +136,9 @@ export type Ref =
   /** The player or planeswalker the referenced creature is attacking. */
   | { ref: 'defenderOf'; of: Ref }
   /** The union of several refs ("you and target opponent each ..."). */
-  | { ref: 'players'; of: Ref[] };
+  | { ref: 'players'; of: Ref[] }
+  /** Every player except those this ref resolves to ("each player other than target player"). */
+  | { ref: 'playersExcept'; except: Ref };
 
 export const R = {
   target: (slot = 0): Ref => ({ ref: 'target', slot }),
@@ -225,6 +231,8 @@ export type Condition =
   | { kind: 'eventLastTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; op?: Comparison; value?: number }
   /** Some opponent compares to you ("an opponent controls more lands than you", "an opponent has more life than you"). */
   | { kind: 'opponentCompare'; what: 'life' | ObjectFilter; op: Comparison }
+  /** The players `who` resolves to control the most (ties included) objects matching the filter. */
+  | { kind: 'controlsMost'; filter: ObjectFilter; who?: Ref }
   /** "This is the second time this ability has resolved this turn" (counts the current resolution). */
   | { kind: 'abilityResolvedThisTurn'; op: Comparison; value: number }
   /** The largest group of same-named matching permanents ("three or more lands with the same name"). */

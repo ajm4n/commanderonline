@@ -1384,6 +1384,12 @@ export class Game {
           return cmp(theirs, c.op, mine);
         });
       }
+      case 'controlsMost': {
+        const who = c.who ? this.resolvePlayers(c.who, ectx) : [ctx.controller];
+        const countFor = (p: PlayerId) => objectsMatching(this, { ...c.filter, controller: 'you', zone: c.filter.zone ?? 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).length;
+        const best = Math.max(0, ...this.apnap().map(countFor));
+        return best > 0 && who.length > 0 && who.every((p) => countFor(p) >= best);
+      }
       case 'voteMost': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : undefined;
         const tally = ((src?.memory['votes'] ?? ctx.triggerContext?.['votes']) as Record<string, number> | undefined) ?? {};
@@ -1436,6 +1442,19 @@ export class Game {
         return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + (this.characteristics(o.id).toughness ?? 0), 0);
       case 'manaValue':
         return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + this.characteristics(o.id).manaValue, 0);
+      case 'manaSymbolCount': {
+        const sym = a.color ? a.color.toUpperCase() : null;
+        return this.resolveObjects(a.ref, ctx).reduce((s, o) => {
+          const cost = o.card.faces?.[o.faceIndex]?.manaCost ?? o.card.manaCost ?? '';
+          const syms = cost.match(/\{[^}]+\}/g) ?? [];
+          return s + syms.filter((t) => (sym ? t.toUpperCase().includes(sym) : /[WUBRG]/i.test(t))).length;
+        }, 0);
+      }
+      case 'creatureTypeCount':
+        return this.resolveObjects(a.ref, ctx).reduce((s, o) => {
+          const ch = this.characteristics(o.id);
+          return s + (ch.types.includes('Creature') ? new Set(ch.subtypes).size : 0);
+        }, 0);
       case 'life':
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + this.player(p).life, 0);
       case 'handSize':
@@ -1708,6 +1727,10 @@ export class Game {
       }
       case 'eachPlayer':
         return plT(this.apnap());
+      case 'playersExcept': {
+        const ex = new Set(this.resolvePlayers(ref.except, ctx));
+        return plT(this.apnap().filter((p) => !ex.has(p)));
+      }
       case 'triggerObject':
         return objT([ctx.triggerContext.triggerObject as ObjectId]);
       case 'triggerPlayer':

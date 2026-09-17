@@ -275,6 +275,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'suspect': {
       for (const o of g.resolveObjects(e.what, ctx)) {
+        if (g.characteristics(o.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantBecomeSuspected')) continue;
         g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: 'permanent', modification: { layer: 6, addKeywords: ['Menace'] } });
         g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: 'permanent', modification: { layer: 'rule', rule: { kind: 'cantBlock' } } });
         o.memory['suspected'] = true;
@@ -1185,6 +1186,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'transform':
       for (const o of g.resolveObjects(e.what, ctx)) {
         if (!o.card.faces || o.card.faces.length < 2) continue;
+        if (g.characteristics(o.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantTransform')) continue;
         o.faceIndex = o.faceIndex === 0 ? 1 : 0;
         g.touch();
         g.emit({ name: 'transformed', objectId: o.id, playerId: o.controller });
@@ -2115,7 +2117,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'loseAllCounters':
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
-        if (e.counter === 'poison') pl.poison = 0;
+        if (e.counter === 'all') {
+          pl.poison = 0;
+          pl.energy = 0;
+          pl.turnStats['experience'] = 0;
+        } else if (e.counter === 'poison') pl.poison = 0;
         else if (e.counter === 'energy') pl.energy = 0;
         else if (e.counter === 'experience') pl.turnStats['experience'] = 0;
         else pl.turnStats[e.counter] = 0;

@@ -287,7 +287,7 @@ export type Modification =
   | { layer: 5; setColors?: Color[]; addColors?: Color[]; /** Set the colour stored under this memory key on the source ("~ is the chosen colour"). */ setColorsFromMemory?: string }
   | { layer: 6; addKeywords?: string[]; removeKeywords?: string[]; loseAllAbilities?: boolean; addAbilityText?: string[]; /** "~ has all activated abilities of all creature cards in all graveyards": gathered afresh each time. */ addActivatedAbilitiesFrom?: ObjectFilter }
   | { layer: '7b'; setPower?: number; setToughness?: number; powerAmount?: import('./script.js').Amount; toughnessAmount?: import('./script.js').Amount }
-  | { layer: '7c'; power: number; toughness: number; /** Multiply by the number of objects matching ("+1/+1 for each artifact you control"). */ perCount?: ObjectFilter; /** Multiply by an amount ("for each charge counter on ~"). */ perAmount?: import('./script.js').Amount }
+  | { layer: '7c'; power: number; toughness: number; /** Multiply by the number of objects matching ("+1/+1 for each artifact you control"). */ perCount?: ObjectFilter; /** Multiply by an amount ("for each charge counter on ~"). */ perAmount?: import('./script.js').Amount; /** Evaluate perCount/perAmount relative to the affected object rather than the effect's source ("Each creature gets +1/+1 for each other creature that shares a creature type with it"). */ perSelf?: boolean }
   | { layer: '7d'; switchPT: true }
   | { layer: 'control'; controller: PlayerId | 'sourceController' } // layer 2
   | { layer: 'copy'; card: CardData } // layer 1
