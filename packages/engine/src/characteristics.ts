@@ -156,6 +156,17 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     const ward = face.oracleText.match(/Ward (\{[^\n]*?\}|—[^\n]*)/);
     if (ward) ch.wardCost = ward[1].trim();
   }
+  // "Each instant and sorcery spell you cast has casualty 1": keywords granted to spells on the stack.
+  if (obj.zone === 'stack') {
+    for (const r of g.playerRules(obj.controller)) {
+      if (r.kind !== 'custom' || r.tag !== 'spellsHaveKeywords') continue;
+      const d = (r as { data?: { filter?: import('./types.js').ObjectFilter; keywords?: string[]; fromExile?: boolean } }).data;
+      if (!d?.keywords?.length) continue;
+      if (d.fromExile && obj.castFromZone !== 'exile') continue;
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: obj.controller })) continue;
+      for (const k of d.keywords) ch.keywords.add(k);
+    }
+  }
   // Layer 2: control
   ch.controller = obj.baseController ?? obj.controller;
   for (const e of effects) {
