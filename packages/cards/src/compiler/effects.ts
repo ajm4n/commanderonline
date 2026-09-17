@@ -4146,6 +4146,37 @@ const PATTERNS: Pattern[] = [
     if (spec.mill !== undefined) { const e2: Effect = { kind: 'unlessPays', who, cost: { discard: spec.mill }, effects: sac }; return [e2]; }
     return null;
   }],
+  // ---- Round 127 ----
+  // "Choose a creature at random, then destroy the rest."
+  [/^choose (?:a|an|(\w+)) (.+?) at random$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2]}`);
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (!noun || typeof n !== 'number') return null;
+    const key = `rnd_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    const f: ObjectFilter = { ...noun.filter };
+    if (!f.zone) f.zone = 'battlefield';
+    return [{ kind: 'chooseObjects', filter: f, count: n, key, random: true }];
+  }],
+  // "An opponent chooses one of them." / "An opponent chooses a creature card from among them."
+  [/^(an opponent|target opponent|each opponent|that player|target player) chooses (?:a|an|one|(\w+)) (?:of (?:them|those cards|the piles)|(.+?) from among them)$/i, (m, ctx) => {
+    const who = playerRef(m[1] === 'an opponent' ? 'target opponent' : m[1], ctx);
+    if (!who) return null;
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (typeof n !== 'number') return null;
+    const pool = ctx.restKey ? ({ ref: 'chosen', key: ctx.restKey } as Ref) : ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const key = `opp_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who, from: pool, filter: {}, count: n, key }];
+  }],
+  // "All creatures able to block ~ do so."
+  [/^all (.+?) able to block (~|it|that creature|equipped creature|enchanted creature)(?: this turn)? do so$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun) return null;
+    const on: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } };
+    void ctx;
+    return [{ kind: 'applyRule', rule: { kind: 'mustBlock' }, on, duration: 'endOfTurn' }];
+  }],
   // ---- Round 123 ----
   // "You may play up to two additional lands this turn."
   [/^(?:you may )?play up to (\w+) additional lands?(?: on each of your turns| this turn)?$/i, (m) => {

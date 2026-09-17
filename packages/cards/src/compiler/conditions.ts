@@ -324,6 +324,40 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 127 ----
+  if ((m = t.match(/^(?:a|any) player has (\w+) or fewer cards in hand$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'not', c: { kind: 'handSize', ref: { ref: 'eachPlayer' }, op: '>', value: n } };
+  }
+  if ((m = t.match(/^you have (\w+) or more cards in (?:your )?hand$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'handSize', ref: { ref: 'controller' }, op: '>=', value: n };
+  }
+  if ((m = t.match(/^you have (\w+) or fewer cards in (?:your )?hand$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'handSize', ref: { ref: 'controller' }, op: '<=', value: n };
+  }
+  if (/^an opponent has been dealt noncombat damage this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'dealtDamage', player: 'opponent' };
+  if ((m = t.match(/^(\w+) or more creatures died this turn$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'eventThisTurn', event: 'dies', player: 'any', op: '>=', value: n };
+  }
+  if ((m = t.match(/^you attacked with (\w+) or more creatures this turn$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'eventThisTurn', event: 'attacks', player: 'you', op: '>=', value: n };
+  }
+  if (/^you created a token this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'tokenCreated', player: 'you' };
+  if (/^you(?:'ve| have)? scried or surveilled this turn$/.test(t)) return { kind: 'or', cs: [{ kind: 'eventThisTurn', event: 'scry', player: 'you' }, { kind: 'eventThisTurn', event: 'surveil', player: 'you' }] };
+  if (/^(?:~|it) is blocked$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { custom: 'blocked' } };
+  if (/^~ is on the battlefield or in your graveyard$/.test(t)) return { kind: 'or', cs: [{ kind: 'inZone', ref: ctx.self, zone: 'battlefield' }, { kind: 'inZone', ref: ctx.self, zone: 'graveyard' }] };
+  if ((m = t.match(/^(?:~|it) blocked or was blocked by (?:a|an) (.+?) this turn$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, blockingOrBlockedBySource: true, zone: 'battlefield' }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^(?:enchanted|equipped) creature is (white|blue|black|red|green) and untapped$/))) {
+    const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white'];
+    return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { colors: [col], untapped: true } };
+  }
   // ---- Round 125 ----
   if ((m = t.match(/^any player controls (?:a|an) (.+)$/))) {
     const noun = parseNoun(`a ${oc(m, 1)}`);
