@@ -76,6 +76,8 @@ export type Amount =
   | { kind: 'playerStatAmount'; stat: 'poison' | 'experience' | 'energy'; ref: Ref }
   /** Total power of the objects a ref resolves to. */
   | { kind: 'totalPowerRef'; ref: Ref }
+  | { kind: 'lowestLife' }
+  | { kind: 'highestLife' }
   | { kind: 'totalToughnessRef'; ref: Ref }
   | { kind: 'totalManaValueRef'; ref: Ref }
   /** Number of players with a non-zero turn stat ("each opponent who lost life this turn"). */
@@ -295,7 +297,7 @@ export type Effect =
   | { kind: 'scry'; amount: Amount; who?: Ref }
   | { kind: 'surveil'; amount: Amount; who?: Ref }
   | { kind: 'mill'; amount: Amount; who?: Ref }
-  | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter }
+  | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; /** The player may discard fewer ("discards any number of cards"). */ upTo?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter }
   | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor' | 'triggerMana'; amount?: Amount; who?: Ref }
   | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
   | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; /** `hold`: leave the found cards where they are and remember them under `key` for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile' | 'hold'; key?: string; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your library and/or graveyard" */ zones?: ('library' | 'graveyard')[]; /** Pick at random instead of choosing ("return a card at random from your graveyard"). */ random?: boolean }

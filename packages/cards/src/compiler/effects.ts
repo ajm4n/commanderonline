@@ -4014,7 +4014,87 @@ const PATTERNS: Pattern[] = [
       : [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, controller: 'owner' }];
   }],
   // "return to your hand all creature cards in your graveyard that were put there from the battlefield this turn"
-  // "Counter target spell if its mana value is 3 or less"
+  // "Draw cards equal to the power of target creature you control."
+  [/^(?:you )?draw cards equal to (?:the )?(power|toughness|mana value|loyalty) of (target .+?|~|it)$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[2]) ? SELF : objRef(m[2], ctx);
+    if (!ref) return null;
+    const a: Amount = m[1].toLowerCase() === 'mana value' ? { kind: 'manaValue', ref } : m[1].toLowerCase() === 'loyalty' ? { kind: 'countersOn', ref, counter: 'loyalty' } : { kind: m[1].toLowerCase() as 'power', ref };
+    return [{ kind: 'draw', amount: a }];
+  }],
+  // "Draw another card if you've completed a dungeon."
+  [/^draw another card$/i, () => [{ kind: 'draw', amount: 1 }]],
+  // "Each opponent chooses a creature card in their graveyard."
+  [/^each (player|opponent) chooses (?:a|an) (.+?) in their graveyard$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!noun) return null;
+    const key = `pick_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    return [{ kind: 'forEach', over, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'graveyard', ownerRef: { ref: 'iter' } }, count: 1, key }] }];
+  }],
+  // ---- Round 112 ----
+  // "Each player who controls a multicolored creature draws a card."
+  [/^each (player|opponent) who (controls .+|discarded a card this way|drew a card this turn|lost life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.+)$/i, (m, ctx) => {
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    let cond: Condition | null = null;
+    const cm = m[2].match(/^controls (.+)$/i);
+    if (cm) {
+      const noun = parseNoun(cm[1]);
+      if (!noun || !noun.confident) return null;
+      cond = { kind: 'count', filter: { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' }, op: '>=', value: 1 };
+    } else if (/discarded a card this way/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'discard', who: { ref: 'iter' } };
+    else if (/drew a card this turn/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'drawCard', who: { ref: 'iter' } };
+    else if (/lost life this turn/i.test(m[2])) cond = { kind: 'eventThisTurn', event: 'lifeLost', who: { ref: 'iter' } };
+    if (!cond) return null;
+    const saved = ctx.targets.length;
+    const prevPlayer = ctx.lastPlayer;
+    ctx.lastPlayer = { ref: 'iter' };
+    const inner = parseSentence(`that player ${m[3]}`, ctx) ?? parseSentence(m[3], ctx);
+    ctx.lastPlayer = prevPlayer;
+    if (!inner) {
+      ctx.targets.length = saved;
+      return null;
+    }
+    return [{ kind: 'forEach', over, effects: [{ kind: 'conditional', if: cond, then: inner }] }];
+  }],
+  // "Each player chooses three permanents they control, then sacrifices the rest."
+  [/^each (player|opponent) chooses (?:up to )?(\w+) (.+?) they control, then sacrifices the rest$/i, (m) => {
+    const n = wordToNumber(m[2]);
+    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    if (!noun || typeof n !== 'number') return null;
+    const key = `keep_${Math.random().toString(36).slice(2, 6)}`;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    return [{ kind: 'forEach', over, effects: [
+      { kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' }, count: n, key, upTo: /up to /i.test(m[0]) || undefined },
+      { kind: 'sacrifice', what: { ref: 'all', filter: { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield', notChosenKey: key } } },
+    ] }];
+  }],
+  // "Each player discards any number of cards, then draws that many cards."
+  [/^each (player|opponent) discards any number of cards, then draws that many cards$/i, (m) => {
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    return [{ kind: 'forEach', over, effects: [{ kind: 'discard', amount: 99, upTo: true, who: { ref: 'iter' } }, { kind: 'draw', amount: { kind: 'ctxMemory', key: 'discardedCount' }, who: { ref: 'iter' } }] }];
+  }],
+  // "Each player returns all creature cards from their graveyard to their hand."
+  [/^each (player|opponent) (?:returns?|puts?) (.+?) from their graveyard (?:to|onto) (their hand|the battlefield)$/i, (m) => {
+    const noun = parseNoun(m[2]);
+    if (!noun || !noun.confident || noun.target) return null;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    const f: ObjectFilter = { ...noun.filter, zone: 'graveyard', ownerRef: { ref: 'iter' } };
+    const all = noun.each || (noun.plural && !noun.indefinite && noun.count === 1);
+    const inner: Effect[] = [];
+    let what: Ref;
+    if (all) what = { ref: 'all', filter: f };
+    else {
+      const key = `gy_${Math.random().toString(36).slice(2, 6)}`;
+      inner.push({ kind: 'chooseObjects', who: { ref: 'iter' }, filter: f, count: noun.count, key, upTo: noun.upTo || undefined });
+      what = { ref: 'chosen', key };
+    }
+    inner.push(/hand/i.test(m[3]) ? { kind: 'returnToHand', what } : { kind: 'returnToBattlefield', what, controller: 'owner' });
+    return [{ kind: 'forEach', over, effects: inner }];
+  }],
+  // "Each player's life total becomes the lowest life total among all players."
+  [/^each player's life total becomes the (lowest|highest) life total among all players$/i, (m) => [{ kind: 'setLife', amount: { kind: m[1].toLowerCase() === 'lowest' ? 'lowestLife' : 'highestLife' }, who: { ref: 'eachPlayer' } }]],
+  // "Counter target spell if its mana value is 3 or less\"
   [/^counter (target .+?) if (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;

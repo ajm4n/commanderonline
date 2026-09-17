@@ -1496,6 +1496,10 @@ export class Game {
         return Math.max(0, this.resolveAmount(a.a, ctx) - this.resolveAmount(a.b, ctx));
       case 'playerStatAmount':
         return this.resolvePlayers(a.ref, ctx).reduce((s2, p) => s2 + (a.stat === 'poison' ? this.player(p).poison : a.stat === 'experience' ? this.player(p).experience : this.player(p).energy), 0);
+      case 'lowestLife':
+        return Math.min(...this.state.playerOrder.map((pl) => this.player(pl).life));
+      case 'highestLife':
+        return Math.max(...this.state.playerOrder.map((pl) => this.player(pl).life));
       case 'totalPowerRef':
         return this.resolveObjects(a.ref, ctx).reduce((s2, o) => s2 + (this.characteristics(o.id).power ?? 0), 0);
       case 'totalToughnessRef':

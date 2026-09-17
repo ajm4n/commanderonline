@@ -1606,6 +1606,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 112 ----
+  if ((m = L.match(/^(.+?) can attack as though it had haste$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: ['Haste'] } }];
+  }
+  if ((m = L.match(/^(Enchanted|Equipped) (\w+)'s activated abilities cost \{(\d+)\} (less|more) to activate$/i))) {
+    return [{ kind: 'static', text: line, affects: 'attachedTo', rule: { kind: 'custom', tag: 'abilityCostChange', data: { amount: parseInt(m[3], 10) * (/less/i.test(m[4]) ? -1 : 1) } } }];
+  }
   // ---- Round 110 ----
   // "Each Saga spell you cast has replicate." / "Each instant and sorcery spell you cast has casualty 1."
   if ((m = L.match(/^(?:Each |All )?(.+? spells?) you cast (?:from exile )?(?:has|have) (.+)$/i))) {

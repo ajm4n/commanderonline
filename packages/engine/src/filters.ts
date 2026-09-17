@@ -60,6 +60,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
   if (filter.custom === 'createdBySource' && (ctx.sourceId === null || obj.memory.createdBy !== ctx.sourceId)) return false;
   if (filter.castFromZone && obj.castFromZone !== filter.castFromZone) return false;
+  if (filter.notChosenKey) {
+    const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+    const picked = src?.chosen[filter.notChosenKey] ?? src?.memory[filter.notChosenKey];
+    if (Array.isArray(picked) && (picked as ObjectId[]).includes(obj.id)) return false;
+  }
   if (filter.notAttachment && obj.attachments.some((x) => g.characteristics(x).subtypes.includes(filter.notAttachment!))) return false;
   if (filter.noAbilities && (ch.rules.length > 0 || ch.keywords.size > 0 || g.scriptFor(obj).abilities.length > 0)) return false;
   if (filter.notChosenSubtypeKey) {
@@ -73,6 +78,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     if (typeof want !== 'string' || !ch.colors.includes(want as 'W')) return false;
   }
   if (filter.custom === 'blocked' && !obj.wasBlocked && obj.blockedBy.length === 0) return false;
+  if (filter.custom === 'attackingOpponent' && (obj.attacking === null || obj.attacking === ctx.controller)) return false;
   if (filter.custom === 'powerLTSource' && ctx.sourceId !== null) { const sp = g.characteristics(ctx.sourceId).power ?? 0; if ((ch.power ?? 0) >= sp) return false; }
   if (filter.custom === 'powerGTSource' && ctx.sourceId !== null) { const sp = g.characteristics(ctx.sourceId).power ?? 0; if ((ch.power ?? 0) <= sp) return false; }
   if (filter.custom === 'toughnessLTSource' && ctx.sourceId !== null) { const st = g.characteristics(ctx.sourceId).toughness ?? 0; if ((ch.toughness ?? 0) >= st) return false; }

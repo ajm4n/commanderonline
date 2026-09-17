@@ -879,7 +879,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (n === 0) continue;
         let ids: ObjectId[];
         if (e.random) ids = g.rng.shuffle([...pl.hand]).slice(0, n);
-        else if (n >= pl.hand.length) ids = [...pl.hand];
+        else if (e.upTo) {
+          const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Discard any number of cards (up to ${n})`, candidates: [...pl.hand], min: 0, max: n, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+          ids = resp.type === 'objects' ? resp.ids : [];
+        } else if (n >= pl.hand.length) ids = [...pl.hand];
         else {
           const chooser = e.chooser === 'controller' ? ctx.controller : p;
           const resp = yield* g.ask({ type: 'chooseObjects', player: chooser, prompt: `Discard ${n}`, candidates: [...pl.hand], min: n, max: n, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });

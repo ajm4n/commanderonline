@@ -451,6 +451,8 @@ export interface ObjectFilter {
   chosenSubtypeKey?: string;
   /** Must NOT have the creature type stored under this key ("creatures that aren't of the chosen type"). */
   notChosenSubtypeKey?: string;
+  /** Excludes the objects remembered under this chosen key ("sacrifices the rest"). */
+  notChosenKey?: string;
   /** Has no attachment of this subtype ("creatures that aren't enchanted"). */
   notAttachment?: string;
   /** The object has no abilities at all ("creatures with no abilities"). */
