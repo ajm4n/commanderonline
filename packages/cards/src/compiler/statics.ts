@@ -335,6 +335,25 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^Increment$/i.test(L)) {
     return [{ kind: 'triggered', text: line, event: 'cast', filter: { player: 'you' }, condition: { kind: 'manual', text: 'Was the mana spent greater than this creature\'s power or toughness?' }, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'self' } }] }];
   }
+  // "You may cast Hero spells as though they had flash." / "… this turn" is an effect, not a static.
+  if ((m = L.match(/^You may cast (.+?) as though (?:they|it) had flash$/i))) {
+    const noun = /^spells$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1].replace(/ spells?$/i, '')} spell`) ?? parseNoun(`a ${m[1]}`);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castAsThoughFlash', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  // "Nontoken creatures you control are Forest lands in addition to their other types."
+  if ((m = L.match(/^(.+?) (?:is|are) (.+?) in addition to (?:its|their) other types$/i))) {
+    const a = affectsOf(m[1]);
+    const words = m[2].split(/\s+/).filter((w) => !/^(and|a|an)$/i.test(w));
+    const types = words.filter((w) => /^(artifact|creature|enchantment|land|planeswalker)s?$/i.test(w)).map((w) => w.replace(/s$/i, '')).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w) && !/^(Artifact|Creature|Enchantment|Land|Planeswalker)s?$/.test(w)).map((w) => w.replace(/s$/, ''));
+    if (a.ok && (types.length || subtypes.length)) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: types, addSubtypes: subtypes } }];
+  }
+  // "Kithkin spells and Soldier spells you cast cost {1} less to cast."
+  if ((m = L.match(/^(.+?) spells? and (.+?) spells? you cast cost \{(\d+)\} less to cast$/i))) {
+    const a = parseNoun(`a ${m[1]} spell`);
+    const b = parseNoun(`a ${m[2]} spell`);
+    if (a && b) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[3], 10), filter: { anyOf: [{ ...a.filter, zone: undefined }, { ...b.filter, zone: undefined }] } } }];
+  }
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
   if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {
@@ -667,7 +686,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) cannot be blocked except by (\w+) or more creatures$/i)) && wordToNumber(m[2]) !== null) return objRule(m[1], { kind: 'custom', tag: 'minBlockers', data: wordToNumber(m[2]) });
   if ((m = L.match(/^(.+?) can block only creatures with flying$/i))) return objRule(m[1], { kind: 'custom', tag: 'blockOnlyFlying' });
   if ((m = L.match(/^(.+?) attacks? each combat if able$/i))) return objRule(m[1], { kind: 'mustAttack' });
-  if ((m = L.match(/^(.+?) does not untap during (?:your|its controller's) untap step$/i))) return objRule(m[1], { kind: 'cantUntap' });
+  if ((m = L.match(/^(.+?) (?:does not|do not) untap during (?:your|its controller's|their controllers'|their controller's) untap steps?$/i))) return objRule(m[1], { kind: 'cantUntap' });
   if ((m = L.match(/^(.+?) cannot be countered$/i))) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantBeCountered' } }];
   if ((m = L.match(/^(.+?) cannot be the target of spells or abilities your opponents control$/i))) return objRule(m[1], { kind: 'cantBeTargeted', by: 'opponents' });
   if ((m = L.match(/^(.+?) cannot be the target of (.+?) spells(?: or abilities)?$/i))) {

@@ -958,7 +958,12 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   const fromZone = obj.zone;
   const ch = g.characteristics(obj.id);
   const altInstant = !!resp.alternativeCost && (g.scriptFor(obj).alternativeCosts ?? []).some((a) => a.id === resp.alternativeCost && a.instantSpeed);
-  const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash') || altInstant;
+  const flashRule = g.playerRules(p).some((r) => {
+    if (r.kind !== 'custom' || r.tag !== 'castAsThoughFlash') return false;
+    const d = (r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+    return !d.filter || matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: (r as { sourceId?: ObjectId }).sourceId ?? null, controller: p });
+  });
+  const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash') || altInstant || flashRule;
   if (freeFromExile(g, obj)) opts = { ...opts, free: true };
   if (fromZone === 'exile' && obj.memory['playableBy'] !== p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playExiledWithCounter' && (r.data as { anyMana?: boolean } | undefined)?.anyMana)) opts = { ...opts, anyMana: true };
   if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;

@@ -569,7 +569,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         unhandled = [];
         while (lines[li + 1]?.startsWith('•')) {
           li++;
-          const optText = lines[li].replace(/^•\s*/, '');
+          const optText = stripModeLabel(lines[li].replace(/^•\s*/, ''));
           const r = parseEffects(optText, ctx);
           options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
           unhandled.push(...r.unhandled);
@@ -607,7 +607,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           unhandled = [];
           while (lines[li + 1]?.startsWith('•')) {
             li++;
-            const optText = lines[li].replace(/^•\s*/, '');
+            const optText = stripModeLabel(lines[li].replace(/^•\s*/, ''));
             const r = parseEffects(optText, ctx);
             options.push({ text: optText, effects: modalHead.x !== undefined ? r.effects.map((e) => substituteX(e, modalHead.x!)) : r.effects });
             unhandled.push(...r.unhandled);
@@ -767,6 +767,11 @@ function guessTrigger(line: string): AbilitySpec[] {
   return [];
 }
 
+
+/** Mode bullets sometimes carry a flavor label ("Dispel Magic — Destroy target enchantment"). */
+function stripModeLabel(text: string): string {
+  return text.replace(/^([A-Z][\w' !,.-]{1,40}?) — (?=[A-Z~{])/, '');
+}
 
 /** A modal head, possibly with an X definition or a "that hasn't been chosen" restriction. */
 function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number } | null {
