@@ -316,6 +316,14 @@ export type Effect =
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */
   | { kind: 'endTurn' }
+  /** Licids: end the "becomes an Aura" effect — unattach and drop the type change. */
+  | { kind: 'unattach'; what: Ref }
+  /** Split a remembered set of cards into two piles (stored as memory keys pile0 / pile1). */
+  | { kind: 'separatePiles'; what: Ref; by: Ref; /** One pile is face down and the other face up. */ faceUpDown?: boolean }
+  /** A player picks one of the two piles; it becomes memory key chosenPile, the other otherPile. */
+  | { kind: 'choosePile'; by: Ref }
+  /** "Double the number of each kind of counter on target permanent." */
+  | { kind: 'doubleCounters'; on: Ref }
   /** "Remove it from combat." */
   | { kind: 'removeFromCombat'; what: Ref }
   /** "Suspect target creature." (it gets menace and can't block) */

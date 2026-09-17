@@ -159,6 +159,12 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   return null;
 }
 
+/** "An opponent" as an actor (piles, choices): one opponent, not each. */
+function actorRef(phrase: string, ctx: ParseCtx): Ref | null {
+  if (/^(?:an opponent|a player|an opponent of your choice|one of your opponents)$/i.test(phrase.trim())) return { ref: 'eachOpponent' };
+  return playerRef(phrase, ctx);
+}
+
 /** Object-or-player phrase (damage targets, "any target"). */
 function anyRef(phrase: string, ctx: ParseCtx): Ref | null {
   const l = phrase.trim().toLowerCase();
@@ -1949,6 +1955,103 @@ const PATTERNS: Pattern[] = [
     const r = parseSentence(`${m[1]} deals X damage to ${m[3]}`, ctx);
     return r ? r.map((e) => substituteX(e, { kind: 'times', a, b: 2 })) : null;
   }],
+  // Piles ------------------------------------------------------------------
+  // "look at the top five cards of your library and separate them into a face-down pile and a face-up pile"
+  [/^(?:(.+?) )?looks? at the top (\w+|X) cards of (your|their) library and separates? them into (?:a face-down pile and a face-up pile|two piles)$/i, (m, ctx) => {
+    const n = wordToNumber(m[2]);
+    if (n === null) return null;
+    const by = m[1] ? actorRef(m[1], ctx) : YOU;
+    if (!by) return null;
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return [
+      { kind: 'lookAtTop', amount: n, who: YOU, then: 'hold', key: 'piled' },
+      { kind: 'separatePiles', what: { ref: 'memory', key: 'piled' }, by, faceUpDown: /face-down/i.test(m[0]) },
+    ];
+  }],
+  // "Reveal the top X plus one cards of your library and separate them into two piles"
+  [/^reveal the top (\w+|X)(?: plus one)? cards of your library and separate them into two piles$/i, (m, ctx) => {
+    const base = wordToNumber(m[1]);
+    if (base === null) return null;
+    const n: Amount = / plus one/i.test(m[0]) ? { kind: 'sum', parts: [base, 1] } : base;
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return [
+      { kind: 'lookAtTop', amount: n, who: YOU, reveal: true, then: 'hold', key: 'piled' },
+      { kind: 'separatePiles', what: { ref: 'memory', key: 'piled' }, by: YOU },
+    ];
+  }],
+  // "Separate all creature cards in your graveyard into two piles." / "Separate all creatures target player controls into two piles."
+  [/^(?:(.+?) )?separates? (?:all|those) (.+?) into two piles$/i, (m, ctx) => {
+    const by = m[1] ? actorRef(m[1], ctx) : YOU;
+    if (!by) return null;
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    if (/^(?:cards|them|those cards)$/i.test(m[2])) return [{ kind: 'separatePiles', what: ctx.lastObj?.ref === 'memory' ? ctx.lastObj : { ref: 'lastMoved' }, by }];
+    const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
+    if (!noun) return null;
+    return [{ kind: 'separatePiles', what: { ref: 'all', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } }, by }];
+  }],
+  // "An opponent chooses one of those piles." / "the pile of that player's choice"
+  [/^(.+?) chooses one of those piles$/i, (m, ctx) => {
+    const by = actorRef(m[1], ctx);
+    if (!by) return null;
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return [{ kind: 'choosePile', by }];
+  }],
+  // "Put that pile into your hand and the other into your graveyard."
+  [/^put (?:that|one) pile into (your hand|your graveyard|the battlefield)(?: and the (?:other|rest) into (your hand|your graveyard|their owners'? graveyards?))?$/i, (m, ctx) => {
+    const dest = (t: string): Effect['kind'] | null => (/hand/i.test(t) ? 'putIntoHand' : /graveyard/i.test(t) ? 'putIntoGraveyard' : 'returnToBattlefield');
+    const out: Effect[] = [];
+    if (/^one pile/i.test(m[0])) out.push({ kind: 'choosePile', by: YOU });
+    const d1 = dest(m[1]);
+    if (!d1) return null;
+    out.push({ kind: d1, what: { ref: 'memory', key: 'chosenPile' } } as Effect);
+    if (m[2]) {
+      const d2 = dest(m[2]);
+      if (!d2) return null;
+      out.push({ kind: d2, what: { ref: 'memory', key: 'otherPile' } } as Effect);
+    }
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return out;
+  }],
+  // "Look at the cards in the other pile."
+  [/^look at the cards in the other pile$/i, (m, ctx) => {
+    ctx.lastObj = { ref: 'memory', key: 'otherPile' };
+    return [{ kind: 'setMemory', key: 'lookedOther', value: 1 }];
+  }],
+  // "Destroy all creatures in the pile of that player's choice."
+  [/^(destroy|exile|tap) all (?:.+?) in the pile of (that player's|your|an opponent's|its controller's) choice$/i, (m, ctx) => {
+    const by = /^your$/i.test(m[2]) ? YOU : m[2].toLowerCase().startsWith('an opponent') ? ({ ref: 'eachOpponent' } as Ref) : ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    const k = m[1].toLowerCase() === 'destroy' ? 'destroy' : m[1].toLowerCase() === 'exile' ? 'exile' : 'tap';
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return [{ kind: 'choosePile', by }, { kind: k, what: { ref: 'memory', key: 'chosenPile' } } as Effect];
+  }],
+  // "Exile the pile of an opponent's choice and return the other to the battlefield."
+  [/^(exile|destroy|tap) the pile of (an opponent's|that player's|your) choice and (?:return|put) the other (?:to|onto) the battlefield$/i, (m, ctx) => {
+    const by = /^your$/i.test(m[2]) ? YOU : m[2].toLowerCase().startsWith("an opponent") ? ({ ref: 'eachOpponent' } as Ref) : ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    const k = m[1].toLowerCase() === 'exile' ? 'exile' : m[1].toLowerCase() === 'destroy' ? 'destroy' : 'tap';
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return [{ kind: 'choosePile', by }, { kind: k, what: { ref: 'memory', key: 'chosenPile' } } as Effect, { kind: 'returnToBattlefield', what: { ref: 'memory', key: 'otherPile' }, controller: 'you' }];
+  }],
+  // "Put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards."
+  [/^put all cards from the pile of (your|an opponent's|that player's) choice onto the battlefield under your control and the rest into their owners'? graveyards$/i, (m, ctx) => {
+    const by = /^your$/i.test(m[1]) ? YOU : m[1].toLowerCase().startsWith("an opponent") ? ({ ref: 'eachOpponent' } as Ref) : ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
+    return [{ kind: 'choosePile', by }, { kind: 'returnToBattlefield', what: { ref: 'memory', key: 'chosenPile' }, controller: 'you' }, { kind: 'putIntoGraveyard', what: { ref: 'memory', key: 'otherPile' } }];
+  }],
+  // "Double the number of each kind of counter on target permanent."
+  [/^double the number of each kind of counter on (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'doubleCounters', on: ref }] : null;
+  }],
+  [/^double the number of each kind of counter (?:you|that player|target player) ha(?:ve|s)$/i, (m, ctx) => {
+    const who = playerRef(m[0].replace(/^double the number of each kind of counter /i, '').replace(/ ha(?:ve|s)$/i, ''), ctx) ?? YOU;
+    return [{ kind: 'doubleCounters', on: who }];
+  }],
+  // Licids: "~ loses this ability and becomes an Aura enchantment with enchant creature."
+  [/^~ loses this ability and becomes an aura enchantment with enchant (creature|land|permanent|player|artifact)$/i, () => [
+    { kind: 'addTypes', types: ['Enchantment'], setTypes: ['Enchantment'], subtypes: ['Aura'], on: SELF, duration: 'permanent' },
+  ]],
+  // The matching "You may pay {W} to end this effect." is compiled as a separate ability.
+  [/^you may pay ((?:\{[^}]+\})+) to end this effect$/i, () => []],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {

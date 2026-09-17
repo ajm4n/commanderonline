@@ -290,6 +290,46 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'separatePiles': {
+      const ids = g.resolveRef(e.what, ctx).filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id);
+      if (!ids.length) return;
+      const by = g.resolvePlayers(e.by, ctx)[0] ?? ctx.controller;
+      const resp = yield* g.ask({ type: 'chooseObjects', player: by, prompt: e.faceUpDown ? 'Choose the cards for the face-down pile (the rest go face up)' : 'Choose the cards for the first pile (the rest form the second)', candidates: ids, min: 0, max: ids.length, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+      const first = resp.type === 'objects' ? resp.ids : [];
+      ctx.memory['pile0'] = first;
+      ctx.memory['pile1'] = ids.filter((id) => !first.includes(id));
+      if (!e.faceUpDown) g.log(`${g.player(by).name} separates the cards into two piles.`);
+      else g.log(`${g.player(by).name} separates the cards into a face-down pile and a face-up pile.`);
+      return;
+    }
+    case 'choosePile': {
+      const p0 = (ctx.memory['pile0'] as ObjectId[] | undefined) ?? [];
+      const p1 = (ctx.memory['pile1'] as ObjectId[] | undefined) ?? [];
+      const by = g.resolvePlayers(e.by, ctx)[0] ?? ctx.controller;
+      const r = yield* g.ask({ type: 'chooseOption', player: by, prompt: 'Choose a pile', options: [{ id: '0', label: `First pile (${p0.length} card${p0.length === 1 ? '' : 's'})` }, { id: '1', label: `Second pile (${p1.length} card${p1.length === 1 ? '' : 's'})` }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      const pick = r.type === 'options' && r.ids[0] === '1' ? 1 : 0;
+      ctx.memory['chosenPile'] = pick === 0 ? p0 : p1;
+      ctx.memory['otherPile'] = pick === 0 ? p1 : p0;
+      ctx.memory['lastMoved'] = ctx.memory['chosenPile'];
+      g.log(`${g.player(by).name} chooses the ${pick === 0 ? 'first' : 'second'} pile.`);
+      return;
+    }
+    case 'doubleCounters': {
+      for (const t of g.resolveRef(e.on, ctx)) {
+        if (t.kind === 'object') {
+          const o = g.state.objects[t.id];
+          if (!o) continue;
+          for (const [k, v] of Object.entries(o.counters)) if ((v ?? 0) > 0) o.counters[k] = (v ?? 0) * 2;
+        } else if (t.kind === 'player') {
+          const pl = g.player(t.id);
+          pl.poison *= 2;
+          pl.experience *= 2;
+          pl.energy *= 2;
+        }
+      }
+      g.touch();
+      return;
+    }
     case 'endTurn': {
       g.state.stack.length = 0;
       g.state.turnStats['endTheTurn'] = 1;
@@ -843,6 +883,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       if (!a) return;
       const pa = g.characteristics(a.id).power ?? 0;
       for (const t of targets) g.dealDamage(a.id, t, pa, false);
+      return;
+    }
+    case 'unattach': {
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        if (o.attachedTo === null) continue;
+        const host = g.state.objects[o.attachedTo];
+        if (host) host.attachments = host.attachments.filter((id) => id !== o.id);
+        o.attachedTo = null;
+        g.emit({ name: 'becomesUnattached', objectId: o.id, playerId: o.controller });
+        // Drop any continuous type change this object gave itself (the Licid Aura effect).
+        g.state.continuousEffects = g.state.continuousEffects.filter((ce) => !(ce.sourceId === o.id && ce.affected.kind === 'fixed' && ce.affected.ids.includes(o.id) && ce.modification.layer === 4));
+        g.touch();
+      }
       return;
     }
     case 'attach': {

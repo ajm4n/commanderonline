@@ -260,6 +260,27 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    // Licids: "{W}, {T}: ~ loses this ability and becomes an Aura enchantment with enchant creature.
+    // Attach it to target creature. You may pay {W} to end this effect."
+    if ((m = line.match(/^((?:\{[^}]+\}|,| |\{T\})+): ~ loses this ability and becomes an Aura enchantment with enchant (\w+)\. Attach it to target \2\. You may pay ((?:\{[^}]+\})+) to end this effect\.?$/i))) {
+      const cost = parseCost(m[1]);
+      const host = parseNoun(`target ${m[2]}`);
+      if (cost && host) {
+        abilities.push({
+          kind: 'activated',
+          text: line,
+          cost,
+          targets: [{ description: `target ${m[2]}`, kind: 'object', filter: { ...host.filter, zone: 'battlefield' } }],
+          effects: [
+            { kind: 'addTypes', types: ['Enchantment'], setTypes: ['Enchantment'], subtypes: ['Aura'], on: { ref: 'self' }, duration: 'permanent' },
+            { kind: 'attach', what: { ref: 'self' }, to: { ref: 'target' } },
+          ],
+        });
+        abilities.push({ kind: 'activated', text: `${m[3]}: End the Aura effect.`, cost: { mana: m[3] }, effects: [{ kind: 'unattach', what: { ref: 'self' } }] });
+        compiledLines.push(line);
+        continue;
+      }
+    }
     if ((m = line.match(/^Firebending (\d+)$/i))) {
       abilities.push({ kind: 'triggered', text: line, event: 'beginningOfPrecombatMain', filter: { player: 'you' }, effects: [{ kind: 'addMana', mana: ['R'], amount: parseInt(m[1], 10) }, { kind: 'turnFlag', flag: 'keepMana' }] });
       compiledLines.push(line);

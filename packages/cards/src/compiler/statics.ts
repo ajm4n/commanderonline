@@ -832,6 +832,44 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noEtbTriggers', data: { filter: f } } }];
     }
   }
+  // The "legend rule" does not apply to tokens you control.
+  if ((m = L.match(/^The "legend rule" does not apply to (.+)$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'noLegendRule', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  // "You may reveal ~ from your opening hand. If you do, at the beginning of the first upkeep, X."
+  if ((m = L.match(/^You may reveal ~ from your opening hand\. If you do, (.+)$/i))) {
+    let rest = m[1];
+    let event: import('@commander/engine').GameEventName | null = null;
+    let filter: import('@commander/engine').TriggerFilter | undefined;
+    let mm: RegExpMatchArray | null;
+    if ((mm = rest.match(/^at the beginning of (?:the|your) first upkeep, (.+)$/i))) {
+      event = 'beginningOfUpkeep';
+      filter = /your first/i.test(rest) ? { player: 'you' } : undefined;
+      rest = mm[1];
+    } else if ((mm = rest.match(/^(.+?) at the beginning of (?:the|your) first upkeep$/i))) {
+      event = 'beginningOfUpkeep';
+      filter = /your first/i.test(rest) ? { player: 'you' } : undefined;
+      rest = mm[1];
+    } else if ((mm = rest.match(/^at the beginning of your first main phase of the game, (.+)$/i))) {
+      event = 'beginningOfPrecombatMain';
+      filter = { player: 'you' };
+      rest = mm[1];
+    } else if ((mm = rest.match(/^when each opponent casts their first spell of the game, (.+)$/i))) {
+      event = 'cast';
+      filter = { player: 'opponent' };
+      rest = mm[1];
+    }
+    if (event) {
+      const ctx2 = newCtx({ triggerHasObject: event === 'cast', triggerHasPlayer: true });
+      const r = parseEffects(rest, ctx2);
+      if (!r.unhandled.length && r.effects.length) {
+        return [{ kind: 'static', text: line, ruleAffects: 'controller', zone: 'hand', rule: { kind: 'custom', tag: 'openingHandReveal', data: { effects: [{ kind: 'delayedTrigger', event, filter, effects: r.effects, text: rest, once: true }] } } }];
+      }
+    }
+  }
+  // "If ~ is in your opening hand, you may begin the game with ~ on the battlefield."
+  if (/^If ~ is in your opening hand, you may begin the game with (?:~|him|her|them) on the battlefield$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', zone: 'hand', rule: { kind: 'custom', tag: 'leyline' } }];
   if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You have hexproof$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'hexproof' } }];
   if (/^You have shroud$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'shroud' } }];

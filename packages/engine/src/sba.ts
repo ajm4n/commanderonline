@@ -195,6 +195,12 @@ export function* checkStateBasedActions(g: Game): Gen {
       const o = g.obj(id);
       const ch = g.characteristics(id);
       if (!ch.supertypes.includes('Legendary') || !ch.name) continue;
+      // "The \"legend rule\" doesn't apply to tokens you control."
+      if (g.playerRules(o.controller).some((r) => {
+        if (r.kind !== 'custom' || r.tag !== 'noLegendRule') return false;
+        const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
+        return !f || matchesFilter(g, o, { ...f, zone: undefined }, { sourceId: null, controller: o.controller });
+      })) continue;
       const key = `${o.controller}::${ch.name}`;
       groups.set(key, [...(groups.get(key) ?? []), id]);
     }

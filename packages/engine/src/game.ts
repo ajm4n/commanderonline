@@ -2161,6 +2161,21 @@ export class Game {
         }
       }
     }
+    // "You may reveal ~ from your opening hand. If you do, …"
+    for (const pid of this.state.playerOrder) {
+      for (const id of [...this.player(pid).hand]) {
+        const o = this.state.objects[id];
+        if (!o) continue;
+        const ab = this.scriptFor(o).abilities.find((a) => a.kind === 'static' && a.rule?.kind === 'custom' && a.rule.tag === 'openingHandReveal');
+        const eff = ab ? ((ab as { rule?: { data?: unknown } }).rule?.data as { effects?: import('./script.js').Effect[] } | undefined)?.effects : undefined;
+        if (!eff?.length) continue;
+        const r = yield* this.ask({ type: 'yesNo', player: pid, prompt: `Reveal ${o.card.name} from your opening hand?`, sourceId: id });
+        if (r.type === 'yesNo' && r.value) {
+          this.log(`${this.player(pid).name} reveals ${this.nameOf(id)} from their opening hand.`);
+          yield* executeEffects(this, eff, { sourceId: id, controller: pid, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
+        }
+      }
+    }
     this.pendingTriggers = [];
     this.state.turnStats = {};
     this.state.turnRules = [];
