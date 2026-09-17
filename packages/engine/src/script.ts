@@ -129,6 +129,8 @@ export const R = {
 export interface TokenSpec {
   name: string;
   typeLine: string;
+  /** Planeswalker tokens. */
+  loyalty?: string;
   power?: string;
   toughness?: string;
   colors: Color[];
@@ -245,7 +247,7 @@ export type Effect =
   /** "~ becomes a copy of that creature" (permanently). */
   | { kind: 'becomeCopy'; what: Ref; of: Ref; exceptions?: TokenSpec['exceptions'] }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
-  | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref }
+  | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref; /** Counters the token enters with. */ counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean ; /** "your choice of a +1/+1, first strike, or trample counter" */ counterOptions?: string[] }
   | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
@@ -352,6 +354,8 @@ export type Effect =
   | { kind: 'unlockDoor'; door: number }
   /** Day/night: set the cycle, or start it when it is neither. */
   | { kind: 'setDayNight'; to: 'day' | 'night' | 'startDay' | 'startNight' }
+  /** Empower <planeswalker> N: add N loyalty to a matching token you control, creating it first if needed. */
+  | { kind: 'empower'; token: string; amount: Amount }
   | { kind: 'clash' }
   | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Shield: prevent at most this much damage, then wear off. */ amount?: number; /** Only damage from this specific object ("the next time that creature would deal damage"). */ sourceRef?: Ref; /** Run these when the prevention applies; `triggerAmount` is the prevented damage. */ effects?: Effect[]; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */

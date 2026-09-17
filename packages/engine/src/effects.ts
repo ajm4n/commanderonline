@@ -70,6 +70,7 @@ export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardDat
     oracleText: text,
     power: merged.power,
     toughness: merged.toughness,
+    loyalty: merged.loyalty,
     colors: merged.colors,
     colorIdentity: merged.colors,
     keywords: merged.keywords ?? [],
@@ -312,6 +313,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             attacking = src?.attacking ?? g.opponentsOf(p)[0];
           }
           const o = g.createObject(card, p, 'battlefield', { tapped: e.tapped, attacking });
+          if (e.counters) g.addCounters(o.id, e.counters.counter, g.resolveAmount(e.counters.amount, ctx));
           created.push(o.id);
           if (e.attachTo) {
             const host = g.resolveObjects(e.attachTo, ctx)[0];
@@ -1062,6 +1064,20 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       if (e.to === 'startDay' || e.to === 'startNight') {
         if (g.state.dayNight === undefined) g.setDayNight(e.to === 'startDay' ? 'day' : 'night');
       } else g.setDayNight(e.to);
+      return;
+    }
+    case 'empower': {
+      const n = amt(e.amount);
+      const existing = g.state.battlefield
+        .map((id) => g.state.objects[id])
+        .find((o) => o && o.controller === ctx.controller && o.card.isToken && g.characteristics(o.id).name === e.token);
+      if (existing) {
+        g.addCounters(existing.id, 'loyalty', n);
+        return;
+      }
+      const spec = TOKEN_PRESETS[e.token];
+      if (!spec) return;
+      yield* executeEffects(g, [{ kind: 'createToken', token: { ...spec, preset: e.token }, count: 1, counters: { counter: 'loyalty', amount: n } }], ctx);
       return;
     }
     case 'clash': {

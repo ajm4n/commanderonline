@@ -26,6 +26,13 @@ export const TOKEN_PRESETS: Record<string, TokenSpec> = {
     colors: [],
     oracleText: '{1}, {T}, Discard a card, Sacrifice this artifact: Draw a card.',
   },
+  Jace: {
+    name: 'Jace',
+    typeLine: 'Legendary Planeswalker Token — Jace',
+    colors: ['U'],
+    loyalty: '0',
+    oracleText: '[−1]: Surveil 1.\n[−3]: Draw a card.',
+  },
   Map: {
     name: 'Map',
     typeLine: 'Artifact — Map',

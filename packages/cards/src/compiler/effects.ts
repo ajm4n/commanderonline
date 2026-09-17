@@ -73,14 +73,14 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l) && ctx.lastObj) return ctx.lastObj;
   if ((m0 = l.match(/^the player or planeswalker (it|that creature|~) is attacking$/))) return { ref: 'defenderOf', of: m0[1] === '~' ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
-  if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
+  if (/^(?:the|a|an|one of the) (?:card|creature card|permanent card)s? exiled with ~$/.test(l) || /^the exiled cards?$/.test(l) || /^cards exiled with ~$/.test(l) || /^(?:a|the) card (?:you )?exiled with cards named ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
     return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : null);
   }
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker|enchantment)$/.test(l) || /^(?:enchanted|equipped) [A-Z]\w+$/i.test(t)) return { ref: 'attachedTo' };
-  if (/^the exiled cards?$/.test(l) || /^the cards? exiled with ~$/.test(l) || /^cards exiled with ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
+
   if (/^each (?:\w+ )?(?:permanent|card|creature|player)s? with the most votes(?: or tied for most votes)?$/.test(l)) return { ref: 'chosen', key: 'votes' };
   if (/^(that|those) tokens?$/.test(l) || l === 'the tokens' || l === 'the token') return { ref: 'lastCreated' };
   if (/^(that|the) spell$/.test(l)) return ctx.lastObj ?? { ref: 'stackTarget' };
@@ -993,7 +993,15 @@ const PATTERNS: Pattern[] = [
     const copy = m[1].match(/^(a|an|\w+|X) ((?:tapped and attacking |tapped )?)tokens? that (?:is|are) (?:a )?cop(?:y|ies) of (.+?)(?:,? except (.+?))?((?:,| and)? (?:that is|that are|that's) (?:tapped and attacking|attacking|tapped))?$/i);
     if (copy) {
       const n = wordToNumber(copy[1]);
-      const ref = objRef(copy[3], ctx);
+      const pre: Effect[] = [];
+      let ref = objRef(copy[3], ctx);
+      if (!ref) {
+        const ch = chooseRef(copy[3], ctx);
+        if (ch) {
+          pre.push(...ch.pre);
+          ref = ch.ref;
+        }
+      }
       if (n === null || !ref) return null;
       if (copy[5]) copy[2] = `${copy[2]} ${copy[5]}`;
       const token: TokenSpec = { name: 'Copy', typeLine: '', colors: [], copyOf: ref };
@@ -1003,7 +1011,7 @@ const PATTERNS: Pattern[] = [
         token.exceptions = ex;
       }
       ctx.lastObj = { ref: 'lastCreated' };
-      return [{ kind: 'createToken', token, count: n, tapped: /tapped/i.test(copy[2]), attacking: /attacking/i.test(copy[2]) }];
+      return [...pre, { kind: 'createToken', token, count: n, tapped: /tapped/i.test(copy[2]), attacking: /attacking/i.test(copy[2]) }];
     }
     // Role tokens attached to something
     const role = m[1].match(/^(?:a|an) ((?:Wicked|Monster|Royal|Sorcerer|Cursed|Virtuous|Young Hero) Role) token attached to (.+)$/i);
@@ -1692,6 +1700,10 @@ const PATTERNS: Pattern[] = [
     if (ref) ctx.exploreRef = ref;
     return ref ? [{ kind: 'log', text: 'explored', event: 'explored', objectRef: ref }, { kind: 'revealTop', ifMatches: { types: ['Land'] }, then: [{ kind: 'putIntoHand', what: { ref: 'lastMoved' } }], else: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: ref }, { kind: 'may', prompt: 'Put the revealed card into your graveyard?', effects: [{ kind: 'moveToZone', what: { ref: 'lastMoved' }, zone: 'graveyard' }] }] }] : null;
   }],
+  [/^empower (\w+) (\w+)$/i, (m) => {
+    const n = wordToNumber(m[2]);
+    return n === null ? null : [{ kind: 'empower', token: m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(), amount: n }];
+  }],
   [/^venture into the dungeon$/i, () => [{ kind: 'ventureIntoDungeon' }]],
   [/^tap or untap (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -1805,12 +1817,29 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
       ex.name = m[1].replace(/^~'s /, '');
       continue;
     }
-    if ((m = p2.match(/^(?:it|they) (?:has|have) "(.+)"$/i)) && !parseKeywordList(m[1])) {
-      ex.abilities = [...(ex.abilities ?? []), m[1]];
-    } else if ((m = p2.match(/^(?:it|they) (?:has|have) (.+)$/i))) {
-      const kws = parseKeywordList(m[1].replace(/^"|"$/g, ''));
-      if (!kws) return null;
-      ex.keywords = [...(ex.keywords ?? []), ...kws];
+    if ((m = p2.match(/^(?:it|they) (?:has|have) (.+)$/i))) {
+      // "it has haste and \"At the beginning of the end step, sacrifice ~.\"" — keywords and quoted text mixed.
+      const body = m[1];
+      const maskedBody = body.replace(/"[^"]*"/g, (q) => '\u0001'.repeat(q.length));
+      const cuts: number[] = [];
+      for (const cm of maskedBody.matchAll(/,? and /gi)) cuts.push(cm.index!, cm.index! + cm[0].length);
+      const pieces: string[] = [];
+      let at2 = 0;
+      for (let ci = 0; ci < cuts.length; ci += 2) {
+        pieces.push(body.slice(at2, cuts[ci]));
+        at2 = cuts[ci + 1];
+      }
+      pieces.push(body.slice(at2));
+      for (const piece of pieces) {
+        const q = piece.trim().match(/^"(.+)"$/);
+        if (q) {
+          ex.abilities = [...(ex.abilities ?? []), q[1]];
+          continue;
+        }
+        const kws = parseKeywordList(piece.trim());
+        if (!kws) return null;
+        ex.keywords = [...(ex.keywords ?? []), ...kws];
+      }
     } else if (/^(?:it|they) (?:is|are) not legendary$/i.test(p2)) ex.notLegendary = true;
     else if (/^(?:it|they) (?:is|are) legendary$/i.test(p2)) ex.legendary = true;
     else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (.+?)(?: in addition to its other types)?$/i)) && /^(?:artifact|creature|enchantment|land|legendary|[A-Z]\w+)(?: \w+)*$/.test(m[1]) && !/\d\/\d/.test(m[1])) {
