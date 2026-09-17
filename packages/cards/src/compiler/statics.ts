@@ -40,6 +40,49 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 155 ----
+  // "All creatures are tokens." / "All nonland permanents are legendary." / "Creatures your opponents control have base toughness 1."
+  if ((m = L.match(/^(.+?) (?:is|are) tokens?$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'isToken' } }];
+  }
+  if ((m = L.match(/^(.+?) (?:is|are) legendary$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addSupertypes: ['Legendary'] } }];
+  }
+  if ((m = L.match(/^(.+?) (?:has|have) base (power|toughness) (\d+)$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: /power/i.test(m[2]) ? { layer: '7b', setPower: parseInt(m[3], 10) } : { layer: '7b', setToughness: parseInt(m[3], 10) } }];
+  }
+  // "Creatures cannot be the targets of spells."
+  if ((m = L.match(/^(.+?) cannot be the targets? of (spells|abilities|spells or abilities)$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) {
+      const by = /^spells$/i.test(m[2]) ? 'spells' : /^abilities$/i.test(m[2]) ? 'abilities' : undefined;
+      return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'cantBeTargeted', by } }];
+    }
+  }
+  // "All Walls able to block ~ do so." / "All creatures with flying able to block ~ do so."
+  if ((m = L.match(/^(?:All )?(.+?) able to block ~ do(?:es)? so$/i))) {
+    const noun = parseNoun(`all ${m[1].replace(/^(?:all|each) /i, '')}`) ?? parseNoun(m[1]);
+    if (noun && noun.confident) return [{ kind: 'static', text: line, affects: { ...noun.filter, zone: 'battlefield' }, rule: { kind: 'custom', tag: 'mustBlockSource' } }];
+  }
+  // "Creatures played by your opponents enter tapped."
+  if ((m = L.match(/^(.+?) (?:played|cast) by your opponents enters? tapped$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun && noun.confident) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: { ...noun.filter, zone: undefined, controller: 'opponent' }, tapped: true }];
+  }
+  // "All morph costs cost {2} more." / "Buyback costs cost {2} less."
+  if ((m = L.match(/^(?:All )?([\w-]+) costs cost \{(\d+)\} (less|more)(?: to activate)?$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'keywordCostChange', data: { keyword: m[1].toLowerCase(), amount: parseInt(m[2], 10) * (m[3].toLowerCase() === 'less' ? -1 : 1) } } }];
+  }
+  // "All damage is dealt as though its source had wither."
+  if (/^All damage is dealt as though its source had wither$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'allDamageIsWither' } }];
+  // "All lands are no longer snow."
+  if ((m = L.match(/^(.+?) (?:is|are) no longer (snow|legendary)$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, removeSupertypes: [m[2].toLowerCase() === 'snow' ? 'Snow' : 'Legendary'] } }];
+  }
   // ---- Round 154 ----
   // "You may play lands and cast Insect spells from your graveyard."
   sxr154: {

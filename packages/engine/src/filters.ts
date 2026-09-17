@@ -60,6 +60,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'nonbasic' && ch.supertypes.includes('Basic')) return false;
   if (filter.custom === 'nonsnow' && ch.supertypes.includes('Snow')) return false;
   if (filter.custom === 'colored' && ch.colors.length === 0) return false;
+  if (filter.custom === 'noManaSpent' && ((obj.memory['manaSpent'] as number | undefined) ?? 0) > 0) return false;
   if (filter.custom === 'oddManaValue' && ch.manaValue % 2 !== 1) return false;
   if (filter.custom === 'evenManaValue' && ch.manaValue % 2 !== 0) return false;
   if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
@@ -178,7 +179,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.monstrous !== undefined && !!obj.memory['monstrous'] !== filter.monstrous) return false;
   if (filter.attached !== undefined && (obj.attachedTo !== null) !== filter.attached) return false;
   if (filter.cmcGE !== undefined && !(ch.manaValue >= filter.cmcGE)) return false;
-  if (filter.cmcEQ !== undefined && ch.manaValue !== filter.cmcEQ) return false;
+  if (filter.cmcEQ !== undefined && ch.manaValue !== (filter.cmcEQ === 'X' ? ctx.x ?? 0 : filter.cmcEQ)) return false;
   if (filter.isCommander !== undefined && obj.isCommander !== filter.isCommander) return false;
   if (filter.hasCounter && !(obj.counters[filter.hasCounter] > 0)) return false;
   if (filter.hasAnyCounter && !Object.values(obj.counters).some((n) => n > 0)) return false;

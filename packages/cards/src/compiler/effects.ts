@@ -49,7 +49,7 @@ export function parseKeywordList(text: string): string[] | null {
   const out: string[] = [];
   for (const p of parts) {
     const q = p.replace(/^(?:your choice of )/, '');
-    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle|afterlife|vanishing|fading|dredge|ripple|frenzy|poisonous|absorb|level up|tribute) \d+|(?:unearth|cycling|flashback|escape|scavenge|replicate|conspire|retrace|miracle|madness|outlast|encore|bestow|embalm|eternalize|evoke|emerge|prowl|blitz|dash|foretell|disturb|spectacle|surge|overload|aftermath|transmute|buyback|entwine|splice|awaken|kicker|multikicker|slivercycling|landcycling|typecycling|basic landcycling|plainscycling|islandcycling|swampcycling|mountaincycling|forestcycling|wizardcycling|slivercycling|reconfigure|equip|fortify|ninjutsu|commander ninjutsu|freerunning|impending|offspring|gift|craft|discover|plot|squad|casualty|cleave|escalate|prototype) (?:(?:\{[^}]+\})+|\d+|—.+)|(?:flashback|escape|scavenge|replicate|conspire|retrace|unearth|embalm|eternalize|miracle|madness|outlast|encore|bestow|aftermath|retrace|dredge|haunt|epic|evoke|emerge|prowl|blitz|dash|foretell|disturb|jump-start|spectacle|surge|overload|entwine|buyback|awaken|cascade|storm|delve|discover|plot|craft|forage|cloak|manifest dread|read ahead|hope|exploit|mono|continuous|flanking|banding|soulbond|melee|ascend|myriad|extort|convoke|improvise|riot|exalted|fear|intimidate|totem armor|split second|devoid|ingest|skulk|partner|mutate|boast|will of the council|council's dilemma|goaded|decayed|toxic|for mirrodin!|living weapon|reconfigure|compleated|daybound|nightbound|start your engines!|max speed|tap to attack))$/.test(q)) return null;
+    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle|afterlife|vanishing|fading|dredge|ripple|frenzy|poisonous|absorb|level up|tribute) \d+|(?:unearth|cycling|flashback|escape|scavenge|replicate|conspire|retrace|miracle|madness|outlast|encore|bestow|embalm|eternalize|evoke|emerge|prowl|blitz|dash|foretell|disturb|spectacle|surge|overload|aftermath|transmute|buyback|entwine|splice|awaken|kicker|multikicker|slivercycling|landcycling|typecycling|basic landcycling|plainscycling|islandcycling|swampcycling|mountaincycling|forestcycling|wizardcycling|slivercycling|reconfigure|equip|fortify|ninjutsu|commander ninjutsu|freerunning|impending|offspring|gift|craft|discover|plot|squad|casualty|cleave|escalate|prototype) (?:(?:\{[^}]+\})+|\d+|—.+)|(?:flashback|escape|scavenge|replicate|conspire|retrace|unearth|embalm|eternalize|miracle|madness|outlast|encore|bestow|aftermath|retrace|dredge|haunt|epic|evoke|emerge|prowl|blitz|dash|foretell|disturb|jump-start|spectacle|surge|overload|entwine|buyback|awaken|cascade|storm|delve|discover|plot|craft|forage|cloak|manifest dread|read ahead|hope|provoke|demonstrate|exploit|mono|continuous|flanking|banding|soulbond|melee|ascend|myriad|extort|convoke|improvise|riot|exalted|fear|intimidate|totem armor|split second|devoid|ingest|skulk|partner|mutate|boast|will of the council|council's dilemma|goaded|decayed|toxic|for mirrodin!|living weapon|reconfigure|compleated|daybound|nightbound|start your engines!|max speed|tap to attack))$/.test(q)) return null;
     out.push(q.charAt(0).toUpperCase() + q.slice(1));
   }
   return out;
@@ -4217,6 +4217,51 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 155 ----
+  // "Counter target spell if its mana value is X." / "... if no mana was spent to cast it."
+  [/^counter target spell if (.+)$/i, (m, ctx) => {
+    const cond = parseCondition(m[1], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject });
+    const spec: TargetSpec = { description: 'target spell', kind: 'spell' };
+    if (/^its mana value is X$/i.test(m[1])) spec.filter = { cmcEQ: 'X' };
+    else if (/^no mana was spent to cast it$/i.test(m[1])) spec.filter = { custom: 'noManaSpent' };
+    else if (!cond || cond.kind === 'manual') return null;
+    ctx.targets.push(spec);
+    return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "Counter target spell that targets ~." / "Counter target spell or ability that targets a creature."
+  [/^counter target (spell|spell or ability|triggered ability or colorless spell) that targets (.+)$/i, (m, ctx) => {
+    const kind = /^spell$/i.test(m[1]) ? 'spell' : 'spellOrAbility';
+    let filter: ObjectFilter | undefined;
+    if (/^~$/.test(m[2].trim())) filter = { spellTargets: { nameIs: '~' } };
+    else {
+      const noun = parseNoun(m[2]);
+      if (!noun || !noun.confident) return null;
+      filter = { spellTargets: { ...noun.filter, zone: undefined } };
+    }
+    ctx.targets.push({ description: `target ${m[1]} that targets ${m[2]}`, kind: kind as TargetSpec['kind'], filter });
+    return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "Counter up to four target spells and/or abilities."
+  [/^counter (?:up to )?(\w+) target spells and\/or abilities$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    ctx.targets.push({ description: `${m[1]} target spells and/or abilities`, kind: 'spellOrAbility', min: /up to/i.test(m[0]) ? 0 : n, max: n, distinct: true });
+    return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "Choose a creature at random, then destroy the rest." / "Choose up to two creatures, then destroy the rest."
+  [/^choose (?:(?:up to )?(\w+)|a) (.+?)(?: at random)?, then (destroy|exile|sacrifice) the rest$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    const key = 'keepRest';
+    const base: ObjectFilter = { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' };
+    const rest: Ref = { ref: 'all', filter: { ...base, notChosenKey: key } };
+    const act = m[3].toLowerCase();
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: base, count: n, key, upTo: /up to/i.test(m[0]) || undefined, random: / at random/i.test(m[0]) || undefined },
+      act === 'destroy' ? { kind: 'destroy', what: rest } : act === 'exile' ? { kind: 'exile', what: rest } : { kind: 'sacrifice', what: rest },
+    ];
+  }],
   // ---- Round 150 ----
   // "Target creature gains flying, lifelink, and \"Whenever ~ attacks, draw a card.\" until end of turn"
   [/^(?:until end of turn, )?(.+?) gains? (.+?)(?: until end of turn)?$/i, (m, ctx) => {
@@ -5275,6 +5320,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '').replace(/^until (?:end of (?:turn|combat)|your next turn)(?: on your next turn)?, /i, '');
+  if (/^(?:a deck can have up to \w+ cards named ~|a deck with this commander has no maximum deck size|a deck can have any number of cards named ~)$/i.test(t)) return true;
   return /^(x cannot be 0|this effect cannot reduce the mana in that cost to less than one mana|you do not lose this mana as steps end|(?:the|its) (?:replicate|foretell|escape|casualty|cycling|flashback|buyback|scavenge|unearth|embalm|eternalize|transmute) cost is .+|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|each copy targets a different one of those \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 

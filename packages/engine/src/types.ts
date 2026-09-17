@@ -378,7 +378,7 @@ export interface ObjectFilter {
   toughnessGE?: number;
   cmcLE?: number | 'X';
   cmcGE?: number;
-  cmcEQ?: number;
+  cmcEQ?: number | 'X';
   isCommander?: boolean;
   hasCounter?: CounterType;
   legendary?: boolean;
