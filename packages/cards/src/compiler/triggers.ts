@@ -43,6 +43,7 @@ function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
 export function parseTriggerHead(line: string): TriggerHead | null {
   // "When a Dragon you control enters" behaves like "Whenever ..."; "attacks while saddled" is an attack trigger with a condition.
   line = line
+    .replace(/ is put into graveyards from anywhere\b/i, ' is put into a graveyard from anywhere')
     .replace(/^When (a|an|another|one or more) /, 'Whenever $1 ')
     .replace(/^When (~|you|equipped creature|enchanted creature|enchanted player|your commander) (attacks|blocks|deals|casts|enters|dies|cycles|becomes|taps|untaps)\b/i, 'Whenever $1 $2')
     .replace(/^Whenever (~(?: and ~)?) (enter|attack|block|deal|die|become|tap|untap)\b/i, (_x, who: string, verb: string) => `Whenever ${who} ${verb}s`)
@@ -82,21 +83,31 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   {
     // Compound heads: "When ~ enters or transforms into ~, X" / "At the beginning of your upkeep and whenever enchanted land becomes tapped, X" / "When you cycle ~ and when ~ dies, X"
-    const cm = line.match(/^((?:When(?:ever)?|At the beginning of) [^,]+?) (?:and|or) ((?:when(?:ever)?|at the beginning of) [^,]+?), (.+)$/i) ?? line.match(/^(When(?:ever)? ~) ([^,]+?) or ([^,]+?), (.+)$/i) ?? line.match(/^(When(?:ever)?) ([^,]+?) or ([^,]+?), (.+)$/i);
-    if (cm) {
-      const rest = cm[4] !== undefined ? cm[4] : cm[3];
-      const headA = cm[4] !== undefined ? `${cm[1]} ${cm[2]}, ${rest}` : `${cm[1]}, ${rest}`;
-      const headB = cm[4] !== undefined ? `${cm[1]} ${cm[3]}, ${rest}` : `${cm[2].charAt(0).toUpperCase()}${cm[2].slice(1)}, ${rest}`;
+    // Try each way of splitting the head in turn; the first split whose halves both parse wins.
+    const splits: [string, string][] = [];
+    {
+      const c1 = line.match(/^((?:When(?:ever)?|At the beginning of) [^,]+?) (?:and|or) ((?:when(?:ever)?|at the beginning of) [^,]+?), (.+)$/i);
+      if (c1) splits.push([`${c1[1]}, ${c1[3]}`, `${c1[2].charAt(0).toUpperCase()}${c1[2].slice(1)}, ${c1[3]}`]);
+      const c2 = line.match(/^(When(?:ever)? ~) ([^,]+?) or ([^,]+?), (.+)$/i);
+      if (c2) splits.push([`${c2[1]} ${c2[2]}, ${c2[4]}`, `${c2[1]} ${c2[3]}, ${c2[4]}`]);
+      const c3 = line.match(/^(When(?:ever)?) (.+?) or (.+?), (.+)$/i);
+      if (c3) splits.push([`${c3[1]} ${c3[2]}, ${c3[4]}`, `${c3[1]} ${c3[3]}, ${c3[4]}`]);
+      const c4 = line.match(/^(When(?:ever)?) (.+?) or ([^,]+?), (.+)$/i);
+      if (c4) splits.push([`${c4[1]} ${c4[2]}, ${c4[4]}`, `${c4[1]} ${c4[3]}, ${c4[4]}`]);
+    }
+    for (const [headA, headB] of splits) {
       const a = parseTriggerHead(headA);
-      const b = a ? parseTriggerHead(headB) : null;
+      if (!a) continue;
+      const b = parseTriggerHead(headB);
       // Rooms are not implemented: "and whenever you fully unlock a Room" can never fire here, so keep the other half.
-      if (a && !b && /unlock/i.test(headB)) return a;
-      if (a && b) {
-        const { rest: _r, also: _a, ...bHead } = b;
-        void _r;
-        void _a;
-        return { ...a, also: [...(a.also ?? []), bHead, ...(b.also ?? [])] };
+      if (!b) {
+        if (/unlock/i.test(headB)) return a;
+        continue;
       }
+      const { rest: _r, also: _a, ...bHead } = b;
+      void _r;
+      void _a;
+      return { ...a, also: [...(a.also ?? []), bHead, ...(b.also ?? [])] };
     }
     const lv = line.match(/^Whenever (?:one or more |a |an |another )?(.+?) (?:leaves?|leave) the battlefield without dying, (.+)$/i);
     if (lv) {
@@ -680,6 +691,82 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^Whenever a player attacks you with one or more creatures, (.+)$/i))) return { event: 'attacked', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ or another creature you control becomes blocked, (.+)$/i))) return { event: 'becomesBlocked', filter: { object: { types: ['Creature'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  {
+    // "Whenever one or more X <plural verb>" reads like the singular head; only used if that parses.
+    if (/^When(?:ever)? one or more /i.test(L)) {
+      const verb = (v: string): string => ({ enter: 'enters', die: 'dies', 'are put': 'is put', 'are exiled': 'is exiled', become: 'becomes', attack: 'attacks', deal: 'deals', leave: 'leaves', 'are tapped': 'is tapped', 'are dealt': 'is dealt', 'are countered': 'is countered', 'are destroyed': 'is destroyed', 'are sacrificed': 'is sacrificed' } as Record<string, string>)[v.toLowerCase()] ?? v;
+      const base = L.replace(/^(When(?:ever)? )one or more /i, '$1a ').replace(/\b(enter|die|are put|are exiled|become|attack|deal|leave|are tapped|are dealt|are countered|are destroyed|are sacrificed)\b/i, verb);
+      for (const alt of [base, base.replace(/^(When(?:ever)? a )([\w' -]*?)s\b/i, '$1$2'), base.replace(/^(When(?:ever)? a )([\w' -]+?)s /i, '$1$2 ')]) {
+        if (alt === L) continue;
+        const h = parseTriggerHead(alt);
+        if (h) return h;
+      }
+    }
+  }
+  {
+    // Round 93 heads.
+    if ((m = L.match(/^When(?:ever)? enchanted player draws a card, (.+)$/i)))
+      return { event: 'drawCard', filter: { custom: 'enchantedPlayer' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? enchanted player casts a spell with the chosen name, (.+)$/i)))
+      return { event: 'cast', filter: { custom: 'enchantedPlayer', object: { nameIsChosen: 'cardName' } }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) enchanted player controls (enters|dies|becomes tapped), (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1]}`);
+      if (noun) {
+        const ev: GameEventName = /enters/i.test(m[2]) ? 'entersBattlefield' : /dies/i.test(m[2]) ? 'dies' : 'tapped';
+        return { event: ev, filter: { object: { ...noun.filter, zone: undefined }, custom: 'enchantedPlayerControls' }, hasObject: true, hasPlayer: true, rest: m[3] };
+      }
+    }
+    if ((m = L.match(/^When(?:ever)? you gain life for the first time (?:each turn|during each of your turns), (.+)$/i)))
+      return { event: 'lifeGained', filter: { player: 'you', firstEachTurn: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you forage, (.+)$/i)))
+      return { event: 'foraged', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^At the beginning of each of your main phases, (.+)$/i)))
+      return { event: 'beginningOfPrecombatMain', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1], also: [{ event: 'beginningOfPostcombatMain', filter: { player: 'you' }, hasObject: false, hasPlayer: true }] };
+    if ((m = L.match(/^When(?:ever)? ~ has (\w+) or more ([\w' -]+?) counters on it, (.+)$/i))) {
+      const n = wordToNumber(m[1]);
+      if (typeof n === 'number') return { event: 'stateTrigger', hasObject: true, hasPlayer: true, rest: m[3], stateCondition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: m[2], op: '>=', value: n } };
+    }
+    if ((m = L.match(/^When(?:ever)? you discard one or more cards at random, (.+)$/i)))
+      return { event: 'discardBatch', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (a player|an opponent|you) plays a land or casts a spell, (.+)$/i))) {
+      const who = /opponent/i.test(m[1]) ? 'opponent' : /^you$/i.test(m[1]) ? 'you' : 'any';
+      return { event: 'landPlayed', filter: { player: who }, hasObject: true, hasPlayer: true, rest: m[2], also: [{ event: 'cast', filter: { player: who }, hasObject: true, hasPlayer: true }] };
+    }
+    if ((m = L.match(/^When(?:ever)? ~ deals (\w+) or more damage to (an opponent|a player|a creature), (.+)$/i))) {
+      const n = wordToNumber(m[1]);
+      if (typeof n === 'number') {
+        const toCreature = /creature/i.test(m[2]);
+        return { event: 'dealsDamage', filter: { source: { self: true }, minAmount: n, toPlayer: toCreature ? undefined : true, player: toCreature ? undefined : /opponent/i.test(m[2]) ? 'opponent' : 'any', object: toCreature ? { types: ['Creature'] } : undefined }, hasObject: true, hasPlayer: true, rest: m[3] };
+      }
+    }
+    if ((m = L.match(/^When(?:ever)? ~ deals damage to one or more creatures, (.+)$/i)))
+      return { event: 'dealsDamage', filter: { source: { self: true }, object: { types: ['Creature'] } }, hasObject: true, hasPlayer: false, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) enters (untapped|tapped), (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'entersBattlefield', filter: { ...tf, object: { ...tf.object, ...(/untapped/i.test(m[2]) ? { untapped: true } : { tapped: true }) } }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    if ((m = L.match(/^When(?:ever)? you'?re dealt (combat )?damage, (.+)$/i)))
+      return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, combat: m[1] ? true : undefined }, hasObject: false, hasPlayer: true, rest: m[2] };
+    if ((m = L.match(/^When(?:ever)? one or more creatures an opponent controls attack you and aren'?t blocked, (.+)$/i)))
+      return { event: 'attacksUnblocked', filter: { objectController: 'opponent', attacksYou: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) is exiled from the battlefield, (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'leavesBattlefield', filter: { ...tf, toZone: 'exile' }, hasObject: true, hasPlayer: false, leaves: true, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) exploits (?:a|an) (.+?), (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'entersBattlefield', filter: tf, hasObject: true, hasPlayer: true, exploit: true, rest: m[3] };
+    }
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) transforms(?: into (?:a|an) (.+?))?, (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'transformed', filter: tf, hasObject: true, hasPlayer: false, rest: m[3] };
+    }
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) with the same name as (?:a|an) (.+?) is cast, (.+)$/i))) return null;
+    if ((m = L.match(/^When(?:ever)? you attack with creatures with total power (\w+) or greater(?: for the first time each turn)?, (.+)$/i))) {
+      const n = wordToNumber(m[1]);
+      if (typeof n === 'number') return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+  }
   {
     // Round 92 heads.
     if ((m = L.match(/^When(?:ever)? the (\w+) ([\w' -]+?) counter is put on ~, (.+)$/i))) {
