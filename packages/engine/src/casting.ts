@@ -746,10 +746,13 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   else if (opts.alternative === 'flashback' && obj.zone === 'graveyard') {
     const fb = obj.card.oracleText.match(/Flashback (\{[^\n]+?\})(?:\s|$)/);
     cost = parseManaCost(fb?.[1] ?? face.manaCost);
+  } else if (typeof obj.memory['playForCost'] === 'string' && obj.zone === 'exile') {
+    // Airbend and similar: cast it from exile for a fixed cost instead of its mana cost.
+    cost = parseManaCost(obj.memory['playForCost'] as string);
   } else cost = parseManaCost(face.manaCost);
   if (obj.isCommander && obj.zone === 'command') cost = adjustGeneric(cost, obj.commanderCasts * 2);
   if (opts.kicker) {
-    const k = obj.card.oracleText.match(/(?:Multik|K)icker (\{[^\n]+?\})(?:\s|$)/);
+    const k = obj.card.oracleText.match(/(?:Multik|K)icker (\{[^\n]+?\})(?:\s|$)/) ?? obj.card.oracleText.match(/Replicate (\{[^\n]+?\})(?:\s|$)/);
     const times = opts.kicks ?? 1;
     if (k) {
       const extra = parseManaCost(k[1]).symbols;

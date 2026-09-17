@@ -987,6 +987,11 @@ const PATTERNS: Pattern[] = [
   [/^look at the top card of your library$/i, () => [{ kind: 'lookAtTop', amount: 1, then: 'reorder' }]],
   [/^choose a card name$/i, () => [{ kind: 'nameCard', key: 'cardName' }]],
   // Return
+  [/^return (.+?) and (.+?) to their owners'? hands$/i, (m, ctx) => {
+    const a = objRef(m[1], ctx);
+    const b = a ? objRef(m[2], ctx) : null;
+    return a && b ? [{ kind: 'returnToHand', what: a }, { kind: 'returnToHand', what: b }] : null;
+  }],
   [/^return (.+?) to (?:its|their) owner'?s'? hands?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'returnToHand', what: ref }] : null;
@@ -1577,7 +1582,7 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'regenerate', what: ref }] : null;
   }],
-  [/^(.+?) phases out$/i, (m, ctx) => {
+  [/^(.+?) phases? out$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'phaseOut', what: ref }] : null;
   }],
@@ -1774,6 +1779,23 @@ const PATTERNS: Pattern[] = [
     const n = wordToNumber(m[2]);
     return n === null ? null : [{ kind: 'empower', token: m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(), amount: n }];
   }],
+  [/^airbend (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'exile', what: ref, remember: 'airbended' }, { kind: 'playFromExile', what: { ref: 'chosen', key: 'airbended' }, duration: 'permanent', forCost: '{2}', owner: true }];
+  }],
+  [/^(that card|it) gains? flashback (\{[^}]+\})(?: until end of turn)? instead if (.+)$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    if (!ref) return null;
+    const cond = parseCondition(m[3], { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, triggerHasPlayer: ctx.triggerHasPlayer });
+    if (!cond || cond.kind === 'manual') return null;
+    return [{ kind: 'conditional', if: cond, then: [{ kind: 'playFromExile', what: ref, duration: 'thisTurn', forCost: m[2], fromGraveyard: true, exileAfter: true }] }];
+  }],
+  [/^(.+?) gains? flashback(?: (\{[^}]+\}))?(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'playFromExile', what: ref, duration: 'thisTurn', forCost: m[2], fromGraveyard: true, exileAfter: true }];
+  }],
   [/^venture into the dungeon$/i, () => [{ kind: 'ventureIntoDungeon' }]],
   [/^tap or untap (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -1946,6 +1968,8 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
+  if (/^the flashback cost is equal to its mana cost\.?$/i.test(text.trim())) return true;
+  if (/^(?:then )?each player who searched their library this way shuffles\.?$/i.test(text.trim())) return true;
   if (/^(?:creatures|permanents|cards|they|it)(?: destroyed| exiled| sacrificed)? (?:this way )?cannot be regenerated\.?$/i.test(text.trim())) return true;
   if (/\bdraft(ed|ing)?\b/i.test(text) || /^x cannot be 0\.?$/i.test(text.trim())) return true;
   return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());

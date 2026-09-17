@@ -296,7 +296,7 @@ export type Effect =
   | { kind: 'revealTop'; who?: Ref; ifMatches?: ObjectFilter; then?: Effect[]; else?: Effect[]; destination?: 'hand' | 'graveyard' | 'bottom' | 'stay' }
   | { kind: 'castWithoutPaying'; what: Ref; exileAfter?: boolean }
   | { kind: 'castFrom'; what: Ref; anyManaType?: boolean; free?: boolean; exileAfter?: boolean }
-  | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent' }
+  | { kind: 'playFromExile'; what: Ref; duration?: 'thisTurn' | 'permanent'; /** Airbend: castable for this cost instead of its mana cost. */ forCost?: string; /** The owner may cast it, not this effect's controller. */ owner?: boolean; /** Granted flashback: castable from the graveyard. */ fromGraveyard?: boolean; /** Exile it as it resolves. */ exileAfter?: boolean }
   | { kind: 'chooseColor'; key: string }
   | { kind: 'chooseCreatureType'; key: string }
   | { kind: 'nameCard'; key: string }

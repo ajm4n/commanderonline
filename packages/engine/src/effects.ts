@@ -894,8 +894,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     case 'playFromExile':
       for (const o of g.resolveObjects(e.what, ctx)) {
-        o.memory['playableBy'] = ctx.controller;
+        if (e.fromGraveyard) o.memory['castableBy'] = ctx.controller;
+        if (e.exileAfter) o.memory['exileOnResolve'] = true;
+        o.memory['playableBy'] = e.owner ? o.owner : ctx.controller;
         o.memory['playableUntil'] = e.duration === 'permanent' ? 'permanent' : g.state.turn.number;
+        if (e.forCost) o.memory['playForCost'] = e.forCost;
       }
       return;
     case 'moveAll': {
