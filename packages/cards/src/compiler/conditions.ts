@@ -4,6 +4,16 @@ import { parseAmount, type RefCtx } from './amounts.js';
 import { wordToNumber } from './text.js';
 
 export function parseCondition(text: string, ctx: RefCtx): Condition | null {
+
+  {
+    const t0 = text.trim().toLowerCase().replace(/\.$/, '');
+    if (/^(?:there are )?no (creatures|lands|artifacts|enchantments|planeswalkers|permanents) (?:are )?on the battlefield$/.test(t0)) {
+      const w = t0.match(/no (\w+)/)![1];
+      const type = w.replace(/s$/, '').replace(/^\w/, (c) => c.toUpperCase());
+      const filter = type === 'Permanent' ? { zone: 'battlefield' as const } : { types: [type], zone: 'battlefield' as const };
+      return { kind: 'count', filter, op: '==', value: 0 };
+    }
+  }
   const orig = text
     .trim()
     .replace(/[.,]$/, '')

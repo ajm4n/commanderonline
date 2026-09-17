@@ -186,6 +186,19 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   let m: RegExpMatchArray | null;
   let L = line;
   {
+    // "When you cast ~ from your hand, ..."
+    const cf = line.match(/^When(?:ever)? you cast ~ from (your hand|your graveyard|a graveyard|exile), (.+)$/i);
+    if (cf) return { event: 'cast', filter: { self: true, player: 'you', fromZone: /hand/i.test(cf[1]) ? 'hand' : /graveyard/i.test(cf[1]) ? 'graveyard' : 'exile' }, hasObject: true, hasPlayer: true, rest: cf[2] };
+  }
+  {
+    // State triggers: "When no creatures are on the battlefield, sacrifice ~." / "When an opponent has 10 or less life, ..."
+    const st = line.match(/^When(?:ever)? (.+?), (.+)$/i);
+    if (st && !/\b(?:enters?|dies|attacks?|blocks?|deals?|becomes?|is dealt|leaves?|taps?|untaps?|casts?|draws?|discards?|sacrifices?|activates?|cycles?|unlocks?|is turned|is put|resolves?|would|pays?|rolls?|explores?|mills?|surveils?|scrys?|connives?|transforms?|phases?|crews?|equips?|regenerates?|begins?|ends?|has been)\b/i.test(st[1])) {
+      const cond = parseCondition(st[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (cond && cond.kind !== 'manual') return { event: 'stateTrigger', filter: { self: true }, hasObject: true, hasPlayer: false, stateCondition: cond, rest: st[2] };
+    }
+  }
+  {
     // ---- Round 144 heads ----
     // "Whenever you draw your third card each turn, ..." (any ordinal, "each turn" or "in a turn")
     if ((m = L.match(/^When(?:ever)? (you|an opponent|a player) draws? (?:your|their) (\w+) card (?:each turn|in a turn|this turn), (.+)$/i))) {
@@ -1167,11 +1180,6 @@ export function parseTriggerHead(line: string): TriggerHead | null {
       const types = [m[1], m[2], m[3]].map((t) => `${t.charAt(0).toUpperCase()}${t.slice(1).toLowerCase()}`);
       return { event: 'entersBattlefield', filter: { object: { types } }, hasObject: true, hasPlayer: true, rest: m[4] };
     }
-  }
-  // State triggers: "When no creatures are on the battlefield, sacrifice ~."
-  if ((m = L.match(/^When (.+?), (.+)$/i)) && !/^(?:ever)/i.test(m[1])) {
-    const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
-    if (cond && cond.kind !== 'manual') return { event: 'stateTrigger', filter: { self: true }, hasObject: true, hasPlayer: false, stateCondition: cond, rest: m[2] };
   }
   if ((m = L.match(/^At the beginning of each end step, if you control (?:a|an) (.+?), (.+)$/i))) return null; // let generic handle
   return null;
