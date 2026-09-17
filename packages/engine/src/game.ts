@@ -1678,6 +1678,22 @@ export class Game {
       return drawn;
     }
     for (let i = 0; i < n; i++) {
+      // Draw replacements ("If you would draw a card, draw two cards instead").
+      const repl = this.drawReplacementFor(pid);
+      if (repl) {
+        if (repl.ab.effects?.length) {
+          this.state.turnStats[`drawReplaced:${pid}`] = (this.state.turnStats[`drawReplaced:${pid}`] ?? 0) + 1;
+          this.pendingTriggers.push({ sourceId: repl.sourceId, controller: pid, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', effects: repl.ab.effects }, context: { playerId: pid } });
+          continue;
+        }
+        if (repl.ab.draws !== undefined && repl.ab.draws !== 1) {
+          this.state.turnStats[`drawReplacing:${pid}`] = 1;
+          const extra = this.drawCards(pid, repl.ab.draws);
+          delete this.state.turnStats[`drawReplacing:${pid}`];
+          drawn.push(...extra);
+          continue;
+        }
+      }
       const id = p.library.shift();
       if (id === undefined) {
         p.attemptedDrawFromEmpty = true;
@@ -1694,6 +1710,24 @@ export class Game {
     }
     if (drawn.length) this.log(`${p.name} draws ${drawn.length} card${drawn.length === 1 ? '' : 's'}.`, { kind: 'draw', data: { player: pid, count: drawn.length } });
     return drawn;
+  }
+
+  /** The draw replacement that applies to this player's next draw, if any. */
+  private drawReplacementFor(pid: PlayerId): { ab: Extract<import('./script.js').ReplacementSpec, { event: 'drawCard' }>; sourceId: ObjectId } | null {
+    if (this.state.turnStats[`drawReplacing:${pid}`]) return null; // don't re-replace the replacement draws
+    for (const id of this.state.battlefield) {
+      const src = this.state.objects[id];
+      if (!src) continue;
+      for (const ab of this.scriptFor(src).abilities) {
+        if (ab.kind !== 'replacement' || ab.event !== 'drawCard') continue;
+        const applies = ab.who === 'any' || (ab.who === 'you' && src.controller === pid) || (ab.who === 'opponent' && src.controller !== pid);
+        if (!applies) continue;
+        if (ab.condition && !this.checkCondition(ab.condition, { sourceId: id, controller: pid })) continue;
+        if (ab.exceptFirstEachDrawStep && !(this.player(pid).turnStats['drawCard'] ?? 0)) continue;
+        return { ab, sourceId: id };
+      }
+    }
+    return null;
   }
 
   gainLife(pid: PlayerId, n: number, sourceId?: ObjectId) {

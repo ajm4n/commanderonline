@@ -550,6 +550,8 @@ export type ReplacementSpec =
   | { kind: 'replacement'; text: string; event: 'dies' | 'putIntoGraveyard'; self: false; filter: ObjectFilter; instead: 'exile' }
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }
   | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean; /** "If damage would be dealt to ~ while it has a +1/+1 counter on it" */ condition?: Condition; /** Run after preventing ("prevent that damage and put that many +1/+1 counters on it"); the amount prevented is the trigger amount. */ effects?: Effect[] }
+  /** "If you would draw a card, draw two cards instead." / "…, you win the game instead." */
+  | { kind: 'replacement'; text: string; event: 'drawCard'; who: 'you' | 'opponent' | 'any'; /** Draw this many instead of one. */ draws?: number; /** Replace the draw with these effects entirely. */ effects?: Effect[]; condition?: Condition; /** Skip the first draw each of that player's draw steps. */ exceptFirstEachDrawStep?: boolean }
   | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' }
   | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; filter?: ObjectFilter; counterType?: CounterType }
   | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number }

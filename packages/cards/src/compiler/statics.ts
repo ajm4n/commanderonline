@@ -293,6 +293,30 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     ];
   }
   if ((m = L.match(/^If it is neither day nor night, it becomes (day|night) as ~ enters$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, effects: [{ kind: 'setDayNight', to: m[1].toLowerCase() === 'day' ? 'startDay' : 'startNight' }] }];
+  // Draw replacements: "If you would draw a card, draw two cards instead."
+  if ((m = L.match(/^If (you|a player|an opponent|each opponent) would draw (?:a card|(\w+) or more cards)(?: (while .+?|except the first one you draw in each of your draw steps))?, (?:instead (.+?)|(.+?) instead)$/i))) {
+    const who: 'you' | 'opponent' | 'any' = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+    const spec: Extract<import('@commander/engine').ReplacementSpec, { event: 'drawCard' }> = { kind: 'replacement', text: line, event: 'drawCard', who };
+    if (m[3] && /^except the first/i.test(m[3])) spec.exceptFirstEachDrawStep = true;
+    else if (m[3]) {
+      const cond = parseCondition(m[3].replace(/^while /i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (!cond || cond.kind === 'manual') return null;
+      spec.condition = cond;
+    }
+    const tail = (m[4] ?? m[5]).replace(/^(?:instead )?/i, '').trim();
+    const dm = tail.match(/^draw (\w+) cards?$/i);
+    if (dm) {
+      const n = wordToNumber(dm[1]);
+      if (n === null || n === 'X') return null;
+      spec.draws = n;
+      return [spec];
+    }
+    const ctx = newCtx({ isSpell: false, triggerHasPlayer: true });
+    const r = parseEffects(tail.replace(/^you may /i, 'you may '), ctx);
+    if (r.unhandled.length || !r.effects.length) return null;
+    spec.effects = r.effects;
+    return [spec];
+  }
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
   if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {

@@ -170,6 +170,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (noun) return { kind: 'count', filter: { ...noun.filter, controller: 'opponent', zone: 'battlefield' }, op: '==', value: 0 };
   }
   if (t === "a player's life total is less than or equal to half their starting life total" || t === 'a player has half their starting life total or less') return { kind: 'or', cs: [{ kind: 'life', ref: { ref: 'controller' }, op: '<=', value: 20 }, { kind: 'life', ref: { ref: 'eachOpponent' }, op: '<=', value: 20 }] };
+  if ((m = t.match(/^(your|that player's|their) library has no cards in it$/))) return { kind: 'amount', a: { kind: 'librarySize', ref: /^your$/.test(m[1]) ? { ref: 'controller' } : { ref: 'triggerPlayer' } }, op: '==', b: 0 };
+  if ((m = t.match(/^(?:you have|there are) (\w+) or (?:more|fewer) cards in your library$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'amount', a: { kind: 'librarySize', ref: { ref: 'controller' } }, op: /fewer/.test(t) ? '<=' : '>=', b: n };
+  }
   if (t === 'an opponent has no cards in hand') return { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '==', value: 0 };
   if ((m = t.match(/^you cast (?:another|a|one or more) spells? this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '>=', value: 1 };
   if ((m = t.match(/^there are (\w+) or more (.+?) (?:total )?in all graveyards$/))) {
