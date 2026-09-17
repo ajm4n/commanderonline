@@ -209,6 +209,10 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^When(?:ever)? ~ dies, (.+)$/i))) return { event: 'dies', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^When(?:ever)? ~ leaves the battlefield, (.+)$/i))) return { event: 'leavesBattlefield', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^When(?:ever)? ~ is put into a graveyard from anywhere, (.+)$/i))) return { event: 'putIntoGraveyard', filter: { self: true }, zone: ['battlefield', 'hand', 'library', 'stack'], leaves: true, hasObject: true, hasPlayer: false, rest: m[1] };
+  // "When ~ dies or is put into exile from the battlefield, …"
+  if ((m = L.match(/^When(?:ever)? ~ dies or is put into exile from the battlefield, (.+)$/i))) return { event: 'dies', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'exiled', filter: { self: true }, leaves: true, hasObject: true, hasPlayer: false }] };
+  // "When ~ becomes monstrous, …"
+  if ((m = L.match(/^When(?:ever)? ~ becomes monstrous, (.+)$/i))) return { event: 'becomesMonstrous', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever ~ or another (.+?) (?:dies|die), (.+)$/i))) {
     const tf = nounFilter(m[1]);
     if (!tf) return null;

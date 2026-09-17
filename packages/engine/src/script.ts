@@ -244,7 +244,7 @@ export type Effect =
   | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; /** "sacrifice any number of lands": the player may sacrifice fewer. */ upTo?: boolean; unlessAlso?: never }
   | { kind: 'returnToHand'; what: Ref }
   | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean; /** Return attached to this object (Auras/Equipment). */ attachTo?: Ref }
-  | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' | 'ownerChoice' }
+  | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' | 'ownerChoice'; /** 0-based depth from the top ("third from the top" = 2). */ depth?: number }
   /** Exert: the object won't untap during its controller's next untap step. */
   | { kind: 'exert'; what: Ref }
   /** "Target land becomes the basic land type of your choice" / "~ becomes the creature type of your choice". */
@@ -311,7 +311,7 @@ export type Effect =
   | { kind: 'forEach'; over: Ref; effects: Effect[]; /** Only iterate objects matching this filter ("for each creature card exiled this way"). */ filter?: ObjectFilter }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
-  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter } | { payLife: number } | { returnToHand: ObjectFilter; count: number }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */

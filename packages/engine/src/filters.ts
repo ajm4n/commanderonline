@@ -98,6 +98,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const want = filter.nameIs === '~' ? (ctx.sourceId !== null ? g.state.objects[ctx.sourceId]?.card.name : undefined) : filter.nameIs;
     if (want !== undefined && ch.name !== want && !ch.name.startsWith(`${want} //`)) return false;
   }
+  if (filter.typeIsChosen) {
+    const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
+    const want = src?.chosen[filter.typeIsChosen];
+    if (typeof want !== 'string' || !(ch.types.includes(want) || ch.subtypes.includes(want))) return false;
+  }
   if (filter.nameIsChosen) {
     const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
     const want = src?.chosen[filter.nameIsChosen];

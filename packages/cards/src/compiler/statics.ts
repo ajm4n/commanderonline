@@ -870,6 +870,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // "If ~ is in your opening hand, you may begin the game with ~ on the battlefield."
   if (/^If ~ is in your opening hand, you may begin the game with (?:~|him|her|them) on the battlefield$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', zone: 'hand', rule: { kind: 'custom', tag: 'leyline' } }];
+  // "Spells you cast of the chosen type cost {1} less to cast."
+  if ((m = L.match(/^Spells you cast of the chosen type cost \{(\d)\} less to cast$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[1], 10), filter: { typeIsChosen: 'cardType' } } }];
+  }
   if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You have hexproof$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'hexproof' } }];
   if (/^You have shroud$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'shroud' } }];
@@ -920,12 +924,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (n === null) return null;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, counters: { counter: m[2], amount: n } }];
   }
-  if ((m = L.match(/^As ~ enters, choose (a color(?: other than \w+)?|an opponent|a creature type|a card name|a nonland card name|a player|a number(?: greater than 0)?|a basic land type|odd or even|[A-Z]\w+ or [A-Z]\w+)$/i))) {
+  if ((m = L.match(/^As ~ enters, choose (a color(?: other than \w+)?|an opponent|a creature type|a planeswalker type|a card name|a nonland card name|a player|a number(?: greater than 0)?|a basic land type|a card type|a permanent type|odd or even|(?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle)(?:, (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle))*(?:,? or (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle))|[A-Z]\w+ or [A-Z]\w+)$/i))) {
     const c = m[1].toLowerCase();
     const base = { kind: 'replacement' as const, text: line, event: 'entersBattlefield' as const, self: true as const };
     if (c.startsWith('a color')) return [{ ...base, choose: 'color' }];
     if (c === 'an opponent') return [{ ...base, choose: 'opponent' }];
     if (c === 'a creature type') return [{ ...base, choose: 'creatureType' }];
+    if (c === 'a planeswalker type') return [{ ...base, choose: 'option', chooseOptions: ['Jace', 'Chandra', 'Liliana', 'Nissa', 'Gideon', 'Ajani', 'Teferi', 'Kaya', 'Garruk', 'Vraska'], chooseKey: 'planeswalkerType' }];
+    if (c === 'a permanent type') return [{ ...base, choose: 'option', chooseOptions: ['Artifact', 'Creature', 'Enchantment', 'Land', 'Planeswalker', 'Battle'], chooseKey: 'cardType' }];
+    if (/^(?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle)(?:,| or )/.test(c)) return [{ ...base, choose: 'option', chooseOptions: m[1].split(/,? or |, /).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase().trim()), chooseKey: 'cardType' }];
     if (/card name/.test(c)) return [{ ...base, choose: 'cardName' }];
     if (c === 'a player') return [{ ...base, choose: 'player' }];
     if (c.startsWith('a number')) return [{ ...base, choose: 'number' }];

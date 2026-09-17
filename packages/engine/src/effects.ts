@@ -424,7 +424,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'putOnLibrary':
       for (const o of g.resolveObjects(e.what, ctx)) {
-        let pos: 'top' | 'bottom' | number = e.position === 'bottom' ? 'bottom' : e.position === 'secondFromTop' ? 1 : 'top';
+        let pos: 'top' | 'bottom' | number = e.position === 'bottom' ? 'bottom' : e.position === 'secondFromTop' ? 1 : e.depth !== undefined ? e.depth : 'top';
         if (e.position === 'ownerChoice') {
           const r = yield* g.ask({ type: 'chooseOption', player: o.owner, prompt: `Put ${g.nameOf(o.id)} on the top or bottom of your library?`, options: [{ id: 'top', label: 'Top' }, { id: 'bottom', label: 'Bottom' }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
           pos = r.type === 'options' && r.ids[0] === 'bottom' ? 'bottom' : 'top';
@@ -1521,6 +1521,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           }
         } else if (typeof e.cost === 'string') paid = yield* offerToPay(g, p, e.cost, e.text ?? `Pay ${e.cost}? Otherwise: ${describe(e.effects)}`);
         if (!paid) yield* executeEffects(g, e.effects, { ...ctx, iter: { kind: 'player', id: p } });
+        else if (e.thenEffects) yield* executeEffects(g, e.thenEffects, { ...ctx, iter: { kind: 'player', id: p } });
       }
       return;
     }

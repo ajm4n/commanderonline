@@ -1119,6 +1119,29 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'addCounters', counter: 'energy', amount: { kind: 'times', a: (m[1].match(/\{E\}/g) ?? []).length, b: { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } }, on: YOU }];
   }],
   [/^investigate$/i, () => [{ kind: 'investigate' }]],
+  [/^investigate (twice|three times|(\w+) times)$/i, (m) => {
+    const n = /twice/i.test(m[1]) ? 2 : /three times/i.test(m[1]) ? 3 : wordToNumber(m[2] ?? '');
+    return n === null ? null : [{ kind: 'investigate', count: n }];
+  }],
+  [/^exile all (?:opponents'|your opponents') graveyards$/i, () => [{ kind: 'moveAll', who: { ref: 'eachOpponent' }, from: 'graveyard', to: 'exile' }]],
+  [/^(~|it|that creature) attacks that (player|opponent) this combat if able$/i, (m, ctx) => {
+    const ref = /^~$/i.test(m[1]) ? SELF : ctx.lastObj ?? SELF;
+    return [{ kind: 'applyRule', on: ref, rule: { kind: 'mustAttack' }, duration: 'endOfTurn' }];
+  }],
+  // "Put those counters on target creature you control." (after "remove ... counters")
+  [/^put those counters on (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'moveCounters', from: SELF, to: ref }] : null;
+  }],
+  // "An opponent chooses two of those cards."
+  [/^(.+?) chooses (\w+) of those cards$/i, (m, ctx) => {
+    const by = actorRef(m[1], ctx);
+    const n = wordToNumber(m[2]);
+    if (!by || n === null) return null;
+    ctx.lastObj = { ref: 'chosen', key: 'chosen' };
+    return [{ kind: 'chooseObjects', from: { ref: 'lastMoved' }, filter: {}, count: n, key: 'chosen', who: by }];
+  }],
+
   [/^(?:(.+?) )?exiles? the top (?:card|(\w+|X) cards) of (?:your|their) library(?: face down)?$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
     const n = m[2] ? wordToNumber(m[2]) : 1;
@@ -2120,6 +2143,31 @@ const PATTERNS: Pattern[] = [
       { kind: 'separatePiles', what: { ref: 'memory', key: 'piled' }, by: YOU, faceUpDown: true },
     ];
   }],
+  // "choose artifact, creature, enchantment, instant, or sorcery" (a card type from a fixed list)
+  [/^choose ((?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle)(?:, (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle))*(?:,? or (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle)))$/i, () => [{ kind: 'chooseCreatureType', key: 'cardType', pool: 'cardType' }]],
+  [/^choose a planeswalker type$/i, () => [{ kind: 'chooseCreatureType', key: 'planeswalkerType' }]],
+  // "create a number of 1/1 black Harpy creature tokens with flying equal to your devotion to black"
+  [/^create a number of (.+? tokens?(?: named [^,]+?)?(?: with .+?)?) equal to (.+)$/i, (m, ctx) => {
+    const t = parseTokenPhrase(`a ${m[1].replace(/ tokens$/i, ' token')}`);
+    const a = amt(m[2], ctx);
+    if (!t || a === null) return null;
+    ctx.lastObj = { ref: 'lastCreated' };
+    return [{ kind: 'createToken', token: t.token, count: a }];
+  }],
+  // "put a number of +1/+1 counters equal to its power on each creature you control named ~"
+  [/^put a number of ([+-]\d\/[+-]\d|\w+) counters equal to (.+?) on (.+)$/i, (m, ctx) => {
+    const a = amt(m[2], ctx);
+    const on = objRef(m[3], ctx);
+    if (a === null || !on) return null;
+    return [{ kind: 'addCounters', counter: m[1], amount: a, on }];
+  }],
+  // "put it into its owner's library third from the top"
+  [/^(?:you may )?put it into its owner's library (second|third|fourth) from the top$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? SELF;
+    const pos = ({ second: 1, third: 2, fourth: 3 } as Record<string, number>)[m[1].toLowerCase()];
+    const e: Effect = { kind: 'putOnLibrary', what: ref, position: 'top', depth: pos };
+    return [/^you may /i.test(m[0]) ? { kind: 'may', effects: [e] } : e];
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2552,7 +2600,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   let text = s.trim().replace(/\.$/, '');
   if (!text) return [];
   text = text.replace(/^then,? /i, '');
-  text = text.replace(/^you create\b/i, 'create');
+  text = text.replace(/^you (create|tap|untap|flip a coin)\b/i, '$1');
   text = text.replace(/\bthat player or that planeswalker's controller controls\b/gi, 'that player controls');
   text = text.replace(/^(for each (?:opponent|player)), you (create|draw|gain|lose|put|exile|destroy|sacrifice|mill|scry|return)\b/i, '$1, $2');
   text = rephraseFirstPerson(text);
@@ -3154,6 +3202,25 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
       ctx.targets.length = savedT;
+    }
+    // "That player may pay {2}." + "If they do, Y." (+ "Otherwise, Z.")
+    {
+      const pm = s.match(/^(that player|target player|target opponent|each opponent|each player|they|its controller) may pay ((?:\{[^}]+\})+)$/i);
+      const nxt = pm && sents[i + 1]?.match(/^if (?:they|that player) (do(?:es)?(?: not|n't)?), (.+)$/i);
+      if (pm && nxt) {
+        const who = playerRef(pm[1], ctx);
+        const saved = ctx.targets.length;
+        const inner = who ? parseSentence(nxt[2], ctx) : null;
+        if (who && inner) {
+          const negative = /not|n't/i.test(nxt[1]);
+          const els = !negative ? sents[i + 2]?.match(/^otherwise, (.+)$/i) : null;
+          const elseE = els ? parseSentence(els[1], ctx) : null;
+          effects.push(negative ? { kind: 'unlessPays', who, cost: pm[2], effects: inner } : { kind: 'unlessPays', who, cost: pm[2], effects: elseE ?? [], thenEffects: inner });
+          i += elseE ? 2 : 1;
+          continue;
+        }
+        ctx.targets.length = saved;
+      }
     }
     if ((/^(?:you may )?pay/i.test(s) || /, pay (?:\{[^}]+\})+$/i.test(s)) && sents[i + 1] && /^(?:if|when) you do, |^if you (?:do not|don't), /i.test(sents[i + 1])) {
       s = `${s}. ${sents[i + 1].replace(/^when you do, /i, 'If you do, ')}`;

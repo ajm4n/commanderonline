@@ -405,6 +405,8 @@ export interface ObjectFilter {
   nameIs?: string;
   /** Matches the card name stored under this memory key ("cards with the chosen name"). */
   nameIsChosen?: string;
+  /** Matches the card type stored under this memory key ("spells of the chosen type"). */
+  typeIsChosen?: string;
   historic?: boolean;
   /** Was cast this turn / entered this turn etc. */
   enteredThisTurn?: boolean;
