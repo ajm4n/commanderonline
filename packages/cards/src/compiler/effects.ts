@@ -4167,6 +4167,25 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 130 ----
+  // "Unattach it." / "Unattach ~."
+  [/^unattach (it|~|that Equipment|equipped \w+)$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx) ?? SELF;
+    return [{ kind: 'unattach', what: ref }];
+  }],
+  // "Prevent the next 2 damage." / "Prevent the next 2 damage that would be dealt to it this turn."
+  [/^prevent the next (\d+|X) damage$/i, (m, ctx) => {
+    const n = m[1].toUpperCase() === 'X' ? 'X' : parseInt(m[1], 10);
+    const ref = ctx.lastObj ?? SELF;
+    return [{ kind: 'preventAll', to: 'all', toRef: ref, amount: typeof n === 'number' ? n : undefined, once: true }];
+  }],
+  // "It also gets +3/+0 until end of turn." / "~ also deals 3 damage to X."
+  [/^(.+?) also (gets?|gains?|deals?|has|have|draws?|loses?) (.+)$/i, (m, ctx) => parseSentence(`${m[1]} ${m[2]} ${m[3]}`, ctx)],
+  // "They are no longer suspected."
+  [/^(?:they|it|those creatures) (?:is|are) no longer suspected$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? SELF;
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'clearSuspected' }, on: ref, duration: 'permanent' }];
+  }],
   // ---- Round 127 ----
   // "Choose a creature at random, then destroy the rest."
   [/^choose (?:a|an|(\w+)) (.+?) at random$/i, (m, ctx) => {
@@ -5605,6 +5624,13 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         const n = wordToNumber(dm[1]);
         const prev = effects.slice(lastStart);
         if (n !== null && prev.some((e) => e.kind === 'damage')) inner = prev.map((e) => (e.kind === 'damage' ? { ...e, amount: n } : e));
+      }
+      // "create three of those tokens instead": the same token with a different count.
+      const tk = !inner && m[2].match(/^create (\w+|X) of (?:those|these) tokens$/i);
+      if (tk && cond && cond.kind !== 'manual') {
+        const n = tk[1].toUpperCase() === 'X' ? ('X' as const) : wordToNumber(tk[1]);
+        const prev = effects.slice(lastStart);
+        if (n !== null && prev.some((e) => e.kind === 'createToken')) inner = prev.map((e) => (e.kind === 'createToken' ? { ...e, count: n } : e));
       }
       // "~ deals twice that much damage instead" / "draw twice that many cards instead": scale the previous amount.
       const mult = !inner && m[2].match(/^(?:.+? )?deals (twice|three times|half) that much damage$/i);
