@@ -88,6 +88,11 @@ export function parseNoun(raw: string): ParsedNoun | null {
   // Special targets
   if (/^any target$/i.test(text)) return { ...result, target: true, kind: 'any' };
   if ((m = text.match(/^any number of target (players|opponents)$/i))) return { ...result, target: true, kind: 'player', playerFilter: /opponent/i.test(m[1]) ? 'opponent' : 'any', count: 6, upTo: true };
+  // "two other target legendary creatures" reads as "two target legendary creatures", minus this permanent.
+  if ((m = text.match(/^(?:(\w+) )?other target (.+)$/i))) {
+    const inner = parseNoun(`${m[1] ? `${m[1]} ` : ''}target ${m[2]}`);
+    if (inner) return { ...inner, other: true, filter: { ...inner.filter, other: true } };
+  }
   if ((m = text.match(/^any number of (?!target )(.+)$/i))) {
     const inner = parseNoun(m[1]) ?? parseNoun(m[1].replace(/^(\w+?)s\b/i, '$1'));
     if (inner) return { ...inner, count: 99, upTo: true, plural: true };
@@ -344,6 +349,7 @@ function parseAdjectives(wordsIn: string[], r: ParsedNoun): boolean {
     } else if (l === 'or' || l === 'and') {
       /* "artifact and/or enchantment" handled loosely */
     } else if (l === 'snow') r.filter.supertypes = ['Snow'];
+    else if (l === 'face-down') r.filter.faceDown = true;
     else if (/^\d+\/\d+$/.test(l)) {
       const [pw, tg] = l.split('/').map((n) => parseInt(n, 10));
       r.filter.powerLE = pw;

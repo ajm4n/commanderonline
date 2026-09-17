@@ -1175,12 +1175,12 @@ const PATTERNS: Pattern[] = [
   [/^(?:you )?(?:gets?|gain) ((?:\{E\})+)$/i, (m) => [{ kind: 'addCounters', counter: 'energy', amount: (m[1].match(/\{E\}/g) ?? []).length, on: YOU }]],
   // Counters
   // "Put a +1/+1 counter and a trample counter on target creature"
-  [/^put ((?:a|an|\w+) (?:[+-]\d+\/[+-]\d+|[\w'-]+) counters?(?:,? (?:and )?(?:a|an|\w+) (?:[+-]\d+\/[+-]\d+|[\w'-]+) counters?)+) on (.+)$/i, (m, ctx) => {
+  [/^put ((?:a|an|\w+) (?:[+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters?(?:,? (?:and )?(?:a|an|\w+) (?:[+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters?)+) on (.+)$/i, (m, ctx) => {
     const parts = m[1].split(/,\s*and\s+|,\s*|\s+and\s+/).filter(Boolean);
     if (parts.length < 2) return null;
     const items: { counter: string; amount: Amount }[] = [];
     for (const part of parts) {
-      const pm = part.trim().match(/^(?:a|an|(\w+|X)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters?$/i);
+      const pm = part.trim().match(/^(?:a|an|(\w+|X)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters?$/i);
       if (!pm) return null;
       const n: Amount | null = pm[1] ? wordToNumber(pm[1]) : 1;
       if (n === null) return null;
@@ -1240,7 +1240,7 @@ const PATTERNS: Pattern[] = [
     (c.pre[0] as { filter: ObjectFilter }).filter = { ...noun.filter, zone: 'graveyard', owner: 'you' };
     return [...c.pre, { kind: 'putIntoHand', what: c.ref }];
   }],
-  [/^put (?:a|an|(\w+|X|that many|twice that many)) ([+-]\d+\/[+-]\d+|\w+) counters? on (.+)$/i, (m, ctx) => {
+  [/^put (?:a|an|(\w+|X|that many|twice that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on (.+)$/i, (m, ctx) => {
     const n: Amount | null = m[1] ? (/that many/i.test(m[1]) ? amt(m[1], ctx) : wordToNumber(m[1])) : 1;
     if (n === null) return null;
     const isObjectTarget = !/^(you|each player|each opponent|target player|target opponent|that player|defending player|its controller|that creature's controller|the chosen player|the chosen opponent)$/i.test(m[3]);
@@ -1272,7 +1272,13 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[3], ctx);
     return ref ? [{ kind: 'addCounters', counter: m[2], amount: { kind: 'times', a: n, b: per }, on: ref }] : null;
   }],
-  [/^remove (?:a|an|all|(\w+|X|that many)) ([+-]\d+\/[+-]\d+|\w+) counters? from (.+)$/i, (m, ctx) => {
+  [/^remove (a|all|(\w+|X)) counters? from (.+)$/i, (m, ctx) => {
+    const n: Amount | 'all' | null = /^all$/i.test(m[1]) ? 'all' : m[2] ? wordToNumber(m[2]) : 1;
+    if (n === null) return null;
+    const ref = objRef(m[3], ctx);
+    return ref ? [{ kind: 'removeCounters', counter: 'any', amount: n, on: ref }] : null;
+  }],
+  [/^remove (?:a|an|all|(\w+|X|that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? from (.+)$/i, (m, ctx) => {
     const n: Amount | 'all' | null = /all/i.test(m[0].split(' ')[1]) ? 'all' : m[1] ? (/that many/i.test(m[1]) ? { kind: 'triggerAmount' } : wordToNumber(m[1])) : 1;
     if (n === null) return null;
     const ref = objRef(m[3], ctx);
@@ -1280,9 +1286,9 @@ const PATTERNS: Pattern[] = [
   }],
   [/^(?:you )?gets? (?:a|an|(\w+)) (poison|experience) counters?$/i, (m) => [{ kind: 'addCounters', counter: m[2].toLowerCase(), amount: m[1] ? (wordToNumber(m[1]) ?? 1) : 1, on: YOU }]],
   [/^(?:you )?gets? ((?:\{E\})+)$/i, (m) => [{ kind: 'addCounters', counter: 'energy', amount: (m[1].match(/\{E\}/g) ?? []).length, on: YOU }]],
-  [/^(.+?) gets? (?:a|an|(\w+)) poison counters?$/i, (m, ctx) => {
+  [/^(.+?) gets? (?:a|an|(\w+)) (poison|rad|ticket|experience|energy) counters?$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
-    return who ? [{ kind: 'addCounters', counter: 'poison', amount: m[2] ? (wordToNumber(m[2]) ?? 1) : 1, on: who }] : null;
+    return who ? [{ kind: 'addCounters', counter: m[3].toLowerCase(), amount: m[2] ? (wordToNumber(m[2]) ?? 1) : 1, on: who }] : null;
   }],
   [/^proliferate$/i, () => [{ kind: 'proliferate' }]],
   [/^populate$/i, () => [{ kind: 'populate' }]],
@@ -1570,6 +1576,13 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'castFrom', what: ref, anyManaType: anyMana }] : null;
   }],
   // Discard
+  [/^(?:(.+?) )?discards? (?:a|an|one or more|(\w+|X)) ((?:[\w-]+ )+cards?)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const noun = parseNoun(`a ${m[3].replace(/ cards$/i, ' card')}`);
+    if (!who || !noun) return null;
+    const n: Amount = /one or more/i.test(m[0]) ? 1 : m[2] ? (m[2] === 'X' ? 'X' : wordToNumber(m[2]) ?? 1) : 1;
+    return [{ kind: 'discard', amount: n, who, filter: { ...noun.filter, zone: undefined } }];
+  }],
   [/^(?:(.+?) )?discards? (?:(\w+|X) cards?|a card)( at random)?$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
     const n = m[2] ? wordToNumber(m[2]) : 1;
@@ -2447,9 +2460,9 @@ const PATTERNS: Pattern[] = [
     return [];
   }],
   // "Turn target face-down creature face up."
-  [/^turn target face-down (creature|permanent) face up$/i, (m, ctx) => {
-    ctx.targets.push({ description: `target face-down ${m[1]}`, kind: 'object', filter: { zone: 'battlefield', faceDown: true, ...(m[1] === 'creature' ? { types: ['Creature'] } : {}) } });
-    return [{ kind: 'turnFaceUp', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  [/^turn (target face-down .+?) face up$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'turnFaceUp', what: ref }] : null;
   }],
   // "Return target creature card with total mana value 3 or less from your graveyard to the battlefield."
   [/^return (?:up to (\w+)|(\w+)) target (.+?) with total mana value (\d+) or less from your graveyard to the battlefield$/i, (m, ctx) => {
@@ -2570,6 +2583,61 @@ const PATTERNS: Pattern[] = [
     ctx.targets.push(spec, { ...spec });
     return [{ kind: 'exchangeControl', a: { ref: 'target', index: a }, b: { ref: 'target', index: a + 1 } }];
   }],
+  // "You control enchanted Equipment."
+  [/^you control (enchanted .+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'gainControl', what: ref, duration: 'permanent' }] : null;
+  }],
+  // "that player returns a land they control to its owner's hand"
+  [/^(each player|that player|target player|target opponent|each opponent|its controller|they) returns? (?:a|an|(\w+)) (.+?)(?: (?:they|you) control)? to (?:its|their) owner'?s'? hands?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const c = chooseRef(`a ${m[3]}`, ctx, who, false);
+    if (!c) return null;
+    const pre0 = c.pre[0] as { filter: ObjectFilter };
+    pre0.filter = { ...pre0.filter, controllerRef: who };
+    return [...c.pre, { kind: 'returnToHand', what: c.ref }];
+  }],
+  // "Each player returns all artifact cards from their graveyard to the battlefield"
+  [/^(each player|each opponent|that player|target player) returns? all (.+?) from (?:their|his or her) graveyard to the battlefield$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`all ${m[2]}`);
+    if (!who || !noun) return null;
+    return [{ kind: 'returnToBattlefield', what: { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', ownerRef: who } }, controller: 'owner' }];
+  }],
+  // "~ gets +3/-1 until end of turn and can attack this turn as though it didn't have defender"
+  [/^(.+? gets? [+-]\d+\/[+-]\d+(?: until end of turn)?) and can attack this turn as though it (?:didn't|did not) have defender$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], ctx);
+    if (!inner) return null;
+    const ref = ctx.lastObj ?? SELF;
+    return [...inner, { kind: 'applyRule', rule: { kind: 'custom', tag: 'canAttackWithDefender' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "You may cast a creature spell from your graveyard this turn."
+  [/^you may cast (.+?) from your graveyard this turn$/i, (m) => {
+    const noun = /^spells$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+    if (!noun) return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }],
+  // "Artifact spells you cast this turn cost {1} less to cast."
+  [/^(.+?) you cast this turn cost \{(\d+)\} less to cast$/i, (m) => {
+    let filter: ObjectFilter | undefined;
+    if (!/^spells$/i.test(m[1])) {
+      const noun = parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+      if (!noun) return null;
+      filter = { ...noun.filter, zone: undefined };
+    }
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'costReduction', amount: parseInt(m[2], 10), filter } }];
+  }],
+  // "Destroy all lands or all creatures."
+  [/^destroy all (.+?) or all (.+)$/i, (m, ctx) => {
+    const a = parseNoun(`all ${m[1]}`);
+    const b = parseNoun(`all ${m[2]}`);
+    if (!a || !b) return null;
+    return [{ kind: 'chooseMode', options: [
+      { text: `Destroy all ${m[1]}`, effects: [{ kind: 'destroy', what: { ref: 'all', filter: { ...a.filter, zone: 'battlefield' } } }] },
+      { text: `Destroy all ${m[2]}`, effects: [{ kind: 'destroy', what: { ref: 'all', filter: { ...b.filter, zone: 'battlefield' } } }] },
+    ], count: 1 }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -2591,6 +2659,15 @@ const PATTERNS: Pattern[] = [
     return who ? [{ kind: 'skipTurn', who }] : null;
   }],
   // "Return an instant or sorcery card at random from your graveyard to your hand."
+  [/^exile (?:a|an|(\w+)) (.+?) at random from (?:your|their) graveyard$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!noun) return null;
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (n === null) return null;
+    const key = `rand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: n, key, random: true }, { kind: 'exile', what: { ref: 'chosen', key }, remember: 'exiled' }];
+  }],
   [/^return (?:a|an|(\w+)) (.+?) at random from (your|that player's|their) graveyard to (?:your|their) hand$/i, (m, ctx) => {
     const noun = parseNoun(`a ${m[2]}`);
     const n = m[1] ? wordToNumber(m[1]) : 1;
@@ -2924,7 +3001,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|x cannot be (?:greater|less) than .+|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */

@@ -106,7 +106,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     const pg = line.match(/^When(?:ever)? (?:enchanted|equipped) (?:artifact|permanent|creature|land|enchantment|[A-Z]\w+) (?:is put into a graveyard|dies|is put into a graveyard from the battlefield), (.+)$/i);
     if (pg) return { event: /dies|from the battlefield/i.test(pg[0]) ? 'dies' : 'putIntoGraveyard', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, leaves: true, rest: pg[1] };
     const es = line.match(/^At the beginning of the (end step|upkeep) of (?:enchanted|equipped) \w+'s controller, (.+)$/i);
-    if (es) return { event: es[1].toLowerCase() === 'upkeep' ? 'beginningOfUpkeep' : 'beginningOfEndStep', filter: { custom: 'attachedControllersUpkeep' }, hasObject: false, hasPlayer: true, rest: es[2] };
+    if (es) return { event: es[1].toLowerCase() === 'upkeep' ? 'beginningOfUpkeep' : 'beginningOfEndStep', filter: { custom: 'attachedControllersUpkeep' }, hasObject: false, hasPlayer: true, rest: es[2].replace(/\b(?:the|that) (creature|permanent|land|artifact|enchantment)\b(?!')/gi, 'enchanted $1') };
     const ns = line.match(/^Whenever (a player|an opponent|you) casts? (?:their|your) (second|third|fourth) spell each turn, (.+)$/i);
     if (ns) return { event: 'cast', filter: { player: ns[1] === 'you' ? 'you' : /opponent/i.test(ns[1]) ? 'opponent' : 'any', nthThisTurn: ns[2].toLowerCase() === 'second' ? 2 : ns[2].toLowerCase() === 'third' ? 3 : 4 }, hasObject: true, hasPlayer: true, rest: ns[3] };
     const sd = line.match(/^Whenever (?:a|an|one or more) (.+?) (?:is|are) sacrificed or destroyed, (.+)$/i);

@@ -302,11 +302,16 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "You may play lands and cast creature spells from the top of your library."
-  if ((m = L.match(/^You may (play lands and cast (.+?) spells|play lands|cast (.+?) spells|play cards|cast spells|play lands and cast spells) from the top of your library$/i))) {
+  if ((m = L.match(/^You may (play lands and cast (.+?) spells|play lands|cast (.+?) spells(?: and (.+?) spells)?|play cards|cast spells|play lands and cast spells) from the top of your library$/i))) {
     const what = m[1].toLowerCase();
     const spellNoun = m[2] ?? m[3];
-    const filter = spellNoun ? parseNoun(`a ${spellNoun} spell`)?.filter : undefined;
+    let filter = spellNoun ? parseNoun(`a ${spellNoun} spell`)?.filter : undefined;
     if (spellNoun && !filter) return null;
+    if (filter && m[4]) {
+      const second = parseNoun(`a ${m[4]} spell`)?.filter;
+      if (!second) return null;
+      filter = { anyOf: [{ ...filter, zone: undefined }, { ...second, zone: undefined }] };
+    }
     const data = { lands: /play lands|play cards/.test(what), spells: /cast|play cards/.test(what), filter: filter ? { ...filter, zone: undefined } : undefined };
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data } }];
   }
@@ -590,8 +595,20 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setSubtypes: [sub === 'Plain' ? 'Plains' : sub] } }];
   }
   // "Equip abilities you activate cost {1} less to activate." / "Equip costs you pay cost {1} less."
-  if ((m = L.match(/^(?:Equip abilities you activate cost \{(\d+)\} less to activate|Equip costs you pay cost \{(\d+)\} less)$/i))) {
-    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: parseInt(m[1] ?? m[2], 10), textPrefix: 'Equip' } } }];
+  if ((m = L.match(/^(?:(\w+) abilities you activate cost \{(\d+)\} less to activate|([\w-]+) costs you pay cost \{(\d+)\} less)$/i))) {
+    const prefix = (m[1] ?? m[3]).replace(/^[a-z]/, (c) => c.toUpperCase());
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: parseInt(m[2] ?? m[4], 10), textPrefix: prefix } } }];
+  }
+  // "Any player may cast Sliver spells as though they had flash."
+  if ((m = L.match(/^Any player may cast (.+?) as though (?:they had|it had) flash$/i))) {
+    let filter: ObjectFilter | undefined;
+    if (!/^spells$/i.test(m[1])) {
+      const noun = parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+      if (!noun) return null;
+      filter = { ...noun.filter };
+      delete filter.zone;
+    }
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'castAsThoughFlash', data: { filter } } }];
   }
   // "Activated abilities of creatures you control cost {2} less to activate."
   if ((m = L.match(/^(?:Activated )?abilities of (.+?) cost \{(\d+)\} less to activate$/i))) {
@@ -1236,8 +1253,8 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "If one or more tokens would be created under your control, twice that many of those tokens are created instead."
-  if ((m = L.match(/^If you would create one or more (.+?) tokens?, create those tokens plus an additional (.+?) token instead$/i))) {
-    const noun = /^tokens?$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} token`);
+  if ((m = L.match(/^If you would create one or more (?:(.+?) )?tokens?, (?:create those tokens plus an additional (.+?) token instead|instead create those tokens plus an additional (.+?) token)$/i))) {
+    const noun = !m[1] ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} token`);
     if (!noun) return null;
     return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 1 }];
   }
