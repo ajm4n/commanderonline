@@ -939,13 +939,14 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[2], ctx);
     return ref ? [{ kind: 'sacrifice', what: ref }] : null;
   }],
-  [/^(?:(.+?) )?sacrifices? (?:a|an|another|(\w+)) (.+?)(?: of (?:their|your) choice)?$/i, (m, ctx) => {
+  [/^(?:(.+?) )?sacrifices? (?:a|an|another|any number of|(\w+)) (.+?)(?: of (?:their|your) choice)?$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
-    const noun = parseNoun(`a ${m[3]}`);
+    const anyNumber = /sacrifices? any number of /i.test(m[0]);
+    const noun = parseNoun(`a ${m[3]}`) ?? (anyNumber ? parseNoun(`a ${m[3].replace(/^(\w+?)s\b/i, '$1')}`) : null);
     if (!who || !noun) return null;
-    const n = m[2] ? wordToNumber(m[2]) : 1;
+    const n = anyNumber ? 99 : m[2] ? wordToNumber(m[2]) : 1;
     if (n === null) return null;
-    return [{ kind: 'sacrificeChoice', who, filter: { ...noun.filter, zone: 'battlefield', other: /another/i.test(m[0]) || undefined }, count: n }];
+    return [{ kind: 'sacrificeChoice', who, filter: { ...noun.filter, zone: 'battlefield', other: /another/i.test(m[0]) || undefined }, count: n, upTo: anyNumber || undefined }];
   }],
   // Indefinite choices: "return a land you control to its owner's hand", "tap an untapped creature you control", "exile a card from your graveyard"
   [/^(return|tap|untap|exile|destroy) (?:a|an|another|up to (\w+)|(any number of)) (.+?)(?: to (?:its|their) owner'?s'? hands?| to your hand)?( until ~ leaves the battlefield)?$/i, (m, ctx) => {
@@ -1677,6 +1678,14 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'copySpell', what: { ref: 'triggerStackItem' } }];
   }],
   [/^copy (?:that|the) (?:activated or triggered )?ability\. you may choose new targets for the copy$/i, () => [{ kind: 'copySpell', what: { ref: 'triggerStackItem' } }]],
+  [/^(?:you )?choose (?:one|(\w+)) of (?:them|those cards|those creatures|the exiled cards)$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (n === null) return null;
+    const key = `pick${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    const pool = ctx.restKey ? { ref: 'chosen' as const, key: ctx.restKey } : ctx.lastObj ?? { ref: 'lastMoved' as const };
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', from: pool, filter: {}, count: n as Amount, key }];
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -1746,6 +1755,10 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'may', effects: [{ kind: 'castWithoutPaying', what: ref }] }] : null;
   }],
   // Choices
+  [/^choose any number of (.+)$/i, (m, ctx) => {
+    const ch = chooseRef(`any number of ${m[1]}`, ctx);
+    return ch ? ch.pre : null;
+  }],
   [/^choose a color$/i, () => [{ kind: 'chooseColor', key: 'color' }]],
   [/^choose a creature type(?: other than \w+)?$/i, () => [{ kind: 'chooseCreatureType', key: 'creatureType' }]],
   [/^exchange life totals with (.+)$/i, (m, ctx) => {

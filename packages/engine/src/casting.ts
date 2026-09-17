@@ -346,6 +346,18 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
 }
 
 /** Non-mana costs: tap, sacrifice, discard, life, counters... Returns false if unpayable. */
+/** Remove up to `n` generic mana from a parsed cost (ability cost reductions). */
+function reduceGeneric(cost: ManaCost, n: number): ManaCost {
+  let left = n;
+  const symbols = cost.symbols.map((sy) => {
+    if (left <= 0 || sy.kind !== 'generic') return sy;
+    const take = Math.min(left, sy.amount);
+    left -= take;
+    return { ...sy, amount: sy.amount - take };
+  }).filter((sy) => sy.kind !== 'generic' || sy.amount > 0);
+  return { ...cost, symbols };
+}
+
 export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: AbilityCost, x: number): Gen<boolean> {
   const ctx = { sourceId: obj.id, controller: p, x };
   if (cost.optional) {
@@ -514,10 +526,17 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = objectsMatching(g, { ...cost.returnToHand.filter, controller: 'you' }, ctx);
     if (cands.length < cost.returnToHand.count) return false;
   }
-  // Mana (with X)
+  // Mana (with X), after any "activated abilities of X cost {N} less to activate" reductions.
   if (cost.mana) {
     const parsed = parseManaCost(cost.mana);
-    const paid = yield* payCost(g, p, parsed, x, obj.id);
+    let reduce = 0;
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || r.tag !== 'abilityCostReduction') continue;
+      const d = (r.data as { amount?: number; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller: p })) continue;
+      reduce += d.amount ?? 0;
+    }
+    const paid = yield* payCost(g, p, reduce > 0 ? reduceGeneric(parsed, reduce) : parsed, x, obj.id);
     if (!paid) return false;
   }
   // Pay the rest

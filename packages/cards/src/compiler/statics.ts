@@ -21,7 +21,8 @@ function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: b
 
 export function parseStatic(line: string, isCreatureOrPermanent: boolean): AbilitySpec[] | null {
   let m: RegExpMatchArray | null;
-  const L = line
+  const L0 = line.replace(/\.? This effect cannot reduce the mana in that cost to less than one mana\.?$/i, '');
+  const L = L0
     .replace(/\.$/, '')
     .replace(/\. This effect (?:does not|doesn't) remove .+$/i, '')
     .replace(/\bloses? all other abilities\b/i, (w) => w.replace(/ other/, ''))
@@ -375,6 +376,17 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // Deck-construction and ante lines have no in-game effect.
   if (/^A deck can have any number of cards named ~$/i.test(L)) return [];
   if (/^Remove ~ from your deck before playing if you(?:'re| are) not playing for ante$/i.test(L)) return [];
+  // "Nonbasic lands are Mountains." / "Lands you control are Plains."
+  if ((m = L.match(/^(.+?) (?:is|are) (Plains|Islands?|Swamps?|Mountains?|Forests?)$/))) {
+    const a = affectsOf(m[1]);
+    const sub = m[2].replace(/^Plains$/, 'Plains').replace(/s$/, '');
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setSubtypes: [sub === 'Plain' ? 'Plains' : sub] } }];
+  }
+  // "Activated abilities of creatures you control cost {2} less to activate."
+  if ((m = L.match(/^(?:Activated )?abilities of (.+?) cost \{(\d+)\} less to activate$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: parseInt(m[2], 10), filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } } } }];
+  }
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
   if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {

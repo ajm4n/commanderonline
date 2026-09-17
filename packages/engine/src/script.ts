@@ -236,7 +236,7 @@ export type Effect =
   | { kind: 'destroy'; what: Ref; cantRegenerate?: boolean }
   | { kind: 'exile'; what: Ref; untilSourceLeaves?: boolean; remember?: string; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'sacrifice'; what: Ref }
-  | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; unlessAlso?: never }
+  | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; /** "sacrifice any number of lands": the player may sacrifice fewer. */ upTo?: boolean; unlessAlso?: never }
   | { kind: 'returnToHand'; what: Ref }
   | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean; /** Return attached to this object (Auras/Equipment). */ attachTo?: Ref }
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' | 'ownerChoice' }

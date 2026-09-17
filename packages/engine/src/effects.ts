@@ -174,7 +174,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const k = Math.min(n, cands.length);
         if (k === 0) continue;
         let ids = cands;
-        if (cands.length > k) {
+        if (e.upTo) {
+          const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Sacrifice any number (up to ${k})`, candidates: cands, min: 0, max: k, sourceId: ctx.sourceId ?? undefined });
+          ids = resp.type === 'objects' ? resp.ids : [];
+        } else if (cands.length > k) {
           const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Sacrifice ${k}`, candidates: cands, min: k, max: k, sourceId: ctx.sourceId ?? undefined });
           ids = resp.type === 'objects' ? resp.ids : cands.slice(0, k);
         }
