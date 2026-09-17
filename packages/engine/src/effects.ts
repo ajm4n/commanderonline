@@ -38,7 +38,7 @@ export function applyCopyExceptions(base: CardData, ex: TokenSpec['exceptions'] 
   if (ex.legendary && !/^Legendary /.test(typeLine)) typeLine = `Legendary ${typeLine}`;
   if (ex.addTypes?.length) typeLine = `${ex.addTypes.filter((t) => !typeLine.includes(t)).join(' ')} ${typeLine}`.trim();
   if (ex.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
-  const extraText = [...(ex.keywords ?? []), ...(ex.haste ? ['Haste'] : [])];
+  const extraText = [...(ex.keywords ?? []), ...(ex.haste ? ['Haste'] : []), ...(ex.abilities ?? [])];
   return { ...base, oracleId: `${base.oracleId}:x`, name: ex.name ?? base.name, typeLine, oracleText: extraText.length ? `${base.oracleText}\n${extraText.join('\n')}` : base.oracleText, power: ex.power ?? base.power, toughness: ex.toughness ?? base.toughness, colors: ex.colors ?? base.colors };
 }
 
@@ -56,7 +56,8 @@ export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardDat
       if (ex?.legendary && !/^Legendary /.test(typeLine)) typeLine = `Legendary ${typeLine}`;
       if (ex?.addTypes?.length) typeLine = `${ex.addTypes.filter((t) => !typeLine.includes(t)).join(' ')} ${typeLine}`.trim();
       if (ex?.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
-      const extraText = ex?.keywords?.length ? `\n${ex.keywords.join('\n')}` : '';
+      const extraLines = [...(ex?.keywords ?? []), ...(ex?.abilities ?? [])];
+      const extraText = extraLines.length ? `\n${extraLines.join('\n')}` : '';
       return { ...base, isToken: true, oracleId: `${base.oracleId}${ex ? ':x' : ''}`, name: ex?.name ?? (ch.name || base.name), typeLine, oracleText: `${base.oracleText}${extraText}`, power: ex?.power ?? base.power, toughness: ex?.toughness ?? base.toughness, colors: ex?.colors ?? base.colors, keywords: [...ch.keywords, ...(ex?.keywords ?? [])] };
     }
   }
@@ -363,10 +364,16 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'setPT': {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
-      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: '7b', setPower: amt(e.power), setToughness: amt(e.toughness) } });
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: '7b', ...(e.power !== undefined ? { setPower: amt(e.power) } : {}), ...(e.toughness !== undefined ? { setToughness: amt(e.toughness) } : {}) } });
       return;
     }
     case 'grantKeywords': {
+      if (e.choose !== undefined && e.keywords.length > e.choose) {
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${e.choose}`, options: e.keywords.map((k) => ({ id: k, label: k })), min: e.choose, max: e.choose, sourceId: ctx.sourceId ?? undefined });
+        const picks = r.type === 'options' && r.ids.length ? r.ids : e.keywords.slice(0, e.choose);
+        yield* executeEffect(g, { ...e, keywords: picks, choose: undefined }, ctx);
+        return;
+      }
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
       g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 6, addKeywords: e.keywords } });
@@ -918,9 +925,17 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
-    case 'preventAll':
-      g.state.preventions.push({ combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId, once: e.once });
+    case 'preventAll': {
+      const pv: Game['state']['preventions'][number] = { combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId, once: e.once };
+      if (e.toRef) {
+        const ts = g.resolveRef(e.toRef, ctx);
+        pv.ids = ts.filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id);
+        pv.playerIds = ts.filter((t) => t.kind === 'player').map((t) => (t as { id: PlayerId }).id);
+        if (!pv.ids.length && !pv.playerIds.length) return;
+      }
+      g.state.preventions.push(pv);
       return;
+    }
     case 'turnFlag':
       g.state.turnStats[e.flag === 'keepMana' ? `keepMana:${ctx.controller}` : e.flag] = 1;
       return;
@@ -1464,6 +1479,13 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
       else tapped = true;
     }
     if (ab.counters) counters[ab.counters.counter] = (counters[ab.counters.counter] ?? 0) + g.resolveAmount(ab.counters.amount, ectx);
+    if (ab.countersList) for (const c of ab.countersList) counters[c.counter] = (counters[c.counter] ?? 0) + g.resolveAmount(c.amount, ectx);
+    if (ab.counterChoice) {
+      const { from, count } = ab.counterChoice;
+      const r = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose ${count} kind${count === 1 ? '' : 's'} of counter`, options: from.map((c) => ({ id: c, label: `${c} counter` })), min: count, max: count, sourceId: id });
+      const picks = r.type === 'options' && r.ids.length ? r.ids : from.slice(0, count);
+      for (const c of picks) counters[c] = (counters[c] ?? 0) + 1;
+    }
     if (ab.choose === 'color') {
       const resp = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose a color`, options: COLORS.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: id });
       chosen[ab.chooseKey ?? 'color'] = resp.type === 'options' ? resp.ids[0] : 'W';

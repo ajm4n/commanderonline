@@ -261,6 +261,12 @@ function amt(text: string, ctx: ParseCtx) {
 
 /** "for each X": a count of matching objects, or any other amount phrase. */
 function perEach(phrase: string, ctx: ParseCtx): Amount | null {
+  const both = phrase.match(/^(.+?) and (?:each |for each )?(.+)$/i);
+  if (both && !/\b(and|or)\b/i.test(both[1])) {
+    const a = perEach(both[1], ctx);
+    const b = a ? perEach(both[2], ctx) : null;
+    if (a && b) return { kind: 'sum', parts: [a, b] };
+  }
   const noun = parseNoun(phrase);
   if (noun && noun.kind !== 'player') {
     const f: ObjectFilter = noun.filter.zone ? { ...noun.filter } : { ...noun.filter, zone: 'battlefield' };
@@ -1026,9 +1032,61 @@ const PATTERNS: Pattern[] = [
     const types = m[2].split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1));
     return [{ kind: 'addTypes', types, on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
   }],
-  [/^(.+?) (?:has|have) base power and toughness (\d+|X)\/(\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) (?:has|have) base (power|toughness) (\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
+    if (!ref) return null;
+    const v: Amount = m[3] === 'X' ? 'X' : parseInt(m[3], 10);
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [{ kind: 'setPT', ...(m[2].toLowerCase() === 'power' ? { power: v } : { toughness: v }), on: ref, duration: dur }];
+  }],
+  // "becomes an Avatar in addition to its other types" / "becomes blue Illusions in addition to their other types"
+  [/^(.+?) becomes? (?:a |an )?([A-Za-z][\w' -]*?) in addition to (?:its|their) other types(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const words = m[2].split(/\s+/).filter((w) => !/^and$/i.test(w));
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const types = words.filter((w) => /^(artifact|creature|enchantment|land|planeswalker)s?$/i.test(w)).map((w) => w.replace(/s$/i, '')).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w)).map((w) => w.replace(/s$/, ''));
+    if (!types.length && !subtypes.length && !colors.length) return null;
+    const out: Effect[] = [];
+    if (types.length || subtypes.length) out.push({ kind: 'addTypes', types, subtypes, on: ref, duration: dur });
+    if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+    return out;
+  }],
+  // "gains your choice of flying, vigilance, deathtouch, or haste"
+  [/^(.+?) gains? your choice of (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const kws = parseKeywordList(m[2].replace(/,? or /gi, ', '));
+    if (!kws || kws.length < 2) return null;
+    return [{ kind: 'grantKeywords', keywords: kws, on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent', choose: 1 }];
+  }],
+  // "target land becomes a 3/3 creature that is still a land"
+  [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) ([\dX]+)\/([\dX]+) (.*?)?creature(?: that(?:'s| is) still (?:a |an )?(\w+))?(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const words = (m[4] ?? '').trim().split(/\s+/).filter(Boolean).filter((w) => !/^and$/i.test(w));
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    if (words.some((w) => !/^(white|blue|black|red|green|artifact|enchantment|land|colorless)$/i.test(w) && !/^[A-Z]/.test(w))) return null;
+    const out: Effect[] = [];
+    if (/loses all abilities and/i.test(m[0])) out.push({ kind: 'loseAllAbilities', on: ref, duration: dur });
+    out.push({ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur });
+    out.push({ kind: 'addTypes', types, subtypes, on: ref, duration: dur });
+    if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+    return out;
+  }],
+  [/^(.+?) (?:loses? all abilities and )?(?:has|have) base power and toughness (\d+|X)\/(\d+|X)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const out: Effect[] = [];
+    if (/loses all abilities and/i.test(m[0])) out.push({ kind: 'loseAllAbilities', on: ref, duration: dur });
+    out.push({ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur });
+    return out;
   }],
   [/^(.+?) loses? (.+?) until end of turn$/i, (m, ctx) => {
     const kws = parseKeywordList(m[2]);
@@ -1341,7 +1399,12 @@ const PATTERNS: Pattern[] = [
   [/^prevent all (combat |noncombat )?damage that would be dealt(?: to (.+?))? this turn(?: by (.+))?$/i, (m, ctx) => {
     const combat = /^combat/i.test(m[1] ?? '');
     let source: ObjectFilter | undefined;
-    if (m[3]) {
+    const pre: Effect[] = [];
+    if (m[3] && /^sources of the color of your choice$/i.test(m[3])) {
+      pre.push({ kind: 'chooseColor', key: 'color' });
+      source = { chosenColor: true };
+    } else if (m[3] && /^creatures blocking (?:it|~)$/i.test(m[3])) source = { types: ['Creature'], blockingSource: true };
+    else if (m[3]) {
       const st = m[3].replace(/\bsources\b/i, 'permanents').replace(/\bsource\b/i, 'permanent');
       const sn = parseNoun(st) ?? parseNoun(`a ${st}`);
       if (!sn) return null;
@@ -1361,12 +1424,14 @@ const PATTERNS: Pattern[] = [
         if (noun && (noun.each || noun.plural)) to = noun.filter;
         else {
           const ref = anyRef(m[2], ctx);
-          return ref ? [{ kind: 'preventDamage', amount: 'all', to: ref, duration: 'endOfTurn' }] : null;
+          if (!ref) return null;
+          if (source || combat) return [...pre, { kind: 'preventAll', combat, source, to: 'all', toRef: ref }];
+          return [{ kind: 'preventDamage', amount: 'all', to: ref, duration: 'endOfTurn' }];
         }
       }
     }
     if (/^noncombat/i.test(m[1] ?? '')) return null;
-    return [{ kind: 'preventAll', combat, source, to }];
+    return [...pre, { kind: 'preventAll', combat, source, to }];
   }],
   [/^prevent all (combat )?damage that would be dealt by (.+?) this turn$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
@@ -1520,7 +1585,18 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
 /** "except it has haste and it is a Nightmare in addition to its other types" → token copy exceptions. */
 export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | null {
   const ex: NonNullable<TokenSpec['exceptions']> = {};
-  for (const part of text.split(/,? and (?=(?:it|they|its|is|has|have|are)\b)|, /i)) {
+  // Split on commas/ands outside quoted rules text.
+  const masked = text.replace(/"[^"]*"/g, (q) => '\u0001'.repeat(q.length));
+  const bounds: number[] = [];
+  for (const bm of masked.matchAll(/,? and (?=(?:it|they|its|is|has|have|are)\b)|, /gi)) bounds.push(bm.index!, bm.index! + bm[0].length);
+  const parts: string[] = [];
+  let at = 0;
+  for (let bi = 0; bi < bounds.length; bi += 2) {
+    parts.push(text.slice(at, bounds[bi]));
+    at = bounds[bi + 1];
+  }
+  parts.push(text.slice(at));
+  for (const part of parts) {
     const p = part.trim();
     let m: RegExpMatchArray | null;
     const p2 = p.replace(/^and /i, '').replace(/^(?:the token|the copy|that token|those tokens) /i, 'it ').replace(/^(?=(?:is|has|have|are) )/i, 'it ');
@@ -1532,7 +1608,9 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
       ex.name = m[1].replace(/^~'s /, '');
       continue;
     }
-    if ((m = p2.match(/^(?:it|they) (?:has|have) (.+)$/i))) {
+    if ((m = p2.match(/^(?:it|they) (?:has|have) "(.+)"$/i)) && !parseKeywordList(m[1])) {
+      ex.abilities = [...(ex.abilities ?? []), m[1]];
+    } else if ((m = p2.match(/^(?:it|they) (?:has|have) (.+)$/i))) {
       const kws = parseKeywordList(m[1].replace(/^"|"$/g, ''));
       if (!kws) return null;
       ex.keywords = [...(ex.keywords ?? []), ...kws];

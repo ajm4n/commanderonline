@@ -1,5 +1,5 @@
 /** Static abilities and replacement effects. */
-import type { AbilitySpec, Amount, ObjectFilter, RuleModification, StaticAbilitySpec } from '@commander/engine';
+import type { AbilitySpec, Amount, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
 import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions } from './effects.js';
 import { wordToNumber } from './text.js';
@@ -236,7 +236,9 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return objRule(m[3], { kind: 'custom', tag: 'dealsNoDamage', data: combat ?? 'all' });
     }
     let source: ObjectFilter | undefined;
-    if (m[3]) {
+    if (m[3] && /^creatures blocking (?:it|~)$/i.test(m[3])) source = { types: ['Creature'], blockingSource: true };
+    else if (m[3] && /^sources of the (?:last )?chosen color$/i.test(m[3])) source = { chosenColor: true };
+    else if (m[3]) {
       const sn = parseNoun(m[3].replace(/ sources?$/i, ' permanents').replace(/^(white|blue|black|red|green|colorless|colored|artifact|noncreature|nonblack|nonwhite|nonred|nongreen|nonblue) permanents$/i, '$1 permanent').replace(/^permanents$/i, 'permanent'));
       if (!sn) return null;
       source = { ...sn.filter, zone: undefined };
@@ -275,12 +277,23 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
-  if ((m = L.match(/^(You may have )?~ enters? as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {
+  if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {
+    // "..., except it enters with X additional +1/+1 counters on it" belongs on the replacement, not the copy.
+    let etbCounters: { counter: string; amount: Amount } | undefined;
+    if (m[3]) {
+      const cm = m[3].match(/^(?:it|they) enters? with (?:a|an|(\w+|X)) (?:additional )?([+-]\d\/[+-]\d|\w+) counters? on (?:it|them)$/i);
+      if (cm) {
+        const n = cm[1] ? (cm[1].toUpperCase() === 'X' ? 'X' : wordToNumber(cm[1])) : 1;
+        if (n === null) return null;
+        etbCounters = { counter: cm[2], amount: n as Amount };
+        m[3] = '';
+      }
+    }
     const noun = parseNoun(`a ${m[2]}`);
     if (!noun) return null;
     const ex = m[3] ? parseCopyExceptions(m[3].replace(/^(?:it|he|she) enters with /i, 'it has ').replace(/\bhis name\b/i, 'its name')) : undefined;
     if (m[3] && !ex) return null;
-    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, enterAsCopy: noun.filter, enterAsCopyOptional: !!m[1], copyExceptions: ex ?? undefined }];
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: /enters? tapped as a copy/i.test(L) || undefined, enterAsCopy: noun.filter, enterAsCopyOptional: !!m[1], copyExceptions: ex ?? undefined, counters: etbCounters as { counter: import('@commander/engine').CounterType; amount: Amount } | undefined }];
   }
   // Rest in Peace / "If a creature an opponent controls would die, exile it instead."
   if ((m = L.match(/^If (?:a|an) (.+?) would (die|be put into (a|an opponent's|your) graveyard(?: from anywhere| from the battlefield)?), exile it instead$/i))) {
@@ -441,9 +454,57 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
     return out;
   }
+  // "~ enters with a +1/+1 counter, a flying counter, a deathtouch counter, and a shield counter on it."
+  if ((m = L.match(/^~ enters with ((?:(?:a|an|\w+) [+-]?[\w/+-]+ counters?(?:, |,? and )?){2,}) on it$/i))) {
+    const list: { counter: string; amount: Amount }[] = [];
+    for (const part of m[1].split(/,\s*(?:and\s+)?|\s+and\s+/i)) {
+      const pm = part.trim().match(/^(?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w' -]+?) counters?$/i);
+      if (!pm) return null;
+      const n = pm[1] ? wordToNumber(pm[1]) : 1;
+      if (n === null || n === 'X') return null;
+      list.push({ counter: pm[2], amount: n });
+    }
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, countersList: list as { counter: import('@commander/engine').CounterType; amount: Amount }[] }];
+  }
+  // "~ enters with your choice of a flying counter or a first strike counter on it." / "... of a +1/+1, first strike, or vigilance counter on it."
+  if ((m = L.match(/^~ enters with your choice of (?:(\w+) different counters on it from among (.+)|(.+?) counters? on it)$/i))) {
+    const count = m[1] ? wordToNumber(m[1]) : 1;
+    if (count === null || count === 'X') return null;
+    const listText = m[2] ?? m[3];
+    const from = listText
+      .split(/,\s*(?:or\s+)?|\s+or\s+/i)
+      .map((x) => x.trim().replace(/^(?:a|an) /i, '').replace(/ counters?$/i, ''))
+      .filter(Boolean);
+    if (from.length < 2) return null;
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counterChoice: { from, count } }];
+  }
+  // "~ enters with two -1/-1 counters on it unless you've cast another red spell this turn."
+  if ((m = L.match(/^~ enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it unless (.+)$/i))) {
+    const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (cond && cond.kind !== 'manual' && n !== null && n !== 'X') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2] as import('@commander/engine').CounterType, amount: n }, condition: { kind: 'not', c: cond } }];
+  }
+  // "~ enters with twice X +1/+1 counters on it." / "... with X +1/+1 counters on it."
+  if ((m = L.match(/^~ enters with (twice X|X) ([+-]\d\/[+-]\d|\w+) counters? on it$/i))) {
+    const amount: Amount = /twice/i.test(m[1]) ? { kind: 'times', a: 'X', b: 2 } : 'X';
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2] as import('@commander/engine').CounterType, amount } }];
+  }
   if ((m = L.match(/^~ enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it for each (.+)$/i))) {
-    const noun = parseNoun(m[3]);
-    const per: Amount | null = noun ? { kind: 'count', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } } : parseAmount(`the number of ${m[3]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const rc = { self: { ref: 'self' } as Ref, lastObj: null, triggerHasObject: false };
+    const one = (phrase: string): Amount | null => {
+      const n2 = parseNoun(phrase);
+      if (n2) return { kind: 'count', filter: n2.filter.zone ? n2.filter : { ...n2.filter, zone: 'battlefield' } };
+      return parseAmount(`the number of ${phrase}`, rc) ?? parseAmount(phrase, rc);
+    };
+    let per: Amount | null = one(m[3]);
+    if (per === null) {
+      const both = m[3].match(/^(.+?) and (?:each |for each )?(.+)$/i);
+      if (both) {
+        const a2 = one(both[1]);
+        const b2 = a2 ? one(both[2]) : null;
+        if (a2 && b2) per = { kind: 'sum', parts: [a2, b2] };
+      }
+    }
     if (per === null) return null;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: { kind: 'times', a: m[1] ? (wordToNumber(m[1]) as number) : 1, b: per } } }];
   }
@@ -480,6 +541,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) (?:get|gets) ([+-]\d+)\/([+-]\d+) for each (.+?)(?: on the battlefield)?$/i))) {
     const a = affectsOf(m[1]);
     if (!a.ok) return null;
+    const both = m[4].match(/^(.+?) and (?:each |for each )?(.+)$/i);
+    if (both && !/\b(and|or)\b/i.test(both[1])) {
+      const rc = { self: { ref: 'self' } as Ref, lastObj: null, triggerHasObject: false };
+      const pa = parseAmount(`the number of ${both[1]}`, rc);
+      const pb = pa ? parseAmount(`the number of ${both[2]}`, rc) : null;
+      if (pa && pb) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: { kind: 'sum', parts: [pa, pb] } } }];
+    }
     const noun = parseNoun(m[4]) ?? parseNoun(`a ${m[4]}`);
     if (noun) {
       const f = { ...noun.filter };
@@ -516,6 +584,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       { kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: m[1] ? (wordToNumber(m[1]) as number) : 1 }, condition: { kind: 'wasKicked' } },
       { kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: kws }, condition: { kind: 'wasKicked' } },
     ];
+  }
+  if ((m = L.match(/^~'s power is equal to (.+?) and its toughness is equal to (?:that number plus (\w+)|(.+))$/i))) {
+    const rc = { self: { ref: 'self' } as Ref, lastObj: null, triggerHasObject: false };
+    const pa = parseAmount(m[1], rc);
+    const ta = m[2] ? (pa && wordToNumber(m[2]) !== null ? ({ kind: 'sum', parts: [pa, wordToNumber(m[2]) as number] } as Amount) : null) : parseAmount(m[3], rc);
+    if (pa && ta) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: '7b', powerAmount: pa, toughnessAmount: ta } }];
   }
   if ((m = L.match(/^~'s (power|toughness) is equal to (.+)$/i))) {
     const amt = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });

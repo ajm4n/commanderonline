@@ -376,6 +376,10 @@ export interface ObjectFilter {
   attachedToSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
   damagedBySource?: boolean;
+  /** Creatures blocking the filter's source object ("creatures blocking it"). */
+  blockingSource?: boolean;
+  /** Objects of the color the source chose (memory `color`). */
+  chosenColor?: boolean;
   /** Has a custom rule with this tag ("saddled", "goaded"). */
   customRule?: string;
   /** Modified: has a counter, or an Equipment/Aura attached that its controller controls. */

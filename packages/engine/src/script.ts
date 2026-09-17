@@ -43,6 +43,7 @@ export type Amount =
   | { kind: 'discardedThisWay'; ref: Ref }
   /** Sum of power of matching objects ("creatures you control have total power 8 or greater"). */
   | { kind: 'totalPower'; filter: ObjectFilter }
+  | { kind: 'totalToughness'; filter: ObjectFilter }
   /** "the greatest power among creatures you control" */
   | { kind: 'maxOf'; stat: 'power' | 'toughness' | 'manaValue'; filter: ObjectFilter }
   /** Number of party roles (Cleric, Rogue, Warrior, Wizard) among creatures you control. */
@@ -54,9 +55,11 @@ export type Amount =
   /** Sum of mana values of matching objects. */
   | { kind: 'totalManaValue'; filter: ObjectFilter }
   /** Number of colors of the referenced object(s). */
+  /** Mana spent to cast the source: distinct colors, total, or how many times a symbol group was paid. */
+  | { kind: 'manaSpent'; of: 'colors' | 'total'; symbols?: string }
   | { kind: 'colorCount'; ref?: Ref; /** Distinct colors among objects matching this filter ('colors among permanents you control'). */ filter?: ObjectFilter }
   /** A per-player turn statistic ("life you gained this turn"). */
-  | { kind: 'playerTurnStat'; key: string; ref?: Ref }
+  | { kind: 'playerTurnStat'; key: string; ref?: Ref; /** Sum the stat across every opponent instead of one player. */ opponents?: boolean }
   /** Number of distinct values of a stat among matching objects ("creatures with different powers"). */
   | { kind: 'distinctValues'; stat: 'power' | 'toughness' | 'manaValue' | 'name'; filter: ObjectFilter }
   /** Domain: basic land types among lands you control. */
@@ -128,7 +131,7 @@ export interface TokenSpec {
   legendary?: boolean;
   /** Copy of another object (for "create a token that's a copy of ~"). */
   copyOf?: Ref;
-  exceptions?: { keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[]; name?: string; /** "except it has this ability": the copying object's own copy ability is kept. */ thisAbility?: boolean };
+  exceptions?: { /** Quoted rules text the copy also has. */ abilities?: string[]; keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[]; name?: string; /** "except it has this ability": the copying object's own copy ability is kept. */ thisAbility?: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -228,8 +231,8 @@ export type Effect =
   | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean ; /** "your choice of a +1/+1, first strike, or trample counter" */ counterOptions?: string[] }
   | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
-  | { kind: 'setPT'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
-  | { kind: 'grantKeywords'; keywords: string[]; on: Ref; duration?: Duration }
+  | { kind: 'setPT'; power?: Amount; toughness?: Amount; on: Ref; duration?: Duration }
+  | { kind: 'grantKeywords'; keywords: string[]; on: Ref; duration?: Duration; /** Grant only this many of `keywords`, chosen by the controller ("gains your choice of flying or haste"). */ choose?: number }
   | { kind: 'removeKeywords'; keywords: string[]; on: Ref; duration?: Duration }
   | { kind: 'loseAllAbilities'; on: Ref; duration?: Duration }
   | { kind: 'addTypes'; types: string[]; on: Ref; duration?: Duration; subtypes?: string[] }
@@ -320,7 +323,7 @@ export type Effect =
   /** Fog effects: "Prevent all (combat) damage that would be dealt this turn [by X] [to Y]". */
   /** Clash with an opponent: each reveals the top card; the controller's source remembers whether they won (memory flag `clashWon`). */
   | { kind: 'clash' }
-  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
+  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
   | { kind: 'revealUntil'; filter: ObjectFilter; destination: 'hand' | 'battlefield' | 'graveyard' | 'exile'; rest: 'bottom' | 'graveyard' | 'exile'; tapped?: boolean; who?: Ref }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player
@@ -392,7 +395,7 @@ export interface AbilityCost {
   payLife?: number | 'X';
   discard?: { count: number | 'X'; filter?: ObjectFilter; random?: boolean } | 'hand';
   /** amount 'X' = the chosen X ("Remove X counters", "Remove any number of counters"). */
-  removeCounters?: { counter: CounterType; amount: number | 'X' | 'all' };
+  removeCounters?: { counter: CounterType | 'any'; amount: number | 'X' | 'all' };
   addCounters?: { counter: CounterType; amount: number };
   exileFromGraveyard?: { filter: ObjectFilter; count: number | 'X' };
   exileSelf?: boolean;
@@ -496,7 +499,7 @@ export interface SpellAbilitySpec {
 
 /** Replacement effects modeled for the common cases. */
 export type ReplacementSpec =
-  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; /** "..., except it is an enchantment in addition to its other types" */ copyExceptions?: TokenSpec['exceptions']; /** Tribute N: an opponent may put N +1/+1 counters on it (memory `tributePaid`). */ tribute?: number; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName' | 'player' | 'number' | 'option'; chooseOptions?: string[]; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
+  | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self: true; /** Several kinds at once ("enters with a +1/+1 counter, a flying counter, and a shield counter on it"). */ countersList?: { counter: CounterType; amount: Amount }[]; /** "enters with your choice of a flying counter or a first strike counter on it" */ counterChoice?: { from: string[]; count: number }; tapped?: boolean; /** "enters tapped unless ..." */ unless?: Condition; /** Only applies when true ("If ~ was kicked, it enters with ..."). */ condition?: Condition; /** Clones: "You may have ~ enter as a copy of any creature on the battlefield." */ enterAsCopy?: ObjectFilter; enterAsCopyOptional?: boolean; /** "..., except it is an enchantment in addition to its other types" */ copyExceptions?: TokenSpec['exceptions']; /** Tribute N: an opponent may put N +1/+1 counters on it (memory `tributePaid`). */ tribute?: number; counters?: { counter: CounterType; amount: Amount }; choose?: 'color' | 'creatureType' | 'opponent' | 'cardName' | 'player' | 'number' | 'option'; chooseOptions?: string[]; chooseKey?: string; effects?: Effect[]; payLifeOrTapped?: number }
   | { kind: 'replacement'; text: string; event: 'entersBattlefield'; self?: false; filter: ObjectFilter; tapped?: boolean; counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'replacement'; text: string; event: 'dies' | 'leavesBattlefield' | 'putIntoGraveyard'; self: true; instead: 'exile' | 'returnToHand' | 'shuffleIntoLibrary' | 'commandZone'; mayChoose?: boolean; effects?: Effect[] }
   /** "If a creature an opponent controls would die, exile it instead." / Rest in Peace */

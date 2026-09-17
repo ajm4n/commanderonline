@@ -65,6 +65,7 @@ export function parseCost(text: string): AbilityCost | null {
     } else if ((m = p.match(/^Pay (\d+) life$/i))) cost.payLife = parseInt(m[1], 10);
     else if (/^Pay X life$/i.test(p)) cost.payLife = 'X';
     else if ((m = p.match(/^Pay ((?:\{E\})+)$/i))) cost.energy = (m[1].match(/\{E\}/g) ?? []).length;
+    else if ((m = p.match(/^Pay (\w+) \{E\}$/i)) && typeof wordToNumber(m[1]) === 'number') cost.energy = wordToNumber(m[1]) as number;
     else if (/^Discard ~$/i.test(p)) cost.discardSelf = true;
     else if (/^Discard your hand$/i.test(p)) cost.discard = 'hand';
     else if ((m = p.match(/^Discard (?:a|an|(\w+)) cards? at random$/i))) {
@@ -81,6 +82,10 @@ export function parseCost(text: string): AbilityCost | null {
         if (!noun) return null;
         cost.discard = { count: n, filter: noun.filter };
       }
+    } else if ((m = p.match(/^Remove (?:a|an|(\w+)) counters? from ~$/i))) {
+      const n = m[1] ? wordToNumber(m[1]) : 1;
+      if (n === null) return null;
+      cost.removeCounters = { counter: 'any', amount: n };
     } else if ((m = p.match(/^Remove (?:a|an|(\w+)|any number of|all) ([+-]\d\/[+-]\d|\w+) counters? from ~$/i))) {
       const n = /any number of/i.test(p) ? 'X' : /^Remove all /i.test(p) ? 'all' : m[1] ? wordToNumber(m[1]) : 1;
       if (n === null) return null;

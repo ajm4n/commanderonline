@@ -310,10 +310,19 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
     }
     yield* tapForMana(g, src.id, src.alternatives[solution.alternatives[i]]);
   }
+  const poolBefore = { ...player.manaPool };
   if (!deductFromPool(player.manaPool, cost, x)) {
     // Should not happen; leave mana in pool for the player to use.
     g.log('Payment mismatch after tapping; mana left in pool.');
     return false;
+  }
+  if (sourceId !== null && g.state.objects[sourceId]) {
+    const used: Record<string, number> = {};
+    for (const k of ['W', 'U', 'B', 'R', 'G', 'C'] as const) {
+      const d = (poolBefore[k] ?? 0) - (player.manaPool[k] ?? 0);
+      if (d > 0) used[k] = d;
+    }
+    g.state.objects[sourceId].memory['manaSpentPool'] = used;
   }
   g.touch();
   // Expend: track total mana spent this turn and fire "expend N" thresholds.
@@ -346,7 +355,8 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   const cnt = (v: number | 'X' | 'any' | undefined, avail: number, dflt = 1): number => (v === 'X' ? x : v === 'any' ? avail : (v ?? dflt));
   if (cost.payLife !== undefined && g.player(p).life < nx(cost.payLife)) return false;
   if (cost.energy !== undefined && g.player(p).energy < cost.energy) return false;
-  if (cost.removeCounters && (obj.counters[cost.removeCounters.counter] ?? 0) < nx(cost.removeCounters.amount)) return false;
+  if (cost.removeCounters && cost.removeCounters.counter === 'any' && Object.values(obj.counters).reduce((s, v) => s + (v ?? 0), 0) < nx(cost.removeCounters.amount)) return false;
+  if (cost.removeCounters && cost.removeCounters.counter !== 'any' && (obj.counters[cost.removeCounters.counter] ?? 0) < nx(cost.removeCounters.amount)) return false;
   if (cost.loyalty !== undefined && cost.loyalty < 0 && (obj.counters['loyalty'] ?? 0) < -cost.loyalty) return false;
   if (cost.sacrifice) {
     const cands = objectsMatching(g, { ...cost.sacrifice.filter, controller: 'you' }, ctx);
@@ -468,7 +478,18 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.untap) g.untap(obj.id);
   if (cost.payLife) g.loseLife(p, nx(cost.payLife));
   if (cost.energy) g.player(p).energy -= cost.energy;
-  if (cost.removeCounters) g.removeCounters(obj.id, cost.removeCounters.counter, nx(cost.removeCounters.amount));
+  if (cost.removeCounters && cost.removeCounters.counter === 'any') {
+    for (let i = 0; i < nx(cost.removeCounters.amount); i++) {
+      const kinds = Object.entries(obj.counters).filter(([, v]) => (v ?? 0) > 0).map(([k]) => k);
+      if (!kinds.length) break;
+      let pick = kinds[0];
+      if (kinds.length > 1) {
+        const r = yield* g.ask({ type: 'chooseOption', player: p, prompt: 'Remove which counter?', options: kinds.map((k) => ({ id: k, label: `${k} counter` })), min: 1, max: 1, sourceId: obj.id });
+        if (r.type === 'options' && r.ids[0]) pick = r.ids[0];
+      }
+      g.removeCounters(obj.id, pick, 1);
+    }
+  } else if (cost.removeCounters) g.removeCounters(obj.id, cost.removeCounters.counter, nx(cost.removeCounters.amount));
   if (cost.addCounters) g.addCounters(obj.id, cost.addCounters.counter, cost.addCounters.amount);
   if (cost.loyalty !== undefined) {
     if (cost.loyalty > 0) g.addCounters(obj.id, 'loyalty', cost.loyalty);

@@ -153,6 +153,11 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     return noun ? { kind: 'graveyardSize', ref: { ref: 'controller' }, filter: noun.filter } : null;
   }
   if (t === 'the number of lands you control') return { kind: 'landsYouControl' };
+  if ((m = t.match(/^the (greatest|highest) (power|toughness|mana value) among (.+?) and (.+)$/))) {
+    const a = withCtrl(parseNoun(oc(m, 3)), ctx);
+    const b = withCtrl(parseNoun(oc(m, 4)), ctx);
+    if (a && b) return { kind: 'maxOf', stat: m[2] === 'power' ? 'power' : m[2] === 'toughness' ? 'toughness' : 'manaValue', filter: { anyOf: [{ ...a.filter, zone: a.filter.zone ?? 'battlefield' }, { ...b.filter, zone: b.filter.zone ?? 'battlefield' }] } };
+  }
   if ((m = t.match(/^the (greatest|highest) (power|toughness|mana value) among (.+)$/))) {
     const noun = withCtrl(parseNoun(oc(m, 3)), ctx);
     if (noun) return { kind: 'maxOf', stat: m[2] === 'power' ? 'power' : m[2] === 'toughness' ? 'toughness' : 'manaValue', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
@@ -163,6 +168,22 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the number of opponents you have' || t === 'the number of your opponents' || t === 'opponents you have' || t === 'your opponents' || t === 'the number of opponents') return { kind: 'opponents' };
   if (t === 'the number of spells you have cast this turn' || t === 'spells you have cast this turn' || t === 'spell you have cast this turn' || t === 'the number of spell you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
   if (t === 'the number of cards you have drawn this turn' || t === 'cards you have drawn this turn' || t === 'card you have drawn this turn' || t === 'the number of card you have drawn this turn') return { kind: 'cardsDrawnThisTurn' };
+  if ((m = t.match(/^(?:the number of )?cards? (?:you )?(?:drew|drawn) this way$/))) return { kind: 'triggerAmount' };
+  if ((m = t.match(/^the mana value of the (?:sacrificed|exiled|discarded|destroyed|chosen) (?:permanent|creature|card|artifact|land)$/))) return { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
+  if ((m = t.match(/^the number of cards (that player|target opponent|target player|they|each opponent) discarded this turn$/))) {
+    const r = ctx.resolvePlayer?.(m[1]) ?? thatPlayer(ctx);
+    return { kind: 'playerTurnStat', key: 'discard', ref: r };
+  }
+  if ((m = t.match(/^(?:the number of )?colors? of mana spent to cast (?:it|~|this spell)$/))) return { kind: 'manaSpent', of: 'colors' };
+  if ((m = t.match(/^(?:the number of |the amount of )?mana spent to cast (?:it|~|this spell)$/))) return { kind: 'manaSpent', of: 'total' };
+  if ((m = t.match(/^((?:\{[wubrgc]\})+) spent to cast (?:it|~|this spell)$/))) return { kind: 'manaSpent', of: 'colors', symbols: m[1].toUpperCase() };
+  if ((m = t.match(/^(?:the )?total (?:number of )?(?:cards in all players' hands)$/))) return { kind: 'count', filter: { zone: 'hand' } };
+  if ((m = t.match(/^(?:the )?(?:total )?(?:amount of )?(?:\d+ )?life (?:lost by |your )?opponents? (?:have )?lost this turn$/)) || (m = t.match(/^(?:the )?total life lost by your opponents this turn$/))) return { kind: 'playerTurnStat', key: 'lifeLostAmount', opponents: true };
+  if ((m = t.match(/^(?:the )?(?:total )?(?:amount of )?life you(?:'ve| have)? lost this turn$/))) return { kind: 'playerTurnStat', key: 'lifeLostAmount' };
+  if ((m = t.match(/^(?:the )?total toughness of (.+)$/))) {
+    const noun = withCtrl(parseNoun(oc(m, 1)), ctx);
+    if (noun) return { kind: 'totalToughness', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
+  }
   if (t === 'the number of experience counters you have' || t === 'experience counter you have' || t === 'experience counters you have') return { kind: 'turnStat', key: 'experience' };
   if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
   if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {

@@ -87,7 +87,7 @@ export interface GameState {
   damagedBy: Record<number, ObjectId[]>;
   /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
   lastTurnStats: Record<string, number>;
-  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean }[];
+  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[] }[];
   log: LogEntry[];
   monarch: PlayerId | null;
   initiative: PlayerId | null;
@@ -1355,6 +1355,7 @@ export class Game {
       case 'totalPower':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + (this.characteristics(o.id).power ?? 0), 0);
       case 'playerTurnStat': {
+        if (a.opponents) return this.opponentsOf(ctx.controller).reduce((s, p) => s + (this.state.players[p]?.turnStats[a.key] ?? 0), 0);
         const pid = a.ref ? this.resolvePlayers(a.ref, ctx)[0] : ctx.controller;
         return pid !== undefined ? (this.state.players[pid]?.turnStats[a.key] ?? 0) : 0;
       }
@@ -1382,6 +1383,21 @@ export class Game {
         for (const o of objectsMatching(this, a.filter, fctx)) for (const t of this.characteristics(o.id).types) types.add(t);
         return types.size;
       }
+      case 'manaSpent': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : undefined;
+        const pool = (src?.memory['manaSpentPool'] as Record<string, number> | undefined) ?? {};
+        if (a.of === 'total') return Object.values(pool).reduce((s, v) => s + v, 0);
+        if (a.symbols) {
+          const need: Record<string, number> = {};
+          for (const sym of a.symbols.match(/\{([WUBRGC])\}/g) ?? []) {
+            const k = sym.slice(1, -1);
+            need[k] = (need[k] ?? 0) + 1;
+          }
+          const times = Object.entries(need).map(([k, n]) => Math.floor((pool[k] ?? 0) / n));
+          return times.length ? Math.min(...times) : 0;
+        }
+        return Object.entries(pool).filter(([k, v]) => k !== 'C' && v > 0).length;
+      }
       case 'colorCount': {
         if (a.filter) {
           const set = new Set<string>();
@@ -1390,6 +1406,8 @@ export class Game {
         }
         return a.ref ? this.resolveObjects(a.ref, ctx).reduce((s, o) => s + this.characteristics(o.id).colors.length, 0) : 0;
       }
+      case 'totalToughness':
+        return objectsMatching(this, this.bindFilter(a.filter, ctx), fctx).reduce((s, o) => s + (this.characteristics(o.id).toughness ?? 0), 0);
       case 'totalManaValue':
         return objectsMatching(this, a.filter, fctx).reduce((s, o) => s + this.characteristics(o.id).manaValue, 0);
       case 'eventsThisTurn': {
@@ -1625,6 +1643,8 @@ export class Game {
     p.life -= n;
     this.touch();
     this.log(`${p.name} loses ${n} life (${p.life}).`, { kind: 'life', data: { player: pid, delta: -n, life: p.life } });
+    this.state.turnStats[`lifeLostAmount:${pid}`] = (this.state.turnStats[`lifeLostAmount:${pid}`] ?? 0) + n;
+    p.turnStats['lifeLostAmount'] = (p.turnStats['lifeLostAmount'] ?? 0) + n;
     this.emit({ name: 'lifeLost', playerId: pid, amount: n, sourceId });
   }
 
@@ -1662,7 +1682,7 @@ export class Game {
         const d = (r as PD).data ?? {};
         if (d.combat === 'combat' && !combat) continue;
         if (d.combat === 'noncombat' && combat) continue;
-        if (d.source && (!src || !matchesFilter(this, src, { ...d.source, zone: undefined }, { sourceId: src.id, controller: src.controller }))) continue;
+        if (d.source && (!src || !matchesFilter(this, src, { ...d.source, zone: undefined }, { sourceId: target.kind === 'object' ? target.id : src.id, controller: src.controller }))) continue;
         return true;
       }
     }
@@ -1672,7 +1692,8 @@ export class Game {
       if (pv.source && (!src || !matchesFilter(this, src, { ...pv.source, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller }))) continue;
       const to = pv.to;
       let hit = false;
-      if (to === 'all') hit = true;
+      if (pv.ids || pv.playerIds) hit = target.kind === 'object' ? !!pv.ids?.includes(target.id) : target.kind === 'player' ? !!pv.playerIds?.includes(target.id) : false;
+      else if (to === 'all') hit = true;
       else if (target.kind === 'player') hit = to === 'players' || ((to === 'you' || to === 'youAndCreaturesYouControl' || to === 'youAndPlaneswalkersYouControl') && target.id === pv.controller);
       else if (target.kind === 'object') {
         const obj = this.state.objects[target.id];
