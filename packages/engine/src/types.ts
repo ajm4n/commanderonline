@@ -355,6 +355,8 @@ export interface ObjectFilter {
   attackedThisTurn?: boolean;
   /** Dealt damage to the effect's controller this turn. */
   dealtDamageToYouThisTurn?: boolean;
+  /** Dealt damage to anything this turn ("target creature that dealt damage this turn"). */
+  dealtDamageThisTurn?: boolean;
   blocking?: boolean;
   attackingOrBlocking?: boolean;
   other?: boolean; // exclude the source object itself

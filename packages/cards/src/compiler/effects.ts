@@ -3399,6 +3399,44 @@ const PATTERNS: Pattern[] = [
     if (/graveyard/i.test(m[1])) out.push({ kind: 'exile', what: { ref: 'all', filter: { zone: 'graveyard', owner: 'opponent' } } });
     return out;
   }],
+  // "Turn target creature with a morph ability face down"
+  [/^turn (target .+?) face down$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'turnFaceDown', what: ref }] : null;
+  }],
+  // "You skip your next untap step"
+  [/^(?:you|that player|each opponent|target player) skips? (?:your|their) next untap step$/i, (m, ctx) => {
+    const who = /^you /i.test(m[0]) ? YOU : playerRef(m[0].split(' ')[0] === 'each' ? 'each opponent' : m[0].split(' ').slice(0, 2).join(' '), ctx) ?? YOU;
+    return [{ kind: 'grantPlayerRule', who, rule: { kind: 'custom', tag: 'skipUntapStep' } }];
+  }],
+  // "each opponent cannot cast instant or sorcery spells during that player's next turn"
+  [/^(each opponent|each player|target opponent|target player|that player) cannot cast (.+?) during (?:that player's|their) next turn$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = /^spells$/i.test(m[2]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[2].replace(/ spells?$/i, '')} spell`);
+    if (!who || !noun) return null;
+    return [{ kind: 'grantPlayerRule', who, rule: { kind: 'custom', tag: 'cantCastSpells', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }],
+  // "A creature dealt damage this way cannot block this turn"
+  [/^(?:a|each) (.+?) dealt damage this way cannot (block|attack)(?: this turn)?$/i, (m) => [{ kind: 'applyRule', rule: /block/i.test(m[2]) ? { kind: 'cantBlock' } : { kind: 'cantAttack' }, on: { ref: 'chosen', key: 'lastDamaged' }, duration: 'endOfTurn' }]],
+  // "Prevent the next 1 damage that would be dealt by ~ this turn"
+  [/^prevent the next (\d+) damage that would be dealt by (~|it) this turn$/i, (m) => [{ kind: 'preventAll', amount: parseInt(m[1], 10), sourceRef: SELF, to: 'all', once: true }]],
+  // "Prevent all combat damage that would be dealt by target blocked creature this turn"
+  [/^prevent all (combat )?damage that would be dealt by (target .+?) this turn$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    return ref ? [{ kind: 'preventAll', combat: m[1] ? true : undefined, sourceRef: ref, to: 'all' }] : null;
+  }],
+  // "Double target player's life total"
+  [/^double (target player|target opponent|that player|each player|each opponent)'s life totals?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'setLife', amount: { kind: 'times', a: 2, b: { kind: 'life', ref: who } }, who }] : null;
+  }],
+  // "Untap and goad that creature"
+  [/^untap and goad (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'untap', what: ref }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'goaded', data: '__you__' }, on: ref, duration: 'permanent' }] : null;
+  }],
+  // "have it connive"
+  [/^have (it|that creature|~) connives?$/i, (m, ctx) => parseSentence(`${m[1]} connives`, ctx)],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile

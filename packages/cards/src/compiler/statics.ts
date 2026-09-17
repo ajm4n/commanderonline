@@ -344,7 +344,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addSubtypesFromMemory: 'landType' } }];
   }
   // "Colorless spells you cast with mana value 7 or greater cost {1} less to cast."
-  if ((m = L.match(/^(.+?) you cast (with [^,]+?) cost \{(\d)\} (less|more) to cast$/i))) {
+  if ((m = L.match(/^(.+?) you cast ((?:with|that (?:have|has)) [^,]+?) cost \{(\d)\} (less|more) to cast$/i))) {
     const noun = parseNoun(`a ${m[1].replace(/ spells?$/i, ' spell')} ${m[2]}`);
     if (noun) {
       const f = { ...noun.filter };

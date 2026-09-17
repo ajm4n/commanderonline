@@ -2074,6 +2074,7 @@ export class Game {
       }
       p.turnStats['damageTaken'] = (p.turnStats['damageTaken'] ?? 0) + dealt;
       if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] = (this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] ?? 0) + dealt;
+      if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damageDealtBy:${sourceId}`] = (this.state.turnStats[`damageDealtBy:${sourceId}`] ?? 0) + dealt;
       this.touch();
       this.emit({ name: 'dealsDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });
       this.emit({ name: 'dealtDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });
@@ -2106,6 +2107,7 @@ export class Game {
       }
       if (src) (this.state.damagedBy[obj.id] ??= []).push(src.id);
       this.touch();
+      if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damageDealtBy:${sourceId}`] = (this.state.turnStats[`damageDealtBy:${sourceId}`] ?? 0) + dealt;
       this.log(`${src ? this.nameOf(src.id) : 'Something'} deals ${dealt} damage to ${this.nameOf(obj.id)}.`, { kind: 'damage', data: { objectId: obj.id, amount: dealt, sourceId } });
       this.emit({ name: 'dealsDamage', sourceId: sourceId ?? undefined, objectId: obj.id, amount: dealt, combat, otherPlayerId: controller });
       this.emit({ name: 'dealtDamage', sourceId: sourceId ?? undefined, objectId: obj.id, amount: dealt, combat, playerId: undefined, otherPlayerId: controller });

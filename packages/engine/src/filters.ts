@@ -150,6 +150,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     if (!src || src.pairedWith !== obj.id) return false;
   }
+  if (filter.dealtDamageThisTurn && !Object.keys(g.state.turnStats).some((k) => k.startsWith(`damageDealtBy:${obj.id}`))) return false;
   if (filter.blockingSource && (ctx.sourceId === null || ctx.sourceId === undefined || !obj.blocking.includes(ctx.sourceId))) return false;
   if (filter.blockingOrBlockedBySource) {
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : null;
