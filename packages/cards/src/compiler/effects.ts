@@ -64,7 +64,7 @@ function duration(text: string): { rest: string; duration: Duration | undefined 
 
 /** Resolve an object phrase to a Ref, registering targets. */
 export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
-  const t = phrase.trim().replace(/[.,]$/, '');
+  const t = phrase.trim().replace(/[.,]$/, '').replace(/^a second target /i, 'another target ');
   const l = t.toLowerCase();
   let m0: RegExpMatchArray | null;
   if (l === '~' || l === 'this') {
@@ -3567,6 +3567,24 @@ const PATTERNS: Pattern[] = [
     const n = wordToNumber(m[1]);
     if (typeof n !== 'number') return null;
     return [{ kind: 'createToken', token: { name: 'Copy', typeLine: 'Creature', colors: [], copyOf: { ref: 'chosen', key: 'sacrificed' } }, count: n }];
+  }],
+  // "Enchanted creature and other creatures that share a creature type with it get +1/+1 until end of turn"
+  [/^(?:enchanted|equipped) creature and other creatures that share a creature type with it (?:(?:gets?|get) ([+-]\d+)\/([+-]\d+))?(?:and )?(?:gains? ([\w ,]+?))?(?: and gain ([\w ,]+?))?(?: until end of turn)?$/i, (m, ctx) => {
+    const host: Ref = { ref: 'attachedTo' };
+    const others: Ref = { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', other: true, sharesCreatureTypeWithSource: true } };
+    const out: Effect[] = [];
+    if (m[1]) {
+      out.push({ kind: 'pump', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10), on: host, duration: 'endOfTurn' });
+      out.push({ kind: 'pump', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10), on: others, duration: 'endOfTurn' });
+    }
+    const kwText = [m[3], m[4]].filter(Boolean).join(', ');
+    if (kwText) {
+      const kws = parseKeywordList(kwText.replace(/\bfrom /g, ''));
+      if (!kws) return null;
+      out.push({ kind: 'grantKeywords', keywords: kws, on: host, duration: 'endOfTurn' });
+      out.push({ kind: 'grantKeywords', keywords: kws, on: others, duration: 'endOfTurn' });
+    }
+    return out.length ? out : null;
   }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],

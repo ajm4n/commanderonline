@@ -704,6 +704,19 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     }
   }
   {
+    // Curse heads: the Aura is attached to a player.
+    if ((m = L.match(/^At the beginning of enchanted player's (upkeep|end step|draw step), (.+)$/i)))
+      return { event: /upkeep/i.test(m[1]) ? 'beginningOfUpkeep' : /end step/i.test(m[1]) ? 'beginningOfEndStep' : 'beginningOfDraw', filter: { custom: 'attachedPlayersStep' }, hasObject: false, hasPlayer: true, rest: m[2] };
+    if ((m = L.match(/^When(?:ever)? (?:a player|an opponent) attacks enchanted player(?: with one or more creatures)?, (.+)$/i)))
+      return { event: 'attacked', filter: { custom: 'attachedPlayerAttacked' }, hasObject: false, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? enchanted player is attacked, (.+)$/i)))
+      return { event: 'attacked', filter: { custom: 'attachedPlayerAttacked' }, hasObject: false, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? enchanted player casts? (?:a|an) (.+?)(?: other than the first spell they cast each turn)?, (.+)$/i))) {
+      const noun = /^spell$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+      if (noun) return { event: 'cast', filter: { custom: 'enchantedPlayer', object: { ...noun.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+  }
+  {
     // Round 93 heads.
     if ((m = L.match(/^When(?:ever)? enchanted player draws a card, (.+)$/i)))
       return { event: 'drawCard', filter: { custom: 'enchantedPlayer' }, hasObject: true, hasPlayer: true, rest: m[1] };

@@ -8,6 +8,13 @@ import { parseAmount } from './amounts.js';
 
 function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: boolean } {
   const l = text.trim().toLowerCase();
+  // "Creatures enchanted player controls": the Aura is attached to the player.
+  const ep = text.trim().match(/^(.+?) enchanted player controls$/i);
+  if (ep) {
+    const n = parseNoun(ep[1]);
+    if (!n) return { affects: undefined, ok: false };
+    return { affects: { ...n.filter, zone: n.filter.zone ?? 'battlefield', controllerRef: { ref: 'attachedTo' } }, ok: n.confident };
+  }
   if (l === '~') return { affects: 'self', ok: true };
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|artifact|planeswalker)$/.test(l)) return { affects: 'attachedTo', ok: true };
   const noun = parseNoun(text.trim());
@@ -497,6 +504,23 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       delete f.zone;
       return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'exileIfEntersUncast', data: { filter: f } } }];
     }
+  }
+  if ((m = L.match(/^Enchanted player cannot cast more than (\w+) spells? each turn$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'static', text: line, ruleAffects: 'attachedToController', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: n } }];
+  }
+  if ((m = L.match(/^No more than (\w+) creatures can attack you each combat$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'maxAttackersAgainstYou', data: n } }];
+  }
+  if (/^Activated abilities of artifacts and creatures cannot be activated unless they are mana abilities$/i.test(L))
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noNonManaAbilities', data: { filter: { types: ['Artifact', 'Creature'] } } } }];
+  if ((m = L.match(/^The chosen player's maximum hand size is (\w+)$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'chosenPlayerMaxHandSize', data: n } }];
   }
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
