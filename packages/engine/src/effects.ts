@@ -378,6 +378,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       if (colors.size) yield* executeEffect(g, { kind: 'addMana', mana: [...colors] }, ctx);
       return;
     }
+    case 'loseKeywords': {
+      const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
+      if (!ids.length) return;
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration ?? 'endOfTurn'), modification: { layer: 6, removeKeywords: e.keywords } });
+      return;
+    }
     case 'endTurn': {
       g.state.stack.length = 0;
       g.state.turnStats['endTheTurn'] = 1;

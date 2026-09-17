@@ -87,6 +87,8 @@ export interface GameState {
   damagedBy: Record<number, ObjectId[]>;
   /** Characteristics of permanents that died this turn ("for each Zubera that died this turn"). */
   diedThisTurn?: { controller: PlayerId; name: string; types: string[]; subtypes: string[]; colors: string[] }[];
+  /** Characteristics of spells cast this turn ("unless you've cast a creature spell this turn"). */
+  castThisTurn?: { controller: PlayerId; name: string; types: string[]; subtypes: string[]; colors: string[] }[];
   /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
   lastTurnStats: Record<string, number>;
   /** Player rules granted for the rest of the turn ("You may cast spells this turn as though they had flash"). */
@@ -1310,6 +1312,19 @@ export class Game {
       }
       case 'eventThisTurn': {
         const who: PlayerId[] = c.who ? this.resolvePlayers(c.who, ectx) : c.player === 'opponent' ? this.opponentsOf(ctx.controller) : c.player === 'any' ? this.activePlayers() : [ctx.controller];
+        if (c.filter && (c.event === 'cast' || c.event === 'dies')) {
+          const list = c.event === 'cast' ? this.state.castThisTurn ?? [] : this.state.diedThisTurn ?? [];
+          const f = c.filter;
+          const n = list.filter((d) => {
+            if (!who.includes(d.controller)) return false;
+            if (f.types && !f.types.every((t) => d.types.includes(t))) return false;
+            if (f.subtypes && !f.subtypes.every((t) => d.subtypes.includes(t))) return false;
+            if (f.colors && !f.colors.some((col) => d.colors.includes(col))) return false;
+            if (f.nameIs && d.name !== f.nameIs) return false;
+            return true;
+          }).length;
+          return cmp(n, c.op ?? '>=', c.value ?? 1);
+        }
         const total = who.reduce((n, p) => n + (this.state.turnStats[`${c.event}:${p}`] ?? 0), 0);
         return cmp(total, c.op ?? '>=', c.value ?? 1);
       }
@@ -2088,6 +2103,11 @@ export class Game {
     if (!o || n <= 0) return;
     // Counter-doubling replacements (e.g. Doubling Season / Hardened Scales)
     let amount = n;
+    // "If you would put one or more counters on a permanent, put twice/half that many instead."
+    for (const r of this.playerRules(o.controller)) {
+      if (r.kind !== 'custom' || r.tag !== 'counterMultiplier' || typeof r.data !== 'number') continue;
+      amount = r.data >= 1 ? amount * r.data : Math.floor(amount * r.data);
+    }
     for (const src of this.state.battlefield.map((x) => this.obj(x))) {
       if (src.controller !== o.controller) continue;
       for (const ab of this.scriptFor(src).abilities) {
@@ -2164,7 +2184,13 @@ export class Game {
     yield* this.mulligans();
     let first = true;
     while (!this.state.over) {
-      const next = this.state.turn.extraTurns.shift() ?? (first ? this.state.playerOrder[0] : this.nextPlayerAfter(this.state.turn.activePlayer));
+      let next = this.state.turn.extraTurns.shift();
+      // "If a player would begin an extra turn, that player skips that turn instead."
+      while (next !== undefined && this.playerRules(next).some((r) => r.kind === 'custom' && r.tag === 'noExtraTurns')) {
+        this.log(`${this.player(next).name} skips their extra turn.`);
+        next = this.state.turn.extraTurns.shift();
+      }
+      next ??= first ? this.state.playerOrder[0] : this.nextPlayerAfter(this.state.turn.activePlayer);
       first = false;
       if (this.player(next).lost) continue;
       yield* this.takeTurn(next);
@@ -2235,6 +2261,7 @@ export class Game {
     this.state.turnStats = {};
     this.state.turnRules = [];
     this.state.diedThisTurn = [];
+    this.state.castThisTurn = [];
     for (const p of Object.values(this.state.players)) p.turnStats = {};
   }
 

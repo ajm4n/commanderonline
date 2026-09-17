@@ -842,6 +842,8 @@ export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
   if ((sorceryOnly || (!isInstant && !anyFaceInstant)) && !canCastSorcerySpeed(g, p)) return false;
   // "Each opponent can cast spells only any time they could cast a sorcery."
   if (g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'sorcerySpeedOnly') && !canCastSorcerySpeed(g, p)) return false;
+  // "Players can't cast spells from graveyards or libraries."
+  if ((obj.zone === 'graveyard' || obj.zone === 'library') && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'noCastFromGraveyardOrLibrary')) return false;
   // "Spells with the chosen name can't be cast."
   for (const r of g.playerRules(p)) {
     if (r.kind !== 'custom' || r.tag !== 'cantCast') continue;
@@ -1242,6 +1244,10 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   g.touch();
   const tgt = targets.filter((t) => t.kind !== 'none').map((t) => g.targetName(t));
   g.log(`${player.name} casts ${face.name}${x ? ` (X=${x})` : ''}${tgt.length ? ` targeting ${tgt.join(', ')}` : ''}.`, { kind: 'cast', data: { player: p, objectId: id, targets } });
+  {
+    const cch = g.characteristics(id);
+    (g.state.castThisTurn ??= []).push({ controller: p, name: cch.name, types: [...cch.types], subtypes: [...cch.subtypes], colors: [...cch.colors] });
+  }
   g.emit({ name: 'cast', objectId: id, playerId: p, fromZone, data: { targets } });
   return true;
 }

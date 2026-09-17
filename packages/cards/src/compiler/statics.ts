@@ -135,6 +135,49 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const n = wordToNumber(m[1]);
     if (typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: m[2].toLowerCase() === 'attack' ? 'maxAttackers' : 'maxBlockersTotal', data: n } }];
   }
+  // "Creatures with islandwalk can be blocked as though they didn't have islandwalk."
+  if ((m = L.match(/^Creatures with (\w+walk) can be blocked as though they did ?n[o']t have \1$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'ignoreLandwalk', data: m[1].toLowerCase() } }];
+  }
+  // "~ can block creatures with shadow as though it had shadow."
+  if ((m = L.match(/^~ can block creatures with (\w+) as though it had \1$/i))) {
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'canBlockAsThough', data: m[1].toLowerCase() } }];
+  }
+  // "Enchanted creature loses flying."
+  if ((m = L.match(/^(Enchanted|Equipped) (?:creature|permanent|artifact|land) loses (.+)$/i))) {
+    const kws = parseKeywordList(m[2]);
+    if (kws) return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 6, removeKeywords: kws } }];
+  }
+  // "Players cannot cast spells from graveyards or libraries."
+  if (/^Players cannot cast spells from graveyards or libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noCastFromGraveyardOrLibrary' } }];
+  // "All creatures block each combat if able."
+  if ((m = L.match(/^(All creatures|Creatures your opponents control|Creatures) block each combat if able$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'mustBlock' } }];
+  }
+  // "Each player may play an additional land on each of their turns."
+  if (/^Each player may play an additional land on each of their turns$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'extraLandDrop', count: 1 } }];
+  // "During turns other than yours, spells you cast cost {1} less to cast."
+  if ((m = L.match(/^During turns other than yours, (.+?) you cast cost \{(\d)\} less to cast$/i))) {
+    const nounText = m[1].replace(/^Spells$/i, 'spells');
+    let filter: ObjectFilter | undefined;
+    if (!/^spells$/i.test(nounText)) {
+      const noun = parseNoun(nounText.replace(/ spells?$/i, ' spell'));
+      if (!noun) return null;
+      filter = { ...noun.filter };
+      delete filter.zone;
+    }
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[2], 10), filter }, condition: { kind: 'not', c: { kind: 'yourTurn' } } }];
+  }
+  // "If you would lose unspent mana, that mana becomes colorless instead."
+  if (/^If you would lose unspent mana, that mana becomes colorless instead$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'keepMana' } }];
+  // "If a player would begin an extra turn, that player skips that turn instead."
+  if (/^If a player would begin an extra turn, that player skips that turn instead$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noExtraTurns' } }];
+  // "If you would put one or more counters on a permanent or player, put twice that many instead."
+  if ((m = L.match(/^If (you|an opponent) would put one or more counters on a permanent or player, (?:they |you )?put (twice that many|half that many, rounded down|half that many)(?: of each of those kinds of counters)? (?:on that permanent or player )?instead$/i))) {
+    const mult = /twice/i.test(m[2]) ? 2 : 0.5;
+    return [{ kind: 'static', text: line, ruleAffects: m[1].toLowerCase() === 'you' ? 'controller' : 'opponents', rule: { kind: 'custom', tag: 'counterMultiplier', data: mult } }];
+  }
   if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);

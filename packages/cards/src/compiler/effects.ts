@@ -2255,6 +2255,45 @@ const PATTERNS: Pattern[] = [
     ctx.lastObj = { ref: 'lastMoved' };
     return [{ kind: 'exile', what: { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', ownerRef: owner } } }];
   }],
+  // "Until end of turn, ~ loses defender and gains flying."
+  [/^(~|it|that creature|target creature|enchanted creature|equipped creature) loses (.+?) and gains (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx) ?? ctx.lastObj;
+    const lose = parseKeywordList(m[2]);
+    const gain = parseKeywordList(m[3]);
+    if (!ref || !lose || !gain) return null;
+    return [
+      { kind: 'grantKeywords', keywords: gain, on: ref, duration: 'endOfTurn' },
+      { kind: 'loseKeywords', keywords: lose, on: ref, duration: 'endOfTurn' },
+    ];
+  }],
+  [/^(~|it|that creature|target creature|enchanted creature|equipped creature) loses ((?:flying|defender|trample|deathtouch|lifelink|haste|vigilance|reach|menace|first strike|double strike|hexproof|indestructible|shroud)(?:,? and .+)?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx) ?? ctx.lastObj;
+    const lose = parseKeywordList(m[2]);
+    if (!ref || !lose) return null;
+    return [{ kind: 'loseKeywords', keywords: lose, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "Two target players each draw a card."
+  [/^(\w+) target players each (.+)$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    ctx.targets.push({ description: `${m[1]} target players`, kind: 'player', playerFilter: 'any', min: n, max: n, distinct: true });
+    const who: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const sub = { ...ctx, lastPlayer: who };
+    const inner = parseSentence(`they ${m[2]}`, sub);
+    return inner;
+  }],
+  // "Each player chooses a creature type."
+  [/^each player chooses a creature type$/i, () => [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'chooseCreatureType', key: 'creatureType' }] }]],
+  // "Then you may discard a nonland card."
+  [/^(?:then )?you may discard (?:a|an) (.+?) card$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]} card`);
+    return noun ? [{ kind: 'may', effects: [{ kind: 'discard', amount: 1, who: YOU, filter: { ...noun.filter, zone: 'hand' } }] }] : null;
+  }],
+  // "Target opponent puts the cards from their hand on top of their library."
+  [/^(.+?) puts the cards from (?:their|his or her) hand on top of (?:their|his or her) library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'moveAll', who, from: 'hand', to: 'library' }] : null;
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2666,7 +2705,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|(?:the )?damage cannot be prevented|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|(?:the )?damage cannot be prevented|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */

@@ -191,7 +191,7 @@ export type Condition =
   | { kind: 'inZone'; ref: Ref; zone: ZoneName }
   | { kind: 'playerStat'; stat: 'ringLevel' | 'dungeonsCompleted' | 'poison' | 'experience' | 'energy'; ref?: Ref; op: Comparison; value: Amount }
   | { kind: 'hasInitiative'; ref?: Ref }
-  | { kind: 'eventThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; who?: Ref; op?: Comparison; value?: number }
+  | { kind: 'eventThisTurn'; event: GameEventName; player?: 'you' | 'opponent' | 'any'; who?: Ref; op?: Comparison; value?: number; /** Only count events whose object matched this. */ filter?: ObjectFilter }
   | { kind: 'not'; c: Condition }
   /** The current step/phase ("Activate only during your upkeep"). */
   | { kind: 'turnStep'; steps: string[]; player?: 'you' | 'opponent' | 'any'; beforeAttackers?: boolean }
@@ -271,6 +271,8 @@ export type Effect =
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
   | { kind: 'setPT'; power?: Amount; toughness?: Amount; on: Ref; duration?: Duration }
   | { kind: 'grantKeywords'; keywords: string[]; on: Ref; duration?: Duration; /** Grant only this many of `keywords`, chosen by the controller ("gains your choice of flying or haste"). */ choose?: number }
+  /** "~ loses defender until end of turn." */
+  | { kind: 'loseKeywords'; keywords: string[]; on: Ref; duration?: Duration }
   | { kind: 'removeKeywords'; keywords: string[]; on: Ref; duration?: Duration }
   | { kind: 'loseAllAbilities'; on: Ref; duration?: Duration }
   | { kind: 'addTypes'; types: string[]; on: Ref; duration?: Duration; subtypes?: string[]; /** Replace the object's card types instead of adding to them ("It's an enchantment"). */ setTypes?: string[] }

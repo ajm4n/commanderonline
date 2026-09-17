@@ -195,6 +195,26 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   if (t === 'an opponent has no cards in hand') return { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '==', value: 0 };
   if ((m = t.match(/^you cast (?:another|a|one or more) spells? this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '>=', value: 1 };
+  // "you have cast a creature spell this turn"
+  if ((m = t.match(/^you (?:have )?cast (?:another|a|an|one or more) (.+?) spells? this turn$/))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '>=', value: 1, filter: { ...noun.filter, zone: undefined } };
+  }
+  // "you control more creatures than defending player" / "than attacking player"
+  if ((m = t.match(/^you control more (.+?) than (defending player|attacking player|any opponent|each opponent)$/))) {
+    const noun = parseNoun(m[1]);
+    if (noun) {
+      const other: import('@commander/engine').Ref = m[2] === 'defending player' ? { ref: 'defendingPlayer' } : m[2] === 'attacking player' ? { ref: 'activePlayer' } : { ref: 'eachOpponent' };
+      return { kind: 'amount', a: { kind: 'count', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' } }, op: '>', b: { kind: 'count', filter: { ...noun.filter, controllerRef: other, zone: 'battlefield' } } };
+    }
+  }
+  // "an opponent has been dealt damage this turn"
+  if (/^(?:an opponent|a player|one of their opponents) (?:has been|was) dealt damage this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'dealtDamage', player: 'opponent', op: '>=', value: 1 };
+  // "defending player is the monarch" / "is poisoned"
+  if ((m = t.match(/^(defending player|target player|that player|an opponent) is the monarch$/))) return { kind: 'isMonarch', ref: m[1] === 'defending player' ? { ref: 'defendingPlayer' } : thatPlayer };
+  if ((m = t.match(/^(defending player|target player|that player|an opponent) is poisoned$/))) return { kind: 'playerStat', stat: 'poison', ref: m[1] === 'defending player' ? { ref: 'defendingPlayer' } : thatPlayer, op: '>=', value: 1 };
+  // "it escaped"
+  if (/^(?:it|~|that spell) escaped$/.test(t)) return { kind: 'memoryFlag', key: 'escaped' };
   if ((m = t.match(/^there are (\w+) or more (.+?) (?:total )?in all graveyards$/))) {
     const noun = parseNoun(oc(m, 2).replace(/ cards$/i, ' card'));
     const n = wordToNumber(m[1]);

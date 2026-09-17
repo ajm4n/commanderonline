@@ -60,7 +60,10 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
   for (const r of bch.rules) if (r.kind === 'cantBlockFilter' && matchesFilter(g, attacker, { ...r.filter, zone: 'battlefield' }, { sourceId: blocker.id, controller: blocker.controller })) return false;
   if (ach.rules.some((r) => r.kind === 'cantBeBlocked')) return false;
   if (ach.keywords.has('Flying') && !(bch.keywords.has('Flying') || bch.keywords.has('Reach'))) return false;
-  if (ach.keywords.has('Shadow') !== bch.keywords.has('Shadow')) return false;
+  // "~ can block creatures with shadow as though it had shadow."
+  const asThough = new Set<string>();
+  for (const r of bch.rules) if (r.kind === 'custom' && r.tag === 'canBlockAsThough' && typeof r.data === 'string') asThough.add(r.data.toLowerCase());
+  if (ach.keywords.has('Shadow') !== bch.keywords.has('Shadow') && !(ach.keywords.has('Shadow') && asThough.has('shadow'))) return false;
   if (ach.keywords.has('Horsemanship') && !bch.keywords.has('Horsemanship')) return false;
   if (ach.keywords.has('Fear') && !(bch.types.includes('Artifact') || bch.colors.includes('B'))) return false;
   if (ach.keywords.has('Intimidate') && !(bch.types.includes('Artifact') || bch.colors.some((c) => ach.colors.includes(c)))) return false;
@@ -78,8 +81,11 @@ function canBlock(g: Game, blocker: GameObject, attacker: GameObject): boolean {
   // "Target creature can't block ~ this turn"
   if (bch.rules.some((r) => r.kind === 'custom' && r.tag === 'cantBlockSource' && r.data === attacker.id)) return false;
   for (const prot of ach.protections) if (protectionApplies(prot, bch.colors, bch.types, bch.subtypes, true)) return false;
-  // Landwalk
+  // Landwalk ("Creatures with islandwalk can be blocked as though they didn't have islandwalk.")
+  const ignored = new Set<string>();
+  for (const r of g.playerRules(blocker.controller)) if (r.kind === 'custom' && r.tag === 'ignoreLandwalk' && typeof r.data === 'string') ignored.add(r.data.toLowerCase());
   for (const [land] of Object.entries(BASIC_LAND_TYPES)) {
+    if (ignored.has(`${land.toLowerCase()}walk`)) continue;
     if (ach.keywords.has(`${land}walk`) && g.state.battlefield.some((id) => g.obj(id).controller === blocker.controller && g.characteristics(id).subtypes.includes(land))) return false;
   }
   // "can block only creatures with flying"
