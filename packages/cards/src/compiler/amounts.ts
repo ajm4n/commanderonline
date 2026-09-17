@@ -178,6 +178,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the life lost this way' || t === 'the total life lost this way' || t === 'the total amount of life lost this way' || t === 'the amount of life lost this way') return { kind: 'ctxMemory', key: 'lifeLostThisWay' };
   if (t === 'the number of cards milled this way' || t === 'the number of cards put into your graveyard this way') return { kind: 'ctxMemory', key: 'lastMoved' };
   if (t === 'the number of cards revealed this way') return { kind: 'ctxMemory', key: 'revealedCount' };
+  if (/^(?:the number of )?counters? removed(?: this way)?$/.test(t)) return { kind: 'ctxMemory', key: 'countersRemovedThisWay' };
   if (t === 'twice that much' || t === 'twice that many') return { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 };
   if ((m = t.match(/^(twice|three times|double) (.+)$/))) {
     const inner = parseAmount(oc(m, 2), ctx);

@@ -1214,7 +1214,9 @@ export class Game {
   *chooseTargets(player: PlayerId, sourceId: ObjectId | null, specs: TargetSpec[], ctx: Record<string, unknown>, prompt: string, x?: number): Gen<Target[] | null> {
     const slots = specs.map((spec) => {
       const legal = legalTargets(this, spec, sourceId, player, x);
-      return { description: spec.description, legal, min: spec.optional ? 0 : (spec.min ?? 1), max: spec.max ?? 1 };
+      const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
+      const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
+      return { description: spec.description, legal, min, max: xn ?? spec.max ?? 1 };
     });
     if (slots.some((s) => s.legal.length < s.min)) return null;
     // Auto-choose when there's exactly one legal option for every required slot.

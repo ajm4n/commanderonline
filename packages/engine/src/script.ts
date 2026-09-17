@@ -259,6 +259,8 @@ export interface TargetSpec {
   totalManaValueLE?: number;
   /** Only choose targets when a condition applies; otherwise skip. */
   optional?: boolean;
+  /** Target count is X, or a multiple of it ("X target cards", "up to twice X target cards"). */
+  countX?: { times?: number; upTo?: boolean };
 }
 
 // ---------------------------------------------------------------------------

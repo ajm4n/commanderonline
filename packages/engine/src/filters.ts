@@ -35,6 +35,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.legendary !== undefined && ch.supertypes.includes('Legendary') !== filter.legendary) return false;
   if (filter.colors && !filter.colors.some((c) => ch.colors.includes(c))) return false;
   if (filter.colorless && ch.colors.length > 0) return false;
+  if (filter.colorCount !== undefined && ch.colors.length !== filter.colorCount) return false;
   if (filter.monocolored && ch.colors.length !== 1) return false;
   if (filter.multicolored && ch.colors.length < 2) return false;
   if (filter.controller) {
@@ -51,6 +52,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.isToken && !obj.card.isToken) return false;
   if (filter.nonToken && obj.card.isToken) return false;
   if (filter.attacking && obj.attacking === null) return false;
+  if (filter.notAttacking && obj.attacking !== null && obj.attacking !== undefined) return false;
+  if (filter.notBlocking && obj.blocking.length > 0) return false;
   if (filter.blocking && obj.blocking.length === 0) return false;
   if (filter.attackingOrBlocking && obj.attacking === null && obj.blocking.length === 0) return false;
   if (filter.custom === 'nonbasic' && ch.supertypes.includes('Basic')) return false;

@@ -1370,7 +1370,11 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
 /** Choose targets for several specs, returning both grouped and flattened forms. */
 export function* chooseTargetsGrouped(g: Game, p: PlayerId, sourceId: ObjectId | null, specs: TargetSpec[], prompt: string, x?: number): Gen<{ flat: Target[]; slots: Target[][] } | null> {
   const { legalTargets } = filtersMod();
-  const slots = specs.map((spec) => ({ description: spec.description, legal: legalTargets(g, spec, sourceId, p, x), min: spec.optional ? 0 : (spec.min ?? 1), max: spec.max ?? 1 }));
+  const slots = specs.map((spec) => {
+    const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
+    const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
+    return { description: spec.description, legal: legalTargets(g, spec, sourceId, p, x), min, max: xn ?? spec.max ?? 1 };
+  });
   if (slots.some((s) => s.legal.length < s.min)) return null;
   let chosen: Target[][];
   const trivial = slots.every((s) => s.legal.length === s.min && s.min === s.max);

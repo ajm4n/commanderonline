@@ -2314,14 +2314,14 @@ const PATTERNS: Pattern[] = [
     return a == null ? null : [{ kind: 'addCounters', counter: 'energy', amount: a, on: YOU }];
   }],
   // "Exchange control of two target nonlegendary creatures"
-  [/^exchange control of two target (.+?)s$/i, (m, ctx) => {
-    const noun = parseNoun(`a ${m[1]}`);
+  [/^exchange control of two target (.+?)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1].replace(/^(\w+)s\b/, '$1')}`) ?? parseNoun(`a ${m[1]}`);
     if (!noun) return null;
     const spec = toTargetSpec(noun);
     if (!spec) return null;
     const a = ctx.targets.length;
     ctx.targets.push(spec, { ...spec });
-    return [{ kind: 'exchangeControl', a: { ref: 'target', index: a }, b: { ref: 'target', index: a + 1 } }];
+    return [{ kind: 'exchangeControl', a: { ref: 'target', slot: a }, b: { ref: 'target', slot: a + 1 } }];
   }],
   // "Unattach all Equipment from target creature"
   [/^unattach all (Equipment|Auras) from (.+)$/i, (m, ctx) => {
@@ -2657,7 +2657,7 @@ const PATTERNS: Pattern[] = [
     if (!spec) return null;
     const a = ctx.targets.length;
     ctx.targets.push(spec, { ...spec });
-    return [{ kind: 'exchangeControl', a: { ref: 'target', index: a }, b: { ref: 'target', index: a + 1 } }];
+    return [{ kind: 'exchangeControl', a: { ref: 'target', slot: a }, b: { ref: 'target', slot: a + 1 } }];
   }],
   // "You control enchanted Equipment."
   [/^you control (enchanted .+)$/i, (m, ctx) => {
@@ -3000,12 +3000,18 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'preventAll', combat: m[1] ? true : undefined, sourceRef: SELF, to: to ? { ...to.filter, zone: 'battlefield' } : 'all' }];
   }],
   // "For each of those tokens, you may attach an Equipment you control to it"
-  [/^for each of those (?:tokens|creatures|permanents|cards), (.+)$/i, (m, ctx) => {
+  [/^for each of (?:them|those (?:tokens|creatures|permanents|cards|lands|artifacts|players|opponents)), (.+)$/i, (m, ctx) => {
     const src = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
     const sub = newCtx({ ...ctx, targets: ctx.targets });
     sub.lastObj = { ref: 'iter' };
-    const inner = parseSentence(m[1].replace(/\bto it\b/i, 'to that permanent'), sub);
-    return inner ? [{ kind: 'forEach', over: src, effects: inner }] : null;
+    sub.lastPlayer = { ref: 'controllerOf', of: { ref: 'iter' } };
+    for (const body of [m[1], m[1].replace(/\bto it\b/i, 'to that permanent'), m[1].replace(/\b(?:that|this) (?:creature|permanent|card|token|land|artifact)\b/gi, 'it')]) {
+      const saved = sub.targets.length;
+      const inner = parseSentence(body, sub);
+      if (inner) return [{ kind: 'forEach', over: src, effects: inner }];
+      sub.targets.length = saved;
+    }
+    return null;
   }],
   // "Then you may put an instant, sorcery, or battle card from your graveyard on top of your library"
   [/^(?:then )?(?:you may )?put (?:a|an|(\w+)) (.+?) from your graveyard on (?:the )?(top|bottom) of your library$/i, (m, ctx) => {
@@ -4174,6 +4180,89 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 135 ----
+  // "That player shuffles their hand into their library."
+  [/^(.+?) shuffles? (?:their|his or her) (graveyard|hand)(?: and (?:their )?(graveyard|hand))? into (?:their|his or her) library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const zones = [m[2], m[3]].filter(Boolean).map((z) => (z.toLowerCase() === 'hand' ? 'hand' : 'graveyard')) as ('hand' | 'graveyard')[];
+    return zones.map((z) => ({ kind: 'shuffleZoneIntoLibrary' as const, zone: z, who }));
+  }],
+  // "Exile X target cards from target player's graveyard." / "Exile up to twice X target cards from graveyards."
+  [/^exile (?:up to )?(twice X|X|\w+) target cards? from (graveyards|a graveyard|.+?'s graveyard)$/i, (m, ctx) => {
+    const isX = /X/i.test(m[1]);
+    const n = isX ? null : wordToNumber(m[1]);
+    if (!isX && typeof n !== 'number') return null;
+    const pm = m[2].match(/^(target (?:player|opponent))'s graveyard$/i);
+    let ownerRef: Ref | undefined;
+    if (pm) {
+      const who = playerRef(pm[1], ctx);
+      if (!who) return null;
+      ownerRef = who;
+    }
+    const base = pm || /^(?:graveyards|a graveyard)$/i.test(m[2]) ? parseNoun('a card in a graveyard') : parseNoun(`a card in ${m[2]}`);
+    if (!base) return null;
+    const spec = toTargetSpec(base);
+    if (!spec) return null;
+    if (ownerRef) spec.filter = { ...spec.filter, ownerRef };
+    const upTo = /^exile up to /i.test(m[0]) || undefined;
+    ctx.targets.push(isX
+      ? { ...spec, countX: { times: /twice/i.test(m[1]) ? 2 : 1, upTo }, distinct: true }
+      : { ...spec, min: upTo ? 0 : (n as number), max: n as number, distinct: true });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'exile', what: ref }];
+  }],
+  // "Choose a creature or planeswalker card in that player's graveyard."
+  [/^(?:you )?choose (?:a|an|(\w+)) (.+? (?:in|from) (?:a graveyard|graveyards|[\w' ]+?'s graveyard|your graveyard))$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!noun || !noun.confident || typeof n !== 'number') return null;
+    const key = 'chosenCards';
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: noun.filter, count: n, key }];
+  }],
+  // "Exile all cards from target player's hand and graveyard." / "... from all hands and graveyards."
+  [/^exile all (.+?) from (all hands and graveyards|.+?'s hand and graveyard|.+? hand and graveyard)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1].replace(/ cards$/i, ' card').replace(/^cards$/i, 'card')}`);
+    if (!noun || !noun.confident) return null;
+    const f: ObjectFilter = { ...noun.filter, zone: ['hand', 'graveyard'] };
+    if (!/^all hands/i.test(m[2])) {
+      const who = playerRef(m[2].replace(/'s hand and graveyard$/i, '').replace(/ hand and graveyard$/i, ''), ctx);
+      if (!who) return null;
+      f.ownerRef = who;
+    }
+    return [{ kind: 'exile', what: { ref: 'all', filter: f } }];
+  }],
+  // "Exile all cards from target player's library, then that player shuffles their hand into their library."
+  [/^exile all cards from (.+?)'s library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'exile', what: { ref: 'all', filter: { zone: 'library', ownerRef: who } } }] : null;
+  }],
+  // "Exile all the cards from your hand, then draw that many cards."
+  [/^exile all (?:the )?cards from your hand, then draw that many cards$/i, () => [
+    { kind: 'exile', what: { ref: 'all', filter: { zone: 'hand', owner: 'you' } } },
+    { kind: 'draw', amount: { kind: 'ctxMemory', key: 'lastMoved' } },
+  ]],
+  // "For each color, return up to one target card of that color from your graveyard to your hand."
+  [/^for each (color|permanent type), return up to one (?:target )?(.*?)card of that (?:color|type) from your graveyard to (your hand|the battlefield)$/i, (m) => {
+    const extra = m[2].trim() ? parseNoun(`a ${m[2].trim()} card`) : null;
+    if (m[2].trim() && (!extra || !extra.confident)) return null;
+    const groups: ObjectFilter[] = /color/i.test(m[1])
+      ? (['W', 'U', 'B', 'R', 'G'] as Color[]).map((c) => ({ colors: [c] }))
+      : ['Artifact', 'Creature', 'Enchantment', 'Land', 'Planeswalker', 'Battle'].map((t) => ({ types: [t] }));
+    const key = 'byGroup';
+    const effects: Effect[] = groups.map((gf) => ({
+      kind: 'chooseObjects',
+      who: YOU,
+      filter: { ...(extra ? { ...extra.filter } : {}), ...gf, zone: 'graveyard', owner: 'you' },
+      count: 1,
+      key,
+      upTo: true,
+    }));
+    effects.push(/your hand/i.test(m[3]) ? { kind: 'returnToHand', what: { ref: 'chosen', key } } : { kind: 'returnToBattlefield', what: { ref: 'chosen', key } });
+    return effects;
   }],
   // ---- Round 134 ----
   // "Each player discards all the cards in their hand, then creates that many 2/2 black Zombie creature tokens."
@@ -5365,6 +5454,16 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       const inner = parseSentence(m[2].replace(/\bthat (player|opponent)\b/gi, 'that player'), sub);
       if (inner) return [{ kind: 'forEach', over: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: inner }];
     }
+    // "For each counter removed this way, ~ gets +1/+0 until end of turn": a countable quantity.
+    {
+      const times = amt(m[1], ctx) ?? amt(`the number of ${m[1]}`, ctx);
+      if (times !== null && times !== undefined) {
+        const saved = ctx.targets.length;
+        const inner = parseSentence(m[2], ctx);
+        if (inner) return [{ kind: 'repeat', times, effects: inner }];
+        ctx.targets.length = saved;
+      }
+    }
   }
   for (const [re, fn] of POOL_PATTERNS) {
     const pm = text.match(re);
@@ -5380,6 +5479,16 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const r = fn(mm, ctx);
     if (r) return r;
     ctx.targets.length = saved;
+  }
+  // "you may copy ~ and may choose a new target for the copy"
+  if (/ and may choose (?:a new target|new targets) for (?:the|that) copy$/i.test(text)) {
+    const r = parseSentence(text.replace(/ and may choose (?:a new target|new targets) for (?:the|that) copy$/i, '. You may choose new targets for the copy'), ctx);
+    if (r) return r;
+  }
+  // "also put a +1/+1 counter on each other creature you control" → drop the connective.
+  if (/^also /i.test(text)) {
+    const r = parseSentence(text.replace(/^also /i, ''), ctx);
+    if (r) return r;
   }
   // "you scry 2" → "scry 2"
   if ((m = text.match(/^you ((?:scry|surveil|mill|proliferate|investigate|explore|manifest|venture|amass|adapt|monstrosity|bolster|support|fateseal|clash|populate|learn|discover|incubate|connive) .*|(?:proliferate|investigate|populate|learn|connive))$/i))) {

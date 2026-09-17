@@ -39,6 +39,66 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 135 ----
+  // "Each untapped creature you control gets +0/+2 as long as it is not attacking."
+  if ((m = L.match(/^(.+?) ((?:gets?|get|has|have) .+) as long as (?:it is|they are|it's) (not |isn't |aren't )?(attacking|blocking|tapped|untapped|enchanted|equipped)$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok && typeof a.affects === 'object') {
+      const neg = !!m[3];
+      const state = m[4].toLowerCase();
+      const extra: ObjectFilter = {};
+      if (state === 'attacking') { if (neg) extra.notAttacking = true; else extra.attacking = true; }
+      else if (state === 'blocking') { if (neg) extra.notBlocking = true; else extra.blocking = true; }
+      else if (state === 'tapped') { if (neg) extra.untapped = true; else extra.tapped = true; }
+      else if (state === 'untapped') { if (neg) extra.tapped = true; else extra.untapped = true; }
+      else if (state === 'enchanted' && !neg) extra.hasAttachment = 'Aura';
+      else if (state === 'equipped' && !neg) extra.hasAttachment = 'Equipment';
+      if (Object.keys(extra).length) {
+        const inner = parseStatic(`${m[1]} ${m[2]}`, isCreatureOrPermanent);
+        if (inner && inner.every((ab) => ab.kind === 'static')) {
+          return inner.map((ab) => (ab.kind === 'static' && typeof ab.affects === 'object' ? { ...ab, affects: { ...ab.affects, ...extra } } : ab));
+        }
+      }
+    }
+  }
+  // "For every seven Foods you control, Squirrels you control get +3/+3."
+  if ((m = L.match(/^For every (\w+) (.+?), (.+?) gets? \+(\d+)\/\+(\d+)$/i))) {
+    const per = wordToNumber(m[1]);
+    const cnt = parseNoun(`a ${m[2].replace(/^(\w+?)s\b/, '$1')}`) ?? parseNoun(`a ${m[2]}`);
+    const a = affectsOf(m[3]);
+    if (typeof per === 'number' && per > 0 && cnt && cnt.confident && a.ok) {
+      const cf = { ...cnt.filter };
+      if (!cf.zone) cf.zone = 'battlefield';
+      return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[4], 10), toughness: parseInt(m[5], 10), perAmount: { kind: 'divide', a: { kind: 'count', filter: cf }, by: per, round: 'down' } } }];
+    }
+  }
+  // "Each creature spell you cast costs {1} less to cast if it has mutate."
+  if ((m = L.match(/^Each (.+?) spells? you cast costs? \{(\d+)\} (less|more) to cast if it has (\w+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      f.keywords = [m[4].charAt(0).toUpperCase() + m[4].slice(1).toLowerCase()];
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[2], 10), filter: f } }];
+    }
+  }
+  // "Each spell you cast that is exactly three colors has replicate {3}."
+  if ((m = L.match(/^Each (.+?) you cast that (?:is|are) exactly (two|three|four|five) colors has ([\w-]+(?: \{[^}]+\})?)$/i))) {
+    const n = wordToNumber(m[2]);
+    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+    if (noun && typeof n === 'number') {
+      const f = { ...noun.filter };
+      delete f.zone;
+      f.colorCount = n;
+      const kw = m[3].replace(/^\w/, (c) => c.toUpperCase());
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'spellsHaveKeywords', data: { keywords: [kw], filter: f } } }];
+    }
+  }
+  // "If ~ attacks, all creatures you control attack if able."
+  if ((m = L.match(/^If ~ attacks, (.+?) attacks? if able$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'mustAttack' }, condition: { kind: 'count', filter: { self: true, attacking: true, zone: 'battlefield' }, op: '>=', value: 1 } }];
+  }
   // ---- Round 134 ----
   // "Enchanted creature cannot attack, block, or crew Vehicles."
   if ((m = L.match(/^(.+?) cannot ((?:attack|block|be blocked|crew(?: Vehicles)?|transform|become suspected|be regenerated|untap|be enchanted|be equipped)(?:, |,? (?:or|and) ).+)$/i))) {

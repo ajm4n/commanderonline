@@ -784,6 +784,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           want = r.type === 'options' ? parseInt(r.ids[0] ?? '0', 10) : want;
         }
         if (want <= 0) continue;
+        ctx.memory['countersRemovedThisWay'] = ((ctx.memory['countersRemovedThisWay'] as number) ?? 0) + want;
         if (e.counter !== 'any') {
           g.removeCounters(o.id, e.counter, want);
           continue;

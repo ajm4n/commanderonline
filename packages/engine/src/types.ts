@@ -343,6 +343,8 @@ export interface ObjectFilter {
   colors?: Color[]; // any of these
   colorless?: boolean;
   monocolored?: boolean;
+  /** Exactly this many colours ("a spell that is exactly three colors"). */
+  colorCount?: number;
   multicolored?: boolean;
   controller?: 'you' | 'opponent' | 'any' | PlayerId;
   owner?: 'you' | 'opponent' | 'any';
@@ -360,6 +362,9 @@ export interface ObjectFilter {
   /** Dealt damage to anything this turn ("target creature that dealt damage this turn"). */
   dealtDamageThisTurn?: boolean;
   blocking?: boolean;
+  /** Not currently attacking / blocking ("as long as it isn't attacking"). */
+  notAttacking?: boolean;
+  notBlocking?: boolean;
   attackingOrBlocking?: boolean;
   other?: boolean; // exclude the source object itself
   self?: boolean; // only the source object
