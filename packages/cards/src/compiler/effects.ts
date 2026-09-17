@@ -163,6 +163,8 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
 function anyRef(phrase: string, ctx: ParseCtx): Ref | null {
   const l = phrase.trim().toLowerCase();
   if (l === 'each creature and each player' || l === 'each creature and each planeswalker and each player') return null; // handled by caller
+  // "that permanent or player" refers back to an "any target" already chosen.
+  if (/^that (?:permanent or player|creature, player, or planeswalker|permanent, player or planeswalker)$/i.test(l) && ctx.lastObj) return ctx.lastObj;
   return playerRef(phrase, ctx) ?? objRef(phrase, ctx);
 }
 
@@ -1220,12 +1222,20 @@ const PATTERNS: Pattern[] = [
     if (a === null) return null;
     return [{ kind: 'pump', power: { kind: 'times', a: parseInt(m[2], 10), b: a }, toughness: { kind: 'times', a: parseInt(m[3], 10), b: a }, on: ref, duration: 'endOfTurn' }];
   }],
-  [/^(.+?) (?:gets?|get) ([+-]\d+|[+-]X)\/([+-]\d+|[+-]X) and gains? "(.+)"(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) (?:gets?|get) ([+-]\d+|[+-]X)\/([+-]\d+|[+-]X) and gains? ((?:[\w' ]+ )?and )?"(.+)"(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const p = m[2].toUpperCase().includes('X') ? (m[2].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[2], 10);
     const t = m[3].toUpperCase().includes('X') ? (m[3].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[3], 10);
-    return [{ kind: 'pump', power: p, toughness: t, on: ref, duration: 'endOfTurn' }, { kind: 'grantAbility', text: m[4], on: ref, duration: 'endOfTurn' }];
+    const out: Effect[] = [{ kind: 'pump', power: p, toughness: t, on: ref, duration: 'endOfTurn' }];
+    // "gains trample and \"Whenever …\"": the words before the quote are keywords.
+    if (m[4]) {
+      const kws = parseKeywordList(m[4].replace(/ and $/i, ''));
+      if (!kws) return null;
+      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: 'endOfTurn' });
+    }
+    out.push({ kind: 'grantAbility', text: m[5], on: ref, duration: 'endOfTurn' });
+    return out;
   }],
   [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) (.+?)(?: creature)? with base power and toughness (\d+|X)\/(\d+|X)(?:,? and (?:gains )?(.+?)|, (.+?))?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -1879,6 +1889,66 @@ const PATTERNS: Pattern[] = [
     const who = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? ({ ref: 'triggerPlayer' } as Ref) : null);
     return who ? [{ kind: 'draw', amount: { kind: 'countRef', ref: { ref: 'lastMoved' } }, who }] : null;
   }],
+  // "You may choose new targets for target spell or ability."
+  [/^(?:you may )?choose new targets for (target spell(?: or ability)?|that spell|it)$/i, (m, ctx) => {
+    if (/^(?:that spell|it)$/i.test(m[1])) {
+      const r = ctx.lastObj;
+      return r ? [{ kind: 'changeTargets', what: r }] : null;
+    }
+    const noun = parseNoun(m[1]);
+    if (!noun || !noun.target) return null;
+    ctx.targets.push(toTargetSpec(noun));
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'changeTargets', what: ref }];
+  }],
+  // "Prevent all combat damage that would be dealt to and dealt by enchanted creature."
+  [/^prevent all (combat )?damage that would be dealt to and dealt by (.+?)(?: this turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'preventAll', combat: !!m[1], to: 'all', toRef: ref },
+      { kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: m[1] ? 'combat' : 'all' }, on: ref, duration: / this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' },
+    ];
+  }],
+  // "Destroy target enchantment and all other enchantments with the same name as that enchantment."
+  [/^destroy (target (\w+)) and all other \2s with the same name as that \2$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun || !noun.target) return null;
+    ctx.targets.push(toTargetSpec(noun));
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    const inner = parseNoun(`a ${m[2]}`);
+    if (!inner) return null;
+    return [
+      { kind: 'destroy', what: { ref: 'all', filter: { ...inner.filter, zone: 'battlefield', sameNameAs: ref } } },
+      { kind: 'destroy', what: ref },
+    ];
+  }],
+  // "All lands target player controls become 3/3 creatures until end of turn."
+  [/^(all|each) (.+?) become (\d+)\/(\d+) (.*?)creatures?(?: that are still lands)?(?: until end of turn)?$/i, (m, ctx) => {
+    const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
+    if (!noun) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const words = (m[5] ?? '').trim().split(/\s+/).filter(Boolean);
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    if (words.some((w) => !/^(white|blue|black|red|green|colorless|artifact|enchantment|land)$/i.test(w) && !/^[A-Z]/.test(w))) return null;
+    const on: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } };
+    const out: Effect[] = [
+      { kind: 'setPT', power: parseInt(m[3], 10), toughness: parseInt(m[4], 10), on, duration: dur },
+      { kind: 'addTypes', types: ['Creature'], subtypes, on, duration: dur },
+    ];
+    if (colors.length) out.push({ kind: 'setColors', colors, on, duration: dur });
+    return out;
+  }],
+  // "~ deals twice X damage to target creature."
+  [/^(.+?) deals twice (X|\w+) damage to (.+)$/i, (m, ctx) => {
+    const a: Amount | null = m[2].toUpperCase() === 'X' ? 'X' : wordToNumber(m[2]);
+    if (a === null) return null;
+    const r = parseSentence(`${m[1]} deals X damage to ${m[3]}`, ctx);
+    return r ? r.map((e) => substituteX(e, { kind: 'times', a, b: 2 })) : null;
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2353,7 +2423,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (ref && inner) return [{ kind: 'delayedTrigger', event: 'becomesBlocked', filter: { objectRef: ref }, effects: inner, text, once: true }];
   }
   // "You may cast a spell with mana value 4 or less from your hand without paying its mana cost"
-  if ((m = text.match(/^you may cast (?:a|an) (.+?) (?:card |spell )?(?:with mana value (\d+|X) or less )?from your hand without paying its mana cost$/i))) {
+  if ((m = text.match(/^(?:you may )?cast (?:a|an) (.+?) (?:card |spell )?(?:with mana value (\d+|X) or less )?from your hand without paying its mana cost$/i))) {
     const noun = /^spell$/i.test(m[1]) ? { filter: { nonland: true } as ObjectFilter } : parseNoun(`a ${m[1].replace(/ spell$/i, '')} card`);
     if (noun) {
       const key = `hand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
@@ -2604,7 +2674,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const inner = cost ? parseSentence(m[2], ctx) : null;
     if (cost && inner) return [{ kind: 'ifPays', cost: '', payCostSpec: cost, effects: inner, text: `${m[1]}?` }];
   }
-  if ((m = text.match(/^at the beginning of (the next end step|your next end step|the next turn's upkeep|your next upkeep|the next upkeep|the next cleanup step), (.+)$/i))) {
+  if ((m = text.match(/^at the beginning of (the next end step|your next end step|that turn's end step|the next turn's upkeep|your next upkeep|the next upkeep|the next cleanup step), (.+)$/i))) {
     const inner = parseSentence(m[2], ctx);
     if (inner) {
       const upkeep = /upkeep/i.test(m[1]);
@@ -2736,6 +2806,12 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const a = amt(m[2], ctx);
     const inner = a !== null ? parseSentence(`${m[1]}, ${m[3]}`, ctx) : null;
     if (inner) return inner.map((e) => substituteX(e, a!));
+  }
+  if ((m = text.match(/^(.+?), where X is (\d+) minus (.+)$/i))) {
+    const mm = m;
+    const b = amt(mm[3], ctx);
+    const inner = b !== null ? parseSentence(mm[1], ctx) : null;
+    if (inner && b !== null) return inner.map((e) => substituteX(e, { kind: 'minus', a: parseInt(mm[2], 10), b }));
   }
   if ((m = text.match(/^(.+), where X is (.+)$/i))) {
     // "…deals X damage…, where X is the number of…" → substitute amount

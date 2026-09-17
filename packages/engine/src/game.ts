@@ -921,6 +921,17 @@ export class Game {
 
   private collectTriggers(event: GameEvent) {
     const lkiCh = (event.data?.lkiCh as Characteristics | undefined) ?? undefined;
+    // "Creatures entering do not cause abilities to trigger." (Hushwing Gryff)
+    if (event.name === 'entersBattlefield' && event.objectId !== undefined) {
+      const entering = this.state.objects[event.objectId];
+      if (entering) {
+        for (const r of this.playerRules(entering.controller)) {
+          if (r.kind !== 'custom' || r.tag !== 'noEtbTriggers') continue;
+          const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
+          if (!f || matchesFilter(this, entering, { ...f, zone: undefined }, { sourceId: null, controller: entering.controller })) return;
+        }
+      }
+    }
     for (const obj of Object.values(this.state.objects)) {
       if (obj.phasedOut) continue;
       // A face-down permanent has no abilities, so it triggers nothing.
@@ -1817,12 +1828,17 @@ export class Game {
     const src = sourceId !== null ? this.state.objects[sourceId] : null;
     // "Prevent all (combat) damage that would be dealt by [this source] this turn."
     if (src && src.zone === 'battlefield') {
-      const noDmg = this.characteristics(src.id).rules.find((r) => r.kind === 'custom' && r.tag === 'dealsNoDamage') as { data?: string } | undefined;
+      const noDmg = this.characteristics(src.id).rules.find((r) => r.kind === 'custom' && (r.tag === 'dealsNoDamage' || r.tag === 'dealsAndTakesNoDamage')) as { data?: string } | undefined;
       if (noDmg && (noDmg.data === 'combat' ? combat : noDmg.data === 'noncombat' ? !combat : true)) return Infinity;
     }
     // "If damage would be dealt to ~, prevent that damage and put that many +1/+1 counters on it." (a replacement on the recipient)
     if (target.kind === 'object') {
       const tobj = this.state.objects[target.id];
+      // "Prevent all combat damage that would be dealt to and dealt by enchanted creature."
+      if (tobj && tobj.zone === 'battlefield') {
+        const noTake = this.characteristics(tobj.id).rules.find((r) => r.kind === 'custom' && r.tag === 'dealsAndTakesNoDamage') as { data?: string } | undefined;
+        if (noTake && (noTake.data === 'combat' ? combat : true)) return Infinity;
+      }
       if (tobj && tobj.zone === 'battlefield') {
         for (const ab of this.scriptFor(tobj).abilities) {
           if (ab.kind !== 'replacement' || ab.event !== 'damage' || ab.to !== 'self' || ab.prevent !== 'all') continue;

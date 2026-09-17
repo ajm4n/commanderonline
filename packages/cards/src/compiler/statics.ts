@@ -31,6 +31,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // "If a creature dealt damage by ~ this turn would die, exile it instead."
+  if ((m = L.match(/^If (?:a|an) (.+?) dealt damage by ~ this turn would die, exile it instead$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) return [{ kind: 'replacement', text: line, event: 'dies', self: false, filter: { ...noun.filter, zone: undefined, damagedBySource: true }, instead: 'exile' }];
+  }
   if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);
@@ -120,6 +125,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (a && b) return [...a, ...b];
   }
   if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
+  // "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead."
+  if ((m = L.match(/^If (?:another )?(?:a )?(\w+) sources? you control would deal (noncombat |combat )?damage to (?:an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i)) && !/^a$/i.test(m[1])) {
+    const cn = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as Record<string, string>)[m[1].toLowerCase()];
+    if (cn) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damagePlus', data: { filter: { controller: 'you', colors: [cn] }, plus: parseInt(m[4], 10), noncombatOnly: /noncombat/i.test(m[2] ?? '') || undefined, combatOnly: /^combat/i.test(m[2] ?? '') || undefined } } }];
+  }
   if ((m = L.match(/^If a source you control would deal (noncombat |combat )?damage to (an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+|an amount of damage equal to .+?) (?:to (?:that permanent or player|that player|them) )?instead$/i))) {
     const plusAmt = /^\d+$/.test(m[3]) ? parseInt(m[3], 10) : parseAmount(m[3].replace(/^an amount of damage equal to /i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     if (plusAmt === null) return null;
@@ -236,6 +246,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^Prevent all (combat )?damage that would be dealt to (.+?) during (your|each opponent's) turn$/i))) {
     const a = affectsOf(m[2]);
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'preventDamageTo', data: { combat: m[1] ? 'combat' : undefined } }, condition: /^your$/i.test(m[3]) ? { kind: 'yourTurn' } : { kind: 'notYourTurn' } }];
+  }
+  // "Prevent all combat damage that would be dealt to and dealt by enchanted creature."
+  if ((m = L.match(/^Prevent all (combat )?damage that would be dealt to and dealt by (.+)$/i))) {
+    const a = affectsOf(m[2]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'dealsAndTakesNoDamage', data: m[1] ? 'combat' : 'all' } }];
   }
   // Static damage prevention: "Prevent all damage that would be dealt to ~ by artifact creatures." / "Prevent all combat damage that would be dealt by enchanted creature."
   if ((m = L.match(/^Prevent all (combat |noncombat )?damage that would be dealt(?: to (.+?))?(?: by (.+?))?$/i)) && (m[2] || m[3])) {
@@ -749,15 +764,16 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // "If ~ would be put into a graveyard from anywhere, reveal ~ and shuffle it into its owner's library instead."
   if (/^If ~ would be put into a graveyard from anywhere, (?:reveal ~ and )?shuffle it into its owner's library instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'putIntoGraveyard', self: true, instead: 'shuffleIntoLibrary' }];
   // "Forests you control are 1/1 green Elf creatures that are still lands."
-  if ((m = L.match(/^(.+?) are (\d+)\/(\d+) (white|blue|black|red|green|colorless) ([A-Z][\w' -]*?) creatures that are still lands$/))) {
+  if ((m = L.match(/^(.+?) are (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))?(?: ([A-Z][\w' -]*?))? creatures that are still lands$/))) {
     const a = affectsOf(m[1]);
-    const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', colorless: undefined } as Record<string, string | undefined>)[m[4].toLowerCase()];
+    const col = m[4] ? ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', colorless: undefined } as Record<string, string | undefined>)[m[4].toLowerCase()] : undefined;
     if (a.ok) {
-      return [
-        { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: ['Creature'], addSubtypes: m[5].split(/\s+/) } },
-        { kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: col ? [col as never] : [] } },
+      const out: import('@commander/engine').AbilitySpec[] = [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: ['Creature'], addSubtypes: m[5] ? m[5].split(/\s+/) : [] } },
         { kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } },
       ];
+      if (m[4]) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: col ? [col as never] : [] } });
+      return out;
     }
   }
   if ((m = L.match(/^(.+?) cannot be the target of spells or abilities your opponents control$/i))) return objRule(m[1], { kind: 'cantBeTargeted', by: 'opponents' });
@@ -805,6 +821,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (parts.every((x) => x)) {
       const f = parts.length === 1 ? { ...parts[0]!.filter, zone: undefined } : { anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
       return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'costIncrease', amount: parseInt(m[2], 10), filter: f } }];
+    }
+  }
+  // "Creatures entering do not cause abilities to trigger."
+  if ((m = L.match(/^(.+?) entering do not cause abilities to trigger$/i))) {
+    const words = m[1].split(/,? and |, /i).map((w) => w.trim()).filter(Boolean);
+    const parts = words.map((w) => parseNoun(w));
+    if (parts.every((x) => x)) {
+      const f = parts.length === 1 ? { ...parts[0]!.filter, zone: undefined } : { anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noEtbTriggers', data: { filter: f } } }];
     }
   }
   if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
