@@ -273,7 +273,7 @@ export type Effect =
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
   | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref; /** Counters the token enters with. */ counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean ; /** "your choice of a +1/+1, first strike, or trample counter" */ counterOptions?: string[]; /** "Put up to X counters on ~": the controller picks how many. */ upTo?: boolean }
-  | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref }
+  | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref; /** "Remove up to three counters": the controller may remove fewer. */ upTo?: boolean }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }
   | { kind: 'setPT'; power?: Amount; toughness?: Amount; on: Ref; duration?: Duration }
   | { kind: 'grantKeywords'; keywords: string[]; on: Ref; duration?: Duration; /** Grant only this many of `keywords`, chosen by the controller ("gains your choice of flying or haste"). */ choose?: number }
@@ -381,7 +381,7 @@ export type Effect =
   | { kind: 'revealRandomFromHand'; who: Ref; count: Amount }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean; /** Remember the exiled cards under this memory key. */ key?: string }
   | { kind: 'revealHand'; who: Ref }
-  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref }
+  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref; /** Pick at random instead of choosing. */ random?: boolean }
   | { kind: 'discardObjects'; what: Ref }
   | { kind: 'ringTempts'; who?: Ref }
   | { kind: 'takeInitiative'; who?: Ref }

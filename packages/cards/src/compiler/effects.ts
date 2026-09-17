@@ -2791,6 +2791,67 @@ const PATTERNS: Pattern[] = [
     if (!inner || !noun) return null;
     return [{ kind: 'unlessPays', who: YOU, cost: { tap: { ...noun.filter, zone: 'battlefield' } }, effects: inner }];
   }],
+  // "Exile target creature and all other creatures its controller controls with the same name as that creature"
+  [/^exile (target .+?) and all other (.+?)(?: (?:its controller|that player) controls| your opponents control)? with the same name as that \w+$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const noun = parseNoun(`all ${m[2]}`);
+    if (!ref || !noun) return null;
+    const f: ObjectFilter = { ...noun.filter, zone: 'battlefield', sameNameAs: ref, other: true };
+    if (/its controller controls|that player controls/i.test(m[0])) f.controllerRef = { ref: 'controllerOf', of: ref };
+    if (/your opponents control/i.test(m[0])) f.controller = 'opponent';
+    return [{ kind: 'exile', what: ref }, { kind: 'exile', what: { ref: 'all', filter: f } }];
+  }],
+  // "Destroy one of them at random" / "destroy one of those permanents at random"
+  [/^(destroy|exile|sacrifice|tap) (?:one|(\w+)) of (?:them|those (?:creatures|permanents|cards|lands|tokens)) at random$/i, (m, ctx) => {
+    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (n === null) return null;
+    const key = `rnd${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    const verb = m[1].toLowerCase();
+    const pick: Effect = { kind: 'chooseObjects', who: YOU, filter: {}, count: n, key, from: src, random: true };
+    const ref: Ref = { ref: 'chosen', key };
+    const act: Effect = verb === 'destroy' ? { kind: 'destroy', what: ref } : verb === 'exile' ? { kind: 'exile', what: ref } : verb === 'tap' ? { kind: 'tap', what: ref } : { kind: 'sacrifice', what: ref };
+    return [pick, act];
+  }],
+  // "Remove up to three counters from target permanent"
+  [/^remove up to (\w+) counters? from (.+)$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const ref = n === null ? null : objRef(m[2], ctx);
+    return ref && n !== null ? [{ kind: 'removeCounters', counter: 'any', amount: n, on: ref, upTo: true }] : null;
+  }],
+  [/^remove up to (\w+) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? from (.+)$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const ref = n === null ? null : objRef(m[3], ctx);
+    return ref && n !== null ? [{ kind: 'removeCounters', counter: m[2], amount: n, on: ref, upTo: true }] : null;
+  }],
+  // "double the power of target creature you control until end of turn"
+  [/^double the (power|toughness) of (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    return ref ? [{ kind: 'doubleStat', on: ref, stat: m[1].toLowerCase() === 'power' ? 'power' : 'toughness', duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
+  }],
+  // "Return target creature card from your graveyard to the battlefield with an additional +1/+1 counter on it"
+  [/^return (.+?) from your graveyard to the battlefield with an additional (?:a |an |(\w+) )?([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const n = m[1] && m[2] ? wordToNumber(m[2]) : 1;
+    if (!ref) return null;
+    return [{ kind: 'returnToBattlefield', what: ref, counters: { counter: m[3], amount: typeof n === 'number' ? n : 1 } }];
+  }],
+  // "Creatures target player controls do not untap during that player's next untap step"
+  [/^(.+?) (?:do not|don't|doesn't|does not) untap during (?:that player's|their|your) next untap step$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilYourNextTurn' }] : null;
+  }],
+  // "Kithkin creatures you control also gain first strike until end of turn"
+  [/^(.+?) also (gains?|get) (.+)$/i, (m, ctx) => parseSentence(`${m[1]} ${m[2]} ${m[3]}`, ctx)],
+  // "If that creature would leave the battlefield, exile it instead of putting it anywhere else"
+  [/^if (?:that|the) (\w+) would leave the battlefield, exile it instead of putting it anywhere else$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfLeaves' }, on: ref, duration: 'permanent' }];
+  }],
+  [/^if it would leave the battlefield, exile it instead of putting it anywhere else$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfLeaves' }, on: ref, duration: 'permanent' }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -3176,7 +3237,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;
   if (/^you cannot cast ~ during your (?:first|second|third)(?:, (?:first|second|third))*(?:,? or (?:first|second|third))? turns? of the game\.?$/i.test(text.trim())) return true;
   if (/^~ saddles mounts and crews vehicles as though its power were \d+ greater\.?$/i.test(text.trim())) return true;
-  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
+  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 
 /** Parse one sentence; returns null if not understood. */
@@ -3824,6 +3885,16 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
       ctx.targets.length = savedT;
+    }
+    // "Create a token. The token enters tapped and attacking." refines the creation just made.
+    {
+      const ta = s.match(/^(?:the token|the tokens|[A-Z][\w' ,-]*) enters (tapped and attacking|tapped|attacking)$/i);
+      const prev = effects[effects.length - 1];
+      if (ta && prev && prev.kind === 'createToken') {
+        if (/tapped/i.test(ta[1])) (prev as { tapped?: boolean }).tapped = true;
+        if (/attacking/i.test(ta[1])) (prev as { attacking?: boolean }).attacking = true;
+        continue;
+      }
     }
     // "That player may pay {2}." + "If they do, Y." (+ "Otherwise, Z.")
     {

@@ -333,6 +333,36 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(m[1]);
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addSubtypesFromMemory: 'landType' } }];
   }
+  // "Colorless spells you cast with mana value 7 or greater cost {1} less to cast."
+  if ((m = L.match(/^(.+?) you cast (with [^,]+?) cost \{(\d)\} (less|more) to cast$/i))) {
+    const noun = parseNoun(`a ${m[1].replace(/ spells?$/i, ' spell')} ${m[2]}`);
+    if (noun) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[4].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[3], 10), filter: f } }];
+    }
+  }
+  // "Spells your opponents cast that target a creature you control cost {2} more to cast."
+  if ((m = L.match(/^Spells your opponents cast that target (.+?) cost \{(\d)\} more to cast$/i))) {
+    const noun = parseNoun(m[1].replace(/^one or more /i, 'a ').replace(/s$/i, ''));
+    if (noun) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'costIncrease', amount: parseInt(m[2], 10), filter: { spellTargets: f } } }];
+    }
+  }
+  // "If a source would deal damage to a Cleric creature you control, prevent 1 of that damage."
+  if ((m = L.match(/^If (?:a|an) (.+?) would deal (combat )?damage to (.+?), prevent (\d+|all) of that damage$/i))) {
+    const src = parseNoun(`a ${m[1]}`);
+    const to = parseNoun(m[3]) ?? parseNoun(`a ${m[3]}`);
+    if (src && to) {
+      const tf = { ...to.filter };
+      delete tf.zone;
+      const sf = { ...src.filter };
+      delete sf.zone;
+      return [{ kind: 'replacement', text: line, event: 'damage', prevent: m[4] === 'all' ? 'all' : parseInt(m[4], 10), to: tf, fromFilter: /^source/i.test(m[1]) ? undefined : sf, combatOnly: m[2] ? true : undefined }];
+    }
+  }
   if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
   // "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead."
   if ((m = L.match(/^If (?:another )?(?:a )?(\w+) sources? you control would deal (noncombat |combat )?damage to (?:an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i)) && !/^a$/i.test(m[1])) {

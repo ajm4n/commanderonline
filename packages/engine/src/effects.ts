@@ -693,9 +693,31 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         g.touch();
       }
       return;
-    case 'removeCounters':
-      for (const o of g.resolveObjects(e.on, ctx)) g.removeCounters(o.id, e.counter, e.amount === 'all' ? o.counters[e.counter] ?? 0 : amt(e.amount));
+    case 'removeCounters': {
+      for (const o of g.resolveObjects(e.on, ctx)) {
+        const have = e.counter === 'any' ? Object.values(o.counters).reduce((a, b) => a + (b ?? 0), 0) : o.counters[e.counter] ?? 0;
+        let want = e.amount === 'all' ? have : Math.min(amt(e.amount), have);
+        if (e.upTo && want > 0) {
+          const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Remove how many counters from ${g.nameOf(o.id)}?`, options: Array.from({ length: want + 1 }, (_, i) => ({ id: String(i), label: String(i) })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+          want = r.type === 'options' ? parseInt(r.ids[0] ?? '0', 10) : want;
+        }
+        if (want <= 0) continue;
+        if (e.counter !== 'any') {
+          g.removeCounters(o.id, e.counter, want);
+          continue;
+        }
+        // "Remove a counter": the controller picks which kinds come off.
+        for (const [kind, n] of Object.entries(o.counters)) {
+          if (want <= 0) break;
+          const take = Math.min(want, n ?? 0);
+          if (take > 0) {
+            g.removeCounters(o.id, kind, take);
+            want -= take;
+          }
+        }
+      }
       return;
+    }
     case 'pump': {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
@@ -1788,7 +1810,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       const n = Math.min(amt(e.count), cands.length);
       let ids: ObjectId[] = [];
-      if (cands.length > 0) {
+      if (cands.length > 0 && e.random) {
+        ids = g.rng.shuffle([...cands]).slice(0, n);
+      } else if (cands.length > 0) {
         const resp = yield* g.ask({ type: 'chooseObjects', player: who, prompt: `Choose ${e.upTo ? 'up to ' : ''}${n}`, candidates: cands, min: e.upTo ? 0 : n, max: n, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
         ids = resp.type === 'objects' ? resp.ids : cands.slice(0, n);
       }
