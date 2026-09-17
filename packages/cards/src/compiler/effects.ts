@@ -5563,6 +5563,31 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   // "~ cannot be countered and the damage cannot be prevented"
   if (/^~ cannot be countered and (?:the )?damage cannot be prevented$/i.test(text)) return [{ kind: 'turnFlag', flag: 'noPrevention' }];
+  // "It gets an additional -1/-1 until end of turn for each Desert you control."
+  if (/\b(?:gets?|get) an additional [+-]/i.test(text)) {
+    const r = parseSentence(text.replace(/\b(gets?|get) an additional /i, '$1 '), ctx);
+    if (r) return r;
+  }
+  // "Investigate X times, where X is the total number of creatures those players control."
+  if ((m = text.match(/^(.+?) (twice|three times|four times|(?:\w+|X) times)(?:, where X is (.+?))?$/i)) && !/ for each /i.test(m[1])) {
+    const word = m[2].toLowerCase();
+    const times = word === 'twice' ? 2 : word === 'three times' ? 3 : word === 'four times' ? 4 : /^x times$/.test(word) ? (m[3] ? amt(m[3], ctx) : ('X' as Amount)) : wordToNumber(word.replace(/ times$/, ''));
+    if (times !== null && times !== undefined) {
+      const saved = ctx.targets.length;
+      const inner = parseSentence(m[1], ctx);
+      if (inner) return [{ kind: 'repeat', times: times as Amount, effects: inner }];
+      ctx.targets.length = saved;
+    }
+  }
+  // "It gets +2/+2 until end of turn and can block an additional creature this turn."
+  if ((m = text.match(/^(.+?) and (can block an additional creature this turn|cannot be blocked this turn)$/i))) {
+    const saved = ctx.targets.length;
+    const subj = m[1].match(/^(.+?) (?:gets?|gains?|has|have)\b/i);
+    const left = parseSentence(m[1], ctx);
+    const right = subj ? parseSentence(`${subj[1]} ${m[2]}`, ctx) : null;
+    if (left && right) return [...left, ...right];
+    ctx.targets.length = saved;
+  }
   // "also put a +1/+1 counter on each other creature you control" → drop the connective.
   if (/^also /i.test(text)) {
     const r = parseSentence(text.replace(/^also /i, ''), ctx);

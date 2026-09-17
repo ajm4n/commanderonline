@@ -40,6 +40,47 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 138 ----
+  // "If you tap a permanent for mana, it produces twice as much of that mana instead."
+  if ((m = L.match(/^If you tap (?:a|an) (.+?) for mana, it produces (twice|three times|four times) as much of that mana instead$/i))) {
+    const times = /twice/i.test(m[2]) ? 2 : /three/i.test(m[2]) ? 3 : 4;
+    const bare = /^permanent$/i.test(m[1].trim());
+    const noun = bare ? null : parseNoun(`a ${m[1]}`);
+    if (bare || (noun && noun.confident)) {
+      const f = noun ? { ...noun.filter } : undefined;
+      if (f) delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'manaMultiplier', data: { times, filter: f } } }];
+    }
+  }
+  // "If you would roll one or more dice, instead roll that many dice plus one and ignore the lowest roll."
+  if ((m = L.match(/^If you would roll one or more (?:planar )?dice, instead roll that many (?:planar )?dice plus (\w+) and ignore (?:the (lowest|highest) rolls?|one)$/i))) {
+    const plus = wordToNumber(m[1]);
+    if (typeof plus === 'number') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'extraDice', data: { plus, ignore: m[2]?.toLowerCase() === 'highest' ? 'highest' : 'lowest' } } }];
+  }
+  // "If you would scry a number of cards, draw that many cards instead."
+  if ((m = L.match(/^If you would scry a number of cards, (draw that many cards|scry that many cards plus (\w+)) instead$/i))) {
+    if (/^draw/i.test(m[1])) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'scryReplace', data: { toDraw: true } } }];
+    const plus = m[2] ? wordToNumber(m[2]) : null;
+    if (typeof plus === 'number') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'scryReplace', data: { plus } } }];
+  }
+  // "If you would get one or more {E}, you get twice that many {E} instead."
+  if ((m = L.match(/^If you would get one or more \{E\}, you get (twice|three times) that many \{E\} instead$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'energyMultiplier', data: /twice/i.test(m[1]) ? 2 : 3 }, }];
+  }
+  // "If an opponent would create one or more tokens, they create half that many of each of those kinds of tokens instead, rounded down."
+  if ((m = L.match(/^If (you|an opponent|a player) would create one or more tokens, (?:they|you) create (half that many|twice that many|that many plus (\w+))(?: of (?:those|each of those kinds of) tokens)? instead(?:, rounded (up|down))?$/i))) {
+    const who = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+    const how = m[2].toLowerCase();
+    const plus = m[3] ? wordToNumber(m[3]) : 0;
+    if (typeof plus === 'number') {
+      return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: /twice/.test(how) ? 1 : plus, half: /half/.test(how) ? (m[4]?.toLowerCase() === 'up' ? 'up' : 'down') : undefined, who }];
+    }
+  }
+  // "If you would lose the game, instead exile ~ and your life total becomes 1."
+  if ((m = L.match(/^If you would lose the game, instead (.+)$/i))) {
+    const pe = parseEffects(m[1], newCtx({ isSpell: false }));
+    if (!pe.unhandled.length && pe.effects.length) return [{ kind: 'replacement', text: line, event: 'wouldLoseGame', instead: pe.effects }];
+  }
   // ---- Round 137 ----
   // "If a source would deal damage to you or a permanent you control, prevent half that damage, rounded up."
   if ((m = L.match(/^If (.+?) would deal (combat |noncombat )?damage to (.+?)(?: this turn)?, prevent half that damage,? rounded (up|down)$/i))) {

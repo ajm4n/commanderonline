@@ -2393,6 +2393,20 @@ export class Game {
   playerLoses(pid: PlayerId, reason: string) {
     const p = this.player(pid);
     if (p.lost) return;
+    // "If you would lose the game, instead exile ~ and your life total becomes 1."
+    for (const id of this.state.battlefield) {
+      const holder = this.state.objects[id];
+      if (!holder || holder.controller !== pid || holder.memory['lossReplaced']) continue;
+      const ab = this.scriptFor(holder).abilities.find((a) => a.kind === 'replacement' && a.event === 'wouldLoseGame');
+      if (!ab || ab.kind !== 'replacement' || ab.event !== 'wouldLoseGame') continue;
+      holder.memory['lossReplaced'] = true;
+      this.log(`${p.name} would lose the game, but ${this.nameOf(id)} replaces it.`);
+      if (p.life <= 0) p.life = 1;
+      if (p.poison >= 10) p.poison = 0;
+      this.queueTrigger({ sourceId: id, controller: pid, ability: { kind: 'triggered', text: ab.text, event: 'playerLost', effects: ab.instead }, context: { playerId: pid } });
+      this.touch();
+      return;
+    }
     p.lost = true;
     p.lossReason = reason;
     this.log(`${p.name} loses the game: ${reason}.`, { kind: 'loss', data: { player: pid, reason } });

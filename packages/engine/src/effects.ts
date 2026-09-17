@@ -698,11 +698,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const isCreatureToken = /Creature/.test(e.token.typeLine ?? '');
         let tokenSpec = e.token;
         for (const src of g.state.battlefield.map((id) => g.obj(id))) {
-          if (src.controller !== p) continue;
           for (const ab of g.scriptFor(src).abilities) {
             if (ab.kind !== 'replacement' || ab.event !== 'tokenCreated') continue;
+            const who = ab.who ?? 'you';
+            if (who === 'you' && src.controller !== p) continue;
+            if (who === 'opponent' && src.controller === p) continue;
             if (ab.creatureOnly && !isCreatureToken) continue;
             count += ab.extra * n;
+            if (ab.half) count = ab.half === 'up' ? Math.ceil(count / 2) : Math.floor(count / 2);
             if (ab.alsoToken) alsoTokens.push(ab.alsoToken);
             if (ab.replaceToken) tokenSpec = ab.replaceToken;
           }
@@ -771,8 +774,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (e.counter === 'poison') pl.poison += amt(e.amount);
         else if (e.counter === 'experience') pl.experience += amt(e.amount);
         else if (e.counter === 'energy') {
-          pl.energy += amt(e.amount);
-          g.emit({ name: 'gotEnergy', playerId: t.id, amount: amt(e.amount), sourceId: ctx.sourceId ?? undefined });
+          let en = amt(e.amount);
+          for (const r of g.playerRules(t.id)) {
+            if (r.kind === 'custom' && r.tag === 'energyMultiplier' && typeof r.data === 'number') en *= r.data;
+          }
+          pl.energy += en;
+          g.emit({ name: 'gotEnergy', playerId: t.id, amount: en, sourceId: ctx.sourceId ?? undefined });
         } else pl.turnStats[e.counter] = (pl.turnStats[e.counter] ?? 0) + amt(e.amount);
         g.touch();
       }
@@ -911,7 +918,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const o of g.resolveObjects(e.what, ctx)) g.untap(o.id);
       return;
     case 'scry':
-      for (const p of playersOf(g, e.who, ctx)) yield* scry(g, p, amt(e.amount));
+      for (const p of playersOf(g, e.who, ctx)) {
+        let n = amt(e.amount);
+        let toDraw = false;
+        // "If you would scry a number of cards, draw that many cards instead."
+        for (const r of g.playerRules(p)) {
+          if (r.kind !== 'custom' || r.tag !== 'scryReplace') continue;
+          const d = r.data as { plus?: number; toDraw?: boolean } | undefined;
+          if (d?.toDraw) toDraw = true;
+          if (d?.plus) n += d.plus;
+        }
+        if (toDraw) g.drawCards(p, n);
+        else yield* scry(g, p, n);
+      }
       return;
     case 'surveil':
       for (const p of playersOf(g, e.who, ctx)) {
@@ -984,7 +1003,20 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'addMana': {
-      const n = e.amount !== undefined ? amt(e.amount) : 1;
+      let n = e.amount !== undefined ? amt(e.amount) : 1;
+      // "If you tap a permanent for mana, it produces twice as much of that mana instead."
+      {
+        const msrc = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+        if (msrc && msrc.zone === 'battlefield') {
+          for (const r of g.playerRules(msrc.controller)) {
+            if (r.kind !== 'custom' || r.tag !== 'manaMultiplier') continue;
+            const d = r.data as { times?: number; filter?: import('./types.js').ObjectFilter } | undefined;
+            if (!d) continue;
+            if (d.filter && !matchesFilter(g, msrc, { ...d.filter, zone: undefined }, { sourceId: ctx.sourceId, controller: msrc.controller })) continue;
+            n *= d.times ?? 1;
+          }
+        }
+      }
       for (const p of playersOf(g, e.who, ctx)) {
         const pool = g.player(p).manaPool;
         if (e.mana === 'chosenColor') {
@@ -1219,7 +1251,16 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'rollDie': {
-      const roll = 1 + g.rng.int(e.sides);
+      let roll = 1 + g.rng.int(e.sides);
+      // "If you would roll one or more dice, instead roll that many dice plus one and ignore the lowest roll."
+      for (const r of g.playerRules(ctx.controller)) {
+        if (r.kind !== 'custom' || r.tag !== 'extraDice') continue;
+        const d = r.data as { plus?: number; ignore?: 'lowest' | 'highest' } | undefined;
+        const extra = d?.plus ?? 1;
+        const rolls = [roll, ...Array.from({ length: extra }, () => 1 + g.rng.int(e.sides))].sort((a, b) => a - b);
+        roll = d?.ignore === 'highest' ? rolls[0] : rolls[rolls.length - 1];
+        g.log(`Rolled ${rolls.join(', ')}; keeping ${roll}.`);
+      }
       g.log(`${g.player(ctx.controller).name} rolls a d${e.sides}: ${roll}.`);
       ctx.memory['lastRoll'] = roll;
       g.emit({ name: 'rolledDie', playerId: ctx.controller, amount: roll, sourceId: ctx.sourceId ?? undefined });
