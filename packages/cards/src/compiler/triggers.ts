@@ -681,6 +681,91 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever a player attacks you with one or more creatures, (.+)$/i))) return { event: 'attacked', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ or another creature you control becomes blocked, (.+)$/i))) return { event: 'becomesBlocked', filter: { object: { types: ['Creature'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
   {
+    // Round 92 heads.
+    if ((m = L.match(/^When(?:ever)? the (\w+) ([\w' -]+?) counter is put on ~, (.+)$/i))) {
+      const n = wordToNumber(m[1].replace(/^(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)$/i, (w) => ({ first: 'one', second: 'two', third: 'three', fourth: 'four', fifth: 'five', sixth: 'six', seventh: 'seven', eighth: 'eight', ninth: 'nine', tenth: 'ten' } as Record<string, string>)[w.toLowerCase()] ?? w));
+      if (typeof n === 'number') return { event: 'counterAdded', filter: { self: true, counterType: m[2] }, hasObject: true, hasPlayer: false, rest: `if ~ has ${n} or more ${m[2]} counters on it, ${m[3]}` };
+    }
+    if ((m = L.match(/^When(?:ever)? the creature ~ haunts dies, (.+)$/i)))
+      return { event: 'dies', filter: { custom: 'hauntedBySource' }, hasObject: true, hasPlayer: false, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? a spell or ability you control counters a spell, (.+)$/i)))
+      return { event: 'countered', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you cast (?:a|an) (.+?) using mana produced by ~, (.+)$/i))) {
+      const noun = parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+      if (noun) return { event: 'cast', filter: { player: 'you', object: { ...noun.filter, zone: undefined }, custom: 'usingSourceMana' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? one or more (.+?) you control deal (combat )?damage to your opponents, (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+      if (noun) return { event: 'dealtDamage', filter: { player: 'opponent', toPlayer: true, combat: m[2] ? true : undefined, source: { ...noun.filter, zone: undefined, controller: 'you' } }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[3] };
+    }
+    if ((m = L.match(/^When(?:ever)? one or more creatures you control deal combat damage to one or more players, (.+)$/i)))
+      return { event: 'dealtCombatDamageToPlayer', filter: { player: 'any', source: { types: ['Creature'], controller: 'you' } }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? ~ enters and when you sacrifice it, (.+)$/i)))
+      return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'sacrifice', filter: { self: true }, hasObject: true, hasPlayer: false }] };
+    if ((m = L.match(/^When(?:ever)? (?:enchanted|equipped) creature attacks and is not blocked, (.+)$/i)))
+      return { event: 'attacksUnblocked', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) deals damage to you or (?:a|an) (.+?) you control, (.+)$/i))) {
+      const src = parseNoun(`a ${m[1]}`);
+      if (src) return { event: 'dealtDamage', filter: { player: 'you', source: { ...src.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+    if ((m = L.match(/^When(?:ever)? ~ (?:has|gains) (flying|first strike|trample|deathtouch|lifelink|haste|vigilance|reach|menace), (.+)$/i)))
+      return { event: 'stateTrigger', hasObject: true, hasPlayer: true, rest: m[2], stateCondition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { keywords: [m[1].replace(/^[a-z]/, (c) => c.toUpperCase())] } } };
+    if ((m = L.match(/^When(?:ever)? you tap ~ for mana, (.+)$/i)))
+      return { event: 'tappedForMana', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (an opponent|a player|you) becomes the monarch, (.+)$/i)))
+      return { event: 'becomesMonarch', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : /^you$/i.test(m[1]) ? 'you' : 'any' }, hasObject: false, hasPlayer: true, rest: m[2] };
+    if ((m = L.match(/^When(?:ever)? ~ becomes crewed(?: for the first time each turn)?, (.+)$/i)))
+      return { event: 'crewed', filter: { self: true, firstEachTurn: / for the first time each turn/i.test(m[0]) || undefined }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? there are (\w+) or more ([\w' -]+?) counters on ~, (.+)$/i))) {
+      const n = wordToNumber(m[1]);
+      if (typeof n === 'number') return { event: 'stateTrigger', hasObject: true, hasPlayer: true, rest: m[3], stateCondition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: m[2], op: '>=', value: n } };
+    }
+    if ((m = L.match(/^When(?:ever)? you have (\w+) or more life, (.+)$/i))) {
+      const n = wordToNumber(m[1]);
+      if (typeof n === 'number') return { event: 'stateTrigger', hasObject: false, hasPlayer: true, rest: m[2], stateCondition: { kind: 'life', ref: { ref: 'controller' }, op: '>=', value: n } };
+    }
+    if ((m = L.match(/^When(?:ever)? (\w+) or more creatures you control attack a player, (.+)$/i)) && wordToNumber(m[1]) !== null)
+      return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking creatures, ${m[2]}` };
+    if ((m = L.match(/^When(?:ever)? you cast a spell, (.+)$/i)))
+      return { event: 'cast', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) attacks a player alone, (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'attacks', filter: { ...tf, custom: 'attacksAlone' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? you attack with your commander, (.+)$/i)))
+      return { event: 'attacks', filter: { object: { isCommander: true }, objectController: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? (a player|an opponent|you) casts a spell from their hand, (.+)$/i)))
+      return { event: 'cast', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : /^you$/i.test(m[1]) ? 'you' : 'any', fromZone: 'hand' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    if ((m = L.match(/^At end of combat on your turn, (.+)$/i)))
+      return { event: 'endOfCombat', filter: { yourTurn: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? an opponent attacks with creatures, (.+)$/i)))
+      return { event: 'attacks', filter: { player: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you (?:gain or lose|lose or gain) life during your turn, (.+)$/i)))
+      return { event: 'lifeGained', filter: { player: 'you', yourTurn: true }, hasObject: false, hasPlayer: true, rest: m[1], also: [{ event: 'lifeLost', filter: { player: 'you', yourTurn: true }, hasObject: false, hasPlayer: true }] };
+    if ((m = L.match(/^When(?:ever)? (a player|an opponent|you) wins a coin flip, (.+)$/i)))
+      return { event: 'coinFlipped', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : /^you$/i.test(m[1]) ? 'you' : 'any', custom: 'wonFlip' }, hasObject: false, hasPlayer: true, rest: m[2] };
+    if ((m = L.match(/^When(?:ever)? ~ attacks the player with the most life(?: or tied for most life)?, (.+)$/i)))
+      return { event: 'attacks', filter: { self: true, custom: 'attacksMostLife' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you cast a spell that is (white|blue|black|red|green), (.+)$/i))) {
+      const cn = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as Record<string, 'W' | 'U' | 'B' | 'R' | 'G'>)[m[1].toLowerCase()];
+      return { event: 'cast', filter: { player: 'you', object: { colors: [cn] } }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) dealt damage by (?:equipped|enchanted) creature this turn dies, (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1]}`);
+      if (noun) return { event: 'dies', filter: { object: { ...noun.filter, zone: undefined, damagedBySource: true } }, hasObject: true, hasPlayer: false, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? (?:a|an) (.+?) becomes the target of a spell or ability you control, (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'becomesTarget', filter: { ...tf, player: 'you' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? you draw your (\w+) card in a turn, (.+)$/i))) {
+      const n = wordToNumber(m[1].replace(/^(first|second|third|fourth|fifth)$/i, (w) => ({ first: 'one', second: 'two', third: 'three', fourth: 'four', fifth: 'five' } as Record<string, string>)[w.toLowerCase()] ?? w));
+      if (typeof n === 'number') return { event: 'drawCard', filter: { player: 'you', nthThisTurn: n }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? ~ attacks a battle, (.+)$/i)))
+      return { event: 'attacks', filter: { self: true, custom: 'attacksBattle' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  }
+  {
     // Round 91 heads.
     if ((m = L.match(/^When(?:ever)? (\w+) or more creatures attack, (.+)$/i)) && wordToNumber(m[1]) !== null)
       return { event: 'attacks', filter: { firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if ${m[1]} or more creatures are attacking, ${m[2]}` };
