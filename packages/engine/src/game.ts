@@ -1496,6 +1496,14 @@ export class Game {
         return Math.max(0, this.resolveAmount(a.a, ctx) - this.resolveAmount(a.b, ctx));
       case 'playerStatAmount':
         return this.resolvePlayers(a.ref, ctx).reduce((s2, p) => s2 + (a.stat === 'poison' ? this.player(p).poison : a.stat === 'experience' ? this.player(p).experience : this.player(p).energy), 0);
+      case 'divide': {
+        const v = this.resolveAmount(a.a, ctx) / a.by;
+        return a.round === 'up' ? Math.ceil(v) : Math.floor(v);
+      }
+      case 'manaPool': {
+        const pid = a.who ? this.resolvePlayers(a.who, ctx)[0] : ctx.controller;
+        return pid !== undefined ? (this.player(pid).manaPool[a.color] ?? 0) : 0;
+      }
       case 'lowestLife':
         return Math.min(...this.state.playerOrder.map((pl) => this.player(pl).life));
       case 'highestLife':

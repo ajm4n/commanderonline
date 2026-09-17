@@ -324,6 +324,62 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 125 ----
+  if ((m = t.match(/^any player controls (?:a|an) (.+)$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield' }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^no (?:opponent|player) controls (?:a|an) (.+)$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', controller: /opponent/.test(t) ? 'opponent' : undefined }, op: '==', value: 0 };
+  }
+  if ((m = t.match(/^(?:there is|there's) (?:a|an|another) (.+?) on the battlefield$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', other: /another/.test(t) || undefined }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^(?:a|an) (.+?) is on the battlefield$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield' }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^(?:a|an) (.+?) (?:card )?is in your graveyard$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)} card`) ?? parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^(?:an opponent|a player) owns (?:a|an) (.+?) in exile$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'exile', owner: 'opponent' }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^you own (?:a|an) (.+?) in exile(?: that has an adventure)?$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'exile', owner: 'you', hasAdventure: /adventure/i.test(t) || undefined }, op: '>=', value: 1 };
+  }
+  if ((m = t.match(/^(?:a card exiled with (?:it|~)|an exiled card used to craft it) has (\w+)$/))) {
+    const kw = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+    return { kind: 'count', filter: { exiledWithSource: true, keywords: [kw] }, op: '>=', value: 1 };
+  }
+  if (/^(?:they|it|~) has ?n[o']t dealt combat damage yet$/.test(t)) return { kind: 'not', c: { kind: 'objectMatches', ref: ctx.self, filter: { dealtDamageThisTurn: true } } };
+  if (/^you has ?n[o']t cast a spell this turn$/.test(t) || /^you have ?n[o']t cast a spell this turn$/.test(t)) return { kind: 'not', c: { kind: 'eventThisTurn', event: 'cast', player: 'you' } };
+  if ((m = t.match(/^(?:~|it) has (\w+)$/))) {
+    const kw = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+    return { kind: 'objectMatches', ref: ctx.self, filter: { keywords: [kw] } };
+  }
+  if ((m = t.match(/^(\w+) or more creatures are blocking (?:it|~)$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'count', filter: { blockingSource: true, zone: 'battlefield' }, op: '>=', value: n };
+  }
+  if (/^it is night$/.test(t)) return { kind: 'dayNight', is: 'night' };
+  if (/^it is day$/.test(t)) return { kind: 'dayNight', is: 'day' };
+  if (/^one or more cards left your graveyard this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'leftGraveyard', player: 'you' };
+  if ((m = t.match(/^you(?:'ve| have)? cast (?:a|an) (.+?) spell this turn$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)} spell`);
+    if (noun) return { kind: 'eventThisTurn', event: 'cast', player: 'you', filter: { ...noun.filter, zone: undefined } };
+  }
+  if ((m = t.match(/^(?:defending player|that player|an opponent|target player) has (?:a|an|(\w+) or more) ([\w'-]+) counters?$/))) {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const stat = m[2].toLowerCase();
+    if (typeof n === 'number' && (stat === 'poison' || stat === 'energy' || stat === 'experience')) return { kind: 'playerStat', stat: stat as 'poison', ref: { ref: 'defendingPlayer' }, op: '>=', value: n };
+    if (typeof n === 'number') return { kind: 'turnStat', key: stat, op: '>=', value: n };
+  }
   // ---- Round 120 ----
   if ((m = t.match(/^you have cast exactly (\d+) other spells this turn$/))) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '==', value: parseInt(m[1], 10) + 1 };
   if ((m = t.match(/^you control (\w+) or more attacking (.+?)s?$/))) {

@@ -44,6 +44,10 @@ export type Amount =
   | { kind: 'differenceLife'; from: Ref; to: Ref }
   | { kind: 'ctxMemory'; key: string }
   | { kind: 'half'; a: Amount; round?: 'up' | 'down' }
+  /** "For every seven cards in your graveyard": integer division. */
+  | { kind: 'divide'; a: Amount; by: number; round?: 'up' | 'down' }
+  /** "Each unspent green mana you have." */
+  | { kind: 'manaPool'; color: 'W' | 'U' | 'B' | 'R' | 'G' | 'C'; who?: Ref }
   | { kind: 'librarySize'; ref: Ref }
   /** Number of objects a Ref resolves to (optionally filtered), e.g. "creature cards milled this way". */
   | { kind: 'countRef'; ref: Ref; filter?: ObjectFilter }

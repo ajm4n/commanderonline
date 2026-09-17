@@ -319,6 +319,28 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^your devotion to (white|blue|black|red|green)$/))) return { kind: 'devotion', colors: [({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white']] };
   if (t === 'the number of creatures you control') return { kind: 'count', filter: { types: ['Creature'], controller: 'you' } };
   if (t === 'the number of spells you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
+  // ---- Round 125 ----
+  if (/^(?:the number of )?other spells? cast this turn$/.test(t)) return { kind: 'spellsCastThisTurn' };
+  if ((m = t.match(/^(?:the number of )?cards? your opponents own in exile$/))) return { kind: 'count', filter: { zone: 'exile', owner: 'opponent' } };
+  if ((m = t.match(/^(?:the number of )?(.+?) cards? in your opponents'? graveyards$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)} card`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'graveyard', owner: 'opponent' } };
+  }
+  if ((m = t.match(/^(?:the number of )?cards? in your opponents'? hands?$/))) return { kind: 'handSize', ref: { ref: 'eachOpponent' } };
+  if ((m = t.match(/^(?:the number of )?cards? in the chosen player's hand$/))) return { kind: 'handSize', ref: { ref: 'chosen', key: 'player' } };
+  if ((m = t.match(/^(?:the number of )?(white|blue|black|red|green) cards? in their hand$/))) {
+    const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white'];
+    return { kind: 'count', filter: { colors: [col], zone: 'hand', ownerRef: ctx.lastPlayer ?? { ref: 'triggerPlayer' } } };
+  }
+  if (/^(?:the number of )?attacking creatures$/.test(t)) return { kind: 'count', filter: { types: ['Creature'], attacking: true, zone: 'battlefield' } };
+  if (/^(?:the number of )?blocking creatures$/.test(t)) return { kind: 'count', filter: { types: ['Creature'], blocking: true, zone: 'battlefield' } };
+  if ((m = t.match(/^(?:the number of )?curses attached to them$/))) return { kind: 'count', filter: { subtypes: ['Curse'], attachedToRef: ctx.lastPlayer ?? { ref: 'triggerPlayer' }, zone: 'battlefield' } };
+  if ((m = t.match(/^(?:the number of )?transformed permanents you control$/))) return { kind: 'count', filter: { controller: 'you', zone: 'battlefield', custom: 'transformed' } };
+  if ((m = t.match(/^every (\w+) cards in your graveyard$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number' && n > 0) return { kind: 'divide', a: { kind: 'graveyardSize', ref: { ref: 'controller' } }, by: n, round: 'down' };
+  }
+  if ((m = t.match(/^(?:the number of )?unspent (white|blue|black|red|green|colorless) mana you have$/))) return { kind: 'manaPool', color: ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', colorless: 'C' } as const)[m[1] as 'white'] };
   // ---- Round 121 ----
   if ((m = t.match(/^(?:the number of )?(.+?) (?:discarded|milled|exiled|sacrificed|destroyed|tapped|returned|revealed|chosen) this way$/))) {
     const noun = withCtrl(parseNoun(oc(m, 1).replace(/ cards$/i, ' card')), ctx);
