@@ -6,6 +6,7 @@ import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
 import { parseCost } from './costs.js';
 import { parseAmount } from './amounts.js';
+import { damageSourceFilter, damageDestFilter, damageModifier } from './damage.js';
 
 function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: boolean } {
   const l = text.trim().toLowerCase();
@@ -39,6 +40,32 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 137 ----
+  // "If a source would deal damage to you or a permanent you control, prevent half that damage, rounded up."
+  if ((m = L.match(/^If (.+?) would deal (combat |noncombat )?damage to (.+?)(?: this turn)?, prevent half that damage,? rounded (up|down)$/i))) {
+    const srcSpec = damageSourceFilter(m[1]);
+    const dest = damageDestFilter(m[3]);
+    if (srcSpec && dest) {
+      const data: Record<string, unknown> = { ...srcSpec, ...dest, half: m[4].toLowerCase() === 'up' ? 'down' : 'up' };
+      delete data.host;
+      if (m[2] && /^combat/i.test(m[2])) data.combatOnly = true;
+      if (m[2] && /^noncombat/i.test(m[2])) data.noncombatOnly = true;
+      const host = srcSpec.selfOnly ? (/^~$/.test(m[1].trim()) ? 'self' : 'attachedTo') : dest.host ?? 'self';
+      return [{ kind: 'static', text: line, affects: host, rule: { kind: 'custom', tag: 'damageModify', data } }];
+    }
+  }
+  // "Prevent all damage that ~ would deal to red creatures."
+  if ((m = L.match(/^Prevent all (combat |noncombat )?damage that (.+?) would deal to (.+)$/i))) {
+    const src = damageSourceFilter(m[2]);
+    const dst = damageDestFilter(m[3]);
+    if (src && dst && !dst.host) {
+      const data: Record<string, unknown> = { to: dst.toFilter, toPlayers: dst.toPlayers, toObjects: dst.toObjects, toController: dst.toController };
+      if (m[1] && /^combat/i.test(m[1])) data.combatOnly = true;
+      if (m[1] && /^noncombat/i.test(m[1])) data.noncombatOnly = true;
+      const host = src.selfOnly ? (/^~$/.test(m[2].trim()) ? 'self' : 'attachedTo') : null;
+      if (host) return [{ kind: 'static', text: line, affects: host, rule: { kind: 'custom', tag: 'dealsNoDamageTo', data } }];
+    }
+  }
   // ---- Round 136 ----
   // "If damage would be dealt to ~, put that many -1/-1 counters on it instead."
   if ((m = L.match(/^If (combat |noncombat )?damage would be dealt to (~|you)(?: this turn)?, (?:prevent that damage and (.+)|put that many ([+\-\w\/]+) counters on (?:it|~) instead|prevent that damage)$/i))) {
@@ -184,12 +211,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       const data: Record<string, unknown> = { ...srcSpec, ...dest, setTo: parseInt(m[4], 10) };
       if (m[2] && /^combat/i.test(m[2])) data.combatOnly = true;
       if (m[2] && /^noncombat/i.test(m[2])) data.noncombatOnly = true;
-      const affects = srcSpec.selfOnly ? (/^~$/.test(m[1].trim()) ? 'self' : 'attachedTo') : 'self';
-      return [{ kind: 'static', text: line, affects, rule: { kind: 'custom', tag: 'damageModify', data } }];
+      delete data.host;
+      const host = srcSpec.selfOnly ? (/^~$/.test(m[1].trim()) ? 'self' : 'attachedTo') : dest.host ?? 'self';
+      return [{ kind: 'static', text: line, affects: host, rule: { kind: 'custom', tag: 'damageModify', data } }];
     }
   }
   // "If a source you control would deal damage to an opponent, it deals double that damage instead."
-  if ((m = L.match(/^If (.+?) would deal (?:(\d+) or more )?(combat |noncombat )?damage(?: to (.+?))?(?: this turn)?, (?:it|that source|that spell|that creature|that permanent|that card|~) deals (.+)$/i))) {
+  if ((m = L.match(/^If (.+?) would deal (?:(\d+) or more )?(combat |noncombat )?damage(?: this turn)?(?: to (.+?))?(?: this turn)?, (?:instead )?(?:it|that source|that spell|that creature|that permanent|that card|~) deals (.+)$/i))) {
     const srcSpec = damageSourceFilter(m[1]);
     const dest = m[4] ? damageDestFilter(m[4]) : {};
     const mod = damageModifier(m[5]);
@@ -198,9 +226,9 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       if (m[2]) data.ifAtLeast = parseInt(m[2], 10);
       if (m[3] && /combat/i.test(m[3]) && !/noncombat/i.test(m[3])) data.combatOnly = true;
       if (m[3] && /noncombat/i.test(m[3])) data.noncombatOnly = true;
-      const affects = srcSpec.selfOnly ? (/^~$/.test(m[1].trim()) ? 'self' : 'attachedTo') : undefined;
-      if (srcSpec.selfOnly) return [{ kind: 'static', text: line, affects, rule: { kind: 'custom', tag: 'damageModify', data } }];
-      return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damageModify', data } }];
+      delete data.host;
+      const host = srcSpec.selfOnly ? (/^~$/.test(m[1].trim()) ? 'self' : 'attachedTo') : dest.host ?? 'self';
+      return [{ kind: 'static', text: line, affects: host, rule: { kind: 'custom', tag: 'damageModify', data } }];
     }
   }
   // ---- Round 135 ----
@@ -2248,65 +2276,5 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // Sagas & others are handled by the orchestrator.
   void isCreatureOrPermanent;
-  return null;
-}
-
-/** Source side of "If <source> would deal damage …": a filter, or the ability's own object. */
-function damageSourceFilter(text: string): { filter?: ObjectFilter; selfOnly?: boolean } | null {
-  const t = text.trim();
-  const l = t.toLowerCase();
-  if (l === '~') return { selfOnly: true };
-  if (/^(?:enchanted|equipped|fortified) (?:creature|permanent|artifact|land)$/.test(l)) return { selfOnly: true };
-  if (/^(?:a|any) source$/.test(l)) return { filter: undefined };
-  const sm = t.match(/^(?:a|an|any|another) (.*?)\s*sources?$/i);
-  if (sm) {
-    const qual = sm[1].trim();
-    if (!qual) return { filter: undefined };
-    const noun = parseNoun(`a ${qual} card`);
-    if (!noun || !noun.confident) return null;
-    const f = { ...noun.filter };
-    delete f.zone;
-    if (/^another /i.test(t)) f.other = true;
-    return { filter: f };
-  }
-  const noun = parseNoun(t);
-  if (!noun || !noun.confident || noun.kind === 'player') return null;
-  const f = { ...noun.filter };
-  delete f.zone;
-  if (noun.other) f.other = true;
-  return { filter: f };
-}
-
-/** Destination side of "… would deal damage to <dest>". */
-function damageDestFilter(text: string): { toFilter?: ObjectFilter; toPlayers?: boolean; toObjects?: boolean; toController?: 'you' | 'opponent' } | null {
-  const t = text.trim().replace(/ this turn$/i, '');
-  const l = t.toLowerCase();
-  if (/^(?:a|any)(?: permanent or player| target)$/.test(l) || l === 'anything' || l === 'any target') return {};
-  if (l === 'you') return { toPlayers: true, toController: 'you' };
-  if (/^(?:an|any|each|target) opponent$/.test(l)) return { toPlayers: true, toController: 'opponent' };
-  if (/^(?:a|any) player$/.test(l)) return { toPlayers: true };
-  if (/^(?:an opponent|a player) or a permanent (?:an opponent|that player|they) controls?$/.test(l)) return { toController: 'opponent' };
-  if (/^you or (?:a|an|another) (?:permanent|creature) you control$/.test(l)) return { toController: 'you' };
-  const noun = parseNoun(t);
-  if (!noun || !noun.confident || noun.kind === 'player') return null;
-  const f = { ...noun.filter };
-  delete f.zone;
-  const ctrl = f.controller;
-  delete f.controller;
-  if (noun.other) f.other = true;
-  return { toObjects: true, toFilter: f, toController: ctrl === 'you' ? 'you' : ctrl === 'opponent' ? 'opponent' : undefined };
-}
-
-/** "double that damage" / "that much damage minus 1" / "half that damage, rounded down" / "3 damage". */
-function damageModifier(text: string): { setTo?: number; times?: number; plus?: number; minus?: number; half?: 'up' | 'down' } | null {
-  let t = text.trim().toLowerCase().replace(/ instead$/, '').trim();
-  t = t.replace(/,? to (?:that|those|it|itself|them|you|its controller|each of those)[\w' ]*$/, '').replace(/,$/, '').trim();
-  let mm: RegExpMatchArray | null;
-  if (/^(?:double|twice) (?:that|that much|this) damage$/.test(t) || /^twice that much damage$/.test(t)) return { times: 2 };
-  if (/^(?:triple|three times) (?:that|that much) damage$/.test(t)) return { times: 3 };
-  if ((mm = t.match(/^(?:that much |that )?damage plus (\d+)$/))) return { plus: parseInt(mm[1], 10) };
-  if ((mm = t.match(/^(?:that much |that )?damage minus (\d+)$/))) return { minus: parseInt(mm[1], 10) };
-  if ((mm = t.match(/^half (?:that|that much) damage,? rounded (up|down)$/))) return { half: mm[1] === 'up' ? 'up' : 'down' };
-  if ((mm = t.match(/^(\d+) damage$/))) return { setTo: parseInt(mm[1], 10) };
   return null;
 }

@@ -7,6 +7,7 @@ import { parseAmount } from './amounts.js';
 import { parseCondition } from './conditions.js';
 import { parseTriggerHead } from './triggers.js';
 import { parseCost } from './costs.js';
+import { damageSourceFilter, damageDestFilter, damageModifier } from './damage.js';
 
 export interface ParseCtx {
   targets: TargetSpec[];
@@ -4181,6 +4182,76 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 137 ----
+  // "Prevent the next 3 damage that would be dealt to any target this turn by a source of your choice."
+  [/^prevent the next (\d+|X) (combat |noncombat )?damage that would be dealt to (.+?)(?: this turn)?(?: by (.+?))?(?: this turn)?$/i, (m, ctx) => {
+    const n = m[1].toUpperCase() === 'X' ? null : parseInt(m[1], 10);
+    let source: ObjectFilter | undefined;
+    if (m[4] && !/^a source of your choice$/i.test(m[4])) {
+      const st = m[4].replace(/\bsources\b/i, 'permanents').replace(/\bsource\b/i, 'permanent');
+      const sn = parseNoun(st) ?? parseNoun(`a ${st}`);
+      if (!sn) return null;
+      source = { ...sn.filter, zone: undefined };
+    }
+    const spec: Effect = { kind: 'preventAll', to: 'all', combat: m[2] && /^combat/i.test(m[2]) ? true : undefined, source, amount: n ?? undefined };
+    const l = m[3].trim().toLowerCase();
+    if (l === 'you') spec.to = 'you';
+    else if (l === 'you and/or permanents you control' || l === 'you and permanents you control' || l === 'you and/or creatures you control' || l === 'you and creatures you control') spec.to = 'youAndCreaturesYouControl';
+    else if (l === 'any target') spec.to = 'all';
+    else {
+      const ref = anyRef(m[3], ctx);
+      if (!ref) return null;
+      spec.toRef = ref;
+    }
+    if (n === null) spec.amount = undefined;
+    return [spec];
+  }],
+  // "The next 1 damage that would be dealt to target creature this turn is dealt to another target creature instead."
+  [/^the next (\d+|X) (combat |noncombat )?damage that would be dealt(?: this turn)? to (.+?)(?: this turn)? is dealt to (.+?) instead$/i, (m, ctx) => {
+    const n = m[1].toUpperCase() === 'X' ? undefined : parseInt(m[1], 10);
+    const toRef = anyRef(m[3], ctx);
+    if (!toRef) return null;
+    const redirectTo = /^its controller$/i.test(m[4].trim()) ? null : anyRef(m[4], ctx);
+    if (!redirectTo && !/^its controller$/i.test(m[4].trim())) return null;
+    const spec: Effect = { kind: 'preventAll', to: 'all', toRef, amount: n, combat: m[2] && /^combat/i.test(m[2]) ? true : undefined };
+    if (redirectTo) spec.redirectTo = redirectTo;
+    else spec.redirectToSourceController = true;
+    return [spec];
+  }],
+  // "The next time a source of your choice would deal damage to you this turn, that damage is dealt to ~ instead."
+  [/^the next time (?:(?:a|an) source of your choice|damage) would (?:deal damage to|be dealt to) (.+?) this turn, (?:that damage is dealt to|instead that source deals that much damage to) (.+?) instead$/i, (m, ctx) => {
+    const toRef = anyRef(m[1], ctx);
+    if (!toRef) return null;
+    const redirectTo = /^its controller$/i.test(m[2].trim()) ? null : anyRef(m[2], ctx);
+    const spec: Effect = { kind: 'preventAll', to: 'all', toRef, once: true };
+    if (redirectTo) spec.redirectTo = redirectTo;
+    else spec.redirectToSourceController = true;
+    return [spec];
+  }],
+  // "Prevent all damage a source of your choice would deal to you this turn."
+  [/^prevent all (combat |noncombat )?damage (?:a|an) source of your choice would deal to (.+?) this turn$/i, (m, ctx) => {
+    const spec: Effect = { kind: 'preventAll', to: 'all', once: true, combat: m[1] && /^combat/i.test(m[1]) ? true : undefined };
+    if (/^you$/i.test(m[2].trim())) spec.to = 'you';
+    else {
+      const ref = anyRef(m[2], ctx);
+      if (!ref) return null;
+      spec.toRef = ref;
+    }
+    return [spec];
+  }],
+  // "If a source you control would deal damage this turn, it deals double that damage instead."
+  [/^if (.+?) would deal (?:(\d+) or more )?(combat |noncombat )?damage(?: this turn)?(?: to (.+?))?(?: this turn)?, (?:instead )?(?:it|that source|that spell|that creature|that permanent) deals (.+)$/i, (m) => {
+    const srcSpec = damageSourceFilter(m[1]);
+    const dest = m[4] ? damageDestFilter(m[4]) : {};
+    const mod = damageModifier(m[5]);
+    if (!srcSpec || srcSpec.selfOnly || !dest || dest.host || !mod || !/ this turn[, ]/i.test(m[0])) return null;
+    const data: Record<string, unknown> = { ...srcSpec, ...dest, ...mod };
+    delete data.host;
+    if (m[2]) data.ifAtLeast = parseInt(m[2], 10);
+    if (m[3] && /^combat/i.test(m[3])) data.combatOnly = true;
+    if (m[3] && /^noncombat/i.test(m[3])) data.noncombatOnly = true;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'damageModify', data } }];
+  }],
   // ---- Round 135 ----
   // "That player shuffles their hand into their library."
   [/^(.+?) shuffles? (?:their|his or her) (graveyard|hand)(?: and (?:their )?(graveyard|hand))? into (?:their|his or her) library$/i, (m, ctx) => {
@@ -5485,6 +5556,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const r = parseSentence(text.replace(/ and may choose (?:a new target|new targets) for (?:the|that) copy$/i, '. You may choose new targets for the copy'), ctx);
     if (r) return r;
   }
+  // "~ deals 5 damage to that permanent or player and the damage cannot be prevented instead"
+  if (/ and (?:the )?damage cannot be prevented(?: instead)?$/i.test(text)) {
+    const r = parseSentence(text.replace(/ and (?:the )?damage cannot be prevented(?: instead)?$/i, ''), ctx);
+    if (r) return [...r, { kind: 'turnFlag', flag: 'noPrevention' }];
+  }
+  // "~ cannot be countered and the damage cannot be prevented"
+  if (/^~ cannot be countered and (?:the )?damage cannot be prevented$/i.test(text)) return [{ kind: 'turnFlag', flag: 'noPrevention' }];
   // "also put a +1/+1 counter on each other creature you control" → drop the connective.
   if (/^also /i.test(text)) {
     const r = parseSentence(text.replace(/^also /i, ''), ctx);

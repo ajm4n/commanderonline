@@ -1503,6 +1503,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         pv.playerIds = ts.filter((t) => t.kind === 'player').map((t) => (t as { id: PlayerId }).id);
         if (!pv.ids.length && !pv.playerIds.length) return;
       }
+      if (e.redirectTo) {
+        const rs = g.resolveRef(e.redirectTo, ctx);
+        pv.redirectIds = rs.filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id);
+        pv.redirectPlayers = rs.filter((t) => t.kind === 'player').map((t) => (t as { id: PlayerId }).id);
+      }
+      if (e.redirectToSourceController) pv.redirectToSourceController = true;
       g.state.preventions.push(pv);
       return;
     }

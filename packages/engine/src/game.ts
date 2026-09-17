@@ -95,7 +95,7 @@ export interface GameState {
   turnRules?: { player: PlayerId; rule: import('./types.js').RuleModification }[];
   /** Day/night cycle: undefined until a card starts it. */
   dayNight?: 'day' | 'night';
-  preventions: { effects?: import('./script.js').Effect[]; /** Only damage from these specific sources. */ sourceIds?: ObjectId[]; /** Shield: prevents at most this much, then wears off. */ amount?: number; combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[] }[];
+  preventions: { effects?: import('./script.js').Effect[]; /** Only damage from these specific sources. */ sourceIds?: ObjectId[]; /** Shield: prevents at most this much, then wears off. */ amount?: number; combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[]; /** The prevented damage is dealt to these instead. */ redirectIds?: ObjectId[]; redirectPlayers?: PlayerId[]; redirectToSourceController?: boolean }[];
   log: LogEntry[];
   monarch: PlayerId | null;
   initiative: PlayerId | null;
@@ -2082,6 +2082,18 @@ export class Game {
         pv.amount -= stopped;
         if (pv.amount <= 0) this.state.preventions = this.state.preventions.filter((x) => x !== pv);
       } else if (pv.once) this.state.preventions = this.state.preventions.filter((x) => x !== pv);
+      if (pv.redirectIds?.length || pv.redirectPlayers?.length || pv.redirectToSourceController) {
+        const moved = stopped === Infinity ? amount : stopped;
+        const dests: Target[] = [
+          ...(pv.redirectIds ?? []).filter((x) => this.state.objects[x]?.zone === 'battlefield').map((x) => ({ kind: 'object', id: x }) as Target),
+          ...(pv.redirectPlayers ?? []).map((x) => ({ kind: 'player', id: x }) as Target),
+        ];
+        if (pv.redirectToSourceController && sourceId !== null) {
+          const so = this.state.objects[sourceId];
+          if (so) dests.push({ kind: 'player', id: so.controller });
+        }
+        for (const d of dests) this.dealDamage(sourceId, d, moved, combat);
+      }
       if (pv.effects?.length) {
         // "…prevent that damage. You gain life equal to the damage prevented this way."
         const prevented = stopped === Infinity ? amount : stopped;
@@ -2090,6 +2102,49 @@ export class Game {
       return stopped;
     }
     return 0;
+  }
+
+  /** Apply one "would deal damage" modification rule to a damage amount. */
+  private applyDamageModify(raw: unknown, dealt: number, sourceId: ObjectId | null, src: GameObject | null, target: Target, combat: boolean, holderController: PlayerId, holderId: ObjectId | null): number {
+    const d = raw as {
+      filter?: import('./types.js').ObjectFilter;
+      selfOnly?: boolean;
+      toFilter?: import('./types.js').ObjectFilter;
+      toPlayers?: boolean;
+      toObjects?: boolean;
+      toController?: 'you' | 'opponent';
+      combatOnly?: boolean;
+      noncombatOnly?: boolean;
+      ifAtLeast?: number;
+      setTo?: number;
+      times?: number;
+      plus?: number;
+      minus?: number;
+      half?: 'up' | 'down';
+    } | undefined;
+    if (!d) return dealt;
+    if (d.combatOnly && !combat) return dealt;
+    if (d.noncombatOnly && combat) return dealt;
+    if (d.ifAtLeast !== undefined && dealt < d.ifAtLeast) return dealt;
+    if (d.selfOnly) {
+      if (holderId === null || sourceId !== holderId) return dealt;
+    } else if (d.filter && (!src || !matchesFilter(this, src, { ...d.filter, zone: undefined }, { sourceId: holderId, controller: holderController }))) return dealt;
+    if (d.toPlayers && target.kind !== 'player') return dealt;
+    if (d.toObjects && target.kind !== 'object') return dealt;
+    const tc = target.kind === 'player' ? target.id : target.kind === 'object' ? this.state.objects[target.id]?.controller : undefined;
+    if (d.toController === 'you' && tc !== holderController) return dealt;
+    if (d.toController === 'opponent' && (tc === undefined || tc === holderController)) return dealt;
+    if (d.toFilter) {
+      if (target.kind !== 'object') return dealt;
+      const o = this.state.objects[target.id];
+      if (!o || !matchesFilter(this, o, { ...d.toFilter, zone: undefined }, { sourceId: holderId, controller: holderController })) return dealt;
+    }
+    if (d.setTo !== undefined) dealt = d.setTo;
+    if (d.times !== undefined) dealt *= d.times;
+    if (d.plus !== undefined) dealt += d.plus;
+    if (d.minus !== undefined) dealt -= d.minus;
+    if (d.half) dealt = d.half === 'up' ? Math.ceil(dealt / 2) : Math.floor(dealt / 2);
+    return dealt < 0 ? 0 : dealt;
   }
 
   dealDamage(sourceId: ObjectId | null, target: Target, amount: number, combat: boolean): number {
@@ -2107,6 +2162,31 @@ export class Game {
       this.log(`Damage is redirected to ${this.nameOf(id)}.`);
       target = { kind: 'object', id };
       break;
+    }
+    // "Prevent all damage that ~ would deal to red creatures."
+    if (sourceId !== null) {
+      const sobj = this.state.objects[sourceId];
+      if (sobj) {
+        for (const r of this.characteristics(sourceId).rules) {
+          if (r.kind !== 'custom' || r.tag !== 'dealsNoDamageTo') continue;
+          const d = r.data as { to?: import('./types.js').ObjectFilter; toPlayers?: boolean; toObjects?: boolean; toController?: 'you' | 'opponent'; combatOnly?: boolean; noncombatOnly?: boolean } | undefined;
+          if (!d) continue;
+          if (d.combatOnly && !combat) continue;
+          if (d.noncombatOnly && combat) continue;
+          if (d.toPlayers && target.kind !== 'player') continue;
+          if (d.toObjects && target.kind !== 'object') continue;
+          const tc = target.kind === 'player' ? target.id : target.kind === 'object' ? this.state.objects[target.id]?.controller : undefined;
+          if (d.toController === 'you' && tc !== sobj.controller) continue;
+          if (d.toController === 'opponent' && (tc === undefined || tc === sobj.controller)) continue;
+          if (d.to) {
+            if (target.kind !== 'object') continue;
+            const o = this.state.objects[target.id];
+            if (!o || !matchesFilter(this, o, { ...d.to, zone: undefined }, { sourceId, controller: sobj.controller })) continue;
+          }
+          this.log(`Damage from ${this.nameOf(sourceId)} is prevented.`);
+          return 0;
+        }
+      }
     }
     {
       const stopped = this.preventedByFog(sourceId, target, combat, amount);
@@ -2143,51 +2223,21 @@ export class Game {
         else dealt += typeof d.plus === 'number' ? d.plus : d.plus ? this.resolveAmount(d.plus, { sourceId: id, controller: holder.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 0;
       }
     }
+    // "If a source you control would deal damage this turn, it deals double that damage instead." (granted to a player)
+    for (const pl of this.activePlayers()) {
+      for (const r of this.playerRules(pl)) {
+        if (r.kind !== 'custom' || r.tag !== 'damageModify') continue;
+        const hc = (r as { sourceController?: PlayerId }).sourceController ?? pl;
+        dealt = this.applyDamageModify(r.data, dealt, sourceId, src, target, combat, hc, null);
+      }
+    }
     // "If a source you control would deal damage to an opponent, it deals double that damage instead."
     for (const id of this.state.battlefield) {
       const holder = this.state.objects[id];
       if (!holder) continue;
       for (const r of this.characteristics(id).rules) {
         if (r.kind !== 'custom' || r.tag !== 'damageModify') continue;
-        const d = r.data as {
-          filter?: import('./types.js').ObjectFilter;
-          selfOnly?: boolean;
-          toFilter?: import('./types.js').ObjectFilter;
-          toPlayers?: boolean;
-          toObjects?: boolean;
-          toController?: 'you' | 'opponent';
-          combatOnly?: boolean;
-          noncombatOnly?: boolean;
-          ifAtLeast?: number;
-          setTo?: number;
-          times?: number;
-          plus?: number;
-          minus?: number;
-          half?: 'up' | 'down';
-        } | undefined;
-        if (!d) continue;
-        if (d.combatOnly && !combat) continue;
-        if (d.noncombatOnly && combat) continue;
-        if (d.ifAtLeast !== undefined && dealt < d.ifAtLeast) continue;
-        if (d.selfOnly) {
-          if (sourceId !== id) continue;
-        } else if (d.filter && (!src || !matchesFilter(this, src, { ...d.filter, zone: undefined }, { sourceId: id, controller: holder.controller }))) continue;
-        if (d.toPlayers && target.kind !== 'player') continue;
-        if (d.toObjects && target.kind !== 'object') continue;
-        const tc = target.kind === 'player' ? target.id : target.kind === 'object' ? this.state.objects[target.id]?.controller : undefined;
-        if (d.toController === 'you' && tc !== holder.controller) continue;
-        if (d.toController === 'opponent' && (tc === undefined || tc === holder.controller)) continue;
-        if (d.toFilter) {
-          if (target.kind !== 'object') continue;
-          const o = this.state.objects[target.id];
-          if (!o || !matchesFilter(this, o, { ...d.toFilter, zone: undefined }, { sourceId: id, controller: holder.controller })) continue;
-        }
-        if (d.setTo !== undefined) dealt = d.setTo;
-        if (d.times !== undefined) dealt *= d.times;
-        if (d.plus !== undefined) dealt += d.plus;
-        if (d.minus !== undefined) dealt -= d.minus;
-        if (d.half) dealt = d.half === 'up' ? Math.ceil(dealt / 2) : Math.floor(dealt / 2);
-        if (dealt < 0) dealt = 0;
+        dealt = this.applyDamageModify(r.data, dealt, sourceId, src, target, combat, holder.controller, id);
       }
     }
     if (dealt <= 0) return 0;
