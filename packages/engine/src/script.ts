@@ -607,6 +607,8 @@ export interface TriggeredAbilitySpec {
   filter?: TriggerFilter;
   /** Intervening "if" clause; checked on trigger and on resolution. */
   condition?: Condition;
+  /** A state trigger ("When no creatures are on the battlefield, sacrifice ~"): fires when this becomes true. */
+  stateCondition?: Condition;
   /** "you may ..." — controller is asked whether to apply. */
   optional?: boolean;
   targets?: TargetSpec[];

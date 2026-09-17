@@ -779,6 +779,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const heads = [head, ...(head.also ?? []).map((h) => ({ ...h, rest: head.rest }))];
       for (const h of heads) {
         const ab: TriggeredAbilitySpec = { kind: 'triggered', text: line, event: h.event, filter: h.filter, effects, targets: ctx.targets.length ? ctx.targets : undefined, optional: split.optional || undefined, condition, zone: h.zone, leavesTheBattlefield: h.leaves, oncePerTurn: /this ability triggers only once each turn|do this only once each turn/i.test(line) || undefined };
+        if (h.event === 'stateTrigger' && condition) ab.stateCondition = condition;
         abilities.push(...withBlock([ab]));
       }
       if (unhandled.length) unhandledLines.push(...unhandled.map((u) => `${line.slice(0, line.indexOf(',') + 1)} ${u}`));

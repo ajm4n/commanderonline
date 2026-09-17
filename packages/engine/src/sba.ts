@@ -27,6 +27,24 @@ export function* checkStateBasedActions(g: Game): Gen {
       }
     }
 
+    // State triggers ("When no creatures are on the battlefield, sacrifice ~"): fire on the rising edge.
+    for (const id of [...g.state.battlefield]) {
+      const o = g.state.objects[id];
+      if (!o) continue;
+      const abs = g.scriptFor(o).abilities;
+      for (let i = 0; i < abs.length; i++) {
+        const ab = abs[i];
+        if (ab.kind !== 'triggered' || !ab.stateCondition) continue;
+        const key = `stFired:${i}`;
+        const now = g.checkCondition(ab.stateCondition, { sourceId: id, controller: o.controller });
+        if (now && !o.memory[key]) {
+          o.memory[key] = true;
+          g.queueTrigger({ sourceId: id, controller: o.controller, ability: ab, context: {} });
+          changed = true;
+        } else if (!now && o.memory[key]) delete o.memory[key];
+      }
+    }
+
     // Soulbond: a pair breaks when either creature leaves the battlefield or changes controller.
     for (const id of [...g.state.battlefield]) {
       const o = g.state.objects[id];

@@ -1,6 +1,7 @@
 /** Trigger head parsing: "Whenever X, " → event + filter. */
 import type { GameEventName, TriggerFilter, ZoneName } from '@commander/engine';
 import { parseNoun } from './nouns.js';
+import { parseCondition } from './conditions.js';
 import { wordToNumber } from './text.js';
 import type { ObjectFilter } from '@commander/engine';
 
@@ -1125,6 +1126,11 @@ export function parseTriggerHead(line: string): TriggerHead | null {
       const types = [m[1], m[2], m[3]].map((t) => `${t.charAt(0).toUpperCase()}${t.slice(1).toLowerCase()}`);
       return { event: 'entersBattlefield', filter: { object: { types } }, hasObject: true, hasPlayer: true, rest: m[4] };
     }
+  }
+  // State triggers: "When no creatures are on the battlefield, sacrifice ~."
+  if ((m = L.match(/^When (.+?), (.+)$/i)) && !/^(?:ever)/i.test(m[1])) {
+    const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond && cond.kind !== 'manual') return { event: 'stateTrigger', filter: { self: true }, hasObject: true, hasPlayer: false, stateCondition: cond, rest: m[2] };
   }
   if ((m = L.match(/^At the beginning of each end step, if you control (?:a|an) (.+?), (.+)$/i))) return null; // let generic handle
   return null;
