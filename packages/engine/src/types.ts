@@ -300,6 +300,8 @@ export type RuleModification =
   | { kind: 'mustAttack' }
   | { kind: 'mustBlock' }
   | { kind: 'cantUntap' }
+  /** The player cannot cast spells (optionally only those matching). */
+  | { kind: 'cantCast'; filter?: ObjectFilter }
   | { kind: 'cantBeTargeted'; by?: 'spells' | 'abilities' | 'opponents'; /** Only spells/abilities matching this ("cannot be the target of Aura spells"). */ filter?: ObjectFilter }
   | { kind: 'extraLandDrop'; count: number }
   | { kind: 'noMaxHandSize' }

@@ -1512,8 +1512,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const n = amt(e.amount);
         for (let i = 0; i < n; i++) {
           const pl = g.player(p);
-          if (!pl.library.length) break;
-          let pick = pl.library[0];
+          const pile = e.fromHand ? pl.hand : pl.library;
+          if (!pile.length) break;
+          let pick = pile[0];
+          if (e.fromHand && pile.length > 1) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Manifest a card from your hand', candidates: [...pile], min: 1, max: 1, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'objects' && r.ids[0] !== undefined) pick = r.ids[0];
+          }
           if (e.dread) {
             const top = pl.library.slice(0, 2);
             if (top.length === 2) {
@@ -1836,8 +1841,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'revealHand': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
-        const names = g.player(p).hand.map((id) => g.nameOf(id));
-        g.log(`${g.player(p).name} reveals their hand: ${names.join(', ') || '(empty)'}.`, { kind: 'revealHand', data: { player: p, ids: [...g.player(p).hand] } });
+        let ids = [...g.player(p).hand];
+        if (e.count !== undefined) ids = (e.random ? g.rng.shuffle(ids) : ids).slice(0, e.count);
+        const names = ids.map((id) => g.nameOf(id));
+        const who = e.count !== undefined ? `${g.player(ctx.controller).name} looks at` : `${g.player(p).name} reveals`;
+        g.log(`${who} ${e.count !== undefined ? `${ids.length} card(s) in ${g.player(p).name}'s hand` : 'their hand'}: ${names.join(', ') || '(empty)'}.`, { kind: 'revealHand', data: { player: p, ids, visibleTo: e.count !== undefined ? [ctx.controller] : undefined } });
       }
       return;
     }
@@ -2042,6 +2050,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'skipTurn':
       for (const p of g.resolvePlayers(e.who, ctx)) g.player(p).flags['skipNextTurn'] = true;
+      return;
+    case 'skipStep':
+      for (const p of playersOf(g, e.who, ctx)) {
+        if (p === g.state.turn.activePlayer) g.state.turn.skipSteps.push(e.step as import('./types.js').Step);
+        else g.player(p).flags[`skipStep:${e.step}`] = true;
+        g.log(`${g.player(p).name} skips their ${e.step} step.`);
+      }
       return;
     case 'monstrosity': {
       const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;

@@ -2376,6 +2376,10 @@ export class Game {
       if (this.player(pid).lost) return;
       const { step, phase } = steps[i];
       if (t.skipSteps.includes(step)) continue;
+      if (this.player(pid).flags[`skipStep:${step}`]) {
+        delete this.player(pid).flags[`skipStep:${step}`];
+        continue;
+      }
       // "End the turn.": skip straight to cleanup.
       if (this.state.turnStats['endTheTurn'] && step !== 'cleanup') continue;
       // Skip combat steps after declare attackers if nothing attacks.

@@ -398,7 +398,7 @@ export type Effect =
   /** "Target player reveals a card at random from their hand." */
   | { kind: 'revealRandomFromHand'; who: Ref; count: Amount }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean; /** Remember the exiled cards under this memory key. */ key?: string }
-  | { kind: 'revealHand'; who: Ref }
+  | { kind: 'revealHand'; who: Ref; /** Look at only this many cards, chosen at random. */ count?: number; random?: boolean }
   | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref; /** Pick at random instead of choosing. */ random?: boolean }
   | { kind: 'discardObjects'; what: Ref }
   | { kind: 'ringTempts'; who?: Ref }
@@ -416,6 +416,8 @@ export type Effect =
   | { kind: 'dealsDamageEqualToPower'; source: Ref; to: Ref }
   | { kind: 'exchangeLife'; a: Ref; b: Ref }
   | { kind: 'skipTurn'; who: Ref }
+  /** "You skip your draw step this turn." */
+  | { kind: 'skipStep'; step: string; who?: Ref }
   | { kind: 'monstrosity'; amount: Amount }
   | { kind: 'plot' }
   /** Move every card of a player's zone somewhere else ("exile target player's graveyard"). */
@@ -443,7 +445,7 @@ export type Effect =
   /** "Turn ~ face down." (it becomes a 2/2 face-down creature) */
   | { kind: 'turnFaceDown'; what: Ref }
   /** Manifest the top card(s) of a library as face-down 2/2 creatures; `dread` looks at two and mills the other. */
-  | { kind: 'manifest'; amount: Amount; who?: Ref; dread?: boolean; ward?: string }
+  | { kind: 'manifest'; amount: Amount; who?: Ref; dread?: boolean; ward?: string; /** Manifest from the hand instead of the library. */ fromHand?: boolean }
   /** Rooms: unlock one of the card's doors (faces). */
   | { kind: 'unlockDoor'; door: number }
   /** Day/night: set the cycle, or start it when it is neither. */

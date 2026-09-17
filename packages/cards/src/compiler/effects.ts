@@ -4064,6 +4064,54 @@ const PATTERNS: Pattern[] = [
     const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
     return [{ kind: 'forEach', over, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'graveyard', ownerRef: { ref: 'iter' } }, count: 1, key }] }];
   }],
+  // ---- Round 117 ----
+  // "You skip your draw step this turn." / "you cannot cast spells until your next turn"
+  [/^(?:you )?skip your (draw|untap|combat|end|upkeep|first main|second main) (?:step|phase)(?: this turn)?$/i, (m) => [{ kind: 'skipStep', step: m[1].toLowerCase().replace(/ /g, ''), who: YOU }]],
+  [/^you cannot cast (?:additional )?spells(?: this turn| until your next turn)?$/i, (m) => [{ kind: 'applyRule', rule: { kind: 'cantCast', filter: {} }, on: YOU, duration: /until your next turn/i.test(m[0]) ? 'untilYourNextTurn' : 'endOfTurn' }]],
+  // "Its controller investigates." / "Its controller loses life equal to its power plus its toughness."
+  [/^(?:its|their) controller (.+)$/i, (m, ctx) => {
+    const who: Ref = { ref: 'controllerOf', of: ctx.lastObj ?? { ref: 'lastMoved' } };
+    const prev = ctx.lastPlayer;
+    ctx.lastPlayer = who;
+    const inner = parseSentence(`that player ${m[1]}`, ctx);
+    ctx.lastPlayer = prev;
+    return inner;
+  }],
+  // "It does not untap during its controller's next two untap steps."
+  [/^(.+?) (?:does not|doesn't) untap during (?:its controller's|your|their) next (\w+ )?untap steps?$/i, (m, ctx) => {
+    const ref = /^(?:it|~|that creature|that permanent)$/i.test(m[1]) ? (ctx.lastObj ?? SELF) : objRef(m[1], ctx);
+    if (!ref) return null;
+    const n = m[2] ? wordToNumber(m[2].trim()) : 1;
+    if (typeof n !== 'number') return null;
+    const out: Effect[] = [];
+    for (let i = 0; i < n; i++) out.push({ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilNextUntap' });
+    return out;
+  }],
+  // "Look at the top card of your library, then exile it face down."
+  [/^look at the top (\w+ )?cards? of your library, then exile (?:it|them)(?: face down)?$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1].trim()) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'exileTop', amount: n, faceDown: /face down/i.test(m[0]) || undefined }];
+  }],
+  // "Look at a card at random in target player's hand."
+  [/^look at (?:a|an|(\w+)) cards? at random in (.+?)(?:'s)? hand$/i, (m, ctx) => {
+    const who = playerRef(m[2].replace(/'s$/, ''), ctx);
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (!who || typeof n !== 'number') return null;
+    return [{ kind: 'revealHand', who, count: n, random: true }];
+  }],
+  // "Manifest a card from your hand."
+  [/^manifest (?:a|an|(\w+)) cards? from your hand$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'manifest', amount: n, fromHand: true }];
+  }],
+  // "Lands you control gain all basic land types until end of turn."
+  [/^(.+?) (?:gain|gains|become) all basic land types(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'addTypes', types: [], subtypes: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'], on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
   // ---- Round 113 ----
   // "Each opponent may sacrifice a creature. For each opponent who doesn't, you draw a card."
   [/^for each (?:opponent|player) who (cannot|does not|doesn't|didn't [^,]*|does|did), (.+)$/i, (m, ctx) => {
