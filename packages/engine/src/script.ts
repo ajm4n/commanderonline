@@ -334,7 +334,7 @@ export type Effect =
   | { kind: 'forEach'; over: Ref; effects: Effect[]; /** Only iterate objects matching this filter ("for each creature card exiled this way"). */ filter?: ObjectFilter }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
-  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number } | { tap: ObjectFilter; count?: number }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */

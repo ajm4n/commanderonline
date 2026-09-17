@@ -1575,7 +1575,18 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'unlessPays': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
         let paid = false;
-        if (typeof e.cost === 'object' && 'returnToHand' in e.cost) {
+        if (typeof e.cost === 'object' && 'tap' in e.cost) {
+          const f = e.cost.tap;
+          const need = e.cost.count ?? 1;
+          const cands = objectsMatching(g, { ...f, controller: p, zone: 'battlefield', untapped: true }, { sourceId: ctx.sourceId, controller: p }).map((o) => o.id);
+          if (cands.length >= need) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Tap ${need} permanent${need === 1 ? '' : 's'}? (choose none to decline)`, candidates: cands, min: 0, max: need, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'objects' && r.ids.length === need) {
+              for (const id of r.ids) g.tap(id);
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'returnToHand' in e.cost) {
           const f = e.cost.returnToHand;
           const cands = objectsMatching(g, { ...f, controller: p, zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).map((o) => o.id);
           if (cands.length >= e.cost.count) {

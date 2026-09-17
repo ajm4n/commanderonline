@@ -326,6 +326,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (n === null) return null;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, condition: { kind: 'memoryFlag', key: 'escaped' }, counters: { counter: m[2], amount: n } }];
   }
+  // "~ can't attack a player it has already attacked this turn."
+  if (/^~ cannot attack a player it has already attacked this turn$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'onePlayerPerTurn' });
+  // "Enchanted land is the chosen type."
+  if ((m = L.match(/^(.+?) (?:is|are) the chosen type$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addSubtypesFromMemory: 'landType' } }];
+  }
   if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
   // "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead."
   if ((m = L.match(/^If (?:another )?(?:a )?(\w+) sources? you control would deal (noncombat |combat )?damage to (?:an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i)) && !/^a$/i.test(m[1])) {
@@ -1205,7 +1212,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costIncrease', amount: (m[2].match(/\{/g) ?? []).length, symbols: m[2], filter } }];
   }
-  if ((m = L.match(/^(.*?)creatures? cannot attack you$/i))) {
+  if ((m = L.match(/^(.*?)creatures? cannot attack you(?: or planeswalkers you control)?$/i))) {
     const pre = m[1].trim();
     let filter: ObjectFilter | undefined;
     if (pre) {
