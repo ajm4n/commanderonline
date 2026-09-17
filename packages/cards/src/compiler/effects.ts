@@ -4064,6 +4064,18 @@ const PATTERNS: Pattern[] = [
     const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
     return [{ kind: 'forEach', over, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'graveyard', ownerRef: { ref: 'iter' } }, count: 1, key }] }];
   }],
+  // "You lose all poison counters." / "Target player loses all rad counters."
+  [/^(?:you )?loses? all ([\w'-]+) counters$/i, (m) => [{ kind: 'loseAllCounters', counter: m[1].toLowerCase(), who: YOU }]],
+  // "You skip your next draw step." / "Target player skips their next combat phase this turn."
+  [/^(?:you )?skips? (?:your|their) next (untap|upkeep|draw|combat|end|first main|second main) (?:step|phase)(?: this turn)?$/i, (m) => [{ kind: 'skipStep', step: m[1].toLowerCase().replace(/ /g, ''), who: YOU }]],
+  // "Target player takes two extra turns after this one."
+  [/^(?:you )?takes? (\w+) extra turns? after this one$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    const out: Effect[] = [];
+    for (let i = 0; i < n; i++) out.push({ kind: 'extraTurn', who: YOU });
+    return out;
+  }],
   // ---- Round 117 ----
   // "You skip your draw step this turn." / "you cannot cast spells until your next turn"
   [/^(?:you )?skip your (draw|untap|combat|end|upkeep|first main|second main) (?:step|phase)(?: this turn)?$/i, (m) => [{ kind: 'skipStep', step: m[1].toLowerCase().replace(/ /g, ''), who: YOU }]],
@@ -5059,6 +5071,35 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
     if (ok) return out;
     ctx.targets.length = saved;
+  }
+  // "Target player investigates." — parse the verb phrase as if the subject were you, then retarget.
+  {
+    const pm = text.match(/^(target player|target opponent|each player|each opponent|that player|that opponent|the player to your (?:left|right)|its controller|its owner|each other player|any player|the monarch|defending player|the chosen player|enchanted player|they) (.+)$/i);
+    if (pm) {
+      const who = playerRef(pm[1], ctx);
+      const DECONJUGATE: Record<string, string> = {
+        investigates: 'investigate', loses: 'lose', gains: 'gain', draws: 'draw', discards: 'discard',
+        mills: 'mill', scries: 'scry', surveils: 'surveil', puts: 'put', reveals: 'reveal',
+        untaps: 'untap', taps: 'tap', sacrifices: 'sacrifice', skips: 'skip', takes: 'take',
+        creates: 'create', exiles: 'exile', shuffles: 'shuffle', searches: 'search',
+        manifests: 'manifest', explores: 'explore', connives: 'connive', proliferates: 'proliferate',
+        ventures: 'venture', returns: 'return', destroys: 'destroy', chooses: 'choose', copies: 'copy',
+      };
+      const vm = pm[2].match(/^(\w+)(.*)$/);
+      const base = vm ? DECONJUGATE[vm[1].toLowerCase()] : undefined;
+      if (who && base) {
+        const saved = ctx.targets.length;
+        const savedPlayer = ctx.lastPlayer;
+        const inner = parseSentence(`you ${base}${vm![2]}`, ctx);
+        const RETARGETABLE = new Set(['draw', 'gainLife', 'loseLife', 'setLife', 'discard', 'mill', 'scry', 'surveil', 'investigate', 'treasure', 'createToken', 'shuffle', 'skipTurn', 'skipStep', 'extraTurn', 'revealHand', 'manifest', 'searchLibrary', 'exileTop', 'addPoison', 'loseAllCounters', 'ventureIntoDungeon', 'explore', 'proliferate', 'connive', 'clue', 'food', 'lookAtTop']);
+        if (inner && inner.length && inner.every((e) => RETARGETABLE.has(e.kind))) {
+          ctx.lastPlayer = who;
+          return inner.map((e) => ({ ...(e as object), who }) as Effect);
+        }
+        ctx.targets.length = saved;
+        ctx.lastPlayer = savedPlayer;
+      }
+    }
   }
   // Flavor ability word left on a mode or line ("Gigaflare — Destroy target permanent").
   if (/^(?:he|she) /i.test(text)) {

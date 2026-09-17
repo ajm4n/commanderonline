@@ -1672,6 +1672,24 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 119 ----
+  // "The first spell you cast each turn has cascade." / "The next creature spell you cast this turn has cascade."
+  if ((m = L.match(/^The (first|next) (.*?)spells? you cast (?:from exile )?(?:each turn|this turn) (?:has|have) (.+)$/i))) {
+    const kws = parseKeywordList(m[3]);
+    const pre = m[2].trim();
+    const noun = pre ? parseNoun(`a ${pre} spell`) : { filter: {} as ObjectFilter, confident: true };
+    if (kws && noun && noun.confident) {
+      const cond: import('@commander/engine').Condition = { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '==', value: 0 };
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'spellsHaveKeywords', data: { filter: { ...noun.filter, zone: undefined }, keywords: kws, fromExile: /from exile/i.test(L) || undefined } }, condition: cond }];
+    }
+  }
+  if ((m = L.match(/^The (first|next) (.*?)spells? you cast (?:each turn|this turn) costs? \{(\d+)\} (less|more) to cast$/i))) {
+    const pre = m[2].trim();
+    const noun = pre ? parseNoun(`a ${pre} spell`) : { filter: {} as ObjectFilter, confident: true };
+    if (noun && noun.confident) {
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: m[4].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[3], 10), filter: pre ? { ...noun.filter, zone: undefined } : undefined }, condition: { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '==', value: 0 } }];
+    }
+  }
   // ---- Round 118 ----
   if (/^Players skip their untap steps$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'skipStep', data: 'untap' } }];
   if (/^Players skip their upkeep steps$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'skipStep', data: 'upkeep' } }];

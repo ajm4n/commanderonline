@@ -418,6 +418,8 @@ export type Effect =
   | { kind: 'skipTurn'; who: Ref }
   /** "You skip your draw step this turn." */
   | { kind: 'skipStep'; step: string; who?: Ref }
+  /** "You lose all poison counters." */
+  | { kind: 'loseAllCounters'; counter: string; who?: Ref }
   | { kind: 'monstrosity'; amount: Amount }
   | { kind: 'plot' }
   /** Move every card of a player's zone somewhere else ("exile target player's graveyard"). */

@@ -2058,6 +2058,16 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'skipTurn':
       for (const p of g.resolvePlayers(e.who, ctx)) g.player(p).flags['skipNextTurn'] = true;
       return;
+    case 'loseAllCounters':
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        if (e.counter === 'poison') pl.poison = 0;
+        else if (e.counter === 'energy') pl.energy = 0;
+        else if (e.counter === 'experience') pl.turnStats['experience'] = 0;
+        else pl.turnStats[e.counter] = 0;
+        g.log(`${pl.name} loses all ${e.counter} counters.`);
+      }
+      return;
     case 'skipStep':
       for (const p of playersOf(g, e.who, ctx)) {
         if (p === g.state.turn.activePlayer) g.state.turn.skipSteps.push(e.step as import('./types.js').Step);
