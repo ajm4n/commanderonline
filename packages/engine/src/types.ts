@@ -388,6 +388,8 @@ export interface ObjectFilter {
   faceDown?: boolean;
   /** At least n counters of a kind ("a creature with three or more level counters on it"). */
   counterAtLeast?: { counter: string; n: number };
+  /** No counters of this kind ("a creature that doesn't have a +1/+1 counter on it"). */
+  withoutCounter?: string;
   /** Each chosen card must have a different name ("up to four cards with different names"). */
   differentNames?: boolean;
   /** Objects of the color the source chose (memory `color`). */

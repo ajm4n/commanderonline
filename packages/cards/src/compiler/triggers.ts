@@ -353,6 +353,10 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     const n = wordToNumber(m[1]);
     if (typeof n === 'number') return { event: 'stateTrigger', hasObject: false, hasPlayer: true, rest: m[2], stateCondition: { kind: 'life', ref: { ref: 'controller' }, op: '<=', value: n } };
   }
+  if ((m = L.match(/^Whenever you put one or more (?:([+-]\d\/[+-]\d|[\w' -]+?) )?counters on (?:a|an) (.+?), (.+)$/i))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (noun) return { event: 'counterAdded', filter: { object: noun.filter, counterType: m[1] as import('@commander/engine').CounterType | undefined, player: 'you' }, hasObject: true, hasPlayer: true, rest: m[3] };
+  }
   if ((m = L.match(/^When you unlock this door, (.+)$/i))) return { event: 'unlockedDoor', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   // Morph: "When ~ is turned face up, ..." / "Whenever a permanent you control is turned face up, ..."
   if ((m = L.match(/^When(?:ever)? ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };

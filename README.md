@@ -56,8 +56,8 @@ and shuffle tools. Manual actions are recorded in the same history as everything
 stay replayable.
 
 Current coverage across the 32,169-card Commander-playable pool (Un-set cards are excluded; run
-`pnpm cards:coverage` for the live number): 71% of cards fully automated, another 20% partially,
-9% manual.
+`pnpm cards:coverage` for the live number): 72% of cards fully automated, another 19% partially,
+8% manual.
 
 ## Play it
 
@@ -103,8 +103,8 @@ in the deck picker, and a Cast options dialog that actually casts (alternative c
 spells, X spells, adventures and modal double-faced cards are covered by a browser test).
 
 The oracle-text compiler is free and offline (regex templates, no paid API). Coverage over the full
-Commander-playable pool is tracked by `pnpm cards:coverage`; at the time of writing it automates 71% of
-cards completely and another 20% partially. Cards it cannot fully script still play: unscripted
+Commander-playable pool is tracked by `pnpm cards:coverage`; at the time of writing it automates 72% of
+cards completely and another 19% partially. Cards it cannot fully script still play: unscripted
 sentences become a prompt at the right moment and the player resolves them by hand (Untap-style).
 
 Still open, roughly in order of value:
