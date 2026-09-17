@@ -49,7 +49,7 @@ export function parseKeywordList(text: string): string[] | null {
   const out: string[] = [];
   for (const p of parts) {
     const q = p.replace(/^(?:your choice of )/, '');
-    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle|afterlife|vanishing|fading|dredge|ripple|frenzy|poisonous|absorb|level up|tribute) \d+|(?:unearth|cycling|flashback|escape|scavenge|replicate|conspire|retrace|miracle|madness|outlast|encore|bestow|embalm|eternalize|evoke|emerge|prowl|blitz|dash|foretell|disturb|spectacle|surge|overload|aftermath|transmute|buyback|entwine|splice|awaken|kicker|multikicker|slivercycling|landcycling|typecycling|basic landcycling|plainscycling|islandcycling|swampcycling|mountaincycling|forestcycling|wizardcycling|slivercycling|reconfigure|equip|fortify|ninjutsu|commander ninjutsu|freerunning|impending|offspring|gift|craft|discover|plot|squad|casualty|cleave|escalate|prototype) (?:(?:\{[^}]+\})+|\d+|—.+)|(?:flashback|escape|scavenge|replicate|conspire|retrace|unearth|embalm|eternalize|miracle|madness|outlast|encore|bestow|aftermath|retrace|dredge|haunt|epic|evoke|emerge|prowl|blitz|dash|foretell|disturb|jump-start|spectacle|surge|overload|entwine|buyback|awaken|cascade|storm|delve|discover|plot|craft|forage|cloak|manifest dread|read ahead|hope|provoke|demonstrate|exploit|mono|continuous|flanking|banding|soulbond|melee|ascend|myriad|extort|convoke|improvise|riot|exalted|fear|intimidate|totem armor|split second|devoid|ingest|skulk|partner|mutate|boast|will of the council|council's dilemma|goaded|decayed|toxic|for mirrodin!|living weapon|reconfigure|compleated|daybound|nightbound|start your engines!|max speed|tap to attack))$/.test(q)) return null;
+    if (!KEYWORD_WORDS.includes(q) && !EXTRA_KEYWORDS.includes(q) && !/^(?:protection from [a-z ]+|hexproof from [a-z ]+|ward \{[^}]+\}|(?:artifact|nonbasic|snow|legendary) landwalk|[a-z]+walk|(?:annihilator|bushido|rampage|toxic|afflict|fabricate|modular|absorb|ripple|poisonous|frenzy|renown|backup|squad|crew|reinforce|bloodthirst|graft|amplify|soulshift|firebending|waterbending|earthbending|airbending|mobilize|devour|training|spectacle|afterlife|vanishing|fading|dredge|ripple|frenzy|poisonous|absorb|level up|tribute) \d+|(?:unearth|cycling|flashback|escape|scavenge|replicate|conspire|retrace|miracle|madness|outlast|encore|bestow|embalm|eternalize|evoke|emerge|prowl|blitz|dash|foretell|disturb|spectacle|surge|overload|aftermath|transmute|buyback|entwine|splice|awaken|kicker|multikicker|slivercycling|landcycling|typecycling|basic landcycling|plainscycling|islandcycling|swampcycling|mountaincycling|forestcycling|wizardcycling|slivercycling|reconfigure|equip|fortify|ninjutsu|commander ninjutsu|freerunning|impending|offspring|gift|craft|discover|plot|squad|casualty|cleave|escalate|prototype) (?:(?:\{[^}]+\})+|\d+|—.+)|(?:flashback|escape|scavenge|replicate|conspire|retrace|unearth|embalm|eternalize|miracle|madness|outlast|encore|bestow|aftermath|retrace|dredge|haunt|epic|evoke|emerge|prowl|blitz|dash|foretell|disturb|jump-start|spectacle|surge|overload|entwine|buyback|awaken|cascade|storm|delve|discover|plot|craft|forage|cloak|manifest dread|read ahead|hope|provoke|demonstrate|exploit|mono|continuous|flanking|banding|soulbond|melee|ascend|myriad|extort|convoke|improvise|riot|exalted|fear|intimidate|totem armor|split second|devoid|ingest|skulk|partner|mutate|boast|will of the council|council's dilemma|goaded|decayed|toxic|for mirrodin!|living weapon|reconfigure|compleated|daybound|nightbound|start your engines!|max speed|tap to attack))$/.test(q)) return null;
     out.push(q.charAt(0).toUpperCase() + q.slice(1));
   }
   return out;
@@ -4216,6 +4216,51 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 156 ----
+  // "End the combat phase."
+  [/^end the combat phase$/i, () => [{ kind: 'endCombatPhase' }]],
+  // "Reveal the top card of target opponent's library."
+  [/^reveal the top card of (target (?:opponent|player)|that player)'s library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'revealTop', who, amount: 1 }] : null;
+  }],
+  // "Return all artifacts target player owns to their hand."
+  [/^return all (.+?) (target (?:player|opponent)|that player) (?:owns|controls) to (?:their|its owner's) hand$/i, (m, ctx) => {
+    const who = playerRef(m[2], ctx);
+    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[1]}`);
+    if (!who || !noun || !noun.confident) return null;
+    const key = / owns /i.test(m[0]) ? 'ownerRef' : 'controllerRef';
+    return [{ kind: 'returnToHand', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', [key]: who } } }];
+  }],
+  // "Shuffle ~ and your graveyard into their owner's library."
+  [/^shuffle ~ and your graveyard into (?:their owner's|your) library$/i, () => [
+    { kind: 'moveToZone', what: SELF, zone: 'library' },
+    { kind: 'shuffleZoneIntoLibrary', zone: 'graveyard', who: YOU },
+    { kind: 'shuffle' },
+  ]],
+  // "Skip the untap step of that turn."
+  [/^skip the (untap|draw|upkeep|end) step of (?:that|this) turn$/i, (m) => [{ kind: 'skipStep', step: m[1].toLowerCase() === 'untap' ? 'untap' : m[1].toLowerCase() === 'draw' ? 'draw' : m[1].toLowerCase() === 'upkeep' ? 'upkeep' : 'end' }]],
+  // "Spells you control cannot be countered this turn."
+  [/^spells you control cannot be countered this turn$/i, () => [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'spellsCantBeCountered' } }]],
+  // "Look at twice X cards from the top of your library."
+  [/^look at (twice|three times) X cards from the top of your library$/i, (m, ctx) => {
+    const key = 'looked';
+    ctx.restKey = key;
+    ctx.lastObj = { ref: 'memory', key };
+    return [{ kind: 'lookAtTop', amount: { kind: 'times', a: 'X', b: /twice/i.test(m[1]) ? 2 : 3 }, then: 'hold', key }];
+  }],
+  // "Target creature cannot be blocked by Walls this turn."
+  [/^(.+?) cannot be blocked by (.+?) this turn$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(m[2]);
+    if (!ref || !noun || !noun.confident) return null;
+    return [{ kind: 'applyRule', rule: { kind: 'cantBeBlockedBy', filter: { ...noun.filter, zone: undefined } }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "Tap and goad the chosen creatures."
+  [/^tap and goad (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'tap', what: ref }, { kind: 'goad', what: ref }] : null;
   }],
   // ---- Round 155 ----
   // "Counter target spell if its mana value is X." / "... if no mana was spent to cast it."

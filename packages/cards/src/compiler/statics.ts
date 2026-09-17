@@ -1,5 +1,5 @@
 /** Static abilities and replacement effects. */
-import type { AbilitySpec, Amount, Effect, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
+import type { AbilitySpec, Amount, Condition, Effect, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
 import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase, parseGrantList } from './effects.js';
 import { wordToNumber } from './text.js';
@@ -40,6 +40,71 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 156 ----
+  // "During your turn, ~ costs {2} less to cast." / "During turns other than yours, ~ costs {3} more to cast."
+  if ((m = L.match(/^During (your turn|turns other than yours|each opponent's turn), ((?:~|This spell) costs? .+)$/i))) {
+    const inner = parseStatic(m[2], isCreatureOrPermanent);
+    if (inner) return inner;
+  }
+  // "During your turn, you and ~ have hexproof."
+  if ((m = L.match(/^(?:During your turn, )?you and ~ (?:has|have) (.+)$/i))) {
+    const kws = parseKeywordList(m[1]);
+    if (kws) {
+      const cond: Condition | undefined = /^During your turn/i.test(L) ? { kind: 'yourTurn' } : undefined;
+      return [
+        { kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playerKeywords', data: kws }, condition: cond },
+        { kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: kws }, condition: cond },
+      ];
+    }
+  }
+  // "Equipment you control have equip Knight {0}." / "Vehicles you control have crew 1."
+  if ((m = L.match(/^(.+?) (?:has|have) ((?:equip|crew|ward|cycling|reinforce) [\w' ]*(?:\{[^}]+\})*|equip [A-Z][\w' ]* (?:\{[^}]+\})+)$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun && noun.confident) return [{ kind: 'static', text: line, affects: { ...noun.filter, zone: 'battlefield' }, modification: { layer: 6, addAbilityText: [m[2].charAt(0).toUpperCase() + m[2].slice(1)] } }];
+  }
+  // "Non-Human Werewolves you control cannot transform."
+  if ((m = L.match(/^(.+?) cannot transform$/i))) { const _r156 = objRule(m[1], { kind: 'custom', tag: 'cantTransform' }); if (_r156) return _r156; }
+  // "No more than one creature can attack you each combat."
+  if ((m = L.match(/^No more than (\w+) creatures? can attack you(?: or planeswalkers you control)? each combat$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'maxAttackers', data: n } }];
+  }
+  // "Plotting cards from your hand costs {2} less." / "Foretelling cards from your hand costs {1} less."
+  if ((m = L.match(/^(\w+ing) cards from your hand costs \{(\d+)\} (less|more)$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'keywordCostChange', data: { keyword: m[1].toLowerCase().replace(/ing$/, ''), amount: parseInt(m[2], 10) * (m[3].toLowerCase() === 'less' ? -1 : 1) } } }];
+  }
+  // "Spend only mana produced by basic lands to cast ~." / "... by creatures"
+  if ((m = L.match(/^Spend only mana produced by (.+?) to cast ~$/i))) {
+    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castManaSourceRestriction', data: { filter: { ...noun.filter, zone: undefined }, nameIs: '~' } } }];
+  }
+  // "Lands you control are 2/2 creatures with first strike."
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an)? ?(\d+)\/(\d+) (.*?)creatures?(?: with (.+?))?(?: that (?:is|are) still (?:a |an )?[\w ]+)?$/i))) {
+    const a = affectsOf(m[1]);
+    const kws = m[5] ? parseKeywordList(m[5]) : [];
+    const words = (m[4] ?? '').split(/\s+/).filter(Boolean);
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    if (a.ok && kws) {
+      const out: AbilitySpec[] = [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: ['Creature'], addSubtypes: subtypes.length ? subtypes : undefined } },
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } },
+      ];
+      if (colors.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: colors } });
+      if (kws.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } });
+      return out;
+    }
+  }
+  // "Enchanted permanent is a colorless Forest land."
+  if ((m = L.match(/^(Enchanted \w+|Equipped \w+|~) (?:is|are) (?:a|an) ([\w' -]+)$/i))) {
+    const a = affectsOf(m[1]);
+    const probe = parseNoun(`a ${m[2]}`);
+    if (a.ok && probe && probe.confident && probe.filter.types?.length) {
+      const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setTypes: probe.filter.types, setSubtypes: probe.filter.subtypes ?? [] } }];
+      if (probe.filter.colorless) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: [] } });
+      return out;
+    }
+  }
   // ---- Round 155 ----
   // "All creatures are tokens." / "All nonland permanents are legendary." / "Creatures your opponents control have base toughness 1."
   if ((m = L.match(/^(.+?) (?:is|are) tokens?$/i))) {

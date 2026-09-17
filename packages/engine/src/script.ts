@@ -367,6 +367,8 @@ export type Effect =
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */
   | { kind: 'endTurn' }
+  /** "End the combat phase": skip the rest of combat. */
+  | { kind: 'endCombatPhase' }
   /** Forage: exile three cards from your graveyard, or sacrifice a Food. */
   | { kind: 'forage' }
   /** "Flip a coin until you lose a flip." — remembers the number of wins as `flipWins`. */

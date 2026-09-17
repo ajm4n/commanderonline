@@ -117,6 +117,11 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     // "~ costs {U}{U} less to cast ..." — colored reductions are handled as generic-count lines with the symbols remembered.
     let costSymbols: string | undefined;
+    // "During your turn, ~ costs {2} less to cast." → move the timing to the tail.
+    {
+      const dl = line.match(/^During (your turn|turns other than yours|each opponent's turn), ((?:~|This spell) costs? (?:\{[0-9WUBRGC]\})+ (?:less|more) to cast)\.?$/i);
+      if (dl) line = `${dl[2]} during ${/^your turn$/i.test(dl[1]) ? 'your turn' : "an opponent's turn"}.`;
+    }
     {
       const cl = line.match(/^((?:~|This spell) costs? )((?:\{[0-9WUBRGC]\})+)( (?:less|more) to cast .+)$/i);
       if (cl) {

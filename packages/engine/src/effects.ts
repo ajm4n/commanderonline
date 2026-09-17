@@ -1581,6 +1581,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.state.preventions.push(pv);
       return;
     }
+    case 'endCombatPhase': {
+      for (const step of ['declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'] as const) {
+        if (!g.state.turn.skipSteps.includes(step)) g.state.turn.skipSteps.push(step);
+      }
+      g.log('The combat phase ends.');
+      g.touch();
+      return;
+    }
     case 'turnFlag':
       g.state.turnStats[e.flag === 'keepMana' ? `keepMana:${ctx.controller}` : e.flag] = 1;
       return;
