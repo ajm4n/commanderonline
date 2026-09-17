@@ -776,6 +776,13 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
       cost = { symbols: [...cost.symbols, ...all], xCount: cost.xCount };
     }
   }
+  // Defiler cycle: "As an additional cost to cast <X> spells, you may pay 2 life. Those spells cost {W} less."
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom' || r.tag !== 'optionalLifeCost') continue;
+    const d = (r.data as { filter?: import('./types.js').ObjectFilter; life?: number } | undefined) ?? {};
+    if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+    if (obj.memory['defilerLifePaid']) cost = adjustGeneric(cost, -1);
+  }
   // Cost reductions / increases from static rules.
   let delta = 0;
   for (const r of g.playerRules(p)) {

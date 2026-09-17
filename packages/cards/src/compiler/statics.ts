@@ -205,6 +205,23 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^Activated abilities of sources with the chosen name cannot be activated(?: unless they are mana abilities)?$/i.test(L)) {
     return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantActivateNamed', data: { key: 'cardName', exceptMana: /mana abilities/i.test(L) } } }];
   }
+  // "~ is the chosen color."
+  if (/^~ is the chosen colors?$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColorsFromMemory: 'color' } }];
+  // "Creatures you control of the chosen color get +1/+1."
+  if ((m = L.match(/^(.+?) of the chosen colors? get ([+-]\d+)\/([+-]\d+)$/i))) {
+    const a = affectsOf(m[1]);
+    if (a.ok && typeof a.affects === 'object') return [{ kind: 'static', text: line, affects: { ...a.affects, chosenColor: true }, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } }];
+  }
+  // "Equip abilities you activate that target ~ cost {2} less to activate."
+  if ((m = L.match(/^(\w+) abilities you activate that target ~ cost \{(\d)\} less to activate$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: parseInt(m[2], 10), textPrefix: m[1] } } }];
+  }
+  // Defiler cycle: "As an additional cost to cast white permanent spells, you may pay 2 life."
+  if ((m = L.match(/^As an additional cost to cast (.+?) spells, you may pay (\d+) life$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'optionalLifeCost', data: { filter: { ...noun.filter, zone: undefined }, life: parseInt(m[2], 10) } } }];
+  }
+  if ((m = L.match(/^Those spells cost ((?:\{[WUBRGC]\})+) less to cast if you paid life this way$/i))) return [];
   if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);

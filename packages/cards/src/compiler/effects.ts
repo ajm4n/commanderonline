@@ -2326,6 +2326,51 @@ const PATTERNS: Pattern[] = [
     const key = `att${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
     return [{ kind: 'may', effects: [{ kind: 'chooseObjects', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, count: 1, key }, { kind: 'attach', what: { ref: 'chosen', key }, to: host }] }];
   }],
+  // "Choose two target creatures controlled by the same player."
+  [/^choose (\w+) target (.+?) controlled by the same (player|opponent)$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`${m[1]} target ${m[2]}`);
+    if (typeof n !== 'number' || !noun) return null;
+    ctx.targets.push({ description: `${m[1]} target ${m[2]} controlled by the same ${m[3]}`, kind: 'object', filter: { ...noun.filter, zone: 'battlefield', controller: m[3] === 'opponent' ? 'opponent' : undefined }, min: n, max: n, sameController: true });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  // "Turn target face-down creature face up."
+  [/^turn target face-down (creature|permanent) face up$/i, (m, ctx) => {
+    ctx.targets.push({ description: `target face-down ${m[1]}`, kind: 'object', filter: { zone: 'battlefield', faceDown: true, ...(m[1] === 'creature' ? { types: ['Creature'] } : {}) } });
+    return [{ kind: 'turnFaceUp', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "Return target creature card with total mana value 3 or less from your graveyard to the battlefield."
+  [/^return (?:up to (\w+)|(\w+)) target (.+?) with total mana value (\d+) or less from your graveyard to the battlefield$/i, (m, ctx) => {
+    const n = wordToNumber(m[1] ?? m[2]);
+    const noun = parseNoun(`a ${m[3].replace(/s$/, '')}`);
+    if (typeof n !== 'number' || !noun) return null;
+    ctx.targets.push({ description: `target ${m[3]} from your graveyard`, kind: 'object', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, min: m[1] ? 0 : n, max: n, totalManaValueLE: parseInt(m[4], 10) });
+    return [{ kind: 'returnToBattlefield', what: { ref: 'target', slot: ctx.targets.length - 1 }, controller: 'you' }];
+  }],
+  // "Destroy all Equipment attached to that creature."
+  [/^destroy all (.+?) attached to (that creature|that permanent|it)$/i, (m, ctx) => {
+    const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(m[1]);
+    const host = ctx.lastObj;
+    if (!noun || !host) return null;
+    return [{ kind: 'destroy', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', attachedToRef: host } } }];
+  }],
+  // "Destroy each creature chosen this way." / "Destroy the creatures chosen this way."
+  [/^destroy (?:each|all|the) (?:creatures?|permanents?) chosen this way$/i, () => [{ kind: 'destroy', what: { ref: 'chosen', key: 'chosen' } }]],
+  [/^forage$/i, () => [{ kind: 'forage' }]],
+  // "Flip a coin until you lose a flip."
+  [/^flip a coin until you lose a flip$/i, () => [{ kind: 'flipUntilLose' }]],
+  // "~ enters under the control of an opponent of your choice."
+  [/^~ enters under the control of an opponent of your choice$/i, () => [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }, { kind: 'gainControl', what: SELF, who: { ref: 'chosen', key: 'opponent' }, duration: 'permanent' }]],
+  // "Return it to the battlefield tapped and transformed under its owner's control."
+  [/^return it to the battlefield tapped and transformed under its owner's control$/i, (m, ctx) => [{ kind: 'returnToBattlefield', what: ctx.lastObj ?? SELF, tapped: true, transformed: true, controller: 'owner' }]],
+  // "Look at the top card of that player's library, then exile it face down."
+  [/^look at the top card of (that player's|target player's|their) library, then exile it face down$/i, (m, ctx) => {
+    const who = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? ({ ref: 'triggerPlayer' } as Ref) : null);
+    if (!who) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'exileTop', amount: 1, who, faceDown: true }];
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2750,6 +2795,10 @@ export function isNoOpSentence(text: string): boolean {
   if (/^(?:then )?each player who searched their library this way shuffles\.?$/i.test(text.trim())) return true;
   if (/^[\w' -]+(?: destroyed| exiled| sacrificed)? (?:this way )?cannot be regenerated\.?$/i.test(text.trim())) return true;
   if (/\bdraft(ed|ing)?\b/i.test(text) || /^x cannot be 0\.?$/i.test(text.trim())) return true;
+  if (/^th(?:is|at) ability cannot cause .+$/i.test(text.trim())) return true;
+  if (/^th(?:is|at) effect reduces only the amount of (?:colored|\w+) mana you pay\.?$/i.test(text.trim())) return true;
+  if (/^mana of any type can be spent to cast (?:it|that spell|this spell|those spells) this way\.?$/i.test(text.trim())) return true;
+  if (/^if it does ?n[o']t have suspend, it gains suspend\.?$/i.test(text.trim())) return true;
   if (/^(?:players|your opponents|each opponent) play with (?:their hands|the top card of their libraries) revealed\.?$/i.test(text.trim())) return true;
   if (/^spend only \w+ mana on x\.?$/i.test(text.trim())) return true;
   if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;

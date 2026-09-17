@@ -284,7 +284,7 @@ export interface ContinuousEffect {
 
 export type Modification =
   | { layer: 4; addTypes?: string[]; removeTypes?: string[]; setTypes?: string[]; addSubtypes?: string[]; /** Add the subtype named by this memory key on the source ("are the chosen type"). */ addSubtypesFromMemory?: string; /** Replace subtypes ("becomes the basic land type of your choice"). */ setSubtypes?: string[]; addSupertypes?: Supertype[] }
-  | { layer: 5; setColors?: Color[]; addColors?: Color[] }
+  | { layer: 5; setColors?: Color[]; addColors?: Color[]; /** Set the colour stored under this memory key on the source ("~ is the chosen colour"). */ setColorsFromMemory?: string }
   | { layer: 6; addKeywords?: string[]; removeKeywords?: string[]; loseAllAbilities?: boolean; addAbilityText?: string[] }
   | { layer: '7b'; setPower?: number; setToughness?: number; powerAmount?: import('./script.js').Amount; toughnessAmount?: import('./script.js').Amount }
   | { layer: '7c'; power: number; toughness: number; /** Multiply by the number of objects matching ("+1/+1 for each artifact you control"). */ perCount?: ObjectFilter; /** Multiply by an amount ("for each charge counter on ~"). */ perAmount?: import('./script.js').Amount }
@@ -389,6 +389,8 @@ export interface ObjectFilter {
   attachedToSource?: boolean;
   /** Attached to a permanent matching this ("target Aura attached to a land"). */
   attachedToFilter?: ObjectFilter;
+  /** Attached to the object a ref resolves to. */
+  attachedToRef?: import('./script.js').Ref;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
   damagedBySource?: boolean;
   /** Creatures blocking the filter's source object ("creatures blocking it"). */
@@ -530,6 +532,7 @@ export type GameEventName =
   | 'controlChanged'
   | 'becomesMonarch'
   | 'becomesMonstrous'
+  | 'foraged'
   | 'expend'
   | 'exerted'
   | 'takesInitiative'

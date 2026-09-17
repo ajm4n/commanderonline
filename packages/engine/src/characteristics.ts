@@ -207,6 +207,18 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     if (m.setColors) c.colors = [...m.setColors];
     if (m.addColors) for (const col of m.addColors) if (!c.colors.includes(col)) c.colors.push(col);
   };
+  const applyColorsFor = (c: Characteristics, m: Modification, sourceId: ObjectId | null) => {
+    if (m.layer !== 5) return;
+    if (m.setColorsFromMemory) {
+      const src = sourceId !== null ? g.state.objects[sourceId] : undefined;
+      const v = src?.chosen[m.setColorsFromMemory];
+      if (typeof v === 'string') {
+        const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', W: 'W', U: 'U', B: 'B', R: 'R', G: 'G' } as Record<string, string>)[v];
+        if (col) c.colors = [col as Color];
+      }
+    }
+    applyColors(c, m);
+  };
   // Layer 4: types
   for (const e of orderLayer(4, applyTypes)) {
     let mod = e.mod;
@@ -220,7 +232,7 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
   // The Ring-bearer is legendary (level 1).
   if (effects.some((e) => e.mod.layer === 'rule' && e.mod.rule.kind === 'custom' && e.mod.rule.tag === 'ringBearer') && !ch.supertypes.includes('Legendary')) ch.supertypes.push('Legendary');
   // Layer 5: colors
-  for (const e of orderLayer(5, applyColors)) applyColors(ch, e.mod);
+  for (const e of orderLayer(5, applyColors)) applyColorsFor(ch, e.mod, e.sourceId ?? null);
   // Layer 6: abilities
   for (const e of orderLayer(6, (c, m) => applyAbilities(c, m))) applyAbilities(ch, e.mod);
   // Layer 7b: set P/T

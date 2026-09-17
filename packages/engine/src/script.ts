@@ -233,6 +233,10 @@ export interface TargetSpec {
   max?: number; // default 1
   /** Different targets from other slots. */
   distinct?: boolean;
+  /** All chosen targets must share a controller ("two target creatures controlled by the same player"). */
+  sameController?: boolean;
+  /** The chosen targets' total mana value must not exceed this. */
+  totalManaValueLE?: number;
   /** Only choose targets when a condition applies; otherwise skip. */
   optional?: boolean;
 }
@@ -333,6 +337,10 @@ export type Effect =
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */
   | { kind: 'endTurn' }
+  /** Forage: exile three cards from your graveyard, or sacrifice a Food. */
+  | { kind: 'forage' }
+  /** "Flip a coin until you lose a flip." — remembers the number of wins as `flipWins`. */
+  | { kind: 'flipUntilLose' }
   /** "Choose odd or even." */
   | { kind: 'chooseOption'; key: string; options: string[] }
   /** "Each player shuffles the cards from their hand into their library, then draws that many cards." */

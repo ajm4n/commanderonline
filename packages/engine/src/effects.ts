@@ -384,6 +384,45 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration ?? 'endOfTurn'), modification: { layer: 6, removeKeywords: e.keywords } });
       return;
     }
+    case 'forage': {
+      const pl = g.player(ctx.controller);
+      const foods = g.state.battlefield.filter((id) => g.obj(id).controller === ctx.controller && g.characteristics(id).subtypes.includes('Food'));
+      const canExile = pl.graveyard.length >= 3;
+      if (!foods.length && !canExile) return;
+      let useFood = foods.length > 0;
+      if (foods.length && canExile) {
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Forage', options: [{ id: 'food', label: 'Sacrifice a Food' }, { id: 'exile', label: 'Exile three cards from your graveyard' }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        useFood = r.type === 'options' ? r.ids[0] === 'food' : true;
+      }
+      if (useFood) {
+        const pick = foods[0];
+        if (foods.length > 1) {
+          const r = yield* g.ask({ type: 'chooseObjects', player: ctx.controller, prompt: 'Sacrifice a Food', candidates: foods, min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+          if (r.type === 'objects' && r.ids[0] !== undefined) g.moveObject(r.ids[0], 'graveyard', { cause: 'sacrifice' });
+          else g.moveObject(pick, 'graveyard', { cause: 'sacrifice' });
+        } else g.moveObject(pick, 'graveyard', { cause: 'sacrifice' });
+      } else {
+        const r = yield* g.ask({ type: 'chooseObjects', player: ctx.controller, prompt: 'Exile three cards from your graveyard', candidates: [...pl.graveyard], min: 3, max: 3, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+        const ids = r.type === 'objects' ? r.ids : pl.graveyard.slice(0, 3);
+        for (const id of ids) g.moveObject(id, 'exile', { cause: 'exile' });
+      }
+      ctx.memory['foraged'] = 1;
+      g.emit({ name: 'foraged', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined });
+      return;
+    }
+    case 'flipUntilLose': {
+      let wins = 0;
+      for (;;) {
+        const won = g.rng.next() < 0.5;
+        g.log(`${g.player(ctx.controller).name} flips a coin: ${won ? 'heads (win)' : 'tails (lose)'}.`);
+        if (!won) break;
+        wins++;
+        if (wins > 50) break;
+      }
+      ctx.memory['flipWins'] = wins;
+      ctx.memory['triggerAmount'] = wins;
+      return;
+    }
     case 'endTurn': {
       g.state.stack.length = 0;
       g.state.turnStats['endTheTurn'] = 1;
