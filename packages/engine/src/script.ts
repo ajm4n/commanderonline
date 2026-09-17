@@ -282,7 +282,7 @@ export type Effect =
   | { kind: 'removeKeywords'; keywords: string[]; on: Ref; duration?: Duration }
   | { kind: 'loseAllAbilities'; on: Ref; duration?: Duration }
   | { kind: 'addTypes'; types: string[]; on: Ref; duration?: Duration; subtypes?: string[]; /** Replace the object's card types instead of adding to them ("It's an enchantment"). */ setTypes?: string[]; /** Replace subtypes outright ("loses all creature types"). */ setSubtypes?: string[]; addSupertypes?: import('./types.js').Supertype[]; removeSupertypes?: import('./types.js').Supertype[] }
-  | { kind: 'setColors'; colors: Color[]; on: Ref; duration?: Duration; /** "the color or colors of your choice" */ chooseColors?: boolean }
+  | { kind: 'setColors'; colors: Color[]; on: Ref; duration?: Duration; /** "the color or colors of your choice" */ chooseColors?: boolean; /** Use the colour stored under this memory key instead of `colors`. */ chosenKey?: string }
   | { kind: 'applyRule'; rule: RuleModification; on: Ref; duration?: Duration }
   | { kind: 'tap'; what: Ref }
   | { kind: 'untap'; what: Ref }

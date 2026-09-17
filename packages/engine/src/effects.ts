@@ -779,6 +779,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
       let colors = e.colors;
+      if (e.chosenKey) {
+        const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+        const pick = (src?.chosen?.[e.chosenKey] ?? ctx.memory[e.chosenKey]) as string | undefined;
+        if (pick) colors = [pick] as typeof e.colors;
+      }
       if (e.chooseColors) {
         const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Choose one or more colors', options: (['W', 'U', 'B', 'R', 'G'] as const).map((c) => ({ id: c, label: c })), min: 1, max: 5, sourceId: ctx.sourceId ?? undefined });
         if (r.type === 'options' && r.ids.length) colors = r.ids as typeof e.colors;

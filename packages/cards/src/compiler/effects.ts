@@ -4019,6 +4019,31 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   text = text.replace(/^(for each (?:opponent|player)), you (create|draw|gain|lose|put|exile|destroy|sacrifice|mill|scry|return)\b/i, '$1, $2');
   text = rephraseFirstPerson(text);
   let m: RegExpMatchArray | null;
+  // "~ gets +3/-1 until end of turn and can attack this turn as though it didn't have defender"
+  if ((m = text.match(/^(.+? (?:gets?|get) [+-]\d+\/[+-]\d+(?: until end of turn)?) and can attack(?: this turn)? as though it (?:didn't|did not) have defender$/i))) {
+    const inner = parseSentence(m[1], ctx);
+    if (inner) {
+      const ref = ctx.lastObj ?? SELF;
+      return [...inner, { kind: 'applyRule', rule: { kind: 'custom', tag: 'canAttackWithDefender' }, on: ref, duration: 'endOfTurn' }];
+    }
+  }
+  // "put all cards exiled with ~ into their owner's graveyard"
+  if ((m = text.match(/^put (all cards exiled with ~|all .+? exiled with ~) into (?:their|its) owners'? graveyards?$/i))) {
+    const ref = objRef(m[1], ctx);
+    if (ref) return [{ kind: 'putIntoGraveyard', what: ref }];
+  }
+  // "destroy the creature with the least power"
+  if ((m = text.match(/^(destroy|exile|tap) the (.+? with the (?:least|greatest) (?:power|toughness))$/i))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (noun) {
+      const f: ObjectFilter = { ...noun.filter, zone: 'battlefield' };
+      const verb = m[1].toLowerCase();
+      return [verb === 'destroy' ? { kind: 'destroy', what: { ref: 'all', filter: f } } : verb === 'exile' ? { kind: 'exile', what: { ref: 'all', filter: f } } : { kind: 'tap', what: { ref: 'all', filter: f } }];
+    }
+  }
+  // Cards that pick a colour before the game and then are that colour.
+  if (/^if ~ is your commander, choose a color before the game begins$/i.test(text)) return [{ kind: 'chooseColor', key: 'color' }];
+  if (/^~ is the chosen color$/i.test(text)) return [{ kind: 'setColors', colors: [], chosenKey: 'color', on: SELF, duration: 'permanent' }];
   // "each player searches their library for up to two basic land cards, puts them onto the battlefield, then shuffles"
   if ((m = text.match(/^(each player|each opponent|that player|target player|target opponent|its controller) searches their library for (.+?), (?:reveals? (?:it|them), )?puts? (.+?)(?:, then shuffles?)?$/i))) {
     const who = playerRef(m[1], ctx);
