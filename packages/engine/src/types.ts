@@ -390,6 +390,8 @@ export interface ObjectFilter {
   counterAtLeast?: { counter: string; n: number };
   /** No counters of this kind ("a creature that doesn't have a +1/+1 counter on it"). */
   withoutCounter?: string;
+  /** Same name as the object this ref resolves to ("all cards with the same name as that spell"). */
+  sameNameAs?: import('./script.js').Ref;
   /** Each chosen card must have a different name ("up to four cards with different names"). */
   differentNames?: boolean;
   /** Objects of the color the source chose (memory `color`). */

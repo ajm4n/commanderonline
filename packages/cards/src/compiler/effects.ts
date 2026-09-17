@@ -1796,6 +1796,12 @@ const PATTERNS: Pattern[] = [
     if (!ref) return null;
     return [{ kind: 'playFromExile', what: ref, duration: 'thisTurn', forCost: m[2], fromGraveyard: true, exileAfter: true }];
   }],
+  [/^search (?:its controller's|that player's|target (?:player|opponent)'s) graveyard, hand, and library for (?:all|any number of|up to (?:\w+)) cards with (?:the same name as that (?:spell|card|land|creature|permanent)|that name) and exile them$/i, (m, ctx) => {
+    void m;
+    const who = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' as const } : { ref: 'controllerOf' as const, of: ctx.lastObj ?? { ref: 'stackTarget' as const } });
+    const same = ctx.lastObj ?? { ref: 'stackTarget' as const };
+    return [{ kind: 'searchLibrary', who, filter: { sameNameAs: same, zone: 'library' }, zones: ['library', 'graveyard'], count: 99, destination: 'exile', shuffle: true }];
+  }],
   [/^venture into the dungeon$/i, () => [{ kind: 'ventureIntoDungeon' }]],
   [/^tap or untap (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -1968,6 +1974,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
+  if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the flashback cost is equal to its mana cost\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?each player who searched their library this way shuffles\.?$/i.test(text.trim())) return true;
   if (/^(?:creatures|permanents|cards|they|it)(?: destroyed| exiled| sacrificed)? (?:this way )?cannot be regenerated\.?$/i.test(text.trim())) return true;
@@ -2538,6 +2545,17 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
       ctx.targets.length = saved;
+    }
+    // "Otherwise, X" completes the previous conditional.
+    if (/^otherwise, /i.test(s) && effects.length) {
+      const prev = effects[effects.length - 1];
+      if (prev.kind === 'conditional' || prev.kind === 'revealTop') {
+        const inner = parseSentence(s.replace(/^otherwise, /i, ''), ctx);
+        if (inner) {
+          prev.else = [...(prev.else ?? []), ...inner];
+          continue;
+        }
+      }
     }
     // Merge "You may pay X." + "If you do, Y."
     if ((/^(?:you may )?pay/i.test(s) || /, pay (?:\{[^}]+\})+$/i.test(s)) && sents[i + 1] && /^(?:if|when) you do, |^if you (?:do not|don't), /i.test(sents[i + 1])) {
