@@ -201,6 +201,7 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     if (m.setSubtypes) c.subtypes = [...m.setSubtypes];
     if (m.addSubtypes) for (const t of m.addSubtypes) if (!c.subtypes.includes(t)) c.subtypes.push(t);
     if (m.addSupertypes) for (const t of m.addSupertypes) if (!c.supertypes.includes(t)) c.supertypes.push(t);
+    if (m.removeSupertypes) c.supertypes = c.supertypes.filter((t) => !m.removeSupertypes!.includes(t));
   };
   const applyColors = (c: Characteristics, m: Modification) => {
     if (m.layer !== 5) return;

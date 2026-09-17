@@ -772,7 +772,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'addTypes': {
       const ids = g.resolveObjects(e.on, ctx).map((o) => o.id);
       if (!ids.length) return;
-      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 4, addTypes: e.types, addSubtypes: e.subtypes, setTypes: e.setTypes } });
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 4, addTypes: e.types, addSubtypes: e.subtypes, setTypes: e.setTypes, setSubtypes: e.setSubtypes, addSupertypes: e.addSupertypes, removeSupertypes: e.removeSupertypes } });
       return;
     }
     case 'setColors': {

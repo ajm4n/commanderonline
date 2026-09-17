@@ -3301,6 +3301,46 @@ const PATTERNS: Pattern[] = [
     const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
     return [{ kind: 'playFromExile', what: ref, duration: 'permanent', controller: 'owner', free: /without paying/i.test(m[0]) || undefined }];
   }],
+  // "~ must be blocked each combat this turn if able"
+  [/^(.+?) must be blocked(?: each combat)?(?: this turn)? if able$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBeBlocked' }, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  // "Target snow land is no longer snow" / "Target nonsnow basic land becomes snow"
+  [/^(.+?) (?:is no longer snow|becomes snow)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [/no longer/i.test(m[0]) ? { kind: 'addTypes', types: [], removeSupertypes: ['Snow'], on: ref, duration: 'permanent' } : { kind: 'addTypes', types: [], addSupertypes: ['Snow'], on: ref, duration: 'permanent' }];
+  }],
+  // "You may put a creature card exiled this way onto the battlefield"
+  [/^(?:you may )?put (?:a|an|(\w+)) (.+?) exiled this way onto the battlefield(?: (tapped))?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2].replace(/ cards$/i, ' card')}`);
+    if (!noun) return null;
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    const key = `ex${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    const pre: Effect = { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'exile', exiledWithSource: true }, count: n, key, upTo: /you may/i.test(m[0]) };
+    ctx.lastObj = { ref: 'chosen', key };
+    return [pre, { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3] }];
+  }],
+  // "return it to the battlefield face down under your control"
+  [/^return (?:it|that card|~) to the battlefield face down(?: under your control)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'returnToBattlefield', what: ref, faceDown: true }];
+  }],
+  // "put it on your choice of the top or bottom of its owner's library"
+  [/^(?:you may )?put (?:it|that card|them|those cards) on (?:your|their|its owner's) choice of the top or bottom of (?:its owner's|their|your) librar(?:y|ies)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'putOnLibrary', what: ref, position: 'ownerChoice' }];
+  }],
+  // "each player's life total becomes the highest life total among all players"
+  // "The next spell you cast this turn has improvise"
+  [/^the next spell you cast this turn has (convoke|improvise|delve)$/i, (m) => [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: m[1].toLowerCase() } } }]],
+  // "roll a four-sided die" / "Roll two d8 and choose one result"
+  [/^rolls? (?:a|an) (four|six|eight|ten|twelve|twenty)-sided die$/i, (m) => {
+    const sides = ({ four: 4, six: 6, eight: 8, ten: 10, twelve: 12, twenty: 20 } as Record<string, number>)[m[1].toLowerCase()];
+    return [{ kind: 'rollDie', sides, results: [] }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile

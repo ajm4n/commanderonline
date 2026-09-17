@@ -681,6 +681,39 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever a player attacks you with one or more creatures, (.+)$/i))) return { event: 'attacked', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ or another creature you control becomes blocked, (.+)$/i))) return { event: 'becomesBlocked', filter: { object: { types: ['Creature'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
   {
+    // Round 91 heads.
+    if ((m = L.match(/^When(?:ever)? (\w+) or more creatures attack, (.+)$/i)) && wordToNumber(m[1]) !== null)
+      return { event: 'attacks', filter: { firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if ${m[1]} or more creatures are attacking, ${m[2]}` };
+    if ((m = L.match(/^When(?:ever)? you attack with exactly (\w+) creatures?, (.+)$/i)) && wordToNumber(m[1]) !== null)
+      return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control exactly ${m[1]} attacking creatures, ${m[2]}` };
+    if ((m = L.match(/^When(?:ever)? (?:a|an|another) (.+?) attacks or enters attacking, (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'attacks', filter: tf, hasObject: true, hasPlayer: true, rest: m[2], also: [{ event: 'entersBattlefield', filter: { ...tf, custom: 'enteredAttacking' }, hasObject: true, hasPlayer: true }] };
+    }
+    if ((m = L.match(/^When(?:ever)? (?:a|an|another) (.+?) enters tapped, (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf) return { event: 'entersBattlefield', filter: { ...tf, object: { ...tf.object, tapped: true } }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    if ((m = L.match(/^When(?:ever)? another player casts a spell from anywhere other than their hand, (.+)$/i)))
+      return { event: 'cast', filter: { player: 'opponent', notFromZone: 'hand' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you activate a loyalty ability, (.+)$/i)))
+      return { event: 'abilityActivated', filter: { player: 'you', custom: 'loyaltyAbility' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you attack enchanted player, (.+)$/i)))
+      return { event: 'attacks', filter: { player: 'you', custom: 'attacksAttachedPlayer' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you create one or more tokens(?: for the first time each turn)?, (.+)$/i)))
+      return { event: 'tokenCreated', filter: { player: 'you', firstEachTurn: / for the first time each turn/i.test(m[0]) || undefined }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? you become the target of a spell or ability(?: an opponent controls)?, (.+)$/i)))
+      return { event: 'becomesTarget', filter: { player: / an opponent controls/i.test(m[0]) ? 'opponent' : 'any', custom: 'targetsYou' }, hasObject: true, hasPlayer: true, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? ~ deals combat damage to one or more blocking creatures, (.+)$/i)))
+      return { event: 'dealsCombatDamage', filter: { source: { self: true }, object: { types: ['Creature'], blocking: true } }, hasObject: true, hasPlayer: false, rest: m[1] };
+    if ((m = L.match(/^When(?:ever)? your commander deals combat damage to (a player|an opponent), (.+)$/i)))
+      return { event: 'dealtCombatDamageToPlayer', filter: { object: { isCommander: true, controller: 'you' }, player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    if ((m = L.match(/^When(?:ever)? ~ and\/or one or more other (.+?) you control enter, (.+)$/i))) {
+      const tf = nounFilter(`a ${m[1]}`);
+      if (tf?.object) return { event: 'entersBattlefield', filter: { object: { ...tf.object, controller: undefined }, objectController: 'you' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+  }
+  {
     // Fallback heads: only reached when no earlier pattern matched.
     const nf = (t0: string): ObjectFilter | null => {
       const t = t0.trim().replace(/^(?:a|an|another|one or more) /i, '');

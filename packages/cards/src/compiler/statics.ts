@@ -397,6 +397,23 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantCastSpells', data: { filter: f } } }];
     }
   }
+  // "Creatures your opponents control lose flying and cannot have or gain flying."
+  if ((m = L.match(/^(.+?) lose ([\w ]+?)(?: and ([\w ]+?))? and cannot (?:have or gain|have) ([\w ]+?)(?: or ([\w ]+?))?$/i))) {
+    const kws = parseKeywordList([m[2], m[3]].filter(Boolean).join(', '));
+    const a = affectsOf(m[1]);
+    if (kws && a.ok) {
+      return [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 6, removeKeywords: kws } },
+        { kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'cannotGainKeywords', data: kws } },
+      ];
+    }
+  }
+  if (/^Players cannot cast spells from graveyards or activate abilities of cards in graveyards$/i.test(L)) {
+    return [
+      { kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noCastFromGraveyardOrLibrary' } },
+      { kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noGraveyardAbilities' } },
+    ];
+  }
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];
