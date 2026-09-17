@@ -1912,6 +1912,16 @@ export class Game {
   /** The draw replacement that applies to this player's next draw, if any. */
   private drawReplacementFor(pid: PlayerId): { ab: Extract<import('./script.js').ReplacementSpec, { event: 'drawCard' }>; sourceId: ObjectId } | null {
     if (this.state.turnStats[`drawReplacing:${pid}`]) return null; // don't re-replace the replacement draws
+    // "The next time you would draw a card this turn, you gain 5 life instead." (a one-shot turn rule)
+    for (const t of this.state.turnRules ?? []) {
+      if (t.player !== pid) continue;
+      const r = t.rule;
+      if (r.kind !== 'custom' || r.tag !== 'drawReplacement') continue;
+      const d = r.data as { effects?: import('./script.js').Effect[]; once?: boolean; used?: boolean } | undefined;
+      if (!d?.effects?.length || d.used) continue;
+      if (d.once) d.used = true;
+      return { ab: { kind: 'replacement', text: 'Draw replacement', event: 'drawCard', who: 'you', effects: d.effects }, sourceId: -1 };
+    }
     for (const id of this.state.battlefield) {
       const src = this.state.objects[id];
       if (!src) continue;

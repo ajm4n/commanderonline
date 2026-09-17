@@ -4186,6 +4186,74 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 141 ----
+  // "The next time a black or red source of your choice would deal damage this turn, prevent that damage."
+  [/^the next time (.+?) would deal (combat |noncombat )?damage(?: to (.+?))?(?: this turn)?, (?:prevent that damage|prevent all of that damage)$/i, (m, ctx) => {
+    const src = preventionSource(m[1], ctx);
+    if (!src) return null;
+    const dst = m[3] ? preventionTo(m[3], ctx) : { to: 'all' as const };
+    if (!dst) return null;
+    return [{ kind: 'preventAll', to: dst.to ?? 'all', toRef: dst.toRef, source: src.source, sourceRef: src.sourceRef, once: true, combat: m[2] && /^combat/i.test(m[2]) ? true : undefined }];
+  }],
+  // "The next time damage would be dealt to target creature this turn, prevent that damage."
+  [/^the next time (combat |noncombat )?damage would be dealt to (.+?)(?: this turn)?, prevent (?:that damage|all of that damage)$/i, (m, ctx) => {
+    const dst = preventionTo(m[2], ctx);
+    if (!dst) return null;
+    return [{ kind: 'preventAll', to: dst.to ?? 'all', toRef: dst.toRef, once: true, combat: m[1] && /^combat/i.test(m[1]) ? true : undefined }];
+  }],
+  // "The next time a source of your choice would deal damage to you this turn, that damage is dealt to ~ instead."
+  [/^the next time (.+?) would deal (combat |noncombat )?damage(?: to (.+?))?(?: this turn)?, (?:instead )?(?:that damage|that source deals that (?:much )?damage|that spell deals that damage|that creature deals that damage|that source deals that damage)(?: is dealt)? to (.+?)(?: instead)?$/i, (m, ctx) => {
+    const src = preventionSource(m[1], ctx);
+    if (!src) return null;
+    const dst = m[3] ? preventionTo(m[3], ctx) : { to: 'all' as const };
+    if (!dst) return null;
+    const spec: Effect = { kind: 'preventAll', to: dst.to ?? 'all', toRef: dst.toRef, source: src.source, sourceRef: src.sourceRef, once: true, combat: m[2] && /^combat/i.test(m[2]) ? true : undefined };
+    const target = m[4].trim();
+    if (/^(?:its|that source's|that spell's|that creature's) controller$/i.test(target)) spec.redirectToSourceController = true;
+    else if (/^itself$/i.test(target) && src.sourceRef) spec.redirectTo = src.sourceRef;
+    else {
+      const r = anyRef(target, ctx);
+      if (!r) return null;
+      spec.redirectTo = r;
+    }
+    return [spec];
+  }],
+  // "The next time damage would be dealt to ~ and/or you this turn, that damage is dealt to any target instead."
+  [/^the next time (combat |noncombat )?damage would be dealt to (.+?)(?: this turn)?, that damage is dealt to (.+?) instead$/i, (m, ctx) => {
+    const dst = preventionTo(m[2], ctx);
+    if (!dst) return null;
+    const spec: Effect = { kind: 'preventAll', to: dst.to ?? 'all', toRef: dst.toRef, once: true, combat: m[1] && /^combat/i.test(m[1]) ? true : undefined };
+    const r = anyRef(m[3], ctx);
+    if (!r) return null;
+    spec.redirectTo = r;
+    return [spec];
+  }],
+  // "The next 2 damage that a source of your choice would deal to you and/or permanents you control this turn is dealt to ~ instead."
+  [/^the next (\d+|X) (combat |noncombat )?damage that (.+?) would deal to (.+?)(?: this turn)? is dealt to (.+?) instead$/i, (m, ctx) => {
+    const n = m[1].toUpperCase() === 'X' ? undefined : parseInt(m[1], 10);
+    const src = preventionSource(m[3], ctx);
+    const dst = preventionTo(m[4], ctx);
+    if (!src || !dst) return null;
+    const spec: Effect = { kind: 'preventAll', to: dst.to ?? 'all', toRef: dst.toRef, source: src.source, sourceRef: src.sourceRef, amount: n, combat: m[2] && /^combat/i.test(m[2]) ? true : undefined };
+    const r = anyRef(m[5], ctx);
+    if (!r) return null;
+    spec.redirectTo = r;
+    return [spec];
+  }],
+  // "Prevent the next 3 damage that a source of your choice would deal to you and/or permanents you control this turn."
+  [/^prevent the next (\d+|X) (combat |noncombat )?damage that (.+?) would deal to (.+?)(?: this turn)?$/i, (m, ctx) => {
+    const n = m[1].toUpperCase() === 'X' ? undefined : parseInt(m[1], 10);
+    const src = preventionSource(m[3], ctx);
+    const dst = preventionTo(m[4], ctx);
+    if (!src || !dst) return null;
+    return [{ kind: 'preventAll', to: dst.to ?? 'all', toRef: dst.toRef, source: src.source, sourceRef: src.sourceRef, amount: n, combat: m[2] && /^combat/i.test(m[2]) ? true : undefined }];
+  }],
+  // "The next time you would draw a card this turn, you gain 5 life instead."
+  [/^the next time you would draw a card this turn, (?:instead )?(.+?)(?: instead)?$/i, (m, ctx) => {
+    const pe = parseEffects(m[1], newCtx({ ...ctx, targets: ctx.targets }));
+    if (pe.unhandled.length || !pe.effects.length) return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'drawReplacement', data: { effects: pe.effects, once: true } } }];
+  }],
   // ---- Round 140 ----
   // "Return to their owners' hands all creatures with toughness 2 or less."
   [/^return to (?:their owners'|its owner's|your|their) hands? (all .+|each .+)$/i, (m, ctx) => parseSentence(`return ${m[1]} to their owners' hands`, ctx)],
@@ -6213,4 +6281,53 @@ function buildKeepList(whoWord: string, baseText: string, listText: string, act:
   const rest: Ref = { ref: 'all', filter: { ...base.filter, zone: 'battlefield', controllerRef: { ref: 'iter' }, notChosenKey: key } };
   effects.push(act.toLowerCase() === 'exiles' ? { kind: 'exile', what: rest } : { kind: 'sacrifice', what: rest });
   return [{ kind: 'forEach', over, effects }];
+}
+
+/** "a black or red source of your choice" / "~" / "target creature": the damage source a prevention watches. */
+function preventionSource(text: string, ctx: ParseCtx): { source?: ObjectFilter; sourceRef?: Ref } | null {
+  const t = text.trim();
+  const l = t.toLowerCase();
+  if (l === '~') return { sourceRef: SELF };
+  const choice = l.match(/^(?:a|an) (.*?)\s*sources? of your choice$/);
+  if (choice) {
+    const qual = choice[1].trim();
+    if (!qual) return {};
+    const cols = qual.split(/ or |\/| and\/or /).map((c) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[c.trim() as 'white']);
+    if (cols.every((c) => !!c)) return { source: { colors: cols as Color[] } };
+    const noun = parseNoun(`a ${qual} permanent`);
+    return noun && noun.confident ? { source: { ...noun.filter, zone: undefined } } : null;
+  }
+  const ofChoice = l.match(/^(?:a|an) (.+?) of your choice$/);
+  if (ofChoice) {
+    const noun = parseNoun(`a ${ofChoice[1]}`);
+    return noun && noun.confident ? { source: { ...noun.filter, zone: undefined } } : null;
+  }
+  if (/^target /i.test(t)) {
+    const ref = objRef(t, ctx);
+    return ref ? { sourceRef: ref } : null;
+  }
+  const noun = parseNoun(t);
+  if (noun && noun.confident && noun.kind !== 'player') {
+    const f = { ...noun.filter };
+    delete f.zone;
+    return { source: f };
+  }
+  return null;
+}
+
+/** "you and/or creatures you control" / "target creature": who a prevention protects. */
+function preventionTo(text: string, ctx: ParseCtx): { to?: Extract<Effect, { kind: 'preventAll' }>['to']; toRef?: Ref } | null {
+  const l = text.trim().toLowerCase().replace(/ this turn$/, '');
+  if (l === 'you') return { to: 'you' };
+  if (/^you and(?:\/or| or)? (?:creatures|permanents) you control$/.test(l) || /^(?:creatures|permanents) you control and(?:\/or)? you$/.test(l)) return { to: 'youAndCreaturesYouControl' };
+  if (/^you and(?:\/or| or)? planeswalkers you control$/.test(l)) return { to: 'youAndPlaneswalkersYouControl' };
+  if (/^~ and(?:\/or| or)? you$/.test(l) || /^you and(?:\/or| or)? ~$/.test(l)) return { to: 'you' };
+  if (l === 'creatures you control') return { to: 'creaturesYouControl' };
+  if (l === 'any target' || l === 'anything') return { to: 'all' };
+  if (l === 'each creature and each player') return { to: 'all' };
+  if (l === '~') return { to: 'all', toRef: SELF };
+  const noun = parseNoun(text.trim());
+  if (noun && (noun.each || noun.plural) && noun.kind !== 'player') return { to: { ...noun.filter, zone: 'battlefield' } };
+  const ref = anyRef(text.trim(), ctx);
+  return ref ? { to: 'all', toRef: ref } : null;
 }
