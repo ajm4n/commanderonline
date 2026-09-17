@@ -111,6 +111,10 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.historic && !(ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga'))) return false;
   if (filter.enteredThisTurn !== undefined && obj.enteredThisTurn !== filter.enteredThisTurn) return false;
   if (filter.attachedToSource && obj.attachedTo !== ctx.sourceId) return false;
+  if (filter.attachedToFilter) {
+    const host = obj.attachedTo !== null ? g.state.objects[obj.attachedTo] : undefined;
+    if (!host || !matchesFilter(g, host, { ...filter.attachedToFilter, zone: 'battlefield' }, ctx)) return false;
+  }
   if (filter.anyOf && !filter.anyOf.some((f) => matchesFilter(g, obj, f, ctx))) return false;
   if (filter.notZone && zone === filter.notZone) return false;
   if (filter.zoneIn && !filter.zoneIn.includes(zone)) return false;

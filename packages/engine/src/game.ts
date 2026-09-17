@@ -1853,6 +1853,18 @@ export class Game {
     if (n <= 0) return;
     const p = this.player(pid);
     if (this.playerRules(pid).some((r) => r.kind === 'cantGainLife')) return;
+    // "If you would gain life, draw that many cards instead." / "… lose that much life instead."
+    for (const r of this.playerRules(pid)) {
+      if (r.kind !== 'custom') continue;
+      if (r.tag === 'lifeGainToDraw') {
+        this.drawCards(pid, n);
+        return;
+      }
+      if (r.tag === 'lifeGainToLoss') {
+        this.loseLife(pid, n, sourceId);
+        return;
+      }
+    }
     // Lifegain replacement (e.g. doubling) from scripts
     let amount = n;
     for (const src of this.state.battlefield.map((id) => this.obj(id))) {
@@ -2103,6 +2115,12 @@ export class Game {
     if (!o || n <= 0) return;
     // Counter-doubling replacements (e.g. Doubling Season / Hardened Scales)
     let amount = n;
+    // "~ can't have counters put on it."
+    for (const r of this.characteristics(id).rules) {
+      if (r.kind !== 'custom' || r.tag !== 'noCounters') continue;
+      const d = (r.data as { counter?: string } | undefined) ?? {};
+      if (!d.counter || d.counter === type) return;
+    }
     // "If you would put one or more counters on a permanent, put twice/half that many instead."
     for (const r of this.playerRules(o.controller)) {
       if (r.kind !== 'custom' || r.tag !== 'counterMultiplier' || typeof r.data !== 'number') continue;

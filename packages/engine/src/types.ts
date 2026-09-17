@@ -387,6 +387,8 @@ export interface ObjectFilter {
   toughnessGreaterThanPower?: boolean;
   /** Only objects attached to / attached by. */
   attachedToSource?: boolean;
+  /** Attached to a permanent matching this ("target Aura attached to a land"). */
+  attachedToFilter?: ObjectFilter;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
   damagedBySource?: boolean;
   /** Creatures blocking the filter's source object ("creatures blocking it"). */

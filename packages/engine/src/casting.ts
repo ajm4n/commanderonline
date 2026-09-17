@@ -958,6 +958,16 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
   }
   // "Only your opponents may activate this ability."
   if (spec.opponentsOnly && obj.controller === p) return false;
+  // "Activated abilities of sources with the chosen name can't be activated."
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom' || r.tag !== 'cantActivateNamed') continue;
+    const d = (r.data as { key?: string; exceptMana?: boolean } | undefined) ?? {};
+    if (d.exceptMana && spec.manaAbility) continue;
+    const srcId = (r as { sourceId?: ObjectId }).sourceId;
+    const holder = srcId !== undefined ? g.state.objects[srcId] : undefined;
+    const want = holder?.chosen[d.key ?? 'cardName'];
+    if (typeof want === 'string' && g.characteristics(obj.id).name === want) return false;
+  }
   // "That player cannot activate abilities that aren't mana abilities."
   for (const r of g.playerRules(p)) {
     if (r.kind !== 'custom' || r.tag !== 'cantActivateAbilities') continue;

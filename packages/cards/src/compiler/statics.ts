@@ -178,6 +178,33 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const mult = /twice/i.test(m[2]) ? 2 : 0.5;
     return [{ kind: 'static', text: line, ruleAffects: m[1].toLowerCase() === 'you' ? 'controller' : 'opponents', rule: { kind: 'custom', tag: 'counterMultiplier', data: mult } }];
   }
+  if (/^You cannot lose the game$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'cantLose' } }];
+  // "~ cannot have counters put on it." / "Creatures you control cannot have -1/-1 counters put on them."
+  if ((m = L.match(/^(.+?) cannot have (?:([+\-\d\/]+|\w+) )?counters put on (?:it|them)$/i))) {
+    const r = objRule(m[1], { kind: 'custom', tag: 'noCounters', data: m[2] ? { counter: m[2] } : undefined });
+    if (r) return r;
+  }
+  // "~ has flying as long as it is modified."
+  if ((m = L.match(/^(.+?) (?:has|have) (.+?) as long as (?:it is|they are) (modified|enchanted|equipped|tapped|untapped|attacking|blocking)$/i))) {
+    const kws = parseKeywordList(m[2]);
+    const a = affectsOf(m[1]);
+    if (kws && a.ok) {
+      const f = ({ modified: { modified: true }, enchanted: { hasAttachment: 'Aura' as const }, equipped: { hasAttachment: 'Equipment' as const }, tapped: { tapped: true }, untapped: { untapped: true }, attacking: { attacking: true }, blocking: { blocking: true } } as Record<string, ObjectFilter>)[m[3].toLowerCase()];
+      if (a.affects === 'self') return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: kws }, condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: f } }];
+      if (typeof a.affects === 'object') return [{ kind: 'static', text: line, affects: { ...a.affects, ...f }, modification: { layer: 6, addKeywords: kws } }];
+    }
+  }
+  // "Enchant artifact, creature, or planeswalker"
+  // "If you would gain life, draw that many cards instead."
+  if (/^If you would gain life, draw that many cards instead$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'lifeGainToDraw' } }];
+  // "If an opponent would gain life, that player loses that much life instead."
+  if ((m = L.match(/^If (an opponent|a player|you) would gain life, (?:that player|you) loses? that much life instead$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: m[1].toLowerCase() === 'you' ? 'controller' : m[1].toLowerCase() === 'a player' ? 'allPlayers' : 'opponents', rule: { kind: 'custom', tag: 'lifeGainToLoss' } }];
+  }
+  // "Activated abilities of sources with the chosen name cannot be activated."
+  if (/^Activated abilities of sources with the chosen name cannot be activated(?: unless they are mana abilities)?$/i.test(L)) {
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantActivateNamed', data: { key: 'cardName', exceptMana: /mana abilities/i.test(L) } } }];
+  }
   if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);

@@ -2294,6 +2294,38 @@ const PATTERNS: Pattern[] = [
     const who = playerRef(m[1], ctx);
     return who ? [{ kind: 'moveAll', who, from: 'hand', to: 'library' }] : null;
   }],
+  [/^counter all other spells$/i, (m, ctx) => [{ kind: 'counterSpell', what: { ref: 'all', filter: { zone: 'stack', other: true } } }]],
+  [/^destroy target (Aura|Equipment) attached to (?:a|an) (\w+)$/i, (m, ctx) => {
+    const host = parseNoun(`a ${m[2]}`);
+    if (!host) return null;
+    ctx.targets.push({ description: `target ${m[1]} attached to a ${m[2]}`, kind: 'object', filter: { subtypes: [m[1]], zone: 'battlefield', attachedToFilter: { ...host.filter, zone: undefined } } });
+    return [{ kind: 'destroy', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  [/^(\w+) target players exchange life totals$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    ctx.targets.push({ description: `${m[1]} target players`, kind: 'player', playerFilter: 'any', min: n, max: n, distinct: true });
+    const slot = ctx.targets.length - 1;
+    return [{ kind: 'exchangeLife', a: { ref: 'target', slot }, b: { ref: 'target', slot } }];
+  }],
+  [/^flip (\w+) coins$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    return typeof n === 'number' ? [{ kind: 'repeat', times: n, effects: [{ kind: 'flipCoin', win: [] }] }] : null;
+  }],
+  [/^destroy the chosen (?:creatures?|permanents?|cards?)$/i, () => [{ kind: 'destroy', what: { ref: 'chosen', key: 'chosen' } }]],
+  [/^attach (~|it) to up to one target (.+)$/i, (m, ctx) => {
+    const noun = parseNoun(`target ${m[2]}`);
+    if (!noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), min: 0, max: 1 });
+    return [{ kind: 'attach', what: SELF, to: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  [/^you may attach (?:a|an) (.+?) you control to it$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const host = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
+    if (!noun) return null;
+    const key = `att${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    return [{ kind: 'may', effects: [{ kind: 'chooseObjects', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, count: 1, key }, { kind: 'attach', what: { ref: 'chosen', key }, to: host }] }];
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2705,7 +2737,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|(?:the )?damage cannot be prevented|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|(?:the )?damage cannot be prevented|counters remain on ~ as it moves to any zone other than a player's hand or library|a creature dealt damage this way cannot be regenerated this turn|this ability cannot cause .+|spend only \w+ mana on x|you may look at cards exiled with ~|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
