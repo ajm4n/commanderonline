@@ -1362,16 +1362,20 @@ const PATTERNS: Pattern[] = [
     return out;
   }],
   // "it becomes a 0/0 Robot creature in addition to its other types"
-  [/^(.+?) becomes? an? (\d+)\/(\d+) ([A-Za-z][\w' -]*?) creature(?: in addition to its other types)?(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) becomes? an? (\d+)\/(\d+) ([A-Za-z][\w' -]*?) creature(?: with ([\w ,]+?))?(?: in addition to its other types)?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const noun = parseNoun(`a ${m[4]} creature`);
     if (!noun) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
-    return [
+    const kws = m[5] ? parseKeywordList(m[5]) : [];
+    if (m[5] && !kws) return null;
+    const out: Effect[] = [
       { kind: 'addTypes', types: ['Creature'], subtypes: noun.filter.subtypes, on: ref, duration: dur },
       { kind: 'setPT', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: dur },
     ];
+    if (kws?.length) out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
+    return out;
   }],
   [/^(.+?) becomes? an? (artifact creature|artifact|creature|enchantment creature|enchantment)(?: in addition to its other types)?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -2908,6 +2912,86 @@ const PATTERNS: Pattern[] = [
     const act: Effect = /discard/i.test(m[2]) ? { kind: 'moveToZone', what: ref, zone: 'graveyard' } : /exile/i.test(m[2]) ? { kind: 'exile', what: ref } : { kind: 'sacrifice', what: ref };
     return [{ kind: 'conditional', if: { kind: 'not', c: { kind: 'amount', a: { kind: 'countRef', ref, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 } }, then: [act] }];
   }],
+  // "have target creature block it this turn if able"
+  [/^have (.+?) blocks? (?:it|~) this (?:turn|combat) if able$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBlock', data: '__self__' }, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  // "Exile ~ and target creature without flying that is attacking you"
+  [/^exile (~|it) and (.+)$/i, (m, ctx) => {
+    const other = objRef(m[2], ctx);
+    return other ? [{ kind: 'exile', what: SELF }, { kind: 'exile', what: other }] : null;
+  }],
+  // "~ deals 2 damage to itself"
+  [/^(.+?) deals (\d+|X) damage to itself$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'damage', amount: m[2] === 'X' ? 'X' : parseInt(m[2], 10), to: ref, source: ref }];
+  }],
+  // "Prevent all damage that ~ would deal to snow creatures"
+  [/^prevent all (combat )?damage that (~|it) would deal(?: to (.+))?$/i, (m) => {
+    const to = m[3] ? parseNoun(m[3]) ?? parseNoun(`a ${m[3]}`) : null;
+    if (m[3] && !to) return null;
+    return [{ kind: 'preventAll', combat: m[1] ? true : undefined, sourceRef: SELF, to: to ? { ...to.filter, zone: 'battlefield' } : 'all' }];
+  }],
+  // "For each of those tokens, you may attach an Equipment you control to it"
+  [/^for each of those (?:tokens|creatures|permanents|cards), (.+)$/i, (m, ctx) => {
+    const src = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
+    const sub = newCtx({ ...ctx, targets: ctx.targets });
+    sub.lastObj = { ref: 'iter' };
+    const inner = parseSentence(m[1].replace(/\bto it\b/i, 'to that permanent'), sub);
+    return inner ? [{ kind: 'forEach', over: src, effects: inner }] : null;
+  }],
+  // "Then you may put an instant, sorcery, or battle card from your graveyard on top of your library"
+  [/^(?:then )?(?:you may )?put (?:a|an|(\w+)) (.+?) from your graveyard on (?:the )?(top|bottom) of your library$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2].replace(/ cards$/i, ' card')}`);
+    if (!noun) return null;
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (n === null) return null;
+    const key = `gyl${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    const eff: Effect[] = [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: n, key, upTo: /you may/i.test(m[0]) },
+      { kind: 'putOnLibrary', what: { ref: 'chosen', key }, position: m[3].toLowerCase() === 'top' ? 'top' : 'bottom' },
+    ];
+    return eff;
+  }],
+  // "that player untaps a land they control"
+  [/^(that player|each player|target player|target opponent|each opponent|its controller) (untaps|taps) (?:a|an|(\w+)) (.+?)(?: (?:they|you) control)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[4]}`);
+    if (!who || !noun) return null;
+    const n = m[3] ? wordToNumber(m[3]) : 1;
+    if (n === null) return null;
+    const key = `ut${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    return [
+      { kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'battlefield', controllerRef: who }, count: n, key },
+      /untaps/i.test(m[2]) ? { kind: 'untap', what: { ref: 'chosen', key } } : { kind: 'tap', what: { ref: 'chosen', key } },
+    ];
+  }],
+  // "that player discards that many cards"
+  [/^(.+?) discards? that many cards$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    return who ? [{ kind: 'discard', amount: { kind: 'triggerAmount' }, who }] : null;
+  }],
+  // "For as long as that card remains exiled, its owner may play it"
+  [/^for as long as that card remains exiled, its owner may play it$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'permanent', controller: 'owner' }];
+  }],
+  // "You may exile a nonland card from it" (from a hand just looked at)
+  [/^(?:you may )?exile (?:a|an|(\w+)) (.+?) from (?:it|their hand|that player's hand)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2].replace(/ cards$/i, ' card')}`);
+    if (!noun) return null;
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (n === null) return null;
+    const key = `hx${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    const owner = ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'hand', ownerRef: owner }, count: n, key, upTo: /you may/i.test(m[0]) },
+      { kind: 'exile', what: { ref: 'chosen', key }, remember: 'exiled' },
+    ];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -3293,7 +3377,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;
   if (/^you cannot cast ~ during your (?:first|second|third)(?:, (?:first|second|third))*(?:,? or (?:first|second|third))? turns? of the game\.?$/i.test(text.trim())) return true;
   if (/^~ saddles mounts and crews vehicles as though its power were \d+ greater\.?$/i.test(text.trim())) return true;
-  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
+  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|a spell cast this way costs .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 
 /** Parse one sentence; returns null if not understood. */
@@ -3954,17 +4038,19 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
     // "That player may pay {2}." + "If they do, Y." (+ "Otherwise, Z.")
     {
-      const pm = s.match(/^(that player|target player|target opponent|each opponent|each player|they|its controller) may pay ((?:\{[^}]+\})+)$/i);
-      const nxt = pm && sents[i + 1]?.match(/^if (?:they|that player|the player) (do(?:es)?(?: not|n't)?), (.+)$/i);
+      const pm = s.match(/^(that player|target player|target opponent|each opponent|each player|any player|any opponent|they|its controller) may pay ((?:\{[^}]+\})+|\d+ life)$/i);
+      const nxt = pm && sents[i + 1]?.match(/^if (?:they|that player|the player|a player|any player|an opponent) (do(?:es)?(?: not|n't)?), (.+)$/i);
       if (pm && nxt) {
-        const who = playerRef(pm[1], ctx);
+        const who = /^any (?:player|opponent)$/i.test(pm[1]) ? ({ ref: 'eachPlayer' } as Ref) : playerRef(pm[1], ctx);
         const saved = ctx.targets.length;
         const inner = who ? parseSentence(nxt[2], ctx) : null;
         if (who && inner) {
           const negative = /not|n't/i.test(nxt[1]);
           const els = !negative ? sents[i + 2]?.match(/^otherwise, (.+)$/i) : null;
           const elseE = els ? parseSentence(els[1], ctx) : null;
-          effects.push(negative ? { kind: 'unlessPays', who, cost: pm[2], effects: inner } : { kind: 'unlessPays', who, cost: pm[2], effects: elseE ?? [], thenEffects: inner });
+          const lm = pm[2].match(/^(\d+) life$/i);
+          const cost = lm ? { payLife: parseInt(lm[1], 10) } : pm[2];
+          effects.push(negative ? { kind: 'unlessPays', who, cost, effects: inner } : { kind: 'unlessPays', who, cost, effects: elseE ?? [], thenEffects: inner });
           i += elseE ? 2 : 1;
           continue;
         }

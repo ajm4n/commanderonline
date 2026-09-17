@@ -363,6 +363,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'replacement', text: line, event: 'damage', prevent: m[4] === 'all' ? 'all' : parseInt(m[4], 10), to: tf, fromFilter: /^source/i.test(m[1]) ? undefined : sf, combatOnly: m[2] ? true : undefined }];
     }
   }
+  // "Red creature spells and green creature spells cost {1} more to cast."
+  if ((m = L.match(/^(.+?) spells? and (.+?) spells? cost \{(\d+)\} (less|more) to cast$/i))) {
+    const a = parseNoun(`a ${m[1]} spell`);
+    const b = parseNoun(`a ${m[2]} spell`);
+    if (a && b) {
+      const f: ObjectFilter = { anyOf: [{ ...a.filter, zone: undefined }, { ...b.filter, zone: undefined }] };
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: m[4].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease', amount: parseInt(m[3], 10), filter: f } }];
+    }
+  }
   if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
   // "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead."
   if ((m = L.match(/^If (?:another )?(?:a )?(\w+) sources? you control would deal (noncombat |combat )?damage to (?:an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i)) && !/^a$/i.test(m[1])) {
