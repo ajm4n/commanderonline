@@ -107,6 +107,12 @@ export function parseNoun(raw: string): ParsedNoun | null {
   if ((m = text.match(/^(up to one )?target player or planeswalker$/i))) return { ...result, target: true, upTo: !!m[1], kind: 'objectOrPlayer', filter: { types: ['Planeswalker'] }, playerFilter: 'any' };
   if ((m = text.match(/^(up to one )?target opponent or planeswalker$/i))) return { ...result, target: true, upTo: !!m[1], kind: 'objectOrPlayer', filter: { types: ['Planeswalker'], controller: 'opponent' }, playerFilter: 'opponent' };
   if ((m = text.match(/^target opponent or battle$/i))) return { ...result, target: true, kind: 'objectOrPlayer', filter: { types: ['Battle'] }, playerFilter: 'opponent' };
+  if ((m = text.match(/^target spell, activated ability, or triggered ability$/i))) return { ...result, target: true, kind: 'spellOrAbility' };
+  if ((m = text.match(/^target spell or ability$/i))) return { ...result, target: true, kind: 'spellOrAbility' };
+  if ((m = text.match(/^target spell or (creature|permanent|artifact|enchantment|creature or enchantment)$/i))) {
+    const inner = parseNoun(`a ${m[1]}`);
+    return { ...result, target: true, kind: 'objectOrSpell', filter: inner?.filter ?? {} };
+  }
   if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)(?: you control| an opponent controls| you do ?n[o']t control)?(?: from an? (\w+) source)?$/i))) {
     const pf = / you control$/i.test(text) ? 'you' : /opponent controls$/i.test(text) ? 'opponent' : /n[o']t control$/i.test(text) ? 'notController' : undefined;
     const src = m[1] ? SOURCE_FILTERS[m[1].toLowerCase()] : undefined;
@@ -467,9 +473,10 @@ export function toTargetSpec(n: ParsedNoun): TargetSpec {
   const count = n.count === 'X' ? 1 : n.count;
   const spec: TargetSpec = { description: desc, kind: n.kind, min: n.upTo ? (n.minCount ?? 0) : count, max: count };
   if (n.kind === 'player' || n.kind === 'objectOrPlayer') spec.playerFilter = n.playerFilter ?? 'any';
-  if (n.kind === 'object' || n.kind === 'objectOrPlayer' || n.kind === 'any' || n.kind === 'spell') {
+  if (n.kind === 'object' || n.kind === 'objectOrPlayer' || n.kind === 'any' || n.kind === 'spell' || n.kind === 'objectOrSpell') {
     const f: ObjectFilter = { ...n.filter };
     if (n.kind !== 'spell' && !f.zone) f.zone = 'battlefield';
+    if (n.kind === 'objectOrSpell') f.zone = 'battlefield';
     if (n.kind === 'spell') delete f.zone;
     spec.filter = f;
   }

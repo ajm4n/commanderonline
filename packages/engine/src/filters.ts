@@ -313,6 +313,25 @@ export function legalTargets(g: Game, spec: TargetSpec, sourceId: ObjectId | nul
       }
       break;
     }
+    case 'spellOrAbility': {
+      for (const item of g.state.stack) {
+        if (item.kind === 'spell') {
+          const obj = g.state.objects[item.sourceId];
+          if (!obj || item.sourceId === sourceId) continue;
+          if (spec.filter && !matchesFilter(g, obj, { ...spec.filter, zone: 'stack' }, ctx)) continue;
+        }
+        out.push({ kind: 'stackItem', id: item.id });
+      }
+      break;
+    }
+    case 'objectOrSpell': {
+      for (const o of objectsMatching(g, { ...spec.filter, zone: spec.filter?.zone ?? 'battlefield' }, ctx)) out.push({ kind: 'object', id: o.id });
+      for (const item of g.state.stack) {
+        if (item.kind !== 'spell' || item.sourceId === sourceId) continue;
+        out.push({ kind: 'stackItem', id: item.id });
+      }
+      break;
+    }
     case 'activatedOrTriggered': {
       for (const item of g.state.stack) {
         if (item.kind === 'spell') continue;

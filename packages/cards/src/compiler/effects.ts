@@ -1286,6 +1286,14 @@ const PATTERNS: Pattern[] = [
     if (!kws || kws.length < 2) return null;
     return [{ kind: 'grantKeywords', keywords: kws, on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent', choose: 1 }];
   }],
+  // "Until end of turn, ~ becomes a 3/2 red Goblin creature with \"…\". It is still a land."
+  [/^(.+?) becomes? (?:a|an) ([\dX]+\/[\dX]+ .*?creature) with "(.+)"(?: until end of turn)?$/i, (m, ctx) => {
+    const base = parseSentence(`${m[1]} becomes a ${m[2]} until end of turn`, ctx);
+    if (!base) return null;
+    const ref = ctx.lastObj ?? objRef(m[1], ctx);
+    if (!ref) return null;
+    return [...base, { kind: 'grantAbility', text: m[3], on: ref, duration: 'endOfTurn' }];
+  }],
   // "target land becomes a 3/3 creature that is still a land"
   [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) ([\dX]+)\/([\dX]+) (.*?)?creature(?: that(?:'s| is) still (?:a |an )?(\w+))?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -1298,6 +1306,7 @@ const PATTERNS: Pattern[] = [
     if (words.some((w) => !/^(white|blue|black|red|green|artifact|enchantment|land|colorless)$/i.test(w) && !/^[A-Z]/.test(w))) return null;
     const out: Effect[] = [];
     if (/loses all abilities and/i.test(m[0])) out.push({ kind: 'loseAllAbilities', on: ref, duration: dur });
+    ctx.lastObj = ref;
     out.push({ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur });
     out.push({ kind: 'addTypes', types, subtypes, on: ref, duration: dur });
     if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
@@ -1507,7 +1516,7 @@ const PATTERNS: Pattern[] = [
   [/^counter (.+?)(?: unless (?:its controller|that player|they|the controller|that spell's controller) pays? (\{.+\}|\d+))?$/i, (m, ctx) => {
     const noun = parseNoun(m[1]);
     if (!noun || !noun.target) return null;
-    if (noun.kind !== 'spell' && noun.kind !== 'activatedOrTriggered') return null;
+    if (noun.kind !== 'spell' && noun.kind !== 'activatedOrTriggered' && noun.kind !== 'spellOrAbility') return null;
     ctx.targets.push(toTargetSpec(noun));
     const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
     ctx.lastObj = ref;
@@ -1812,6 +1821,64 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'grantAbility', text: m[2], on: ref, duration: 'permanent' }] : null;
   }],
+  [/^discard any number of cards$/i, () => [{ kind: 'discard', amount: 'hand', who: YOU }]],
+  [/^(?:you )?discard up to (\w+) cards?, then draw that many cards$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (n === null) return null;
+    return [{ kind: 'discard', amount: n, who: YOU }, { kind: 'draw', amount: { kind: 'discardedThisWay', ref: YOU } }];
+  }],
+  [/^suspect (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'suspect', what: ref }] : null;
+  }],
+  [/^add (\w+) mana of different colors$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    return n === null ? null : [{ kind: 'addManaDifferentColors', amount: n }];
+  }],
+  [/^untap (~|it|that creature|that permanent) and remove it from combat$/i, (m, ctx) => {
+    const ref = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx) ?? ctx.lastObj;
+    return ref ? [{ kind: 'untap', what: ref }, { kind: 'removeFromCombat', what: ref }] : null;
+  }],
+  [/^~ has all activated abilities of (.+)$/i, (m) => {
+    const noun = parseNoun(m[1]);
+    return noun ? [{ kind: 'grantAllActivatedAbilities', on: SELF, from: { ...noun.filter, zone: 'battlefield' }, duration: 'permanent' }] : null;
+  }],
+  [/^you have no maximum hand size for the rest of the game$/i, () => [{ kind: 'grantPlayerRule', rule: { kind: 'noMaxHandSize' } }]],
+  // "Prevent all damage that would be dealt this turn to creatures you control."
+  [/^prevent all damage that would be dealt this turn to (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx) ?? playerRef(m[1], ctx);
+    if (ref) return [{ kind: 'preventAll', to: 'all', toRef: ref }];
+    const noun = parseNoun(m[1]);
+    return noun ? [{ kind: 'preventAll', to: { ...noun.filter, zone: 'battlefield' } }] : null;
+  }],
+  // "Prevent all damage a red source of your choice would deal this turn."
+  [/^prevent all damage (?:a|an) (.+?) of your choice would deal this turn$/i, (m) => {
+    const st = m[1].replace(/\bsources?\b/i, 'permanent');
+    const noun = /^permanent$/i.test(st) ? { filter: {} } : parseNoun(st) ?? parseNoun(`a ${st}`);
+    return noun ? [{ kind: 'preventAll', to: 'all', source: { ...noun.filter, zone: undefined } }] : null;
+  }],
+  // "The next time a creature of the chosen type would deal damage to you this turn, prevent that damage."
+  [/^the next time (?:a|an) (.+?) would deal damage to (.+?) this turn, prevent that damage$/i, (m, ctx) => {
+    const to = objRef(m[2], ctx) ?? playerRef(m[2], ctx);
+    return to ? [{ kind: 'preventAll', to: 'all', toRef: to, once: true }] : null;
+  }],
+  // "Target player reveals a number of cards from their hand equal to X."
+  [/^(.+?) reveals? a number of cards from (?:their|his or her) hand equal to (.+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const a = amt(m[2], ctx);
+    if (!who || a === null) return null;
+    return [{ kind: 'revealHand', who }];
+  }],
+  // "The owner of target nonland permanent puts it into their library second from the top or on the bottom."
+  [/^the owner of (.+?) puts it into (?:their|his or her) library second from the top or on the bottom$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'topOrBottom', what: ref, second: true }] : null;
+  }],
+  // "That player shuffles, then draws a card for each card exiled from their hand this way."
+  [/^(?:that player|they) shuffles?, then draws a card for each card exiled from (?:their|his or her) hand this way$/i, (m, ctx) => {
+    const who = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? ({ ref: 'triggerPlayer' } as Ref) : null);
+    return who ? [{ kind: 'draw', amount: { kind: 'countRef', ref: { ref: 'lastMoved' } }, who }] : null;
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2041,7 +2108,7 @@ const PATTERNS: Pattern[] = [
     ctx.lastPlayer = who;
     return [{ kind: 'searchLibrary', who, filter: { nameIsChosen: 'cardName', zone: 'library' }, zones: ['library', 'graveyard'], count: 99, destination: 'exile', shuffle: true }];
   }],
-  [/^search (?:its controller's|that player's|target (?:player|opponent)'s) graveyard, hand, and library for (?:all|any number of|up to (?:\w+)) cards with (?:the same name as that (?:spell|card|land|creature|permanent)|that name) and exile them$/i, (m, ctx) => {
+  [/^(?:then )?search (?:its controller's|its owner's|that player's|target (?:player|opponent)'s) graveyard, hand, and library for (?:all|any number of|up to (?:\w+)) cards with (?:the same name as that (?:spell|card|land|creature|permanent)|that name) and exile them$/i, (m, ctx) => {
     void m;
     const who = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' as const } : { ref: 'controllerOf' as const, of: ctx.lastObj ?? { ref: 'stackTarget' as const } });
     const same = ctx.lastObj ?? { ref: 'stackTarget' as const };

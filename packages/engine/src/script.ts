@@ -215,7 +215,7 @@ export type Condition =
 export interface TargetSpec {
   description: string;
   /** any = creature, player, planeswalker or battle */
-  kind: 'object' | 'player' | 'any' | 'spell' | 'objectOrPlayer' | 'activatedOrTriggered';
+  kind: 'object' | 'player' | 'any' | 'spell' | 'objectOrPlayer' | 'activatedOrTriggered' | 'spellOrAbility' | 'objectOrSpell';
   filter?: ObjectFilter;
   playerFilter?: 'any' | 'opponent' | 'you' | 'notController';
   min?: number; // default 1
@@ -316,6 +316,14 @@ export type Effect =
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */
   | { kind: 'endTurn' }
+  /** "Remove it from combat." */
+  | { kind: 'removeFromCombat'; what: Ref }
+  /** "Suspect target creature." (it gets menace and can't block) */
+  | { kind: 'suspect'; what: Ref }
+  /** "Add two mana of different colors." */
+  | { kind: 'addManaDifferentColors'; amount: Amount }
+  /** ~ gains every activated ability of the matching objects. */
+  | { kind: 'grantAllActivatedAbilities'; on: Ref; from: ObjectFilter; duration?: Duration }
   /** Grant a player rule for the rest of the turn. */
   | { kind: 'grantPlayerRule'; who?: Ref; rule: RuleModification }
   /** "Double ~'s power until end of turn." */
@@ -325,7 +333,7 @@ export type Effect =
   /** Endure N: put N +1/+1 counters on it, or create an N/N white Spirit creature token. */
   | { kind: 'endure'; on: Ref; amount: Amount }
   /** "puts it on their choice of the top or bottom of their library" */
-  | { kind: 'topOrBottom'; what: Ref }
+  | { kind: 'topOrBottom'; what: Ref; /** "second from the top or on the bottom" */ second?: boolean }
   /** "Target opponent exiles a creature they control." */
   | { kind: 'exileChoice'; who: Ref; filter: ObjectFilter; count: Amount }
   /** "Target player reveals a card at random from their hand." */

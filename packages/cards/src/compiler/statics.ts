@@ -456,6 +456,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     if (cond && cond.kind !== 'manual') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, unless: cond }];
   }
+  // "If you control two or more other lands, ~ enters tapped."
+  if ((m = L.match(/^If (.+?), ~ enters tapped$/i))) {
+    const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond && cond.kind !== 'manual') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, condition: cond }];
+  }
   if (/^You control (?:enchanted|equipped) (?:creature|permanent|artifact|land|planeswalker)$/i.test(L)) return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }];
   // Self replacements on dying / leaving
   if ((m = L.match(/^If (combat )?damage would be dealt to ~(?: by (.+?))?(?: while (.+?))?, prevent that damage(?:\.|,)? (?:and |then )?(.+)$/i))) {

@@ -108,6 +108,10 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const kept = [...ss];
       while (kept.length > 1 && isTrailingNoise(kept[kept.length - 1])) kept.pop();
       if (kept.length && kept.length < ss.length) line = kept.length === 1 ? kept[0] : `${kept.join('. ')}.`;
+      // A trailing sentence after a closing quote ('… end of turn." It is still a land.') is not
+      // split by sentences(), so trim it here.
+      const qm = line.match(/^(.*\.")\s+([^"]+?)\.?$/);
+      if (qm && isTrailingNoise(qm[2])) line = qm[1];
     }
     // "~ costs {U}{U} less to cast ..." — colored reductions are handled as generic-count lines with the symbols remembered.
     let costSymbols: string | undefined;

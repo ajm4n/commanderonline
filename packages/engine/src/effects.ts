@@ -225,9 +225,68 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'topOrBottom': {
       for (const o of g.resolveObjects(e.what, ctx)) {
         const owner = o.owner;
-        const r = yield* g.ask({ type: 'chooseOption', player: owner, prompt: `Put ${g.nameOf(o.id)} on the top or bottom of your library?`, options: [{ id: 'top', label: 'Top' }, { id: 'bottom', label: 'Bottom' }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        const topLabel = e.second ? 'Second from the top' : 'Top';
+        const r = yield* g.ask({ type: 'chooseOption', player: owner, prompt: `Put ${g.nameOf(o.id)} ${e.second ? 'second from the top' : 'on the top'} or on the bottom of your library?`, options: [{ id: 'top', label: topLabel }, { id: 'bottom', label: 'Bottom' }], min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
         const pick = r.type === 'options' ? r.ids[0] : 'top';
         g.moveObject(o.id, 'library', pick === 'bottom' ? { position: 'bottom' } : {});
+        if (pick !== 'bottom' && e.second) {
+          const lib = g.player(owner).library;
+          const i = lib.indexOf(o.id);
+          if (i === 0 && lib.length > 1) {
+            lib.splice(0, 1);
+            lib.splice(1, 0, o.id);
+          }
+        }
+      }
+      return;
+    }
+    case 'removeFromCombat': {
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        o.attacking = null;
+        o.blocking = [];
+        o.blockedBy = [];
+        g.state.turn.attackers = g.state.turn.attackers.filter((id) => id !== o.id);
+        for (const other of g.state.battlefield) {
+          const a = g.state.objects[other];
+          if (a) {
+            a.blockedBy = a.blockedBy.filter((id) => id !== o.id);
+            a.blocking = a.blocking.filter((id) => id !== o.id);
+          }
+        }
+      }
+      g.touch();
+      return;
+    }
+    case 'suspect': {
+      for (const o of g.resolveObjects(e.what, ctx)) {
+        g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: 'permanent', modification: { layer: 6, addKeywords: ['Menace'] } });
+        g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: 'permanent', modification: { layer: 'rule', rule: { kind: 'cantBlock' } } });
+        o.memory['suspected'] = true;
+        g.log(`${g.nameOf(o.id)} is suspected.`);
+      }
+      g.touch();
+      return;
+    }
+    case 'addManaDifferentColors': {
+      const n = amt(e.amount);
+      const picked: import('./types.js').ManaColor[] = [];
+      for (let i = 0; i < n; i++) {
+        const opts = (['W', 'U', 'B', 'R', 'G'] as const).filter((c) => !picked.includes(c)).map((c) => ({ id: c, label: `{${c}}` }));
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Add one mana of a color not yet chosen', options: opts, min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        const pick = (r.type === 'options' ? r.ids[0] : opts[0].id) as import('./types.js').ManaColor;
+        picked.push(pick);
+      }
+      yield* executeEffect(g, { kind: 'addMana', mana: picked }, ctx);
+      return;
+    }
+    case 'grantAllActivatedAbilities': {
+      const texts: string[] = [];
+      for (const o of objectsMatching(g, { ...e.from, zone: e.from.zone ?? 'battlefield' }, { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x })) {
+        for (const ab of g.scriptFor(o).abilities) if (ab.kind === 'activated') texts.push(ab.text);
+      }
+      if (!texts.length) return;
+      for (const o of g.resolveObjects(e.on, ctx)) {
+        g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: durationOf(e.duration ?? 'permanent'), modification: { layer: 6, addAbilityText: texts } });
       }
       return;
     }
@@ -270,6 +329,17 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'returnToHand': {
       const moved: ObjectId[] = [];
+      // "Return target spell or creature to its owner's hand": a spell leaves the stack for its owner's hand.
+      for (const t of g.resolveRef(e.what, ctx)) {
+        if (t.kind !== 'stackItem') continue;
+        const item = g.state.stack.find((si) => si.id === t.id);
+        if (!item) continue;
+        g.state.stack = g.state.stack.filter((si) => si.id !== item.id);
+        const src = g.state.objects[item.sourceId];
+        if (src && src.zone === 'stack') g.moveObject(src.id, 'hand', { cause: 'bounce', sourceId: ctx.sourceId ?? undefined });
+        g.log(`${item.text} is returned to its owner's hand.`);
+        g.touch();
+      }
       for (const o of g.resolveObjects(e.what, ctx)) {
         const r = g.moveObject(o.id, 'hand', { cause: 'bounce', sourceId: ctx.sourceId ?? undefined });
         if (r) moved.push(r.id);
