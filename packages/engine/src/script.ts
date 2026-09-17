@@ -403,6 +403,8 @@ export type Effect =
   | { kind: 'grantAllActivatedAbilities'; on: Ref; from: ObjectFilter; duration?: Duration }
   /** Grant a player rule for the rest of the turn. */
   | { kind: 'grantPlayerRule'; who?: Ref; rule: RuleModification }
+  /** Grant a replacement effect for the rest of the turn ("until end of turn, if you would ..."). */
+  | { kind: 'grantReplacement'; who?: Ref; spec: ReplacementSpec }
   /** "Double ~'s power until end of turn." */
   | { kind: 'doubleStat'; on: Ref; stat: 'power' | 'toughness' | 'both'; duration?: Duration }
   /** "Any player may sacrifice a creature of their choice." */

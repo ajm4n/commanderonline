@@ -510,6 +510,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.touch();
       return;
     }
+    case 'grantReplacement': {
+      g.state.turnReplacements = g.state.turnReplacements ?? [];
+      for (const p of playersOf(g, e.who, ctx)) g.state.turnReplacements.push({ player: p, spec: e.spec });
+      g.touch();
+      return;
+    }
     case 'grantPlayerRule': {
       g.state.turnRules = g.state.turnRules ?? [];
       for (const p of playersOf(g, e.who, ctx)) g.state.turnRules.push({ player: p, rule: e.rule });
@@ -709,6 +715,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             if (ab.alsoToken) alsoTokens.push(ab.alsoToken);
             if (ab.replaceToken) tokenSpec = ab.replaceToken;
           }
+        }
+        for (const ab of g.turnReplacementsFor(p, 'tokenCreated')) {
+          if (ab.creatureOnly && !isCreatureToken) continue;
+          count += ab.extra * n;
+          if (ab.half) count = ab.half === 'up' ? Math.ceil(count / 2) : Math.floor(count / 2);
+          if (ab.alsoToken) alsoTokens.push(ab.alsoToken);
+          if (ab.replaceToken) tokenSpec = ab.replaceToken;
         }
         for (let i = 0; i < count; i++) {
           const card = tokenCard(tokenSpec, g, ctx);
@@ -943,6 +956,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         let n = amt(e.amount);
         // "If an opponent would mill one or more cards, they mill twice that many cards instead."
         if (n > 0) {
+          for (const ab of g.turnReplacementsFor(p, 'mill')) {
+            if (ab.multiply !== undefined) n *= ab.multiply;
+            if (ab.add) n += ab.add;
+          }
           for (const src of g.state.battlefield.map((id) => g.obj(id))) {
             for (const ab of g.scriptFor(src).abilities) {
               if (ab.kind !== 'replacement' || ab.event !== 'mill') continue;
@@ -1005,35 +1022,46 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'addMana': {
       let n = e.amount !== undefined ? amt(e.amount) : 1;
       // "If you tap a permanent for mana, it produces twice as much of that mana instead."
+      let manaOverride: ManaColor[] | 'anyOneColor' | null = null;
       {
         const msrc = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
         if (msrc && msrc.zone === 'battlefield') {
           for (const r of g.playerRules(msrc.controller)) {
-            if (r.kind !== 'custom' || r.tag !== 'manaMultiplier') continue;
-            const d = r.data as { times?: number; filter?: import('./types.js').ObjectFilter } | undefined;
-            if (!d) continue;
-            if (d.filter && !matchesFilter(g, msrc, { ...d.filter, zone: undefined }, { sourceId: ctx.sourceId, controller: msrc.controller })) continue;
-            n *= d.times ?? 1;
+            if (r.kind !== 'custom') continue;
+            if (r.tag === 'manaMultiplier') {
+              const d = r.data as { times?: number; filter?: import('./types.js').ObjectFilter } | undefined;
+              if (!d) continue;
+              if (d.filter && !matchesFilter(g, msrc, { ...d.filter, zone: undefined }, { sourceId: ctx.sourceId, controller: msrc.controller })) continue;
+              n *= d.times ?? 1;
+            } else if (r.tag === 'manaTypeReplace') {
+              // "If a land is tapped for mana, it produces {B} instead of any other type."
+              const d = r.data as { filter?: import('./types.js').ObjectFilter; produce?: string[] | 'anyOneColor'; fixedAmount?: number } | undefined;
+              if (!d?.produce) continue;
+              if (d.filter && !matchesFilter(g, msrc, { ...d.filter, zone: undefined }, { sourceId: ctx.sourceId, controller: msrc.controller })) continue;
+              manaOverride = d.produce === 'anyOneColor' ? 'anyOneColor' : (d.produce as ManaColor[]);
+              if (d.fixedAmount !== undefined) n = d.fixedAmount;
+            }
           }
         }
       }
+      const manaKind: typeof e.mana = manaOverride !== null ? manaOverride : e.mana;
       for (const p of playersOf(g, e.who, ctx)) {
         const pool = g.player(p).manaPool;
-        if (e.mana === 'chosenColor') {
+        if (manaKind === 'chosenColor') {
           const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
           const c = (src?.memory['color'] ?? src?.chosen['color'] ?? 'W') as ManaColor;
           pool[c] += n;
           g.touch();
           continue;
         }
-        if (e.mana === 'triggerMana') {
+        if (manaKind === 'triggerMana') {
           const produced = ((ctx.triggerContext['triggerData'] as { mana?: ManaColor[] } | undefined)?.mana ?? []) as ManaColor[];
           for (let k = 0; k < n; k++) for (const c of produced) pool[c]++;
           g.touch();
           continue;
         }
-        if (e.mana === 'anyColor' || e.mana === 'anyOneColor' || e.mana === 'commanderColors') {
-          const opts = e.mana === 'commanderColors' ? g.colorsOfCommander(p) : COLORS;
+        if (manaKind === 'anyColor' || manaKind === 'anyOneColor' || manaKind === 'commanderColors') {
+          const opts = manaKind === 'commanderColors' ? g.colorsOfCommander(p) : COLORS;
           const choices = (opts.length ? opts : COLORS).map((c) => ({ id: c, label: c }));
           let color: ManaColor = choices[0].id as ManaColor;
           if (choices.length > 1) {
@@ -1042,7 +1070,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           }
           pool[color] += n;
         } else {
-          for (let i = 0; i < n; i++) for (const c of e.mana) pool[c]++;
+          for (let i = 0; i < n; i++) for (const c of manaKind) pool[c]++;
         }
         g.touch();
       }

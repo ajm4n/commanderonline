@@ -40,6 +40,44 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 142 ----
+  // "If a land is tapped for mana, it produces {B} instead of any other type."
+  if ((m = L.match(/^If (?:a|an|target) (.+?) (?:is|are) tapped for mana, (?:it|they) produces? ((?:\{[^}]+\})+|colorless mana|one mana of (?:any color|a colou?r of your choice)) instead of any other type(?: and amount)?(?: of mana)?(?: instead)?$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    const produce = /colorless/i.test(m[2]) ? ['C'] : /any color|of your choice/i.test(m[2]) ? 'anyOneColor' : (m[2].match(/\{([^}]+)\}/g) ?? []).map((t) => t.slice(1, -1));
+    if (noun && noun.confident && (produce === 'anyOneColor' || produce.every((c) => /^[WUBRGC]$/.test(c)))) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'manaTypeReplace', data: { filter: f, produce, fixedAmount: / and amount/i.test(L) ? 1 : undefined } } }];
+    }
+  }
+  // "If target Plains is tapped for mana, it produces colorless mana instead of white mana."
+  if ((m = L.match(/^If (?:a|an|target) (.+?) (?:is|are) tapped for mana, (?:it|they) produces? (colorless mana|(?:\{[^}]+\})+) instead of \w+ mana$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    const produce = /colorless/i.test(m[2]) ? ['C'] : (m[2].match(/\{([^}]+)\}/g) ?? []).map((t) => t.slice(1, -1));
+    if (noun && noun.confident && produce.every((c) => /^[WUBRGC]$/.test(c))) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'manaTypeReplace', data: { filter: f, produce } } }];
+    }
+  }
+  // "If tapped for mana, Plains produce {R}, Islands produce {G}, Swamps produce {W}, ..."
+  if ((m = L.match(/^If tapped for mana, (.+)$/i))) {
+    const parts = m[1].split(/,\s*(?:and\s+)?/).map((x) => x.trim().replace(/\.$/, '')).filter(Boolean);
+    const out: AbilitySpec[] = [];
+    let ok = parts.length > 1;
+    for (const part of parts) {
+      const pm = part.match(/^(.+?) produces? ((?:\{[^}]+\})+|colorless mana)$/i);
+      if (!pm) { ok = false; break; }
+      const noun = parseNoun(`a ${pm[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${pm[1]}`);
+      const produce = /colorless/i.test(pm[2]) ? ['C'] : (pm[2].match(/\{([^}]+)\}/g) ?? []).map((t) => t.slice(1, -1));
+      if (!noun || !noun.confident || !produce.every((c) => /^[WUBRGC]$/.test(c))) { ok = false; break; }
+      const f = { ...noun.filter };
+      delete f.zone;
+      out.push({ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'manaTypeReplace', data: { filter: f, produce } } });
+    }
+    if (ok) return out;
+  }
   // ---- Round 140 ----
   // "Skeletons you control and other Zombies you control get +1/+1 and have deathtouch."
   if ((m = L.match(/^(.+?(?: you control|s)) and ((?:other |another )?.+?(?: you control)?) ((?:get|gets|have|has) .+)$/i)) && !/ and /i.test(m[1])) {

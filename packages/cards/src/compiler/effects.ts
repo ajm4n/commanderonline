@@ -7,6 +7,7 @@ import { parseAmount } from './amounts.js';
 import { parseCondition } from './conditions.js';
 import { parseTriggerHead } from './triggers.js';
 import { parseCost } from './costs.js';
+import { parseStatic } from './statics.js';
 import { damageSourceFilter, damageDestFilter, damageModifier } from './damage.js';
 
 export interface ParseCtx {
@@ -1503,7 +1504,7 @@ const PATTERNS: Pattern[] = [
     const kinds = m[2] === 'attack or block' ? ['cantAttack', 'cantBlock'] : m[2] === 'be blocked' ? ['cantBeBlocked'] : [m[2] === 'attack' ? 'cantAttack' : 'cantBlock'];
     return kinds.map((k) => ({ kind: 'applyRule', rule: { kind: k as 'cantAttack' }, on: ref, duration: dur }));
   }],
-  [/^(.+?) becomes? (?:a|an) ([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)(?: with (.+?))?(?: and loses (.+?))?(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) becomes? (?:a|an) (?:legendary |snow )?([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)s?(?: with (.+?))?(?: and loses (.+?))?(?: that (?:is|are) (?:still|no longer) (?:a |an )?[\w ]+)?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
@@ -5637,7 +5638,30 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   text = text.replace(/^((?:any number of |up to \w+ |one or two |one, two, or three |\w+ )?(?:target |they|those creatures)[^,]*?) each (gets?|gains?|deals?|loses?|has|have|becomes?|cannot|can't|draws?|discards?|sacrifices?|mills?)\b/i, '$1 $2');
+  // "Until end of turn, if you tap a land for mana, it produces {U} instead of any other type."
+  if ((m = text.match(/^until (?:end of turn|your next turn), (if .+?|whenever .+?)$/i))) {
+    const inner = parseStatic(m[1].replace(/^if (?:you|a player|an opponent) taps? (?:a|an) (.+?) for mana,/i, (_x, n: string) => `If a ${n.replace(/ you control$/i, '')} is tapped for mana,`), true);
+    if (inner && inner.length && inner.every((ab) => ab.kind === 'static' ? !!ab.rule && !!ab.ruleAffects : ab.kind === 'replacement')) {
+      const out: Effect[] = [];
+      for (const ab of inner) {
+        if (ab.kind === 'static' && ab.rule) {
+          const who: Ref | undefined = ab.ruleAffects === 'opponents' ? { ref: 'eachOpponent' } : ab.ruleAffects === 'allPlayers' ? { ref: 'eachPlayer' } : undefined;
+          out.push({ kind: 'grantPlayerRule', rule: ab.rule, who });
+        } else if (ab.kind === 'replacement') out.push({ kind: 'grantReplacement', spec: ab });
+      }
+      if (out.length) return out;
+    }
+  }
   text = text.replace(/^until your next turn, (.+?)$/i, (_m, rest: string) => (/ until your next turn$/i.test(rest) ? rest : `${rest} until your next turn`));
+  // Patterns are written for "until end of turn"; retime whatever they produce.
+  for (const [suffix, dur] of [[' until your next turn', 'untilYourNextTurn'], [' until end of combat', 'endOfCombat'], [' until the end of your next turn', 'untilYourNextTurn']] as const) {
+    if (text.toLowerCase().endsWith(suffix)) {
+      const saved = ctx.targets.length;
+      const inner = parseSentence(text.slice(0, -suffix.length) + ' until end of turn', ctx);
+      if (inner) return inner.map((e) => retime(e, dur));
+      ctx.targets.length = saved;
+    }
+  }
   text = text.replace(/^until end of turn, (.+?)$/i, (_m, rest: string) => (/ until end of turn$/i.test(rest) ? rest : /, where X is /i.test(rest) ? rest.replace(/, where X is /i, ' until end of turn, where X is ') : `${rest} until end of turn`));
   if ((m = text.match(/^(.+?), where X is ([^,]+?), (.+)$/i)) && /\bX\b/.test(m[1])) {
     const a = amt(m[2], ctx);
@@ -6330,4 +6354,17 @@ function preventionTo(text: string, ctx: ParseCtx): { to?: Extract<Effect, { kin
   if (noun && (noun.each || noun.plural) && noun.kind !== 'player') return { to: { ...noun.filter, zone: 'battlefield' } };
   const ref = anyRef(text.trim(), ctx);
   return ref ? { to: 'all', toRef: ref } : null;
+}
+
+/** Rewrite endOfTurn durations produced by an "until end of turn" pattern to another duration. */
+function retime<T>(value: T, dur: Duration): T {
+  if (Array.isArray(value)) return value.map((v) => retime(v, dur)) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = k === 'duration' && v === 'endOfTurn' ? dur : retime(v, dur);
+    }
+    return out as unknown as T;
+  }
+  return value;
 }

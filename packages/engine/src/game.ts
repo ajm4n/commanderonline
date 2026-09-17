@@ -93,6 +93,8 @@ export interface GameState {
   lastTurnStats: Record<string, number>;
   /** Player rules granted for the rest of the turn ("You may cast spells this turn as though they had flash"). */
   turnRules?: { player: PlayerId; rule: import('./types.js').RuleModification }[];
+  /** Replacement effects granted for the rest of the turn ("until end of turn, if you would ..."). */
+  turnReplacements?: { player: PlayerId; spec: import('./script.js').ReplacementSpec }[];
   /** Day/night cycle: undefined until a card starts it. */
   dayNight?: 'day' | 'night';
   preventions: { effects?: import('./script.js').Effect[]; /** Only damage from these specific sources. */ sourceIds?: ObjectId[]; /** Shield: prevents at most this much, then wears off. */ amount?: number; combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[]; /** The prevented damage is dealt to these instead. */ redirectIds?: ObjectId[]; redirectPlayers?: PlayerId[]; redirectToSourceController?: boolean }[];
@@ -641,6 +643,16 @@ export class Game {
   }
 
   /** Does this player have a rule flag from any static ability (e.g. "you have no maximum hand size")? */
+  /** Turn-scoped replacement effects of a given event granted to a player. */
+  turnReplacementsFor<K extends import('./script.js').ReplacementSpec['event']>(p: PlayerId, event: K): Extract<import('./script.js').ReplacementSpec, { event: K }>[] {
+    const out: Extract<import('./script.js').ReplacementSpec, { event: K }>[] = [];
+    for (const t of this.state.turnReplacements ?? []) {
+      if (t.player !== p || t.spec.event !== event) continue;
+      out.push(t.spec as Extract<import('./script.js').ReplacementSpec, { event: K }>);
+    }
+    return out;
+  }
+
   playerRules(p: PlayerId): import('./types.js').RuleModification[] {
     const out: import('./types.js').RuleModification[] = [];
     for (const src of Object.values(this.state.objects)) {
@@ -1922,6 +1934,7 @@ export class Game {
       if (d.once) d.used = true;
       return { ab: { kind: 'replacement', text: 'Draw replacement', event: 'drawCard', who: 'you', effects: d.effects }, sourceId: -1 };
     }
+    for (const ab of this.turnReplacementsFor(pid, 'drawCard')) return { ab, sourceId: -1 };
     for (const id of this.state.battlefield) {
       const src = this.state.objects[id];
       if (!src) continue;
@@ -1968,6 +1981,15 @@ export class Game {
           if (ab.add) amount += ab.add;
         }
       }
+    }
+    if (amount <= 0) return;
+    for (const ab of this.turnReplacementsFor(pid, 'lifeGain')) {
+      if (ab.insteadLose) {
+        this.loseLife(pid, amount, sourceId);
+        return;
+      }
+      if (ab.multiply !== undefined) amount *= ab.multiply;
+      if (ab.add) amount += ab.add;
     }
     if (amount <= 0) return;
     p.life += amount;
@@ -2374,6 +2396,15 @@ export class Game {
         }
       }
     }
+    for (const ab of this.turnReplacementsFor(o.controller, 'counterAdded')) {
+      if (ab.counterType && ab.counterType !== type) continue;
+      if (ab.filter && !matchesFilter(this, o, ab.filter, { sourceId: null, controller: o.controller })) continue;
+      if (ab.multiply) amount *= ab.multiply;
+      if (ab.half) amount = ab.half === 'up' ? Math.ceil(amount / 2) : Math.floor(amount / 2);
+      amount += ab.extra;
+      if (ab.minus) amount -= ab.minus;
+      if (amount < 0) amount = 0;
+    }
     if (amount <= 0) return;
     o.counters[type] = (o.counters[type] ?? 0) + amount;
     this.touch();
@@ -2530,6 +2561,7 @@ export class Game {
     this.pendingTriggers = [];
     this.state.turnStats = {};
     this.state.turnRules = [];
+    this.state.turnReplacements = [];
     this.state.diedThisTurn = [];
     this.state.castThisTurn = [];
     for (const p of Object.values(this.state.players)) p.turnStats = {};
