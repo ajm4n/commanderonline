@@ -696,6 +696,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         let count = n;
         const alsoTokens: import('./script.js').TokenSpec[] = [];
         const isCreatureToken = /Creature/.test(e.token.typeLine ?? '');
+        let tokenSpec = e.token;
         for (const src of g.state.battlefield.map((id) => g.obj(id))) {
           if (src.controller !== p) continue;
           for (const ab of g.scriptFor(src).abilities) {
@@ -703,10 +704,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             if (ab.creatureOnly && !isCreatureToken) continue;
             count += ab.extra * n;
             if (ab.alsoToken) alsoTokens.push(ab.alsoToken);
+            if (ab.replaceToken) tokenSpec = ab.replaceToken;
           }
         }
         for (let i = 0; i < count; i++) {
-          const card = tokenCard(e.token, g, ctx);
+          const card = tokenCard(tokenSpec, g, ctx);
           let attacking: PlayerId | ObjectId | undefined;
           if (e.attacking) {
             const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
@@ -919,7 +921,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     case 'mill':
       for (const p of playersOf(g, e.who, ctx)) {
-        const n = amt(e.amount);
+        let n = amt(e.amount);
+        // "If an opponent would mill one or more cards, they mill twice that many cards instead."
+        if (n > 0) {
+          for (const src of g.state.battlefield.map((id) => g.obj(id))) {
+            for (const ab of g.scriptFor(src).abilities) {
+              if (ab.kind !== 'replacement' || ab.event !== 'mill') continue;
+              const applies = ab.who === 'any' || (ab.who === 'you' && src.controller === p) || (ab.who === 'opponent' && src.controller !== p);
+              if (!applies) continue;
+              if (ab.multiply !== undefined) n *= ab.multiply;
+              if (ab.add) n += ab.add;
+            }
+          }
+        }
         const milled: ObjectId[] = [];
         for (let i = 0; i < n; i++) {
           const id = g.player(p).library[0];

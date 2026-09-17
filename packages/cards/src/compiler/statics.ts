@@ -1,5 +1,5 @@
 /** Static abilities and replacement effects. */
-import type { AbilitySpec, Amount, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
+import type { AbilitySpec, Amount, Effect, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
 import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase } from './effects.js';
 import { wordToNumber } from './text.js';
@@ -39,6 +39,170 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 136 ----
+  // "If damage would be dealt to ~, put that many -1/-1 counters on it instead."
+  if ((m = L.match(/^If (combat |noncombat )?damage would be dealt to (~|you)(?: this turn)?, (?:prevent that damage and (.+)|put that many ([+\-\w\/]+) counters on (?:it|~) instead|prevent that damage)$/i))) {
+    const to = m[2] === '~' ? 'self' : 'controller';
+    const tail = m[3] ? m[3] : m[4] ? `put that many ${m[4]} counters on ${to === 'self' ? '~' : '~'}` : null;
+    let effects: Effect[] | undefined;
+    if (tail) {
+      const pe = parseEffects(tail.replace(/ instead$/i, ''), newCtx({ triggerHasObject: true, triggerHasPlayer: true }));
+      if (pe.unhandled.length) return null;
+      effects = pe.effects;
+    }
+    const spec: AbilitySpec = { kind: 'replacement', text: line, event: 'damage', prevent: 'all', to, combatOnly: m[1] && /^combat/i.test(m[1]) ? true : undefined };
+    if (effects?.length) (spec as { effects?: Effect[] }).effects = effects;
+    return [spec];
+  }
+  // "If a creature would deal combat damage to ~, prevent that damage and put a +1/+1 counter on ~."
+  if ((m = L.match(/^If (.+?) would deal (combat |noncombat )?damage to (~|you|equipped creature|enchanted creature|.+?)(?: this turn)?, prevent (that damage|all of that damage|(\d+) of that damage)(?: and (.+))?$/i))) {
+    const srcSpec = damageSourceFilter(m[1]);
+    const dst = m[3].trim();
+    const to: 'self' | 'controller' | ObjectFilter | null =
+      dst === '~' || /^(?:equipped|enchanted) \w+$/i.test(dst) ? 'self' : /^you$/i.test(dst) ? 'controller' : (() => {
+        const n = parseNoun(dst);
+        if (!n || !n.confident || n.kind === 'player') return null;
+        const f = { ...n.filter };
+        delete f.zone;
+        return f;
+      })();
+    let effects: Effect[] | undefined;
+    if (m[6]) {
+      const pe = parseEffects(m[6], newCtx({ triggerHasObject: true, triggerHasPlayer: true }));
+      if (pe.unhandled.length) return null;
+      effects = pe.effects;
+    }
+    if (srcSpec && to !== null && !srcSpec.selfOnly) {
+      const spec: AbilitySpec = { kind: 'replacement', text: line, event: 'damage', prevent: m[5] ? parseInt(m[5], 10) : 'all', to, fromFilter: srcSpec.filter, combatOnly: m[2] && /^combat/i.test(m[2]) ? true : undefined };
+      if (effects?.length) (spec as { effects?: Effect[] }).effects = effects;
+      return [spec];
+    }
+  }
+  // "If an effect would put one or more counters on a permanent you control, it puts twice that many of those counters on that permanent instead."
+  if ((m = L.match(/^If (?:an effect|you|a player|an opponent|another player) would put one or more (?:([+\-\w\/]+) )?counters on (.+?), (?:it puts|they put|put) (twice that many|half that many|that many plus (?:one|two|three)|that many minus one)(?: of (?:those|each of those kinds of)? ?counters)?(?: on (?:that \w+|it|them|that permanent or player))?(?: instead)?(?:, rounded (up|down))?$/i))) {
+    const noun = /^(?:a permanent or player|a permanent)$/i.test(m[2].trim()) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(m[2]);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      const how = m[3].toLowerCase();
+      const spec: AbilitySpec = {
+        kind: 'replacement',
+        text: line,
+        event: 'counterAdded',
+        extra: /plus one/.test(how) ? 1 : /plus two/.test(how) ? 2 : /plus three/.test(how) ? 3 : 0,
+        multiply: /twice/.test(how) ? 2 : undefined,
+        half: /half/.test(how) ? (m[4]?.toLowerCase() === 'up' ? 'up' : 'down') : undefined,
+        minus: /minus one/.test(how) ? 1 : undefined,
+        filter: Object.keys(f).length ? { ...f, zone: 'battlefield' } : undefined,
+        counterType: m[1],
+        who: /^If an opponent /i.test(L) ? 'opponent' : /^If (?:an effect|a player|another player) /i.test(L) ? 'any' : 'you',
+      };
+      return [spec];
+    }
+  }
+  // "If one or more +1/+1 counters would be put on ~, that many plus one +1/+1 counters are put on it instead."
+  if ((m = L.match(/^If one or more (?:([+\-\w\/]+) )?counters would be put on (.+?), (twice that many|half that many|that many plus (?:one|two|three)|that many minus one|(?:three times|twice) that many)(?: of (?:those|each of those kinds of)? ?counters)?(?: ?[+\-\w\/]+)? counters are put on (?:it|that \w+|them|that permanent or player) instead(?:, rounded (up|down))?$/i))) {
+    const who = m[2].trim();
+    const noun = /^~$/.test(who) ? { filter: { self: true } as ObjectFilter, confident: true } : /^(?:a permanent or player|a permanent)$/i.test(who) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(who);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      const how = m[3].toLowerCase();
+      return [{
+        kind: 'replacement',
+        text: line,
+        event: 'counterAdded',
+        extra: /plus one/.test(how) ? 1 : /plus two/.test(how) ? 2 : /plus three/.test(how) ? 3 : 0,
+        multiply: /three times/.test(how) ? 3 : /twice/.test(how) ? 2 : undefined,
+        half: /half/.test(how) ? (m[4]?.toLowerCase() === 'up' ? 'up' : 'down') : undefined,
+        minus: /minus one/.test(how) ? 1 : undefined,
+        filter: Object.keys(f).length ? { ...f, zone: f.self ? undefined : 'battlefield' } : undefined,
+        counterType: m[1],
+        who: 'any',
+      }];
+    }
+  }
+  // "If an opponent would mill one or more cards, they mill twice that many cards instead."
+  if ((m = L.match(/^If (you|an opponent|a player|each opponent) would mill one or more cards, (?:they|you) mill (twice that many|half that many|that many cards plus (\w+))(?: cards)?(?: instead)?(?:, rounded (up|down))?$/i))) {
+    const how = m[2].toLowerCase();
+    const add = m[3] ? wordToNumber(m[3]) : 0;
+    if (typeof add === 'number') {
+      const who = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+      return [{ kind: 'replacement', text: line, event: 'mill', who, multiply: /twice/.test(how) ? 2 : /half/.test(how) ? 0.5 : undefined, add: add || undefined }];
+    }
+  }
+  // "If one or more -1/-1 counters would be put on a creature you control, that many -1/-1 counters minus one are put on that creature instead."
+  if ((m = L.match(/^If one or more ([+\-\w\/]+) counters would be put on (.+?), that many (?:([+\-\w\/]+) counters )?(plus|minus) (one|two|three)(?: [+\-\w\/]+ counters)? are put on (?:it|that \w+|them) instead$/i))) {
+    const who = m[2].trim();
+    const noun = /^~$/.test(who) ? { filter: { self: true } as ObjectFilter, confident: true } : parseNoun(who);
+    const n = wordToNumber(m[5]);
+    if (noun && noun.confident && typeof n === 'number') {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{
+        kind: 'replacement',
+        text: line,
+        event: 'counterAdded',
+        extra: m[4].toLowerCase() === 'plus' ? n : 0,
+        minus: m[4].toLowerCase() === 'minus' ? n : undefined,
+        counterType: m[1],
+        filter: Object.keys(f).length ? { ...f, zone: f.self ? undefined : 'battlefield' } : undefined,
+        who: 'any',
+      }];
+    }
+  }
+  // "If one or more creature tokens would be created under your control, that many 4/4 white Angel creature tokens are created instead."
+  if ((m = L.match(/^If one or more (creature |artifact )?tokens would be created under your control, (?:that many|(twice|three times) that many) (.+?) tokens are created instead$/i))) {
+    const tok = parseTokenPhrase(`a ${m[3]} token`);
+    if (tok) return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: /three times/i.test(m[2] ?? '') ? 2 : /twice/i.test(m[2] ?? '') ? 1 : 0, replaceToken: tok.token, creatureOnly: /creature/i.test(m[1] ?? '') || undefined }];
+  }
+  // "If a player would draw a card, that player skips that draw instead."
+  if ((m = L.match(/^If (you|an opponent|a player) would draw a card, (?:that player|you|they) skips? that draw instead$/i))) {
+    const who = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+    return [{ kind: 'replacement', text: line, event: 'drawCard', who, skip: true }];
+  }
+  // "If a player would gain life, that player gains no life instead."
+  if ((m = L.match(/^If (you|an opponent|a player|a spell or ability) would (?:gain life|cause its controller to gain life), (?:that player|you|they) (gains? no life|loses? that much life|gains? twice that much life|gains? that much life plus (\w+))(?: instead)?$/i))) {
+    const who = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+    const how = m[2].toLowerCase();
+    if (/no life/.test(how)) return [{ kind: 'replacement', text: line, event: 'lifeGain', who, multiply: 0 }];
+    if (/loses/.test(how)) return [{ kind: 'replacement', text: line, event: 'lifeGain', who, insteadLose: true }];
+    if (/twice/.test(how)) return [{ kind: 'replacement', text: line, event: 'lifeGain', who, multiply: 2 }];
+    const add = m[3] ? wordToNumber(m[3]) : null;
+    if (typeof add === 'number') return [{ kind: 'replacement', text: line, event: 'lifeGain', who, add }];
+  }
+  // "If an opponent would lose life during your turn, they lose twice that much life instead."
+  if ((m = L.match(/^If (you|an opponent|a player) would lose life(?: during your turn)?, (?:they|you) lose (twice|half) that much life instead$/i))) {
+    const who = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
+    return [{ kind: 'replacement', text: line, event: 'lifeLoss', who, multiply: /twice/i.test(m[2]) ? 2 : 0.5, yourTurnOnly: / during your turn,/i.test(L) || undefined }];
+  }
+  // "If a source would deal damage to another Dinosaur you control, prevent all but 1 of that damage."
+  if ((m = L.match(/^If (.+?) would deal (combat |noncombat )?damage to (.+?)(?: this turn)?, prevent all but (\d+) of that damage$/i))) {
+    const srcSpec = damageSourceFilter(m[1]);
+    const dest = damageDestFilter(m[3]);
+    if (srcSpec && dest) {
+      const data: Record<string, unknown> = { ...srcSpec, ...dest, setTo: parseInt(m[4], 10) };
+      if (m[2] && /^combat/i.test(m[2])) data.combatOnly = true;
+      if (m[2] && /^noncombat/i.test(m[2])) data.noncombatOnly = true;
+      const affects = srcSpec.selfOnly ? (/^~$/.test(m[1].trim()) ? 'self' : 'attachedTo') : 'self';
+      return [{ kind: 'static', text: line, affects, rule: { kind: 'custom', tag: 'damageModify', data } }];
+    }
+  }
+  // "If a source you control would deal damage to an opponent, it deals double that damage instead."
+  if ((m = L.match(/^If (.+?) would deal (?:(\d+) or more )?(combat |noncombat )?damage(?: to (.+?))?(?: this turn)?, (?:it|that source|that spell|that creature|that permanent|that card|~) deals (.+)$/i))) {
+    const srcSpec = damageSourceFilter(m[1]);
+    const dest = m[4] ? damageDestFilter(m[4]) : {};
+    const mod = damageModifier(m[5]);
+    if (srcSpec && dest && mod) {
+      const data: Record<string, unknown> = { ...srcSpec, ...dest, ...mod };
+      if (m[2]) data.ifAtLeast = parseInt(m[2], 10);
+      if (m[3] && /combat/i.test(m[3]) && !/noncombat/i.test(m[3])) data.combatOnly = true;
+      if (m[3] && /noncombat/i.test(m[3])) data.noncombatOnly = true;
+      const affects = srcSpec.selfOnly ? (/^~$/.test(m[1].trim()) ? 'self' : 'attachedTo') : undefined;
+      if (srcSpec.selfOnly) return [{ kind: 'static', text: line, affects, rule: { kind: 'custom', tag: 'damageModify', data } }];
+      return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damageModify', data } }];
+    }
+  }
   // ---- Round 135 ----
   // "Each untapped creature you control gets +0/+2 as long as it is not attacking."
   if ((m = L.match(/^(.+?) ((?:gets?|get|has|have) .+) as long as (?:it is|they are|it's) (not |isn't |aren't )?(attacking|blocking|tapped|untapped|enchanted|equipped)$/i))) {
@@ -1139,9 +1303,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const who = parseNoun(m[1]);
     return who ? [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: who.filter, event: 'dies', eventObject: { types: ['Creature'] } } } }] : null;
   }
-  if ((m = L.match(/^If a triggered ability of (.+?) triggers, that ability triggers an additional time$/i))) {
+  if ((m = L.match(/^If a triggered ability of (.+?) triggers(?: while (.+?))?, (?:that ability|it) triggers an additional time$/i))) {
     const who = parseNoun(m[1]);
-    return who ? [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: who.filter } } }] : null;
+    const cond = m[2] ? parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false }) : null;
+    if (who && (!m[2] || (cond && cond.kind !== 'manual'))) {
+      const spec: AbilitySpec = { kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: who.filter } } };
+      if (cond) spec.condition = cond;
+      return [spec];
+    }
   }
   // Compound: "Equipped creature cannot be blocked and has shroud."
   if ((m = L.match(/^(.+?) (cannot be blocked|cannot block|cannot attack|cannot attack or block) and (?:has|have) (.+)$/i))) {
@@ -2079,5 +2248,65 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // Sagas & others are handled by the orchestrator.
   void isCreatureOrPermanent;
+  return null;
+}
+
+/** Source side of "If <source> would deal damage …": a filter, or the ability's own object. */
+function damageSourceFilter(text: string): { filter?: ObjectFilter; selfOnly?: boolean } | null {
+  const t = text.trim();
+  const l = t.toLowerCase();
+  if (l === '~') return { selfOnly: true };
+  if (/^(?:enchanted|equipped|fortified) (?:creature|permanent|artifact|land)$/.test(l)) return { selfOnly: true };
+  if (/^(?:a|any) source$/.test(l)) return { filter: undefined };
+  const sm = t.match(/^(?:a|an|any|another) (.*?)\s*sources?$/i);
+  if (sm) {
+    const qual = sm[1].trim();
+    if (!qual) return { filter: undefined };
+    const noun = parseNoun(`a ${qual} card`);
+    if (!noun || !noun.confident) return null;
+    const f = { ...noun.filter };
+    delete f.zone;
+    if (/^another /i.test(t)) f.other = true;
+    return { filter: f };
+  }
+  const noun = parseNoun(t);
+  if (!noun || !noun.confident || noun.kind === 'player') return null;
+  const f = { ...noun.filter };
+  delete f.zone;
+  if (noun.other) f.other = true;
+  return { filter: f };
+}
+
+/** Destination side of "… would deal damage to <dest>". */
+function damageDestFilter(text: string): { toFilter?: ObjectFilter; toPlayers?: boolean; toObjects?: boolean; toController?: 'you' | 'opponent' } | null {
+  const t = text.trim().replace(/ this turn$/i, '');
+  const l = t.toLowerCase();
+  if (/^(?:a|any)(?: permanent or player| target)$/.test(l) || l === 'anything' || l === 'any target') return {};
+  if (l === 'you') return { toPlayers: true, toController: 'you' };
+  if (/^(?:an|any|each|target) opponent$/.test(l)) return { toPlayers: true, toController: 'opponent' };
+  if (/^(?:a|any) player$/.test(l)) return { toPlayers: true };
+  if (/^(?:an opponent|a player) or a permanent (?:an opponent|that player|they) controls?$/.test(l)) return { toController: 'opponent' };
+  if (/^you or (?:a|an|another) (?:permanent|creature) you control$/.test(l)) return { toController: 'you' };
+  const noun = parseNoun(t);
+  if (!noun || !noun.confident || noun.kind === 'player') return null;
+  const f = { ...noun.filter };
+  delete f.zone;
+  const ctrl = f.controller;
+  delete f.controller;
+  if (noun.other) f.other = true;
+  return { toObjects: true, toFilter: f, toController: ctrl === 'you' ? 'you' : ctrl === 'opponent' ? 'opponent' : undefined };
+}
+
+/** "double that damage" / "that much damage minus 1" / "half that damage, rounded down" / "3 damage". */
+function damageModifier(text: string): { setTo?: number; times?: number; plus?: number; minus?: number; half?: 'up' | 'down' } | null {
+  let t = text.trim().toLowerCase().replace(/ instead$/, '').trim();
+  t = t.replace(/,? to (?:that|those|it|itself|them|you|its controller|each of those)[\w' ]*$/, '').replace(/,$/, '').trim();
+  let mm: RegExpMatchArray | null;
+  if (/^(?:double|twice) (?:that|that much|this) damage$/.test(t) || /^twice that much damage$/.test(t)) return { times: 2 };
+  if (/^(?:triple|three times) (?:that|that much) damage$/.test(t)) return { times: 3 };
+  if ((mm = t.match(/^(?:that much |that )?damage plus (\d+)$/))) return { plus: parseInt(mm[1], 10) };
+  if ((mm = t.match(/^(?:that much |that )?damage minus (\d+)$/))) return { minus: parseInt(mm[1], 10) };
+  if ((mm = t.match(/^half (?:that|that much) damage,? rounded (up|down)$/))) return { half: mm[1] === 'up' ? 'up' : 'down' };
+  if ((mm = t.match(/^(\d+) damage$/))) return { setTo: parseInt(mm[1], 10) };
   return null;
 }

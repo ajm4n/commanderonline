@@ -694,10 +694,14 @@ export type ReplacementSpec =
   | { kind: 'replacement'; text: string; event: 'draw'; extraDraws?: number; skipFirstDraw?: boolean }
   | { kind: 'replacement'; text: string; event: 'damage'; prevent: 'all' | number; to: 'self' | 'controller' | ObjectFilter; fromFilter?: ObjectFilter; combatOnly?: boolean; /** "If damage would be dealt to ~ while it has a +1/+1 counter on it" */ condition?: Condition; /** Run after preventing ("prevent that damage and put that many +1/+1 counters on it"); the amount prevented is the trigger amount. */ effects?: Effect[] }
   /** "If you would draw a card, draw two cards instead." / "…, you win the game instead." */
-  | { kind: 'replacement'; text: string; event: 'drawCard'; who: 'you' | 'opponent' | 'any'; /** Draw this many instead of one. */ draws?: number; /** Replace the draw with these effects entirely. */ effects?: Effect[]; condition?: Condition; /** Skip the first draw each of that player's draw steps. */ exceptFirstEachDrawStep?: boolean }
-  | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' }
-  | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; filter?: ObjectFilter; counterType?: CounterType }
-  | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number; /** "those tokens plus a Clue token are created instead" */ alsoToken?: TokenSpec; /** Only replaces creature-token creation. */ creatureOnly?: boolean }
+  | { kind: 'replacement'; text: string; event: 'drawCard'; who: 'you' | 'opponent' | 'any'; /** Draw this many instead of one. */ draws?: number; /** Replace the draw with these effects entirely. */ effects?: Effect[]; /** "that player skips that draw instead" */ skip?: boolean; condition?: Condition; /** Skip the first draw each of that player's draw steps. */ exceptFirstEachDrawStep?: boolean }
+  | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' | 'any'; /** "that player loses that much life instead" */ insteadLose?: boolean }
+  /** "If an opponent would lose life during your turn, they lose twice that much life instead." */
+  | { kind: 'replacement'; text: string; event: 'lifeLoss'; multiply?: number; add?: number; who: 'you' | 'opponent' | 'any'; yourTurnOnly?: boolean }
+  /** "If an opponent would mill one or more cards, they mill twice that many cards instead." */
+  | { kind: 'replacement'; text: string; event: 'mill'; multiply?: number; add?: number; who: 'you' | 'opponent' | 'any' }
+  | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; /** "half that many … rounded down" */ half?: 'up' | 'down'; /** "that many minus one" */ minus?: number; filter?: ObjectFilter; counterType?: CounterType; /** Whose counter placement is replaced (default: the holder's own). */ who?: 'you' | 'opponent' | 'any' }
+  | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number; /** "those tokens plus a Clue token are created instead" */ alsoToken?: TokenSpec; /** "that many 4/4 white Angel creature tokens are created instead": the tokens created change. */ replaceToken?: TokenSpec; /** Only replaces creature-token creation. */ creatureOnly?: boolean }
   | { kind: 'replacement'; text: string; event: 'wouldLoseGame'; instead: Effect[] }
   | { kind: 'replacement'; text: string; event: 'custom'; tag: string };
 

@@ -1874,6 +1874,10 @@ export class Game {
       // Draw replacements ("If you would draw a card, draw two cards instead").
       const repl = this.drawReplacementFor(pid);
       if (repl) {
+        if (repl.ab.skip) {
+          this.state.turnStats[`drawReplaced:${pid}`] = (this.state.turnStats[`drawReplaced:${pid}`] ?? 0) + 1;
+          continue;
+        }
         if (repl.ab.effects?.length) {
           this.state.turnStats[`drawReplaced:${pid}`] = (this.state.turnStats[`drawReplaced:${pid}`] ?? 0) + 1;
           this.pendingTriggers.push({ sourceId: repl.sourceId, controller: pid, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', effects: repl.ab.effects }, context: { playerId: pid } });
@@ -1944,13 +1948,18 @@ export class Game {
     for (const src of this.state.battlefield.map((id) => this.obj(id))) {
       for (const ab of this.scriptFor(src).abilities) {
         if (ab.kind === 'replacement' && ab.event === 'lifeGain') {
-          const applies = (ab.who === 'you' && src.controller === pid) || (ab.who === 'opponent' && src.controller !== pid);
+          const applies = ab.who === 'any' || (ab.who === 'you' && src.controller === pid) || (ab.who === 'opponent' && src.controller !== pid);
           if (!applies) continue;
-          if (ab.multiply) amount *= ab.multiply;
+          if (ab.insteadLose) {
+            this.loseLife(pid, amount, sourceId);
+            return;
+          }
+          if (ab.multiply !== undefined) amount *= ab.multiply;
           if (ab.add) amount += ab.add;
         }
       }
     }
+    if (amount <= 0) return;
     p.life += amount;
     this.touch();
     this.log(`${p.name} gains ${amount} life (${p.life}).`, { kind: 'life', data: { player: pid, delta: amount, life: p.life } });
@@ -1965,6 +1974,17 @@ export class Game {
     // "Damage that would reduce your life total to less than 1 reduces it to 1 instead."
     let floor: number | null = null;
     for (const r of this.playerRules(pid)) if (r.kind === 'custom' && r.tag === 'lifeFloor' && typeof r.data === 'number') floor = Math.max(floor ?? 0, r.data);
+    // "If an opponent would lose life during your turn, they lose twice that much life instead."
+    for (const src of this.state.battlefield.map((id) => this.obj(id))) {
+      for (const ab of this.scriptFor(src).abilities) {
+        if (ab.kind !== 'replacement' || ab.event !== 'lifeLoss') continue;
+        const applies = ab.who === 'any' || (ab.who === 'you' && src.controller === pid) || (ab.who === 'opponent' && src.controller !== pid);
+        if (!applies) continue;
+        if (ab.yourTurnOnly && this.state.turn.activePlayer !== src.controller) continue;
+        if (ab.multiply !== undefined) n *= ab.multiply;
+        if (ab.add) n += ab.add;
+      }
+    }
     if (floor !== null && p.life - n < floor) n = Math.max(0, p.life - floor);
     if (n <= 0) return;
     p.life -= n;
@@ -2002,6 +2022,22 @@ export class Game {
           if (ab.fromFilter && (!src || !matchesFilter(this, src, { ...ab.fromFilter, zone: undefined }, { sourceId: tobj.id, controller: tobj.controller }))) continue;
           const eff = (ab as { effects?: import('./script.js').Effect[] }).effects;
           if (eff?.length) this.pendingTriggers.push({ sourceId: tobj.id, controller: tobj.controller, ability: { kind: 'triggered', text: ab.text, event: 'dealtDamage', effects: eff }, context: { triggerAmount: amount, amount, objectId: tobj.id, sourceId } });
+          return Infinity;
+        }
+      }
+    }
+    // "If damage would be dealt to you, prevent that damage and mill twice that many cards."
+    if (target.kind === 'player') {
+      for (const id of this.state.battlefield) {
+        const holder = this.state.objects[id];
+        if (!holder || holder.controller !== target.id) continue;
+        for (const ab of this.scriptFor(holder).abilities) {
+          if (ab.kind !== 'replacement' || ab.event !== 'damage' || ab.to !== 'controller' || ab.prevent !== 'all') continue;
+          if (ab.combatOnly && !combat) continue;
+          if (ab.condition && !this.checkCondition(ab.condition, { sourceId: holder.id, controller: holder.controller })) continue;
+          if (ab.fromFilter && (!src || !matchesFilter(this, src, { ...ab.fromFilter, zone: undefined }, { sourceId: holder.id, controller: holder.controller }))) continue;
+          const eff = (ab as { effects?: import('./script.js').Effect[] }).effects;
+          if (eff?.length) this.pendingTriggers.push({ sourceId: holder.id, controller: holder.controller, ability: { kind: 'triggered', text: ab.text, event: 'dealtDamage', effects: eff }, context: { triggerAmount: amount, amount, playerId: target.id, sourceId } });
           return Infinity;
         }
       }
@@ -2107,6 +2143,54 @@ export class Game {
         else dealt += typeof d.plus === 'number' ? d.plus : d.plus ? this.resolveAmount(d.plus, { sourceId: id, controller: holder.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} }) : 0;
       }
     }
+    // "If a source you control would deal damage to an opponent, it deals double that damage instead."
+    for (const id of this.state.battlefield) {
+      const holder = this.state.objects[id];
+      if (!holder) continue;
+      for (const r of this.characteristics(id).rules) {
+        if (r.kind !== 'custom' || r.tag !== 'damageModify') continue;
+        const d = r.data as {
+          filter?: import('./types.js').ObjectFilter;
+          selfOnly?: boolean;
+          toFilter?: import('./types.js').ObjectFilter;
+          toPlayers?: boolean;
+          toObjects?: boolean;
+          toController?: 'you' | 'opponent';
+          combatOnly?: boolean;
+          noncombatOnly?: boolean;
+          ifAtLeast?: number;
+          setTo?: number;
+          times?: number;
+          plus?: number;
+          minus?: number;
+          half?: 'up' | 'down';
+        } | undefined;
+        if (!d) continue;
+        if (d.combatOnly && !combat) continue;
+        if (d.noncombatOnly && combat) continue;
+        if (d.ifAtLeast !== undefined && dealt < d.ifAtLeast) continue;
+        if (d.selfOnly) {
+          if (sourceId !== id) continue;
+        } else if (d.filter && (!src || !matchesFilter(this, src, { ...d.filter, zone: undefined }, { sourceId: id, controller: holder.controller }))) continue;
+        if (d.toPlayers && target.kind !== 'player') continue;
+        if (d.toObjects && target.kind !== 'object') continue;
+        const tc = target.kind === 'player' ? target.id : target.kind === 'object' ? this.state.objects[target.id]?.controller : undefined;
+        if (d.toController === 'you' && tc !== holder.controller) continue;
+        if (d.toController === 'opponent' && (tc === undefined || tc === holder.controller)) continue;
+        if (d.toFilter) {
+          if (target.kind !== 'object') continue;
+          const o = this.state.objects[target.id];
+          if (!o || !matchesFilter(this, o, { ...d.toFilter, zone: undefined }, { sourceId: id, controller: holder.controller })) continue;
+        }
+        if (d.setTo !== undefined) dealt = d.setTo;
+        if (d.times !== undefined) dealt *= d.times;
+        if (d.plus !== undefined) dealt += d.plus;
+        if (d.minus !== undefined) dealt -= d.minus;
+        if (d.half) dealt = d.half === 'up' ? Math.ceil(dealt / 2) : Math.floor(dealt / 2);
+        if (dealt < 0) dealt = 0;
+      }
+    }
+    if (dealt <= 0) return 0;
     if (target.kind === 'player') {
       const p = this.player(target.id);
       // Prevention rules on player
@@ -2215,16 +2299,22 @@ export class Game {
       amount = r.data >= 1 ? amount * r.data : Math.floor(amount * r.data);
     }
     for (const src of this.state.battlefield.map((x) => this.obj(x))) {
-      if (src.controller !== o.controller) continue;
       for (const ab of this.scriptFor(src).abilities) {
         if (ab.kind === 'replacement' && ab.event === 'counterAdded') {
+          const who = ab.who ?? 'you';
+          if (who === 'you' && src.controller !== o.controller) continue;
+          if (who === 'opponent' && src.controller === o.controller) continue;
           if (ab.counterType && ab.counterType !== type) continue;
           if (ab.filter && !matchesFilter(this, o, ab.filter, { sourceId: src.id, controller: src.controller })) continue;
           if (ab.multiply) amount *= ab.multiply;
+          if (ab.half) amount = ab.half === 'up' ? Math.ceil(amount / 2) : Math.floor(amount / 2);
           amount += ab.extra;
+          if (ab.minus) amount -= ab.minus;
+          if (amount < 0) amount = 0;
         }
       }
     }
+    if (amount <= 0) return;
     o.counters[type] = (o.counters[type] ?? 0) + amount;
     this.touch();
     this.log(`${amount} ${type} counter${amount === 1 ? '' : 's'} placed on ${this.nameOf(id)}.`, { kind: 'counters', data: { objectId: id, type, delta: amount } });

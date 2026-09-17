@@ -59,6 +59,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'nonbasic' && ch.supertypes.includes('Basic')) return false;
   if (filter.custom === 'nonsnow' && ch.supertypes.includes('Snow')) return false;
   if (filter.custom === 'colored' && ch.colors.length === 0) return false;
+  if (filter.custom === 'oddManaValue' && ch.manaValue % 2 !== 1) return false;
+  if (filter.custom === 'evenManaValue' && ch.manaValue % 2 !== 0) return false;
   if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
   if (filter.custom === 'createdBySource' && (ctx.sourceId === null || obj.memory.createdBy !== ctx.sourceId)) return false;
