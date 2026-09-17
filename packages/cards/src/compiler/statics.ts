@@ -40,6 +40,48 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 154 ----
+  // "You may play lands and cast Insect spells from your graveyard."
+  sxr154: {
+  if ((m = L.match(/^You may (play lands and cast (.+?) spells|play lands|cast (.+?) spells|play cards|cast spells|play lands and cast spells) from your graveyard(?:, but not from anywhere else)?$/i))) {
+    const what = m[1].toLowerCase();
+    const spellNoun = m[2] ?? m[3];
+    const filter = spellNoun ? parseNoun(`a ${spellNoun} spell`)?.filter : undefined;
+    if (spellNoun && !filter) break sxr154;
+    const out: AbilitySpec[] = [];
+    if (/cast|play cards/.test(what)) out.push({ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: filter ? { ...filter, zone: undefined } : undefined } } });
+    if (/play lands|play cards/.test(what)) out.push({ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playLandsFromGraveyard' } });
+    if (out.length) return out;
+  }
+  }
+  // "You may play lands and cast spells with mana value 4 or greater from the top of your library."
+  sxr154b: {
+  if ((m = L.match(/^You may (play lands and cast|cast) (.+?) from the top of your library$/i))) {
+    const label = m[2].trim();
+    const noun = /^spells$/i.test(label) ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label.replace(/spells\b/i, 'spell')}`) : parseNoun(`a ${label} spell`);
+    if (!noun || !noun.confident) break sxr154b;
+    const f = { ...noun.filter };
+    delete f.zone;
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data: { lands: /play lands/i.test(m[1]), spells: true, filter: Object.keys(f).length ? f : undefined } } }];
+  }
+  }
+  // "You may cast ~ from your graveyard by paying {2}{W} rather than paying its mana cost."
+  if ((m = L.match(/^You may cast ~ from your graveyard by (.+?) (in addition to paying its other costs|rather than paying its mana cost)$/i))) {
+    const GERUND: Record<string, string> = { paying: 'Pay', discarding: 'Discard', exiling: 'Exile', removing: 'Remove', sacrificing: 'Sacrifice', returning: 'Return', revealing: 'Reveal', tapping: 'Tap', untapping: 'Untap' };
+    const costText = m[1]
+      .replace(/\b(paying|discarding|exiling|removing|sacrificing|returning|revealing|tapping|untapping)\b/gi, (w) => GERUND[w.toLowerCase()].toLowerCase())
+      .replace(/^[a-z]/, (c) => c.toUpperCase());
+    const cost = parseCost(m[1].replace(/^paying /i, '')) ?? parseCost(costText);
+    if (cost) {
+      if (/rather than/i.test(m[2])) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'altCostForSpells', data: { cost: cost.mana ?? '{0}', filter: { nameIs: '~' }, fromZone: 'graveyard' } } }];
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { nameIs: '~' }, extraCost: cost } } }];
+    }
+  }
+  // "You may cast ~ from your graveyard or from exile." / "You may cast ~ from your graveyard."
+  if (/^You may cast ~ from your graveyard(?: or from exile)?(?:, but not from anywhere else)?$/i.test(L)) {
+    const out: AbilitySpec[] = [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { nameIs: '~' } } } }];
+    return out;
+  }
   // ---- Round 152 ----
   // "Enchanted permanent is a colorless Clue artifact with \"{2}, Sacrifice ~: Draw a card\" and loses all other abilities."
   if ((m = L.match(/^(.+?) (?:is|are) (.+?) with "(.+?)" and loses? all (?:other )?(?:card types and abilities|abilities|types|card types)$/i))) {
