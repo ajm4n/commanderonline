@@ -483,6 +483,21 @@ export class Game {
       this.scriptCache.set(key, s);
     }
     if (obj.faceIndex > 0 && s.faces?.[obj.faceIndex - 1]) s = s.faces[obj.faceIndex - 1];
+    // Mutate: a merged permanent has every ability of the cards in its stack.
+    if (obj.mergedCards?.length) {
+      const mkey = `merged:${key}:${obj.mergedCards.map((c) => c.oracleId || c.name).join('|')}`;
+      let ms = this.scriptCache.get(mkey);
+      if (!ms) {
+        const extraAbilities = obj.mergedCards.flatMap((c) => {
+          const cs = this.scriptCache.get(c.oracleId || c.name) ?? this.scriptProvider(c);
+          this.scriptCache.set(c.oracleId || c.name, cs);
+          return cs.abilities.filter((ab) => ab.kind !== 'spell');
+        });
+        ms = { ...s, abilities: [...s.abilities, ...extraAbilities] };
+        this.scriptCache.set(mkey, ms);
+      }
+      s = ms;
+    }
     // Granted rules text ("gains 'When this creature dies, ...'") compiles like any other oracle text.
     const granted: string[] = [];
     for (const ce of this.state.continuousEffects) {

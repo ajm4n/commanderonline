@@ -112,6 +112,8 @@ export interface GameObject {
   attachments: ObjectId[];
   /** Soulbond: the creature this one is paired with. */
   pairedWith?: ObjectId | null;
+  /** Mutate: the other cards merged into this permanent (it keeps all their abilities). */
+  mergedCards?: CardData[];
   isCommander: boolean;
   /** Number of times cast from the command zone (for commander tax). */
   commanderCasts: number;
@@ -531,6 +533,7 @@ export type GameEventName =
   | 'plotted'
   | 'clashed'
   | 'gotEnergy'
+  | 'mutates'
   | 'cleanup';
 
 export interface GameEvent {

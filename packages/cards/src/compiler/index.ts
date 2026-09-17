@@ -169,6 +169,11 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    if ((m = line.match(/^Mutate ((?:\{[^}]+\})+)$/i))) {
+      alternativeCosts.push({ id: 'mutate', text: line, cost: { mana: m[1] }, zone: 'hand' });
+      compiledLines.push(line);
+      continue;
+    }
     if ((m = line.match(/^Teamwork (\d+)$/i))) {
       additionalCost = { ...(additionalCost ?? {}), optional: true, tapUntappedTotalPower: { filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' }, power: parseInt(m[1], 10) } };
       compiledLines.push(line);

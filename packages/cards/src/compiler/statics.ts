@@ -125,6 +125,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damagePlus', data: { filter: { controller: 'you' }, plus: plusAmt, noncombatOnly: /noncombat/i.test(m[1] ?? '') || undefined, combatOnly: /^combat/i.test(m[1] ?? '') || undefined, toOpponents: /opponent/i.test(m[2]) || undefined } } }];
   }
   // "Once during each of your turns, you may cast an artifact or Human spell from your graveyard with mana value less than or equal to X."
+  if (/^You may cast ~ from your graveyard using its mutate ability$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { nameIs: '~' } } } }];
   if ((m = L.match(/^(Once during each of your turns, )?[Yy]ou may cast (.+?) (?:spells? )?from your graveyard(?: with mana value (?:less than or equal to|equal to or less than) (.+?))?$/i))) {
     const noun = parseNoun(`a ${m[2].replace(/^(?:a|an) /i, '').replace(/ spells?$/i, '')} spell`);
     if (noun) {

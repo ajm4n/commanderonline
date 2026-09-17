@@ -94,6 +94,34 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
   const isPermanent = /\b(Creature|Artifact|Enchantment|Planeswalker|Land|Battle)\b/.test(face.typeLine) && !/\b(Instant|Sorcery)\b/.test(face.typeLine);
   g.log(`Resolving: ${item.text}`, { kind: 'resolve', data: { stackId: item.id } });
 
+  if (isPermanent && obj && !isCopy && obj.additionalCostsPaid.includes('mutate')) {
+    // Mutate: merge with a non-Human creature you control instead of entering on its own.
+    const cands = g.state.battlefield
+      .map((id) => g.state.objects[id])
+      .filter((o) => o && o.controller === item.controller && !o.faceDown && g.characteristics(o.id).types.includes('Creature') && !g.characteristics(o.id).subtypes.includes('Human'))
+      .map((o) => o!.id);
+    if (cands.length) {
+      const pickResp = yield* g.ask({ type: 'chooseObjects', player: item.controller, prompt: `${face.name}: choose a non-Human creature to mutate onto`, candidates: cands, min: 1, max: 1, sourceId: obj.id });
+      const host = pickResp.type === 'objects' && pickResp.ids[0] !== undefined ? pickResp.ids[0] : cands[0];
+      const hostObj = g.state.objects[host];
+      if (hostObj) {
+        const overResp = yield* g.ask({ type: 'chooseOption', player: item.controller, prompt: `Mutate ${face.name} over or under ${g.nameOf(host)}?`, options: [{ id: 'over', label: 'Over (it becomes the top card)' }, { id: 'under', label: 'Under (keep the current top card)' }], min: 1, max: 1, sourceId: obj.id });
+        const over = !(overResp.type === 'options' && overResp.ids[0] === 'under');
+        const mutating = obj.copyOf ?? obj.card;
+        if (over) {
+          hostObj.mergedCards = [...(hostObj.mergedCards ?? []), hostObj.copyOf ?? hostObj.card];
+          hostObj.copyOf = mutating;
+        } else {
+          hostObj.mergedCards = [...(hostObj.mergedCards ?? []), mutating];
+        }
+        g.moveObject(obj.id, 'exile', { skipEvents: true });
+        g.log(`${face.name} mutates ${over ? 'over' : 'under'} ${g.nameOf(host)}.`);
+        g.touch();
+        g.emit({ name: 'mutates', objectId: host, playerId: item.controller });
+        return;
+      }
+    }
+  }
   if (isPermanent && obj && !isCopy) {
     const fromStack = true;
     const faceDown = obj.memory['castFaceDown'] === true;
