@@ -4217,6 +4217,69 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 158 ----
+  // "X target attacking creatures become blocked."
+  [/^(?:(\w+|X) )?target (.+?) become blocked$/i, (m, ctx) => {
+    const n = m[1] ? (m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1])) : 1;
+    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+    if (n === null || !noun || !noun.confident) return null;
+    const spec = toTargetSpec({ ...noun, target: true } as never);
+    if (!spec) return null;
+    if (n === 'X') ctx.targets.push({ ...spec, countX: { times: 1 }, distinct: true });
+    else ctx.targets.push({ ...spec, min: n as number, max: n as number, distinct: true });
+    return [{ kind: 'becomeBlocked', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  // "Those players each discard two cards at random."
+  [/^(those players|they|each of those players) each discards? (?:a card|(\w+|X) cards?)( at random)?$/i, (m, ctx) => {
+    const who = playerRef(/those players|each of those players/i.test(m[1]) ? 'they' : m[1], ctx);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || n === null) return null;
+    return [{ kind: 'discard', amount: n as Amount, who, random: !!m[3] || undefined }];
+  }],
+  // "They may discard up to X cards." / "You may discard up to two cards."
+  [/^(?:(.+?) )?may discard up to (\w+|X) cards?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : YOU;
+    const n = wordToNumber(m[2]);
+    if (!who || n === null) return null;
+    return [{ kind: 'discard', amount: n as Amount, who, upTo: true }];
+  }],
+  // "~ becomes all colors until end of turn."
+  [/^(.+?) becomes? all colors(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'setColors', colors: ['W', 'U', 'B', 'R', 'G'], on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
+  }],
+  // "You have no maximum hand size until your next turn."
+  [/^you have no maximum hand size(?: until your next turn| for the rest of the game| this turn)?$/i, () => [{ kind: 'grantPlayerRule', rule: { kind: 'noMaxHandSize' } }]],
+  // "You can cast only one more spell this turn."
+  [/^you can cast only (\w+) more spells? this turn$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: { count: n, fromNow: true } } }];
+  }],
+  // "Proliferate, then proliferate again."
+  [/^proliferate, then proliferate again$/i, () => [{ kind: 'proliferate' }, { kind: 'proliferate' }]],
+  // "Then draw half X cards, rounded down."
+  [/^(?:then )?draw (half|a third of) X cards(?:, rounded (up|down))?$/i, (m) => {
+    const round: 'up' | 'down' = m[2]?.toLowerCase() === 'up' ? 'up' : 'down';
+    const amount: Amount = /half/i.test(m[1]) ? { kind: 'half', a: 'X', round } : { kind: 'divide', a: 'X', by: 3, round };
+    return [{ kind: 'draw', amount }];
+  }],
+  // "Its controller manifests the top card of their library."
+  [/^(.+?) manifests the top card of their library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'manifest', amount: 1, who }] : null;
+  }],
+  // "~ loses defender and becomes a Human until end of turn."
+  [/^(.+?) loses (.+?) and becomes? (?:a|an) ([A-Z][\w' -]*)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const kws = parseKeywordList(m[2]);
+    if (!ref || !kws) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [
+      { kind: 'removeKeywords', keywords: kws, on: ref, duration: dur },
+      { kind: 'addTypes', types: [], subtypes: [m[3]], on: ref, duration: dur },
+    ];
+  }],
   // ---- Round 156 ----
   // "End the combat phase."
   [/^end the combat phase$/i, () => [{ kind: 'endCombatPhase' }]],
