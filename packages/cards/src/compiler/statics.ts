@@ -40,6 +40,55 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 157 ----
+  // "You and Humans you control have hexproof."
+  if ((m = L.match(/^You and (.+?) (?:has|have) (.+)$/i))) {
+    const a = affectsOf(m[1]);
+    const kws = parseKeywordList(m[2]);
+    if (a.ok && kws) {
+      return [
+        { kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playerKeywords', data: kws } },
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } },
+      ];
+    }
+  }
+  // "Your life total cannot change."
+  if (/^Your life total cannot change$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'lifeTotalLocked' } }];
+  // "You cannot spend mana to cast ~."
+  if (/^You cannot spend mana to cast ~$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castManaSourceRestriction', data: { filter: { nothing: true }, nameIs: '~' } } }];
+  // "~ enters tapped and with three charge counters on it."
+  if ((m = L.match(/^~ enters tapped and with (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i))) {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n === 'number') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, counters: { counter: m[2], amount: n } }];
+  }
+  // "~ enters tapped if it is not your turn." / "~ enters tapped if it was played from your hand."
+  if ((m = L.match(/^~ enters tapped if (.+)$/i))) {
+    const cond = parseCondition(m[1].replace(/^it (?:is|was) /i, '~ $1 ').replace(/^~ is not your turn$/i, 'it is not your turn'), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })
+      ?? parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond && cond.kind !== 'manual') return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, condition: cond }];
+  }
+  // "~ crews Vehicles as though its power were 2 greater."
+  if ((m = L.match(/^(.+?) (?:crews Vehicles|saddles Mounts and crews Vehicles) as though (?:its|their) power were (\d+) greater$/i))) {
+    const _r157 = objRule(m[1], { kind: 'custom', tag: 'crewPowerBonus', data: parseInt(m[2], 10) });
+    if (_r157) return _r157;
+  }
+  // "You may play any number of lands on each of your turns."
+  if (/^You may play any number of lands (?:on|during) each of your turns$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'extraLandDrop', count: 99 } }];
+  // "You may play Forests from your graveyard."
+  if ((m = L.match(/^You may play (.+?) from your graveyard$/i))) {
+    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playLandsFromGraveyard', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }
+  // "You may cast spells from among cards exiled with ~."
+  if ((m = L.match(/^You may (?:cast|play) (.+?) from among cards exiled with ~$/i))) {
+    const label = m[1].trim();
+    const noun = /^(?:spells|cards)$/i.test(label) ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label}`) : parseNoun(`a ${label} spell`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castExiledWithSource', data: { filter: Object.keys(f).length ? f : undefined } } }];
+    }
+  }
   // ---- Round 156 ----
   // "During your turn, ~ costs {2} less to cast." / "During turns other than yours, ~ costs {3} more to cast."
   if ((m = L.match(/^During (your turn|turns other than yours|each opponent's turn), ((?:~|This spell) costs? .+)$/i))) {
