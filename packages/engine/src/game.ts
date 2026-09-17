@@ -2119,6 +2119,16 @@ export class Game {
       }
       if (!this.preventionOff()) for (const r of ch.rules) if (r.kind === 'damagePrevention') dealt = r.amount === 'all' ? 0 : Math.max(0, dealt - r.amount);
       if (dealt <= 0) return 0;
+      // "If damage would be dealt to ~, put that many +1/+1 counters on it instead."
+      {
+        const conv = ch.rules.find((r) => r.kind === 'custom' && r.tag === 'damageToCounters');
+        if (conv) {
+          const counter = (conv as { data?: { counter?: string } }).data?.counter ?? '+1/+1';
+          this.addCounters(obj.id, counter, dealt);
+          this.log(`${this.nameOf(obj.id)} gets ${dealt} ${counter} counter(s) instead of damage.`);
+          return dealt;
+        }
+      }
       if (ch.types.includes('Planeswalker')) {
         obj.counters['loyalty'] = Math.max(0, (obj.counters['loyalty'] ?? 0) - dealt);
       } else if (ch.types.includes('Battle')) {

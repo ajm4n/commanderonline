@@ -773,6 +773,32 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: '7b', ...(e.power !== undefined ? { setPower: amt(e.power) } : {}), ...(e.toughness !== undefined ? { setToughness: amt(e.toughness) } : {}) } });
       return;
     }
+    case 'exchangeLifeWith': {
+      const o = g.resolveObjects(e.what, ctx)[0];
+      if (!o) return;
+      const p = e.who ? (g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller) : ctx.controller;
+      const ch = g.characteristics(o.id);
+      const stat = (e.stat === 'power' ? ch.power : ch.toughness) ?? 0;
+      const life = g.player(p).life;
+      if (stat > life) g.gainLife(p, stat - life);
+      else if (stat < life) g.loseLife(p, life - stat);
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: 'permanent', modification: { layer: '7b', ...(e.stat === 'power' ? { setPower: life } : { setToughness: life }) } });
+      g.log(`${g.player(p).name} exchanges life total with ${g.nameOf(o.id)}.`);
+      return;
+    }
+    case 'exchangeZones': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pl = g.player(p);
+        const get = (z: import('./types.js').ZoneName): ObjectId[] => (z === 'hand' ? pl.hand : z === 'graveyard' ? pl.graveyard : pl.library);
+        const a = [...get(e.a)];
+        const b = [...get(e.b)];
+        for (const id of a) g.moveObject(id, e.b, { skipEvents: true });
+        for (const id of b) g.moveObject(id, e.a, { skipEvents: true });
+        if (e.shuffle || e.a === 'library' || e.b === 'library') g.shuffleLibrary(p);
+        g.log(`${pl.name} exchanges their ${e.a} and ${e.b}.`);
+      }
+      return;
+    }
     case 'becomeBlocked': {
       for (const o of g.resolveObjects(e.what, ctx)) {
         if (o.attacking === null || o.wasBlocked) continue;
@@ -1657,10 +1683,21 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'may': {
-      const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
-      const resp = yield* g.ask({ type: 'yesNo', player: who, prompt: e.prompt ?? `${ctx.sourceId !== null ? g.nameOf(ctx.sourceId) : 'Effect'}: ${describe(e.effects)}?`, sourceId: ctx.sourceId ?? undefined });
-      if (resp.type === 'yesNo' && resp.value) yield* executeEffects(g, e.effects, ctx);
-      else if (e.else?.length) yield* executeEffects(g, e.else, ctx);
+      const players = e.who ? g.resolvePlayers(e.who, ctx) : [ctx.controller];
+      if (!players.length) return;
+      let accepted = 0;
+      let declined = 0;
+      for (const who of players) {
+        const resp = yield* g.ask({ type: 'yesNo', player: who, prompt: e.prompt ?? `${ctx.sourceId !== null ? g.nameOf(ctx.sourceId) : 'Effect'}: ${describe(e.effects)}?`, sourceId: ctx.sourceId ?? undefined });
+        const yes = resp.type === 'yesNo' && resp.value;
+        if (yes) accepted++;
+        else declined++;
+        const sub = players.length > 1 ? { ...ctx, iter: { kind: 'player' as const, id: who } } : ctx;
+        if (yes) yield* executeEffects(g, e.effects, sub);
+        else if (e.else?.length) yield* executeEffects(g, e.else, sub);
+      }
+      ctx.memory['acceptedCount'] = accepted;
+      ctx.memory['declinedCount'] = declined;
       return;
     }
     case 'unlessPays': {

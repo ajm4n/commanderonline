@@ -4032,6 +4032,41 @@ const PATTERNS: Pattern[] = [
     const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
     return [{ kind: 'forEach', over, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'graveyard', ownerRef: { ref: 'iter' } }, count: 1, key }] }];
   }],
+  // ---- Round 113 ----
+  // "Each opponent may sacrifice a creature. For each opponent who doesn't, you draw a card."
+  [/^for each (?:opponent|player) who (cannot|does not|doesn't|didn't [^,]*|does|did), (.+)$/i, (m, ctx) => {
+    const negative = /^(?:cannot|does not|doesn't|didn't)/i.test(m[1]);
+    const inner = parseSentence(m[2], ctx);
+    if (!inner) return null;
+    return [{ kind: 'repeat', times: { kind: 'ctxMemory', key: negative ? 'declinedCount' : 'acceptedCount' }, effects: inner }];
+  }],
+  // "If damage would be dealt to ~, put that many +1/+1 counters on it instead."
+  [/^if damage would be dealt to (~|it), put that many ([+-]\d+\/[+-]\d+|[\w'-]+) counters on it instead$/i, (m) => [
+    { kind: 'applyRule', rule: { kind: 'custom', tag: 'damageToCounters', data: { counter: m[2] } }, on: SELF, duration: 'permanent' },
+  ]],
+  // "If a creature enters this way, it enters with an additional +1/+1 counter on it."
+  [/^if (?:a|an) (.+?) enters this way, it enters with (?:an additional|(\w+) additional|two additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const n = m[2] ? wordToNumber(m[2]) : /two additional/i.test(m[0]) ? 2 : 1;
+    if (!noun || typeof n !== 'number') return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'extraEnterCounters', data: { filter: { ...noun.filter, zone: undefined }, counter: m[3], amount: n } }, duration: 'thisTurn' }];
+  }],
+  // "For as long as that card remains exiled, you may play it."
+  [/^for as long as (?:that card|those cards|it|they) remains? exiled, (?:you|its owner) may (?:play|cast) (?:it|them)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'permanent', owner: /its owner/i.test(m[0]) || undefined }];
+  }],
+  // "Exchange your life total with ~'s power."
+  [/^exchange your life total with ~'s (power|toughness)$/i, (m) => [{ kind: 'exchangeLifeWith', what: SELF, stat: m[1].toLowerCase() as 'power' }]],
+  [/^exchange target opponent's life total with ~'s (power|toughness)$/i, (m, ctx) => {
+    const who = objRef('target opponent', ctx);
+    if (!who) return null;
+    return [{ kind: 'exchangeLifeWith', what: SELF, stat: m[1].toLowerCase() as 'power', who }];
+  }],
+  // "Exchange your hand and graveyard." / "Exchange your graveyard and library."
+  [/^exchange your (hand|graveyard|library) and (?:your )?(hand|graveyard|library)(?:, then shuffle)?$/i, (m) => [
+    { kind: 'exchangeZones', a: m[1].toLowerCase() as 'hand', b: m[2].toLowerCase() as 'hand', shuffle: /shuffle/i.test(m[0]) || undefined },
+  ]],
   // ---- Round 112 ----
   // "Each player who controls a multicolored creature draws a card."
   [/^each (player|opponent) who (controls .+|discarded a card this way|drew a card this turn|lost life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.+)$/i, (m, ctx) => {

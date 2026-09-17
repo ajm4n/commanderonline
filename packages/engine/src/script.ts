@@ -284,6 +284,10 @@ export type Effect =
   | { kind: 'setPT'; power?: Amount; toughness?: Amount; on: Ref; duration?: Duration }
   /** "Target unblocked attacking creature becomes blocked." */
   | { kind: 'becomeBlocked'; what: Ref }
+  /** "Exchange your life total with ~'s power." */
+  | { kind: 'exchangeLifeWith'; what: Ref; stat: 'power' | 'toughness'; who?: Ref }
+  /** "Exchange your hand and graveyard." */
+  | { kind: 'exchangeZones'; a: ZoneName; b: ZoneName; who?: Ref; shuffle?: boolean }
   | { kind: 'grantKeywords'; keywords: string[]; on: Ref; duration?: Duration; /** Grant only this many of `keywords`, chosen by the controller ("gains your choice of flying or haste"). */ choose?: number }
   /** "~ loses defender until end of turn." */
   | { kind: 'loseKeywords'; keywords: string[]; on: Ref; duration?: Duration }
