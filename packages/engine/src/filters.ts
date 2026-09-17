@@ -36,6 +36,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.colors && !filter.colors.some((c) => ch.colors.includes(c))) return false;
   if (filter.colorless && ch.colors.length > 0) return false;
   if (filter.colorCount !== undefined && ch.colors.length !== filter.colorCount) return false;
+  if (filter.allColors && filter.colors && !filter.colors.every((c) => ch.colors.includes(c))) return false;
   if (filter.monocolored && ch.colors.length !== 1) return false;
   if (filter.multicolored && ch.colors.length < 2) return false;
   if (filter.controller) {

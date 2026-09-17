@@ -2419,8 +2419,9 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
       const picks = r.type === 'options' && r.ids.length ? r.ids : from.slice(0, count);
       for (const c of picks) counters[c] = (counters[c] ?? 0) + 1;
     }
+    const chooser = ab.chooseByOpponent ? g.opponentsOf(controller)[0] ?? controller : controller;
     if (ab.choose === 'color') {
-      const resp = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose a color`, options: COLORS.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: id });
+      const resp = yield* g.ask({ type: 'chooseOption', player: chooser, prompt: `${o.card.name}: choose a color`, options: COLORS.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: id });
       chosen[ab.chooseKey ?? 'color'] = resp.type === 'options' ? resp.ids[0] : 'W';
     } else if (ab.choose === 'opponent') {
       const opps = g.opponentsOf(controller);
@@ -2431,7 +2432,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
       }
       chosen[ab.chooseKey ?? 'opponent'] = pick;
     } else if (ab.choose === 'creatureType') {
-      yield* executeEffect(g, { kind: 'chooseCreatureType', key: ab.chooseKey ?? 'creatureType' }, ectx);
+      yield* executeEffect(g, { kind: 'chooseCreatureType', key: ab.chooseKey ?? 'creatureType' }, ab.chooseByOpponent ? { ...ectx, controller: chooser } : ectx);
       chosen[ab.chooseKey ?? 'creatureType'] = ectx.memory[ab.chooseKey ?? 'creatureType'];
     } else if (ab.choose === 'cardName') {
       yield* executeEffect(g, { kind: 'nameCard', key: ab.chooseKey ?? 'cardName' }, ectx);
@@ -2450,8 +2451,12 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
         if (pick !== undefined) chosen[ab.chooseKey ?? 'chosen'] = pick;
       }
     } else if (ab.choose === 'option' && ab.chooseOptions?.length) {
-      const r = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose`, options: ab.chooseOptions.map((x) => ({ id: x, label: x })), min: 1, max: 1, sourceId: id });
-      chosen[ab.chooseKey ?? 'choice'] = r.type === 'options' ? r.ids[0] : ab.chooseOptions[0];
+      if (ab.chooseAtRandom) {
+        chosen[ab.chooseKey ?? 'choice'] = ab.chooseOptions[g.rng.int(ab.chooseOptions.length)];
+      } else {
+        const r = yield* g.ask({ type: 'chooseOption', player: chooser, prompt: `${o.card.name}: choose`, options: ab.chooseOptions.map((x) => ({ id: x, label: x })), min: 1, max: 1, sourceId: id });
+        chosen[ab.chooseKey ?? 'choice'] = r.type === 'options' ? r.ids[0] : ab.chooseOptions[0];
+      }
     }
     // "As ~ enters, <effects>": run them before the permanent is on the battlefield.
     if (ab.effects?.length) {

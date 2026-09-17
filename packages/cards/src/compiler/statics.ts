@@ -40,6 +40,55 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 144 ----
+  // "As ~ enters or is turned face up, ..." — same as an enters replacement.
+  if ((m = L.match(/^As ~ enters or is turned face up, (.+)$/i))) {
+    const inner = parseStatic(`As ~ enters, ${m[1]}`, isCreatureOrPermanent);
+    if (inner) return inner;
+  }
+  // "As ~ enters, choose Elemental, Elf, Faerie, Giant, Goblin, Kithkin, Merfolk, or Treefolk."
+  if ((m = L.match(/^As ~ enters, choose ([A-Z][\w-]+(?:, [A-Z][\w-]+)+,? or [A-Z][\w-]+)$/))) {
+    const opts = m[1].split(/,? or |, /).map((w) => w.trim()).filter(Boolean);
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'option', chooseOptions: opts, chooseKey: 'creatureType' }];
+  }
+  // "As ~ enters, choose a card type other than creature or land."
+  if ((m = L.match(/^As ~ enters, choose a card type other than (.+)$/i))) {
+    const excluded = m[1].toLowerCase().split(/,? or |, /).map((w) => w.trim());
+    const all = ['Artifact', 'Creature', 'Enchantment', 'Instant', 'Land', 'Planeswalker', 'Sorcery', 'Battle'];
+    const opts = all.filter((t) => !excluded.includes(t.toLowerCase()));
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'option', chooseOptions: opts, chooseKey: 'cardType' }];
+  }
+  // "As ~ enters, an opponent chooses a creature type."
+  if ((m = L.match(/^As ~ enters, an opponent chooses (a creature type|a color|a card name)$/i))) {
+    const key = /creature type/i.test(m[1]) ? 'creatureType' : /color/i.test(m[1]) ? 'color' : 'cardName';
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: key === 'creatureType' ? 'creatureType' : key === 'color' ? 'color' : 'cardName', chooseKey: key, chooseByOpponent: true }];
+  }
+  // "As ~ enters, choose 2, 3, or 4 at random."
+  if ((m = L.match(/^As ~ enters, choose ((?:\d+, )+(?:or )?\d+) at random$/i))) {
+    const opts = m[1].split(/,? or |, /).map((w) => w.trim()).filter(Boolean);
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'option', chooseOptions: opts, chooseKey: 'choice', chooseAtRandom: true }];
+  }
+  // "As ~ enters, it becomes your choice of a 3/3 creature, a 2/2 creature with flying, or a 1/6 creature with defender."
+  if ((m = L.match(/^As ~ enters, (?:it|~) becomes your choice of (.+)$/i))) {
+    const parts = m[1].split(/,? or |, /).map((x) => x.trim().replace(/^(?:a|an) /i, '')).filter(Boolean);
+    const opts: string[] = [];
+    const effects: Effect[] = [];
+    let ok = parts.length > 1;
+    for (const part of parts) {
+      const pm = part.match(/^(\d+)\/(\d+)(?: ([\w ]*?))?(?: creature)?(?: with (.+))?$/i);
+      if (!pm) { ok = false; break; }
+      const kws = pm[4] ? parseKeywordList(pm[4]) : [];
+      if (!kws) { ok = false; break; }
+      const label = part;
+      opts.push(label);
+      const then: Effect[] = [{ kind: 'setPT', power: parseInt(pm[1], 10), toughness: parseInt(pm[2], 10), on: { ref: 'self' } }];
+      const subtypes = (pm[3] ?? '').split(/\s+/).filter((w) => /^[A-Z][a-z]/.test(w));
+      if (subtypes.length) then.push({ kind: 'addTypes', types: [], subtypes, on: { ref: 'self' } });
+      if (kws.length) then.push({ kind: 'grantKeywords', keywords: kws, on: { ref: 'self' } });
+      effects.push({ kind: 'conditional', if: { kind: 'chosenIs', key: 'ptChoice', value: label }, then });
+    }
+    if (ok) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'option', chooseOptions: opts, chooseKey: 'ptChoice', effects }];
+  }
   // ---- Round 142 ----
   // "If a land is tapped for mana, it produces {B} instead of any other type."
   if ((m = L.match(/^If (?:a|an|target) (.+?) (?:is|are) tapped for mana, (?:it|they) produces? ((?:\{[^}]+\})+|colorless mana|one mana of (?:any color|a colou?r of your choice)) instead of any other type(?: and amount)?(?: of mana)?(?: instead)?$/i))) {

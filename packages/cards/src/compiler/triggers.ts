@@ -101,7 +101,10 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     const splits: [string, string][] = [];
     {
       const c1 = line.match(/^((?:When(?:ever)?|At the beginning of) [^,]+?) (?:and|or) ((?:when(?:ever)?|at the beginning of) [^,]+?), (.+)$/i);
-      if (c1) splits.push([`${c1[1]}, ${c1[3]}`, `${c1[2].charAt(0).toUpperCase()}${c1[2].slice(1)}, ${c1[3]}`]);
+      if (c1) {
+        const bHalf = `${c1[2].charAt(0).toUpperCase()}${c1[2].slice(1)}`.replace(/^(When(?:ever)?) it /i, '$1 ~ ');
+        splits.push([`${c1[1]}, ${c1[3]}`, `${bHalf}, ${c1[3]}`]);
+      }
       const c2 = line.match(/^(When(?:ever)? ~) ([^,]+?) or ([^,]+?), (.+)$/i);
       if (c2) splits.push([`${c2[1]} ${c2[2]}, ${c2[4]}`, `${c2[1]} ${c2[3]}, ${c2[4]}`]);
       const c3 = line.match(/^(When(?:ever)?) (.+?) or (.+?), (.+)$/i);
@@ -182,6 +185,44 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  {
+    // ---- Round 144 heads ----
+    // "Whenever you draw your third card each turn, ..." (any ordinal, "each turn" or "in a turn")
+    if ((m = L.match(/^When(?:ever)? (you|an opponent|a player) draws? (?:your|their) (\w+) card (?:each turn|in a turn|this turn), (.+)$/i))) {
+      const n = wordToNumber(m[2].replace(/^(first|second|third|fourth|fifth|sixth|seventh)$/i, (w) => ({ first: 'one', second: 'two', third: 'three', fourth: 'four', fifth: 'five', sixth: 'six', seventh: 'seven' } as Record<string, string>)[w.toLowerCase()] ?? w));
+      if (typeof n === 'number') {
+        const who = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : undefined;
+        return { event: 'drawCard', filter: { player: who, nthThisTurn: n }, hasObject: true, hasPlayer: true, rest: m[3] };
+      }
+    }
+    // "Whenever you cast a spell that is white, ..."
+    if ((m = L.match(/^When(?:ever)? you cast a spell that is (white|blue|black|red|green), (.+)$/i))) {
+      const cn = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1].toLowerCase() as 'white'];
+      return { event: 'cast', filter: { player: 'you', object: { colors: [cn] } }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+    // "Whenever you cast a spell that is both red and white, ..." / "... that is white or blue"
+    if ((m = L.match(/^When(?:ever)? you cast a spell that is (?:both )?((?:white|blue|black|red|green)(?:(?:,? or | and )(?:white|blue|black|red|green))+), (.+)$/i))) {
+      const cols = m[1].split(/,? or | and /i).map((c) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[c.trim().toLowerCase() as 'white']);
+      if (cols.every((c) => !!c)) {
+        const both = /both/i.test(m[0]) || / and /i.test(m[1]);
+        return { event: 'cast', filter: { player: 'you', object: both ? { colors: cols, allColors: true } : { colors: cols } }, hasObject: true, hasPlayer: true, rest: m[2] };
+      }
+    }
+    // "Whenever ~ or another nontoken artifact you control dies or is put into exile from the battlefield, ..."
+    if ((m = L.match(/^When(?:ever)? (.+?) dies or is put into exile from the battlefield, (.+)$/i))) {
+      const a = parseTriggerHead(`Whenever ${m[1]} dies, ${m[2]}`);
+      if (a) {
+        const b = parseTriggerHead(`Whenever ${m[1]} is put into exile from the battlefield, ${m[2]}`);
+        const bh = b ? (() => { const { rest: _r, also: _a, ...rest } = b; void _r; void _a; return rest; })() : { event: 'exiled' as const, filter: a.filter, hasObject: true, hasPlayer: false };
+        return { ...a, also: [...(a.also ?? []), bh] };
+      }
+    }
+    // "Whenever a player casts a spell from their hand, ..."
+    if ((m = L.match(/^When(?:ever)? (a player|an opponent|you) casts? a spell from (?:their|your) hand, (.+)$/i))) {
+      const who = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : undefined;
+      return { event: 'cast', filter: { player: who, fromZone: 'hand' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+  }
 
   // ETB
   if ((m = L.match(/^Whenever ~ enters or attacks, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true }] };

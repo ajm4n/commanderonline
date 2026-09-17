@@ -342,6 +342,8 @@ export interface ObjectFilter {
   supertypes?: Supertype[];
   colors?: Color[]; // any of these
   colorless?: boolean;
+  /** Must be ALL of `colors`, not just any of them ("a spell that is both red and white"). */
+  allColors?: boolean;
   monocolored?: boolean;
   /** Exactly this many colours ("a spell that is exactly three colors"). */
   colorCount?: number;
