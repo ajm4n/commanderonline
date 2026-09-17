@@ -535,6 +535,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'searchLibrary': {
       ctx.memory['searched'] = 1;
+      for (const sp of playersOf(g, e.who, ctx)) g.emit({ name: 'searchedLibrary', playerId: sp, sourceId: ctx.sourceId ?? undefined });
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         const n = amt(e.count);
@@ -716,6 +717,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) g.playerLoses(p, 'effect');
       return;
     case 'proliferate': {
+      g.emit({ name: 'proliferated', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined });
       const cands: Target[] = [];
       for (const id of g.state.battlefield) if (Object.keys(g.obj(id).counters).length) cands.push({ kind: 'object', id });
       for (const p of g.activePlayers()) if (g.player(p).poison > 0 || g.player(p).experience > 0) cands.push({ kind: 'player', id: p });
@@ -1563,6 +1565,7 @@ export function counterStackItem(g: Game, stackId: number, toZone: 'graveyard' |
 
 export function attach(g: Game, whatId: ObjectId, toId: ObjectId) {
   const what = g.obj(whatId);
+  const wasOn = what.attachedTo;
   if (what.attachedTo !== null) {
     const host = g.state.objects[what.attachedTo];
     if (host) host.attachments = host.attachments.filter((x) => x !== whatId);
@@ -1571,6 +1574,7 @@ export function attach(g: Game, whatId: ObjectId, toId: ObjectId) {
   const to = g.obj(toId);
   if (!to.attachments.includes(whatId)) to.attachments.push(whatId);
   g.touch();
+  if (wasOn !== toId) g.emit({ name: 'becomesAttached', objectId: whatId, sourceId: toId, playerId: what.controller });
 }
 
 /**

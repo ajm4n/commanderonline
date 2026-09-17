@@ -1031,6 +1031,8 @@ export class Game {
     }
     if (f.custom === 'exhaust' && !(e.data as { exhaust?: boolean } | undefined)?.exhaust) return false;
     if (f.custom === 'wonFlip' && !(e.data as { won?: boolean } | undefined)?.won) return false;
+    if (f.custom === 'attachedToSelf' && e.sourceId !== obj.id) return false;
+    if (f.custom === 'attacksEnchantedPlayer' && (obj.attachedTo === null || e.otherPlayerId === undefined || e.otherPlayerId !== this.state.objects[obj.attachedTo]?.controller)) return false;
     if (f.custom === 'becomesNight' && (e.data as { to?: string } | undefined)?.to !== 'night') return false;
     if (f.custom === 'becomesDay' && (e.data as { to?: string } | undefined)?.to !== 'day') return false;
     if (f.custom?.startsWith('door:') && (e.data as { door?: number } | undefined)?.door !== Number(f.custom.slice(5))) return false;
@@ -2181,6 +2183,7 @@ export class Game {
           if (o.controller !== pid) continue;
           if (o.phasedOut) {
             o.phasedOut = false;
+            this.emit({ name: 'phasedIn', objectId: id, playerId: o.controller });
             continue;
           }
           const ch = this.characteristics(id);

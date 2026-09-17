@@ -520,6 +520,11 @@ export type GameEventName =
   | 'turnedFaceUp'
   | 'unlockedDoor'
   | 'dayNightChanged'
+  | 'searchedLibrary'
+  | 'becomesAttached'
+  | 'proliferated'
+  | 'connived'
+  | 'phasedIn'
   | 'cleanup';
 
 export interface GameEvent {
