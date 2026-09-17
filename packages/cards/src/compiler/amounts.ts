@@ -226,6 +226,9 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^(?:the number of )?(?:instant and sorcery|instant or sorcery) spells? you(?:'ve| have)? cast this turn$/))) return { kind: 'spellsCastThisTurn' };
   if ((m = t.match(/^(?:the number of )?cards? you(?:'ve| have)? cycled or discarded this turn$/))) return { kind: 'playerTurnStat', key: 'discard' };
   if ((m = t.match(/^(?:the number of )?times? (?:~|it|this creature) has mutated$/))) return { kind: 'eventsThisTurn', event: 'mutates', player: 'you' };
+  if ((m = t.match(/^the greatest (power|toughness|mana value) (?:among|of) (?:your commanders|a commander you own(?: on the battlefield or in the command zone)?|commanders? you own)$/))) {
+    return { kind: 'maxOf', stat: m[1] === 'power' ? 'power' : m[1] === 'toughness' ? 'toughness' : 'manaValue', filter: { isCommander: true, owner: 'you', zoneIn: ['battlefield', 'command'] } };
+  }
   if (t === 'the number of experience counters you have' || t === 'experience counter you have' || t === 'experience counters you have') return { kind: 'turnStat', key: 'experience' };
   if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
   if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {

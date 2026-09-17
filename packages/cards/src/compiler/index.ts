@@ -41,6 +41,9 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   const lines = normalizeOracle(card, faceName, text).flatMap((l) => {
     const cm = l.match(/^((?:~|This spell) costs? )(\{\d+\} (?:less|more) to cast (?:if|as long as) .+?) and (\{\d+\} (?:less|more) to cast (?:if|as long as) .+?)\.?$/i);
     if (cm) return [`${cm[1]}${cm[2]}.`, `${cm[1]}${cm[3]}.`];
+    // "Flashback {8}{G}{G}. This spell costs {X} less to cast this way, where X is …"
+    const kw = l.match(/^((?:Flashback|Harmonize|Replicate|Overload|Mutate|Morph|Megamorph|Disguise) (?:\{[^}]+\})+)\. (.+)$/i);
+    if (kw) return [kw[1], kw[2]];
     const also = l.match(/^(~ costs? .+?)\. It also (costs? .+?)\.?$/i);
     if (/^You may exert ~ as it attacks\./i.test(l)) return [l.replace(/^You may exert ~ as it attacks\./i, 'Whenever ~ attacks, you may exert ~.')];
     const ac = l.match(/^(As an additional cost to cast (?:~|this spell), .+?)\. ((?:~|This spell) costs? .+)$/i);
@@ -168,6 +171,38 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         compiledLines.push(line);
         continue;
       }
+    }
+    // Replicate: pay the cost any number of times, then copy the spell that many times.
+    if ((m = line.match(/^Replicate ((?:\{[^}]+\})+)$/i))) {
+      abilities.push({ kind: 'triggered', text: line, event: 'cast', filter: { self: true }, zone: 'stack', effects: [{ kind: 'copySpell', what: { ref: 'self' }, count: { kind: 'kickCount' } }] });
+      compiledLines.push(line);
+      continue;
+    }
+    // Harmonize: cast it from your graveyard for this cost, then exile it.
+    if ((m = line.match(/^Harmonize ((?:\{[^}]+\})+)$/i))) {
+      alternativeCosts.push({ id: 'harmonize', text: line, cost: { mana: m[1] }, zone: 'graveyard' });
+      compiledLines.push(line);
+      continue;
+    }
+    // Craft with X: exile this and matching permanents you control, then return it transformed.
+    if ((m = line.match(/^Craft with ([\w' -]+) ((?:\{[^}]+\})+)$/i))) {
+      const noun = parseNoun(`a ${m[1].toLowerCase() === 'artifact' || m[1].toLowerCase() === 'creature' ? m[1].toLowerCase() : m[1]}`);
+      if (noun) {
+        abilities.push({
+          kind: 'activated',
+          text: line,
+          cost: { mana: m[2], exileSelf: true, exileObjects: { filter: { ...noun.filter, zone: 'battlefield', controller: 'you', other: true }, count: 'any' } },
+          sorcerySpeed: true,
+          effects: [{ kind: 'returnToBattlefield', what: { ref: 'self' }, transformed: true, controller: 'owner' }],
+        });
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    if ((m = line.match(/^Flashback ((?:\{[^}]+\})+)$/i))) {
+      // The engine reads flashback straight off the oracle text.
+      compiledLines.push(line);
+      continue;
     }
     if ((m = line.match(/^More Than Meets the Eye ((?:\{[^}]+\})+)$/i))) {
       alternativeCosts.push({ id: 'converted', text: line, cost: { mana: m[1] }, zone: 'hand' });
@@ -342,6 +377,14 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       pushCostMod({ amount: (m[1].match(/\{([^}]+)\}/g) ?? []).reduce((s, x) => s + (/^\{\d+\}$/.test(x) ? parseInt(x.slice(1, -1), 10) : 1), 0), direction: 'more', perExtraTarget: true, text: line });
       compiledLines.push(line);
       continue;
+    }
+    if ((m = line.match(/^(?:~|This spell) costs? \{X\} (less|more) to cast(?: this way)?, where X is (.+?)\.?$/i))) {
+      const amt = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (amt !== null) {
+        pushCostMod({ amount: 1, direction: m[1].toLowerCase() as 'less' | 'more', perAmount: amt, text: line });
+        compiledLines.push(line);
+        continue;
+      }
     }
     if ((m = line.match(/^(?:~|This spell) costs? \{(\d+)\} (less|more) to cast for each (.+?)\.?$/i))) {
       const noun = parseNounLoose(m[3]);

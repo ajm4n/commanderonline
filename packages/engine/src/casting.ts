@@ -1076,13 +1076,13 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
         if (kicker) kicks = 1;
       }
     }
-  } else if (!opts.free && /^Multikicker /m.test(face.oracleText)) {
-    const kcost = face.oracleText.match(/Multikicker (\{[^\n]+?\})(?:\s|$)/)?.[1];
+  } else if (!opts.free && /^(?:Multikicker|Replicate) /m.test(face.oracleText)) {
+    const kcost = face.oracleText.match(/(?:Multikicker|Replicate) (\{[^\n]+?\})(?:\s|$)/)?.[1];
     if (kcost) {
       for (;;) {
         const total = computeCastCost(g, p, obj, faceIndex, { kicker: true, kicks: kicks + 1 });
         if (!solvePayment(total, 0, player.manaPool, manaSourcesFor(g, p))) break;
-        const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay the multikicker cost ${kcost} for ${face.name} ${kicks ? 'again' : ''} (${kicks} so far)?`, sourceId: id });
+        const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay the ${/^Replicate /m.test(face.oracleText) ? 'replicate' : 'multikicker'} cost ${kcost} for ${face.name} ${kicks ? 'again' : ''} (${kicks} so far)?`, sourceId: id });
         if (!(r.type === 'yesNo' && r.value)) break;
         kicks++;
       }
