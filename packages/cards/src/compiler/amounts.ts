@@ -319,5 +319,20 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^your devotion to (white|blue|black|red|green)$/))) return { kind: 'devotion', colors: [({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white']] };
   if (t === 'the number of creatures you control') return { kind: 'count', filter: { types: ['Creature'], controller: 'you' } };
   if (t === 'the number of spells you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
+  // ---- Round 105 ----
+  if (/^(?:the )?(?:amount of )?\{e\} (?:you )?paid this way$/.test(t)) return { kind: 'ctxMemory', key: 'energyPaid' };
+  if (/^(?:the )?excess damage dealt this way$/.test(t)) return { kind: 'triggerAmount' };
+  if (/^(?:the )?number of (?:cards|creatures|permanents|lands|artifacts|creature cards) (?:chosen|exiled from their hand|exiled from your hand|tapped|revealed) this way$/.test(t)) return { kind: 'ctxMemory', key: 'lastMoved' };
+  if (/^(?:the )?number of flips you (?:won|win)$/.test(t)) return { kind: 'ctxMemory', key: 'flipsWon' };
+  if (/^(?:the )?number of flips you (?:lost|lose)$/.test(t)) return { kind: 'ctxMemory', key: 'flipsLost' };
+  if (/^(?:the )?total (?:mana value|power|toughness) of those cards$/.test(t)) {
+    const which = /mana value/.test(t) ? 'manaValue' : /power/.test(t) ? 'power' : 'toughness';
+    if (which === 'manaValue') return { kind: 'totalManaValueRef', ref: ctx.lastObj ?? { ref: 'lastMoved' } };
+    return { kind: which === 'power' ? 'totalPowerRef' : 'totalToughnessRef', ref: ctx.lastObj ?? { ref: 'lastMoved' } };
+  }
+  if (/^(?:the )?total power of (?:the )?(?:creatures )?sacrificed(?: creatures)?(?: this way)?$/.test(t) || /^(?:the )?total power of the creatures sacrificed this way$/.test(t) || /^(?:the )?total power of the sacrificed creatures$/.test(t)) {
+    return { kind: 'totalPowerRef', ref: { ref: 'lastMoved' } };
+  }
+  if ((m = t.match(/^(?:the )?power of the creature (?:tapped|chosen|sacrificed|exiled|revealed) this way$/))) return { kind: 'power', ref: ctx.lastObj ?? { ref: 'lastMoved' } };
   return null;
 }

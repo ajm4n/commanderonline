@@ -76,6 +76,8 @@ export type Amount =
   | { kind: 'playerStatAmount'; stat: 'poison' | 'experience' | 'energy'; ref: Ref }
   /** Total power of the objects a ref resolves to. */
   | { kind: 'totalPowerRef'; ref: Ref }
+  | { kind: 'totalToughnessRef'; ref: Ref }
+  | { kind: 'totalManaValueRef'; ref: Ref }
   /** Number of players with a non-zero turn stat ("each opponent who lost life this turn"). */
   | { kind: 'playersMatching'; who: 'opponent' | 'any'; stat: string }
   /** Number of graveyards with at least this many cards. */

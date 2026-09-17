@@ -1705,6 +1705,62 @@ const PATTERNS: Pattern[] = [
     const dest = /graveyard/.test(m[2]) ? 'graveyard' : /battlefield/.test(m[2]) ? 'battlefield' : 'top';
     return [{ kind: 'searchLibrary', filter: { zone: 'library' }, count: 1, destination: 'hand', shuffle: false }, { kind: 'searchLibrary', filter: { zone: 'library' }, count: 1, destination: dest, shuffle: true }];
   }],
+  // ---- Round 105 search variants ----
+  // "search your library for a Curse card, put it onto the battlefield attached to target player, then shuffle"
+  [/^search your library for (?:a|an) (.+?), put (?:it|that card) onto the battlefield attached to (.+?)(?:, then shuffle| and shuffle)?$/i, (m, ctx) => {
+    const noun = parseNoun(/\bcards?\b/i.test(m[1]) ? m[1] : `a ${m[1]} card`);
+    if (!noun) return null;
+    const host = objRef(m[2], ctx);
+    if (!host) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [
+      { kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: 1, destination: 'battlefield', shuffle: true },
+      { kind: 'attach', what: { ref: 'lastMoved' }, to: host },
+    ];
+  }],
+  // "Search your library for X cards, then shuffle and put those cards on top in any order"
+  [/^search your library for (any number of|up to \w+|X|\w+) (.*?)cards?(?:, reveal (?:it|them))?,? (?:then )?shuffle and put (?:them|those cards|it) on top(?: of your library)?(?: in any order)?$/i, (m, ctx) => {
+    const nounText = m[2].trim();
+    const noun = nounText ? parseNoun(`a ${nounText} card`) : { filter: {} as ObjectFilter };
+    if (!noun) return null;
+    const n: Amount | null = /any number of/i.test(m[1]) ? 20 : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1].replace(/^up to /i, '')) as Amount | null);
+    if (n === null) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: n, destination: 'top', reveal: /reveal/i.test(m[0]), shuffle: true }];
+  }],
+  // "Search your library for a Zombie card and a Swamp card, reveal them, put them into your hand, then shuffle"
+  // "Search your library for a white card, a blue card, ... and a green card, reveal them, put them into your hand, then shuffle"
+  [/^search your library (?:and(?:\/or)? graveyard )?for ((?:a|an) [^,]+?(?:, (?:a|an) [^,]+?)*,? and (?:a|an) [^,]+?)(?:, reveal (?:it|them|those cards))?(?:,? (?:and )?put (?:it|them|those cards) (into your hand|onto the battlefield( tapped)?))?(?:, then shuffle| and shuffle)?$/i, (m, ctx) => {
+    const zones: ('library' | 'graveyard')[] | undefined = /graveyard/i.test(m[0]) ? ['library', 'graveyard'] : undefined;
+    const items = m[1].split(/,\s*and\s+|\s+and\s+|,\s*/i).map((x) => x.trim()).filter(Boolean);
+    if (items.length < 2 || items.length > 6) return null;
+    const out: Effect[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const noun = parseNoun(/\bcards?\b/i.test(items[i]) ? items[i] : `${items[i]} card`);
+      if (!noun || !noun.confident) return null;
+      const dest = m[2] && /battlefield/i.test(m[2]) ? 'battlefield' : 'hand';
+      out.push({ kind: 'searchLibrary', filter: { ...noun.filter, zone: zones ? undefined : 'library' }, zones, count: 1, destination: dest, tapped: m[3] ? true : undefined, reveal: /reveal/i.test(m[0]), shuffle: i === items.length - 1 });
+    }
+    ctx.lastObj = { ref: 'lastMoved' };
+    return out;
+  }],
+  // "Search your library for a creature card, reveal it, put it into your hand or graveyard, then shuffle"
+  [/^search your library for (?:a|an) (.+?), reveal it, put it into your (hand|graveyard) or (?:hand|graveyard)(?:, then shuffle)?$/i, (m, ctx) => {
+    const noun = parseNoun(/\bcards?\b/i.test(m[1]) ? m[1] : `a ${m[1]} card`);
+    if (!noun) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: 1, destination: m[2].toLowerCase() as 'hand', reveal: true, shuffle: true }];
+  }],
+  // "Search your library for a card with the same name as that card, reveal it, put it into your hand, then shuffle"
+  [/^search your library for (?:a|an) (.*?)card with the same name as (.+?)(?:, reveal (?:it|that card))?,? put (?:it|that card) (into your hand|onto the battlefield( tapped)?)(?:, then shuffle| and shuffle)?$/i, (m, ctx) => {
+    const base = m[1].trim();
+    const noun = base ? parseNoun(`a ${base} card`) : { filter: {} as ObjectFilter };
+    if (!noun) return null;
+    const of = objRef(m[2], ctx);
+    if (!of) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library', sameNameAs: of }, count: 1, destination: /battlefield/i.test(m[3]) ? 'battlefield' : 'hand', tapped: m[4] ? true : undefined, reveal: /reveal/i.test(m[0]), shuffle: true }];
+  }],
   [/^(?:then )?shuffle(?: your library)?$/i, () => [{ kind: 'shuffle' }]],
   [/^(?:then )?(.+?) shuffles?(?: their library)?$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
@@ -4720,12 +4776,21 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // Compound: "A and B" / "A, then B"
-  const splitters = [/, then /i, /\. then /i, / and then /i, /, and /i, / and /i, /, (?=(?:then )?(?:discards?|loses?|gains?|draws?|sacrifices?|mills?|creates?|exiles?|destroys?|returns?|puts?|scry|untaps?|taps?)\b)/i];
+  const CLAUSE_VERB = /\b(?:gets?|gains?|loses?|becomes?|deals?|draws?|discards?|sacrifices?|creates?|destroys?|exiles?|returns?|puts?|taps?|untaps?|mills?|has|have|is|are|cannot|can)\b/i;
+  const splitters = [/, then /i, /\. then /i, / and then /i, /, and /i, / and /i, /, (?=(?:then )?(?:discards?|loses?|gains?|draws?|sacrifices?|mills?|creates?|exiles?|destroys?|returns?|puts?|scry|untaps?|taps?)\b)/i, /, (?=(?:up to |any number of |another |each |all |target |that |those |the |you |it |they |~)[^,]*?\b(?:gets?|gains?|loses?|becomes?|deals?|draws?|discards?|sacrifices?|creates?|destroys?|exiles?|returns?|puts?|taps?|untaps?|mills?|has|have|is|are|cannot|can)\b)/i, /, (?=(?:gets?|gains?|loses?|becomes?|has|have|is|are|cannot|can|deals?|must|doesn't|does not)\s)/i];
   for (const sp of splitters) {
     const idx = text.search(sp);
     if (idx <= 0) continue;
-    const parts = text.split(sp);
+    let parts = text.split(sp);
     if (parts.length < 2) continue;
+    // "A, B, and C until end of turn": the trailing duration applies to every clause.
+    {
+      const dm = parts[parts.length - 1].match(/ (until end of turn|until your next turn|until end of combat)$/i);
+      const stative = /\b(?:gets?|gains?|becomes?|has|have|is|are|cannot|can)\b/i;
+      if (dm && parts.length > 1 && !parts.slice(0, -1).some((x) => new RegExp(dm[1], 'i').test(x)) && parts.every((x) => stative.test(x))) {
+        parts = parts.map((x, i) => (i === parts.length - 1 ? x : `${x} ${dm[1]}`));
+      }
+    }
     const saved = ctx.targets.length;
     const out: Effect[] = [];
     let ok = true;

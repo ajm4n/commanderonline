@@ -1125,6 +1125,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const win = g.rng.coin();
       g.log(`${g.player(ctx.controller).name} flips a coin and ${win ? 'wins' : 'loses'}.`);
       ctx.memory['flipWon'] = win ? 1 : 0;
+      ctx.memory['flipsWon'] = ((ctx.memory['flipsWon'] as number) ?? 0) + (win ? 1 : 0);
+      ctx.memory['flipsLost'] = ((ctx.memory['flipsLost'] as number) ?? 0) + (win ? 0 : 1);
       g.emit({ name: 'coinFlipped', playerId: ctx.controller, data: { won: win } });
       yield* executeEffects(g, win ? e.win : e.lose ?? [], ctx);
       return;

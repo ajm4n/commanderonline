@@ -1498,6 +1498,10 @@ export class Game {
         return this.resolvePlayers(a.ref, ctx).reduce((s2, p) => s2 + (a.stat === 'poison' ? this.player(p).poison : a.stat === 'experience' ? this.player(p).experience : this.player(p).energy), 0);
       case 'totalPowerRef':
         return this.resolveObjects(a.ref, ctx).reduce((s2, o) => s2 + (this.characteristics(o.id).power ?? 0), 0);
+      case 'totalToughnessRef':
+        return this.resolveObjects(a.ref, ctx).reduce((s2, o) => s2 + (this.characteristics(o.id).toughness ?? 0), 0);
+      case 'totalManaValueRef':
+        return this.resolveObjects(a.ref, ctx).reduce((s2, o) => s2 + this.characteristics(o.id).manaValue, 0);
       case 'playersMatching': {
         const cands = a.who === 'opponent' ? this.opponentsOf(ctx.controller) : this.state.playerOrder;
         return cands.filter((p) => (this.state.players[p]?.turnStats[a.stat] ?? 0) > 0).length;
