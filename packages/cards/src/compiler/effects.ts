@@ -75,6 +75,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if ((m0 = l.match(/^the player or planeswalker (it|that creature|~) is attacking$/))) return { ref: 'defenderOf', of: m0[1] === '~' ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
   if (/^(?:the|a|an|one of the) (?:card|creature card|permanent card)s? exiled with ~$/.test(l) || /^the exiled cards?$/.test(l) || /^cards exiled with ~$/.test(l) || /^(?:a|the) card (?:you )?exiled with cards named ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
+  if (/^the creature that attacked$/.test(l)) return ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF;
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
@@ -3357,6 +3358,46 @@ const PATTERNS: Pattern[] = [
     const c = chooseRef(`an ${m[1]} attached to a ${m[2]}`, ctx, YOU, /you may/i.test(m[0]));
     if (!c) return null;
     return [...c.pre, { kind: 'unattach', what: c.ref }];
+  }],
+  // "An opponent chooses a creature card from among them"
+  [/^(an opponent|target opponent|that player|target player|each opponent) chooses (?:a|an|(\w+)) (.+?) from among them$/i, (m, ctx) => {
+    const who = playerRef(m[1] === 'an opponent' ? 'each opponent' : m[1], ctx);
+    const noun = parseNoun(`a ${m[3].replace(/ cards$/i, ' card')}`);
+    if (!who || !noun) return null;
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (typeof n !== 'number') return null;
+    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const key = `opp${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who, filter: { ...noun.filter, zone: undefined }, count: n, key, from: src }];
+  }],
+  // "double the number of +1/+1 counters on it"
+  [/^double the number of ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters on (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    return ref ? [{ kind: 'doubleCounters', counter: m[1], on: ref }] : null;
+  }],
+  // "Roll two d8 and choose one result"
+  [/^roll (\w+) d(\d+)(?: and choose one result)?$/i, (m) => {
+    const sides = parseInt(m[2], 10);
+    return [{ kind: 'rollDie', sides, results: [] }];
+  }],
+  // "If that spell would be put into their graveyard, exile it instead"
+  [/^if that (?:spell|card|creature|permanent) would be put into (?:their|its owner's|your) graveyard, exile it instead$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfDies' }, on: ref, duration: 'permanent' }];
+  }],
+  // "Until end of turn, creatures your opponents control lose hexproof and shroud and cannot have hexproof or shroud"
+  [/^(.+?) lose ([\w ]+?)(?: and ([\w ]+?))? and cannot (?:have or gain|have) [\w ]+?(?: or [\w ]+?)?(?: until end of turn)?$/i, (m, ctx) => {
+    const kws = parseKeywordList([m[2], m[3]].filter(Boolean).join(', '));
+    const ref = kws ? objRef(m[1], ctx) : null;
+    return kws && ref ? [{ kind: 'removeKeywords', keywords: kws, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  // "Exile all cards from all opponents' hands and graveyards"
+  [/^exile all cards from all opponents'? (hands and graveyards|hands|graveyards)$/i, (m) => {
+    const out: Effect[] = [];
+    if (/hand/i.test(m[1])) out.push({ kind: 'exile', what: { ref: 'all', filter: { zone: 'hand', owner: 'opponent' } } });
+    if (/graveyard/i.test(m[1])) out.push({ kind: 'exile', what: { ref: 'all', filter: { zone: 'graveyard', owner: 'opponent' } } });
+    return out;
   }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],

@@ -397,6 +397,17 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantCastSpells', data: { filter: f } } }];
     }
   }
+  // "Creatures your opponents control lose flying." (the "and cannot have or gain X" tail is stripped above)
+  if ((m = L.match(/^(.+?) (?:lose|loses) ([\w ,]+?)$/i))) {
+    const kws = parseKeywordList(m[2]);
+    const a = kws ? affectsOf(m[1]) : { affects: undefined, ok: false };
+    if (kws && a.ok) {
+      return [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 6, removeKeywords: kws } },
+        { kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'cannotGainKeywords', data: kws } },
+      ];
+    }
+  }
   // "Creatures your opponents control lose flying and cannot have or gain flying."
   if ((m = L.match(/^(.+?) lose ([\w ]+?)(?: and ([\w ]+?))? and cannot (?:have or gain|have) ([\w ]+?)(?: or ([\w ]+?))?$/i))) {
     const kws = parseKeywordList([m[2], m[3]].filter(Boolean).join(', '));
@@ -429,6 +440,22 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       delete f.zone;
       return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: m[2].toLowerCase(), filter: { ...f, zone: 'hand' } } } }];
     }
+  }
+  if (/^Players cannot pay life or sacrifice creatures to cast spells or activate abilities$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noLifeOrSacrificeCosts' } }];
+  if (/^Spells and abilities your opponents control cannot cause their controller to search their library$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
+  if ((m = L.match(/^(.+?) cannot be the target of (spells|abilities)(?: from (.+?) sources)?$/i))) {
+    const f = m[3] ? parseNoun(`a ${m[3]}`)?.filter : undefined;
+    if (m[3] && !f) return null;
+    const r = objRule(m[1], { kind: 'cantBeTargeted', by: /spells/i.test(m[2]) ? 'spells' : 'abilities', filter: f ? { ...f, zone: undefined } : undefined });
+    if (r) return r;
+  }
+  if ((m = L.match(/^Each (.+?) in your graveyard has the chosen creature type in addition to its other types$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) return [{ kind: 'static', text: line, affects: { ...noun.filter, zone: 'graveyard' }, modification: { layer: 4, addSubtypesFromMemory: 'creatureType' } }];
+  }
+  if ((m = L.match(/^(.+?) cannot be sacrificed$/i))) {
+    const r = objRule(m[1], { kind: 'custom', tag: 'cantBeSacrificed' });
+    if (r) return r;
   }
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
