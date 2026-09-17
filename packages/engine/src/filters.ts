@@ -54,6 +54,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.blocking && obj.blocking.length === 0) return false;
   if (filter.attackingOrBlocking && obj.attacking === null && obj.blocking.length === 0) return false;
   if (filter.custom === 'nonbasic' && ch.supertypes.includes('Basic')) return false;
+  if (filter.custom === 'nonsnow' && ch.supertypes.includes('Snow')) return false;
   if (filter.custom === 'colored' && ch.colors.length === 0) return false;
   if (filter.custom === 'hasAnyCounter' && !Object.values(obj.counters ?? {}).some((v) => (v ?? 0) > 0)) return false;
   if (filter.exiledWithSource) {

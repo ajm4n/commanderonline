@@ -485,6 +485,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: -parseInt(m[2], 10), textPrefix: m[1] } } }];
   if ((m = L.match(/^(?:Instant and sorcery spells|Spells) you control have rebound$/i)))
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: 'rebound' } } }];
+  if (/^Players can cast spells and activate abilities only during their own turns$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'ownTurnOnly' } }];
+  if ((m = L.match(/^(.+?) cannot be enchanted by other Auras$/i))) {
+    const r = objRule(m[1], { kind: 'cantBeTargeted', by: 'spells', filter: { subtypes: ['Aura'] } });
+    if (r) return r;
+  }
+  if ((m = L.match(/^If (?:a|an) (.+?) would enter and it wasn'?t cast, exile it instead$/i))) {
+    const en = parseNoun(`a ${m[1]}`);
+    if (en) {
+      const f = { ...en.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'exileIfEntersUncast', data: { filter: f } } }];
+    }
+  }
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];

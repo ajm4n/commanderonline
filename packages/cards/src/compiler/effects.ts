@@ -1243,7 +1243,7 @@ const PATTERNS: Pattern[] = [
     (c.pre[0] as { filter: ObjectFilter }).filter = { ...noun.filter, zone: 'graveyard', owner: 'you' };
     return [...c.pre, { kind: 'putIntoHand', what: c.ref }];
   }],
-  [/^put (?:a|an|(\w+|X|that many|twice that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on (.+)$/i, (m, ctx) => {
+  [/^put (?:a|an|another|(\w+|X|that many|twice that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on (.+)$/i, (m, ctx) => {
     const n: Amount | null = m[1] ? (/that many/i.test(m[1]) ? amt(m[1], ctx) : wordToNumber(m[1])) : 1;
     if (n === null) return null;
     const isObjectTarget = !/^(you|each player|each opponent|target player|target opponent|that player|defending player|its controller|that creature's controller|the chosen player|the chosen opponent)$/i.test(m[3]);
@@ -2866,8 +2866,8 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'copySpell', what: ref, count: n }];
   }],
   // "Proliferate X times" / "Populate X times"
-  [/^(proliferate|populate|investigate) (X|\w+) times$/i, (m, ctx) => {
-    const n: Amount | null = m[2] === 'X' ? 'X' : wordToNumber(m[2]);
+  [/^(proliferate|populate|investigate) (?:(X|\w+) times|(twice|three times))$/i, (m, ctx) => {
+    const n: Amount | null = m[3] ? (/twice/i.test(m[3]) ? 2 : 3) : m[2] === 'X' ? 'X' : wordToNumber(m[2]);
     if (n === null) return null;
     if (/investigate/i.test(m[1])) return [{ kind: 'investigate', count: n }];
     const one: Effect = /proliferate/i.test(m[1]) ? { kind: 'proliferate' } : { kind: 'populate' };
@@ -3527,6 +3527,47 @@ const PATTERNS: Pattern[] = [
     const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
     return [{ kind: 'setColors', colors: [cn], on: ref, duration: 'permanent' }, { kind: 'addTypes', types: [], subtypes: [m[2]], on: ref, duration: 'permanent' }];
   }],
+  // "Until your next turn, creatures cannot attack you"
+  [/^creatures cannot attack you(?: until your next turn)?$/i, () => [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'cantBeAttacked', data: { filter: { types: ['Creature'] } } } }]],
+  // "Until your next turn, creatures your opponents control enter tapped"
+  [/^creatures your opponents control enter tapped(?: until your next turn)?$/i, () => [{ kind: 'grantPlayerRule', who: { ref: 'eachOpponent' }, rule: { kind: 'entersTapped' } }]],
+  // "~ deals 1 damage to any target, 2 damage to another target, and 3 damage to a third target"
+  [/^(?:~|it) deals (\d+) damage to (any target|target [\w -]+?), (\d+) damage to (another target|target [\w -]+?),? and (\d+) damage to (?:a third target|another target|target [\w -]+)$/i, (m, ctx) => {
+    const a = objRef(m[2], ctx) ?? playerRef(m[2], ctx);
+    const b = a ? objRef(m[4] === 'another target' ? 'any target' : m[4], ctx) ?? playerRef(m[4], ctx) : null;
+    const c = b ? objRef('any target', ctx) : null;
+    if (!a || !b || !c) return null;
+    return [
+      { kind: 'damage', amount: parseInt(m[1], 10), to: a, source: SELF },
+      { kind: 'damage', amount: parseInt(m[3], 10), to: b, source: SELF },
+      { kind: 'damage', amount: parseInt(m[5], 10), to: c, source: SELF },
+    ];
+  }],
+  // "Target legendary creature card in your graveyard gains escape until end of turn"
+  [/^(target .+? in (?:your|a) graveyard) gains ([\w ]+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const kws = parseKeywordList(m[2]);
+    const ref = kws ? objRef(m[1], ctx) : null;
+    return kws && ref ? [{ kind: 'grantKeywords', keywords: kws, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  // "Put target spell or nonland permanent into its owner's library second from the top"
+  [/^put (target .+?) into (?:its owner's|their owner's) library (\w+) from the top$/i, (m, ctx) => {
+    const depth = wordToNumber(m[2].replace(/^(first|second|third|fourth|fifth|sixth|seventh)$/i, (w) => ({ first: 'one', second: 'two', third: 'three', fourth: 'four', fifth: 'five', sixth: 'six', seventh: 'seven' } as Record<string, string>)[w.toLowerCase()] ?? w));
+    const ref = typeof depth === 'number' ? objRef(m[1], ctx) : null;
+    return ref && typeof depth === 'number' ? [{ kind: 'putOnLibrary', what: ref, position: 'top', depth: depth - 1 }] : null;
+  }],
+  // "Search your library for up to three creature cards, reveal them, then shuffle and put those cards on top in any order"
+  [/^search your library for (?:up to (\w+)|(\w+)) (.+?), reveal them, then shuffle and put those cards on top in any order$/i, (m) => {
+    const noun = parseNoun(`a ${m[3].replace(/ cards$/i, ' card')}`);
+    const n = wordToNumber(m[1] ?? m[2]);
+    if (!noun || typeof n !== 'number') return null;
+    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: undefined }, count: n, destination: 'top', reveal: true, shuffle: true }];
+  }],
+  // "Create two tokens that are copies of the sacrificed creature"
+  [/^create (\w+) tokens? that (?:is|are) cop(?:y|ies) of the sacrificed creature$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'createToken', token: { name: 'Copy', typeLine: 'Creature', colors: [], copyOf: { ref: 'chosen', key: 'sacrificed' } }, count: n }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -3912,7 +3953,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;
   if (/^you cannot cast ~ during your (?:first|second|third)(?:, (?:first|second|third))*(?:,? or (?:first|second|third))? turns? of the game\.?$/i.test(text.trim())) return true;
   if (/^~ saddles mounts and crews vehicles as though its power were \d+ greater\.?$/i.test(text.trim())) return true;
-  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|mana of any type can be spent to cast (?:spells|a spell) this way|you may spend mana as though it were mana of any color to activate those abilities|you may look at (?:it|that card|those cards) for as long as (?:it remains|they remain) exiled|reveal the first card you draw each turn|this change in ownership is permanent|the new target must be a player|you may reveal the first card you draw each turn as you draw it|a spell cast this way costs .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
+  return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|you may spend mana as though it were mana of any color|mana of any type can be spent to cast (?:spells|a spell) this way|you may spend mana as though it were mana of any color to activate those abilities|you may look at (?:it|that card|those cards) for as long as (?:it remains|they remain) exiled|reveal the first card you draw each turn|this change in ownership is permanent|the new target must be a player|you may reveal the first card you draw each turn as you draw it|a spell cast this way costs .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
 }
 
 /** Parse one sentence; returns null if not understood. */
