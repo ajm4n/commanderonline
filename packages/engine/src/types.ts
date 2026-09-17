@@ -534,6 +534,8 @@ export type GameEventName =
   | 'clashed'
   | 'gotEnergy'
   | 'mutates'
+  /** Not a real game event: state triggers are checked as state-based actions. */
+  | 'stateTrigger'
   | 'cleanup';
 
 export interface GameEvent {

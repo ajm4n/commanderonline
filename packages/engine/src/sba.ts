@@ -39,6 +39,25 @@ export function* checkStateBasedActions(g: Game): Gen {
       }
     }
 
+    // General state triggers: "When ~ has no +1/+1 counters on it, sacrifice it."
+    for (const id of [...g.state.battlefield]) {
+      const o = g.state.objects[id];
+      if (!o) continue;
+      for (const ab of g.scriptFor(o).abilities) {
+        if (ab.kind !== 'triggered' || ab.event !== 'stateTrigger' || !ab.condition) continue;
+        const holds = g.checkCondition(ab.condition, { sourceId: id, controller: o.controller });
+        const key = `state:${ab.text}`;
+        if (!holds) {
+          if (o.memory[key]) delete o.memory[key];
+          continue;
+        }
+        if (o.memory[key]) continue;
+        o.memory[key] = 1;
+        g.queueTrigger({ sourceId: id, controller: o.controller, ability: { ...ab, event: 'stateTrigger' }, context: {} });
+        changed = true;
+      }
+    }
+
     // "When you control no Islands, sacrifice ~." (a state trigger, handled like an SBA)
     for (const id of [...g.state.battlefield]) {
       const o = g.state.objects[id];

@@ -5,6 +5,8 @@ import { wordToNumber } from './text.js';
 import type { ObjectFilter } from '@commander/engine';
 
 export interface TriggerHead {
+  /** State triggers ("When ~ has no counters on it"): the condition that must become true. */
+  stateCondition?: import('@commander/engine').Condition;
   event: GameEventName;
   filter?: TriggerFilter;
   zone?: ZoneName | ZoneName[];
@@ -344,6 +346,13 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever a time counter is removed from ~ while it is exiled, (.+)$/i))) return { event: 'counterRemoved', filter: { self: true, counterType: 'time' }, hasObject: true, hasPlayer: true, rest: m[1], zone: 'exile' };
   if ((m = L.match(/^When ~ enters during the declare attackers step, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true, custom: 'declareAttackersStep' }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever ~ mutates, (.+)$/i))) return { event: 'mutates', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  // State triggers: "When ~ has no +1/+1 counters on it, sacrifice it."
+  if ((m = L.match(/^When ~ has no ([+-]\d\/[+-]\d|[\w' -]+?) counters on it, (.+)$/i))) return { event: 'stateTrigger', hasObject: true, hasPlayer: true, rest: m[2], stateCondition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: m[1], op: '==', value: 0 } };
+  if ((m = L.match(/^When there are no creatures on the battlefield, (.+)$/i))) return { event: 'stateTrigger', hasObject: false, hasPlayer: true, rest: m[1], stateCondition: { kind: 'count', filter: { types: ['Creature'], zone: 'battlefield' }, op: '==', value: 0 } };
+  if ((m = L.match(/^When you have (\w+) or less life, (.+)$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { event: 'stateTrigger', hasObject: false, hasPlayer: true, rest: m[2], stateCondition: { kind: 'life', ref: { ref: 'controller' }, op: '<=', value: n } };
+  }
   if ((m = L.match(/^When you unlock this door, (.+)$/i))) return { event: 'unlockedDoor', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   // Morph: "When ~ is turned face up, ..." / "Whenever a permanent you control is turned face up, ..."
   if ((m = L.match(/^When(?:ever)? ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };

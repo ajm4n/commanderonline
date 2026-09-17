@@ -576,7 +576,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         }
         effects = [{ kind: 'chooseMode', options, count: modalHead.count, min: modalHead.min, notChosen: modalHead.notChosen }];
       } else ({ effects, unhandled } = parseEffects(split.rest, ctx));
-      let condition: Condition | undefined;
+      let condition: Condition | undefined = head.stateCondition;
       if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
       if (head.exploit) {
         // Exploit: on entering, you may sacrifice a creature; if you do, the exploit effects happen.

@@ -125,6 +125,10 @@ export class Game {
   private scriptCache = new Map<string, CardScript>();
   private chCache = new Map<ObjectId, { v: number; ch: Characteristics }>();
   private pendingTriggers: PendingTrigger[] = [];
+  /** Queue a trigger from outside (state-based actions). */
+  queueTrigger(t: PendingTrigger): void {
+    this.pendingTriggers.push(t);
+  }
   /** Objects exiled "until this leaves" whose source has left; returned by SBA. */
   pendingReturns: ObjectId[] = [];
   /** Player who dealt combat damage to the initiative holder this damage step; takes the initiative afterwards. */
