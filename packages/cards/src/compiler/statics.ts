@@ -470,6 +470,21 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const kws = parseKeywordList(m[1]);
     if (kws) return [{ kind: 'static', text: line, affects: { types: ['Creature'], zone: 'battlefield', attacking: true }, modification: { layer: 6, addKeywords: kws } }];
   }
+  if ((m = L.match(/^(.+?) and (.+?) have (.+)$/i)) && !/^(you|each player|players)/i.test(m[1])) {
+    const kws = parseKeywordList(m[3]);
+    const a = kws ? affectsOf(m[1]) : { affects: undefined, ok: false };
+    const b = kws ? affectsOf(m[2]) : { affects: undefined, ok: false };
+    if (kws && a.ok && b.ok) {
+      return [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } },
+        { kind: 'static', text: line, affects: b.affects, modification: { layer: 6, addKeywords: kws } },
+      ];
+    }
+  }
+  if ((m = L.match(/^(Flashback|Equip|Crew|Cycling|Unlock) costs your opponents pay cost \{(\d+)\} more$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: -parseInt(m[2], 10), textPrefix: m[1] } } }];
+  if ((m = L.match(/^(?:Instant and sorcery spells|Spells) you control have rebound$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: 'rebound' } } }];
   if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];

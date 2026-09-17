@@ -3471,6 +3471,62 @@ const PATTERNS: Pattern[] = [
       { kind: 'tap', what: { ref: 'all', filter: { ...b.filter, zone: 'battlefield', untapped: true } } },
     ];
   }],
+  // "Counter target instant spell if it is blue"
+  [/^counter (target .+?) if it is (white|blue|black|red|green)$/i, (m, ctx) => {
+    const cn = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as Record<string, 'W' | 'U' | 'B' | 'R' | 'G'>)[m[2].toLowerCase()];
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'conditional', if: { kind: 'objectMatches', ref, filter: { colors: [cn] } }, then: [{ kind: 'counterSpell', what: ref }] }];
+  }],
+  // "Target player scries 3" / "Target player puts the bottom card of their library into their graveyard"
+  [/^(.+?) scries (\d+|X)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    return who ? [{ kind: 'scry', amount: m[2] === 'X' ? 'X' : parseInt(m[2], 10), who }] : null;
+  }],
+  [/^(.+?) puts the bottom card of their library into their graveyard$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    return who ? [{ kind: 'mill', amount: 1, who, fromBottom: true }] : null;
+  }],
+  // "Exile one of those creatures and put two +1/+1 counters on the other"
+  [/^exile one of those (.+?) and put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on the other$/i, (m, ctx) => {
+    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    const key = `pick${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: {}, count: 1, key, from: src },
+      { kind: 'exile', what: { ref: 'chosen', key } },
+      { kind: 'addCounters', counter: m[3], amount: n, on: src },
+    ];
+  }],
+  // "You may have any number of them phase out"
+  [/^(?:you may have )?any number of them phase out$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'may', effects: [{ kind: 'phaseOut', what: ref }] }];
+  }],
+  // "Players cannot cast noncreature spells this turn"
+  [/^players cannot cast (.+?)(?: this turn)?$/i, (m) => {
+    const noun = /^spells$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1].replace(/ spells?$/i, '')} spell`);
+    if (!noun) return null;
+    return [{ kind: 'grantPlayerRule', who: { ref: 'eachPlayer' }, rule: { kind: 'custom', tag: 'cantCastSpells', data: { filter: { ...noun.filter, zone: undefined } } } }];
+  }],
+  // "Prevent all damage that creatures would deal to players this turn"
+  [/^prevent all (combat )?damage that (.+?) would deal to (players|creatures|you)(?: this turn)?$/i, (m) => {
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2]}`);
+    if (!noun) return null;
+    return [{ kind: 'preventAll', combat: m[1] ? true : undefined, source: { ...noun.filter, zone: 'battlefield' }, to: /players/i.test(m[3]) ? 'players' : /creatures/i.test(m[3]) ? 'creatures' : 'you' }];
+  }],
+  // "Target opponent blights 2"
+  [/^(.+?) blights (\d+)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    return who ? [{ kind: 'addCounters', counter: '-1/-1', amount: parseInt(m[2], 10), on: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', controllerRef: who } } }] : null;
+  }],
+  // "That creature is black and is a Nightmare in addition to its other creature types"
+  [/^(?:that creature|it) is (white|blue|black|red|green) and is (?:a|an) ([A-Z][\w-]+) in addition to its other creature types$/i, (m, ctx) => {
+    const cn = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as Record<string, 'W' | 'U' | 'B' | 'R' | 'G'>)[m[1].toLowerCase()];
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'setColors', colors: [cn], on: ref, duration: 'permanent' }, { kind: 'addTypes', types: [], subtypes: [m[2]], on: ref, duration: 'permanent' }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
