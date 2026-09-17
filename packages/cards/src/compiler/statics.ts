@@ -36,6 +36,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const noun = parseNoun(`a ${m[1]}`);
     if (noun) return [{ kind: 'replacement', text: line, event: 'dies', self: false, filter: { ...noun.filter, zone: undefined, damagedBySource: true }, instead: 'exile' }];
   }
+  // "~ cannot be copied."
+  if (/^~ cannot be copied$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantBeCopied' } }];
+  // "~ cannot be blocked as long as it is attacking alone."
+  if (/^~ cannot be blocked as long as it is attacking alone$/i.test(L)) {
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'cantBeBlocked' }, condition: { kind: 'count', filter: { types: ['Creature'], controller: 'you', attacking: true, zone: 'battlefield' }, op: '==', value: 1 } }];
+  }
+  // "If a spell or ability an opponent controls causes you to discard ~, put it onto the battlefield instead."
+  if ((m = L.match(/^If a spell or ability an opponent controls causes you to discard ~, put it onto the battlefield(?: with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it)? instead of putting it into your graveyard$/i))) {
+    const dn = m[1] ? wordToNumber(m[1]) : 1;
+    const data = m[2] && typeof dn === 'number' ? { counter: m[2], amount: dn } : undefined;
+    return [{ kind: 'static', text: line, affects: 'self', zone: 'hand', rule: { kind: 'custom', tag: 'discardToBattlefield', data } }];
+  }
   if ((m = L.match(/^(.+?) (?:has|have) (.+?) and "(.+)"$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);
@@ -873,6 +885,32 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // "Spells you cast of the chosen type cost {1} less to cast."
   if ((m = L.match(/^Spells you cast of the chosen type cost \{(\d)\} less to cast$/i))) {
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[1], 10), filter: { typeIsChosen: 'cardType' } } }];
+  }
+  // "Untap ~ during each other player's untap step."
+  if ((m = L.match(/^Untap ~ during each other player's untap step$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'untapEachUntapStep', data: { filter: { nameIs: '~' } } } }];
+  }
+  // "~ is also a Cleric, Rogue, Warrior, and Wizard."
+  if ((m = L.match(/^~ is also (?:a|an) ([A-Z][\w' -]*(?:, [A-Z][\w' -]*)*(?:,? and [A-Z][\w' -]*)?)$/))) {
+    const subs = m[1].split(/,? and |, /).map((w) => w.trim()).filter(Boolean);
+    return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 4, addSubtypes: subs } }];
+  }
+  // "Cards in graveyards cannot be the targets of spells or abilities."
+  if (/^Cards in graveyards cannot be the targets of spells or abilities$/i.test(L)) {
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'graveyardsUntargetable' } }];
+  }
+  // "If ~ would be destroyed, regenerate it."
+  if (/^If ~ would be destroyed, regenerate it$/i.test(L)) {
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'regenerationShield' } }];
+  }
+  // "Damage that would reduce your life total to less than 1 reduces it to 1 instead."
+  if ((m = L.match(/^Damage that would reduce your life total to less than (\d+) reduces it to \1 instead$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'lifeFloor', data: parseInt(m[1], 10) } }];
+  }
+  // "Creatures cannot attack you unless their controller pays {2} for each creature they control that is attacking you."
+  if ((m = L.match(/^(.+?) cannot attack you(?: or planeswalkers you control)? unless their controller pays ((?:\{[^}]+\})+) for each creature they control that is attacking you(?: or a planeswalker you control)?$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'attackTax', data: { filter: { ...noun.filter, zone: undefined }, cost: m[2] } } }];
   }
   if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You have hexproof$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'hexproof' } }];

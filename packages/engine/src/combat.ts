@@ -1,5 +1,6 @@
 import type { Game, Gen } from './game.js';
 import type { GameObject, ObjectId, PlayerId, Step, Target } from './types.js';
+import { offerToPay } from './effects.js';
 import { summoningSick } from './casting.js';
 import { protectionApplies, matchesFilter } from './filters.js';
 import { BASIC_LAND_TYPES } from './typeline.js';
@@ -153,6 +154,36 @@ function* declareAttackers(g: Game, active: PlayerId): Gen {
     if (valid && mustOk && aloneOk) break;
     g.log(valid ? 'Some creatures must attack this combat.' : 'Invalid attack declaration.');
   }
+  // "Creatures can't attack you unless their controller pays {2} for each creature they control that is attacking you."
+  {
+    const taxed = new Map<PlayerId, { cost: string; n: number }>();
+    for (const a of attacks) {
+      const o = g.obj(a.attacker);
+      const def = defenderOf(g, a.target);
+      if (def === active) continue;
+      for (const r of g.playerRules(active)) {
+        if (r.kind !== 'custom' || r.tag !== 'attackTax') continue;
+        const d = (r.data as { filter?: import('./types.js').ObjectFilter; cost?: string } | undefined) ?? {};
+        const srcId = (r as { sourceId?: ObjectId }).sourceId;
+        const srcCtl = srcId !== undefined ? g.state.objects[srcId]?.controller : undefined;
+        if (srcCtl !== undefined && srcCtl !== def) continue;
+        if (d.filter && !matchesFilter(g, o, { ...d.filter, zone: 'battlefield' }, { sourceId: srcId ?? null, controller: active })) continue;
+        if (!d.cost) continue;
+        const prev = taxed.get(def) ?? { cost: d.cost, n: 0 };
+        taxed.set(def, { cost: d.cost, n: prev.n + 1 });
+      }
+    }
+    for (const [, t] of taxed) {
+      for (let i = 0; i < t.n; i++) {
+        const paid = yield* offerToPay(g, active, t.cost, `Pay ${t.cost} for an attacking creature?`);
+        if (!paid) {
+          // Remove one attacker that was taxed.
+          const drop = attacks.findIndex((a) => defenderOf(g, a.target) !== active);
+          if (drop >= 0) attacks.splice(drop, 1);
+        }
+      }
+    }
+  }
   g.state.turn.attackers = attacks.map((a) => a.attacker);
   const defenders = new Set<PlayerId>();
   for (const a of attacks) {
@@ -229,8 +260,17 @@ function* declareBlockers(g: Game): Gen {
     for (const b of blocks) g.emit({ name: 'blocks', objectId: b.blocker, sourceId: b.attacker, playerId: d, combat: true });
     for (const a of mine) if (a.blockedBy.length) g.emit({ name: 'becomesBlocked', objectId: a.id, playerId: a.controller, combat: true });
   }
+  // "Target unblocked attacking creature becomes blocked."
+  for (const a of attackers) {
+    if (a.blockedBy.length) continue;
+    if (g.characteristics(a.id).rules.some((r) => r.kind === 'custom' && r.tag === 'becomesBlocked')) {
+      a.wasBlocked = true;
+      g.log(`${g.nameOf(a.id)} becomes blocked.`);
+      g.emit({ name: 'becomesBlocked', objectId: a.id, playerId: a.controller, combat: true });
+    }
+  }
   // "Whenever ~ attacks and isn't blocked"
-  for (const a of attackers) if (!a.blockedBy.length && a.attacking !== null) g.emit({ name: 'attacksUnblocked', objectId: a.id, playerId: a.controller, otherPlayerId: defenderOf(g, a.attacking), combat: true });
+  for (const a of attackers) if (!a.blockedBy.length && !a.wasBlocked && a.attacking !== null) g.emit({ name: 'attacksUnblocked', objectId: a.id, playerId: a.controller, otherPlayerId: defenderOf(g, a.attacking), combat: true });
   // Damage assignment order for attackers blocked by multiple creatures.
   for (const a of attackers) {
     if (a.blockedBy.length > 1) {

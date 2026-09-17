@@ -2168,6 +2168,44 @@ const PATTERNS: Pattern[] = [
     const e: Effect = { kind: 'putOnLibrary', what: ref, position: 'top', depth: pos };
     return [/^you may /i.test(m[0]) ? { kind: 'may', effects: [e] } : e];
   }],
+  [/^put up to (X|\w+) ([+-]\d\/[+-]\d|\w+) counters on (.+)$/i, (m, ctx) => {
+    const n: Amount | null = m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1]);
+    const on = /^~$/i.test(m[3]) ? SELF : objRef(m[3], ctx);
+    if (n === null || !on) return null;
+    return [{ kind: 'addCounters', counter: m[2], amount: n, on, upTo: true }];
+  }],
+  [/^put your commander into your hand from the command zone$/i, () => [{ kind: 'putIntoHand', what: { ref: 'all', filter: { zone: 'command', owner: 'you', isCommander: true } } }]],
+  [/^each player shuffles their hand and graveyard into their library$/i, () => [
+    { kind: 'moveAll', who: { ref: 'eachPlayer' }, from: 'hand', to: 'library' },
+    { kind: 'moveAll', who: { ref: 'eachPlayer' }, from: 'graveyard', to: 'library' },
+    { kind: 'shuffle', who: { ref: 'eachPlayer' } },
+  ]],
+  [/^(.+?) becomes blocked$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', on: ref, rule: { kind: 'custom', tag: 'becomesBlocked' }, duration: 'endOfTurn' }] : null;
+  }],
+  // "~ gets +1/-1 or -1/+1 until end of turn."
+  [/^(.+?) gets? ([+-]\d+)\/([+-]\d+) or ([+-]\d+)\/([+-]\d+)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'chooseMode', options: [
+      { text: `${m[2]}/${m[3]}`, effects: [{ kind: 'pump', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: 'endOfTurn' }] },
+      { text: `${m[4]}/${m[5]}`, effects: [{ kind: 'pump', power: parseInt(m[4], 10), toughness: parseInt(m[5], 10), on: ref, duration: 'endOfTurn' }] },
+    ] }];
+  }],
+  // "You choose a nonland card from that player's graveyard or hand and exile it."
+  [/^choose (?:a|an) (.+?) from (that player's|target player's|their) (?:graveyard or hand|hand or graveyard) and exile it$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const owner = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? ({ ref: 'triggerPlayer' } as Ref) : null);
+    if (!owner) return null;
+    const key = `pick${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', filter: { ...noun.filter, anyOf: [{ zone: 'graveyard' }, { zone: 'hand' }] }, owner, count: 1, key },
+      { kind: 'exile', what: { ref: 'chosen', key } },
+    ];
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2579,7 +2617,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
  */
 export function isTrailingNoise(text: string): boolean {
   const t = text.trim().replace(/\.$/, '');
-  return /^(x cannot be 0|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
+  return /^(x cannot be 0|(?:the )?damage cannot be prevented|each mode must target a different \w+|the same is true for .+|th(?:is|at) mana cannot be spent to cast .+|(?:then )?(?:that|each) player shuffles(?: their library)?|reveal (?:it|them|that card|those cards)|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|(?:it|they) cannot be regenerated)$/i.test(t);
 }
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */

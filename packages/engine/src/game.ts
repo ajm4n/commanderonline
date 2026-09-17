@@ -701,6 +701,16 @@ export class Game {
     const fromZone = obj.zone;
     // "If that creature would die this turn, exile it instead" (a rule granted by a resolved effect).
     if (opts.cause === 'discard') obj.memory['discardedThisTurn'] = true;
+    // "If a spell or ability an opponent controls causes you to discard ~, put it onto the battlefield instead."
+    {
+      const dtb = this.scriptFor(obj).abilities.find((ab) => ab.kind === 'static' && ab.rule?.kind === 'custom' && ab.rule.tag === 'discardToBattlefield');
+      if (opts.cause === 'discard' && toZone === 'graveyard' && dtb) {
+        const r = this.moveObject(id, 'battlefield', { ...opts, cause: 'other' });
+        const d = ((dtb as { rule?: { data?: unknown } }).rule?.data as { counter?: string; amount?: number } | undefined) ?? {};
+        if (r && d.counter && d.amount) this.addCounters(r.id, d.counter, d.amount);
+        return r;
+      }
+    }
     if (!opts.skipEvents && toZone === 'graveyard' && fromZone === 'battlefield' && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'exileIfDies')) {
       return this.moveObject(id, 'exile', { ...opts, cause: 'exile' });
     }
@@ -1820,6 +1830,11 @@ export class Game {
   loseLife(pid: PlayerId, n: number, sourceId?: ObjectId) {
     if (n <= 0) return;
     const p = this.player(pid);
+    // "Damage that would reduce your life total to less than 1 reduces it to 1 instead."
+    let floor: number | null = null;
+    for (const r of this.playerRules(pid)) if (r.kind === 'custom' && r.tag === 'lifeFloor' && typeof r.data === 'number') floor = Math.max(floor ?? 0, r.data);
+    if (floor !== null && p.life - n < floor) n = Math.max(0, p.life - floor);
+    if (n <= 0) return;
     p.life -= n;
     this.touch();
     this.log(`${p.name} loses ${n} life (${p.life}).`, { kind: 'life', data: { player: pid, delta: -n, life: p.life } });

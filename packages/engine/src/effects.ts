@@ -547,6 +547,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         yield* executeEffects(g, [{ ...e, counter: pick, counterOptions: undefined }], ctx);
         return;
       }
+      if (e.upTo) {
+        const max = amt(e.amount);
+        if (max <= 0) return;
+        const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Put how many ${e.counter} counters?`, options: Array.from({ length: max + 1 }, (_, i) => ({ id: String(i), label: String(i) })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+        const n = r.type === 'options' ? parseInt(r.ids[0] ?? '0', 10) : max;
+        if (n > 0) yield* executeEffects(g, [{ ...e, amount: n, upTo: undefined }], ctx);
+        return;
+      }
       if (e.divided) {
         const objs = g.resolveObjects(e.on, ctx).filter((o) => o.zone === 'battlefield');
         const total = amt(e.amount);
@@ -842,6 +850,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (t.kind !== 'stackItem') continue;
         const item = g.state.stack.find((s) => s.id === t.id);
         if (!item) continue;
+        const srcCard = g.state.objects[item.sourceId];
+        if (srcCard && g.characteristics(srcCard.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantBeCopied')) {
+          g.log(`${item.text} can't be copied.`);
+          continue;
+        }
         for (let i = 0; i < n; i++) {
           const copy = { ...item, id: g.state.nextStackId++, controller: ctx.controller, timestamp: g.now(), text: `${item.text} (copy)`, copiedCard: g.state.objects[item.sourceId]?.card, targets: [...item.targets], targetStamps: item.targetStamps ? [...item.targetStamps] : undefined };
           // Rule 707.10c: the copy's controller may choose new targets.

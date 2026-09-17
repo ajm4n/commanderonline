@@ -212,6 +212,8 @@ export function canTarget(g: Game, target: Target, sourceId: ObjectId | null, co
   const ch = g.characteristics(obj.id);
   if (ch.keywords.has('Shroud')) return false;
   if (ch.keywords.has('Hexproof') && obj.controller !== controller) return false;
+  // "Cards in graveyards can't be the targets of spells or abilities."
+  if (obj.zone === 'graveyard' && g.playerRules(obj.owner).some((r) => r.kind === 'custom' && r.tag === 'graveyardsUntargetable')) return false;
   if (sourceId !== null) {
     const src = g.state.objects[sourceId];
     if (src) {
