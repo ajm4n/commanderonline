@@ -2380,6 +2380,8 @@ export class Game {
         delete this.player(pid).flags[`skipStep:${step}`];
         continue;
       }
+      // "Players skip their upkeep steps."
+      if (this.playerRules(pid).some((r) => r.kind === 'custom' && r.tag === 'skipStep' && r.data === step)) continue;
       // "End the turn.": skip straight to cleanup.
       if (this.state.turnStats['endTheTurn'] && step !== 'cleanup') continue;
       // Skip combat steps after declare attackers if nothing attacks.

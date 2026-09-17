@@ -5123,15 +5123,18 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
       ctx.targets.length = saved;
     }
-    // "Otherwise, X" completes the previous conditional.
+    // "Otherwise, X" completes the previous conditional, optional effect or payment.
     if (/^otherwise, /i.test(s) && effects.length) {
       const prev = effects[effects.length - 1];
-      if (prev.kind === 'conditional' || prev.kind === 'revealTop') {
+      if (prev.kind === 'conditional' || prev.kind === 'revealTop' || prev.kind === 'may' || prev.kind === 'ifPays' || prev.kind === 'flipCoin') {
+        const saved = ctx.targets.length;
         const inner = parseSentence(s.replace(/^otherwise, /i, ''), ctx);
         if (inner) {
-          prev.else = [...(prev.else ?? []), ...inner];
+          if (prev.kind === 'flipCoin') prev.lose = [...(prev.lose ?? []), ...inner];
+          else prev.else = [...(prev.else ?? []), ...inner];
           continue;
         }
+        ctx.targets.length = saved;
       }
     }
     // Merge "You may pay X." + "If you do, Y."

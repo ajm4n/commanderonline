@@ -982,6 +982,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'searchLibrary': {
+      // "Players can't search libraries."
+      if (g.playerRules(ctx.controller).some((r) => r.kind === 'custom' && r.tag === 'noSearch')) return;
       ctx.memory['searched'] = 1;
       for (const sp of playersOf(g, e.who, ctx)) g.emit({ name: 'searchedLibrary', playerId: sp, sourceId: ctx.sourceId ?? undefined });
       for (const p of playersOf(g, e.who, ctx)) {
@@ -1851,33 +1853,38 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'ifPays': {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
+      const otherwise = function* (): Gen<void> {
+        if (e.else?.length) yield* executeEffects(g, e.else, ctx);
+      };
       if (e.energy !== undefined) {
-        if (g.player(who).energy < e.energy) return;
+        if (g.player(who).energy < e.energy) return yield* otherwise();
         const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${e.energy} energy? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
-        if (r.type !== 'yesNo' || !r.value) return;
+        if (r.type !== 'yesNo' || !r.value) return yield* otherwise();
         g.player(who).energy -= e.energy;
         yield* executeEffects(g, e.effects, ctx);
         return;
       }
       if (e.payLife !== undefined) {
-        if (g.player(who).life < e.payLife) return;
+        if (g.player(who).life < e.payLife) return yield* otherwise();
         const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${e.payLife} life? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
-        if (r.type !== 'yesNo' || !r.value) return;
+        if (r.type !== 'yesNo' || !r.value) return yield* otherwise();
         g.loseLife(who, e.payLife, ctx.sourceId ?? undefined);
         yield* executeEffects(g, e.effects, ctx);
         return;
       }
       if (e.payCostSpec) {
         const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
-        if (!src) return;
+        if (!src) return yield* otherwise();
         const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay the cost? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
-        if (r.type !== 'yesNo' || !r.value) return;
+        if (r.type !== 'yesNo' || !r.value) return yield* otherwise();
         const ok = yield* payAbilityCost(g, who, src, e.payCostSpec, 0);
         if (ok) yield* executeEffects(g, e.effects, ctx);
+        else yield* otherwise();
         return;
       }
       const paid = yield* offerToPay(g, who, e.cost, e.text ?? `Pay ${e.cost}? If you do: ${describe(e.effects)}`);
       if (paid) yield* executeEffects(g, e.effects, ctx);
+      else yield* otherwise();
       return;
     }
     case 'changeTargets': {

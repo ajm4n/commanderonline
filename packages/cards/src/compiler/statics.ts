@@ -1672,6 +1672,16 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 118 ----
+  if (/^Players skip their untap steps$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'skipStep', data: 'untap' } }];
+  if (/^Players skip their upkeep steps$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'skipStep', data: 'upkeep' } }];
+  if (/^Players skip their draw steps$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'skipStep', data: 'draw' } }];
+  if (/^Players cannot cycle cards$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noCycling' } }];
+  if (/^Players cannot search libraries(?: this turn)?$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noSearch' } }];
+  if (/^Players cannot activate planeswalkers' loyalty abilities$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noLoyaltyAbilities' } }];
+  if (/^Players can cast spells only during their own turns$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'castOnlyOwnTurn' } }];
+  if (/^Permanents with ice counters on them are snow$/i.test(L)) return [{ kind: 'static', text: line, affects: { counterAtLeast: { counter: 'ice', n: 1 }, zone: 'battlefield' }, modification: { layer: 4, addSupertypes: ['Snow'] } }];
+  if (/^Permanents enter tapped this turn$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: {}, tapped: true }];
   // ---- Round 112 ----
   if ((m = L.match(/^(.+?) can attack as though it had haste$/i))) {
     const a = affectsOf(m[1]);
