@@ -133,6 +133,21 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const resp = yield* g.ask({ type: 'distribute', player: ctx.controller, prompt: `Divide ${total} damage`, amount: total, targets, minPer: 1, sourceId: ctx.sourceId ?? undefined });
         const amounts = resp.type === 'distribute' ? resp.amounts : targets.map((_, i) => (i === 0 ? total : 0));
         targets.forEach((t, i) => g.dealDamage(source, t, amounts[i], false));
+      } else if (e.excessToController) {
+        // "Excess damage is dealt to that creature's controller instead."
+        for (const t of targets) {
+          if (t.kind !== 'object') {
+            g.dealDamage(source, t, total, false);
+            continue;
+          }
+          const obj = g.state.objects[t.id];
+          const ch = obj ? g.characteristics(obj.id) : null;
+          const lethal = ch?.toughness !== null && ch?.toughness !== undefined ? Math.max(0, ch.toughness - (obj?.damage ?? 0)) : total;
+          const onCreature = Math.min(total, lethal);
+          g.dealDamage(source, t, onCreature, false);
+          const excess = total - onCreature;
+          if (excess > 0 && obj) g.dealDamage(source, { kind: 'player', id: obj.controller }, excess, false);
+        }
       } else for (const t of targets) g.dealDamage(source, t, total, false);
       ctx.memory['lastDamaged'] = [...((ctx.memory['lastDamaged'] as ObjectId[]) ?? []), ...targets.filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id)];
       return;
@@ -2135,6 +2150,13 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
     } else if (ab.choose === 'number') {
       const r = yield* g.ask({ type: 'chooseNumber', player: controller, prompt: `${o.card.name}: choose a number`, min: 0, max: 30, sourceId: id });
       chosen[ab.chooseKey ?? 'number'] = r.type === 'number' ? r.value : 0;
+    } else if (ab.chooseObject) {
+      const cands = objectsMatching(g, { ...ab.chooseObject, zone: ab.chooseObject.zone ?? 'battlefield' }, { sourceId: id, controller }).filter((c) => c.id !== id).map((c) => c.id);
+      if (cands.length) {
+        const r = yield* g.ask({ type: 'chooseObjects', player: controller, prompt: `${o.card.name}: choose`, candidates: cands, min: 1, max: 1, sourceId: id });
+        const pick = r.type === 'objects' ? r.ids[0] : cands[0];
+        if (pick !== undefined) chosen[ab.chooseKey ?? 'chosen'] = pick;
+      }
     } else if (ab.choose === 'option' && ab.chooseOptions?.length) {
       const r = yield* g.ask({ type: 'chooseOption', player: controller, prompt: `${o.card.name}: choose`, options: ab.chooseOptions.map((x) => ({ id: x, label: x })), min: 1, max: 1, sourceId: id });
       chosen[ab.chooseKey ?? 'choice'] = r.type === 'options' ? r.ids[0] : ab.chooseOptions[0];

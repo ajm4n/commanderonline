@@ -2992,6 +2992,41 @@ const PATTERNS: Pattern[] = [
       { kind: 'exile', what: { ref: 'chosen', key }, remember: 'exiled' },
     ];
   }],
+  // "Reveal target face-down permanent" — information only.
+  [/^reveal (target .+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'log', text: `Reveal ${m[1]}.`, objectRef: ref }] : null;
+  }],
+  // "Choose a creature card exiled with ~"
+  [/^choose (?:a|an|(\w+)) (.+? exiled with ~)$/i, (m, ctx) => {
+    const c = chooseRef(`a ${m[2]}`, ctx, YOU, false);
+    if (!c) return null;
+    if (m[1]) {
+      const n = wordToNumber(m[1]);
+      if (typeof n !== 'number') return null;
+      (c.pre[0] as { count: number }).count = n;
+    }
+    return c.pre;
+  }],
+  // "put a creature card exiled with ~ onto the battlefield under your control with a finality counter on it"
+  [/^put (?:a|an|(\w+)) (.+?) onto the battlefield(?: under your control)?(?: with (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it)?$/i, (m, ctx) => {
+    const c = chooseRef(`a ${m[2]}`, ctx, YOU, false);
+    if (!c) return null;
+    if (m[1]) {
+      const n = wordToNumber(m[1]);
+      if (typeof n !== 'number') return null;
+      (c.pre[0] as { count: number }).count = n;
+    }
+    const counters = m[4] ? { counter: m[4], amount: (m[3] ? wordToNumber(m[3]) : 1) ?? 1 } : undefined;
+    return [...c.pre, { kind: 'returnToBattlefield', what: c.ref, counters }];
+  }],
+  // "Return up to one target creature card and up to one target land card from your graveyard to your hand"
+  [/^return (up to one target .+?) and (up to one target .+?) from your graveyard to your hand$/i, (m, ctx) => {
+    const a = objRef(`${m[1]} in your graveyard`, ctx);
+    const b = a ? objRef(`${m[2]} in your graveyard`, ctx) : null;
+    return a && b ? [{ kind: 'putIntoHand', what: a }, { kind: 'putIntoHand', what: b }] : null;
+  }],
+  // "Each opponent attacking that player does the same" — repeat the previous sentence for each of them.
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -4025,6 +4060,34 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
       ctx.targets.length = savedT;
+    }
+    // "Excess damage is dealt to that creature's controller instead." refines the damage just dealt.
+    {
+      const prev = effects[effects.length - 1];
+      if (/^excess damage is dealt to that creature's controller instead$/i.test(s) && prev && prev.kind === 'damage') {
+        (prev as { excessToController?: boolean }).excessToController = true;
+        continue;
+      }
+    }
+    // "Each opponent attacking that player does the same." repeats what the sentence before did.
+    {
+      const same = s.match(/^each (?:opponent|player)(?: attacking that player)? does the same$/i);
+      if (same && effects.length) {
+        effects.push({ kind: 'forEach', over: { ref: 'eachOpponent' }, effects: [effects[effects.length - 1]] });
+        continue;
+      }
+    }
+    // "If ~ was kicked, create twelve of those tokens instead." replaces the creation just made.
+    {
+      const kick = s.match(/^if ~ was kicked, create (\w+) of those tokens instead$/i);
+      const prev = effects[effects.length - 1];
+      if (kick && prev && prev.kind === 'createToken') {
+        const n = wordToNumber(kick[1]);
+        if (typeof n === 'number') {
+          effects[effects.length - 1] = { kind: 'conditional', if: { kind: 'memoryFlag', key: 'kicked' }, then: [{ ...prev, count: n }], else: [prev] };
+          continue;
+        }
+      }
     }
     // "Create a token. The token enters tapped and attacking." refines the creation just made.
     {

@@ -315,6 +315,16 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const data = { lands: /play lands|play cards/.test(what), spells: /cast|play cards/.test(what), filter: filter ? { ...filter, zone: undefined } : undefined };
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data } }];
   }
+  // "As ~ enters, choose another creature you control."
+  if ((m = L.match(/^As ~ enters, choose (?:a|an|another) (.+)$/i)) && !/^(color|creature type|opponent|player|card name|number|basic land type)$/i.test(m[1])) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      if (!f.zone) f.zone = 'battlefield';
+      if (/^another /i.test(m[0].slice(m[0].indexOf('choose'))) || /\banother\b/i.test(m[0])) f.other = true;
+      return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, chooseObject: f, chooseKey: 'chosen' }];
+    }
+  }
   if ((m = L.match(/^As ~ enters, choose (a color|a creature type|an opponent|a player|a card name|a number) and (a color|a creature type|an opponent|a player|a card name|a number)$/i))) {
     const a = parseStatic(`As ~ enters, choose ${m[1]}`, isCreatureOrPermanent);
     const b = parseStatic(`As ~ enters, choose ${m[2]}`, isCreatureOrPermanent);
@@ -1376,7 +1386,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 1 }];
   }
   // "If ~ would enter, sacrifice an untapped Mountain instead."
-  if ((m = L.match(/^If ~ would enter, (sacrifice .+?) instead$/i))) {
+  if ((m = L.match(/^If ~ would enter, (sacrifice .+?) instead(?:\. If you do, put ~ onto the battlefield\. If you do not, put it into its owner's graveyard)?$/i))) {
     const r = parseEffects(m[1], newCtx({ triggerHasObject: false, triggerHasPlayer: false }));
     if (r.unhandled.length) return null;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, effects: r.effects }];
