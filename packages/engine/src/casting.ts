@@ -1069,6 +1069,8 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   obj.memory['kicks'] = kicks;
   obj.memory['castAtInstantSpeed'] = !canCastSorcerySpeed(g, p);
   if (altId === 'overload') obj.memory['overloaded'] = true;
+  // "More Than Meets the Eye {cost}": the card is cast converted, so it resolves as its back face.
+  if (altId === 'converted' && obj.card.faces && obj.card.faces.length > 1) obj.faceIndex = 1;
   {
     // Morph / disguise: the spell resolves as a face-down 2/2 creature.
     const fd = altId ? (g.scriptFor(obj).alternativeCosts ?? []).find((a) => a.id === altId && a.faceDown) : undefined;

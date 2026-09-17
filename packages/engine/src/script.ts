@@ -245,7 +245,7 @@ export type Effect =
   /** "Target land becomes the basic land type of your choice" / "~ becomes the creature type of your choice". */
   | { kind: 'setSubtypes'; on: Ref; subtypes?: string[]; choose?: 'basicLandType' | 'creatureType'; duration?: Duration }
   /** "When ~ leaves the battlefield, put its counters on target creature you control." */
-  | { kind: 'moveCounters'; from: Ref; to: Ref }
+  | { kind: 'moveCounters'; from: Ref; to: Ref; counter?: CounterType; amount?: Amount }
   /** "~ becomes a copy of that creature" (permanently). */
   | { kind: 'becomeCopy'; what: Ref; of: Ref; exceptions?: TokenSpec['exceptions'] }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }

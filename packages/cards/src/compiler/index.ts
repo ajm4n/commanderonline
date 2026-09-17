@@ -169,6 +169,11 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    if ((m = line.match(/^More Than Meets the Eye ((?:\{[^}]+\})+)$/i))) {
+      alternativeCosts.push({ id: 'converted', text: line, cost: { mana: m[1] }, zone: 'hand' });
+      compiledLines.push(line);
+      continue;
+    }
     if ((m = line.match(/^Mutate ((?:\{[^}]+\})+)$/i))) {
       alternativeCosts.push({ id: 'mutate', text: line, cost: { mana: m[1] }, zone: 'hand' });
       compiledLines.push(line);

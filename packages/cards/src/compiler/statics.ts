@@ -322,6 +322,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     spec.effects = r.effects;
     return [spec];
   }
+  // Amplify N: reveal cards sharing a creature type as it enters, one counter per card per N.
+  if ((m = L.match(/^Amplify (\d+)$/i))) {
+    const n = parseInt(m[1], 10);
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, effects: [{ kind: 'chooseObjects', filter: { zone: 'hand', owner: 'you', sharesCreatureTypeWithSource: true }, count: 99, key: 'amplified', upTo: true }, { kind: 'revealHand', who: { ref: 'controller' } }, { kind: 'addCounters', counter: '+1/+1', amount: { kind: 'times', a: n, b: { kind: 'countRef', ref: { ref: 'chosen', key: 'amplified' } } }, on: { ref: 'self' } }] }];
+  }
+  // Storied: three or more artifacts, legendaries and/or Sagas gives you an enduring story for the game.
+  if (/^Storied$/i.test(L)) {
+    return [{ kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true }, condition: { kind: 'count', filter: { anyOf: [{ types: ['Artifact'] }, { supertypes: ['Legendary'] }, { subtypes: ['Saga'] }], controller: 'you', zone: 'battlefield' }, op: '>=', value: 3 }, effects: [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'enduringStory' }, on: { ref: 'controller' }, duration: 'permanent' }] }];
+  }
+  // Increment: a counter whenever you spend more mana on a spell than this creature's power or toughness.
+  if (/^Increment$/i.test(L)) {
+    return [{ kind: 'triggered', text: line, event: 'cast', filter: { player: 'you' }, condition: { kind: 'manual', text: 'Was the mana spent greater than this creature\'s power or toughness?' }, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'self' } }] }];
+  }
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
   if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {

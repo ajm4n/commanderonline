@@ -654,7 +654,19 @@ const PATTERNS: Pattern[] = [
     if (!who || typeof per !== 'number' || typeof lim !== 'number') return null;
     return [{ kind: 'loseLife', who, amount: { kind: 'times', a: per, b: { kind: 'max', a: { kind: 'sum', parts: [lim, { kind: 'times', a: { kind: 'handSize', ref: who }, b: -1 }] }, b: 0 } } }];
   }],
+  [/^move (?:a|an|(\w+|X)) ([+-]\d\/[+-]\d|\w+) counters? from (.+?) onto (.+)$/i, (m, ctx) => {
+    const from = objRef(m[3], ctx);
+    const to = from ? objRef(m[4], ctx) : null;
+    if (!from || !to) return null;
+    const n = m[1] ? (m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1])) : 1;
+    if (n === null) return null;
+    return [{ kind: 'moveCounters', from, to, counter: m[2] as import('@commander/engine').CounterType, amount: n as Amount }];
+  }],
   [/^flip ~$/i, () => [{ kind: 'transform', what: SELF }]],
+  [/^convert (~|it|that creature|target creature)$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx);
+    return ref ? [{ kind: 'transform', what: ref }] : null;
+  }],
   [/^(.+?) reveals (\w+) cards? from their hand and you choose one of them$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
     const n = wordToNumber(m[2]);

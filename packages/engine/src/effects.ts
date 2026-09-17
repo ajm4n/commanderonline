@@ -270,7 +270,20 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const counters = from && Object.keys(from.counters).length ? from.counters : snapshot ?? {};
       const to = g.resolveObjects(e.to, ctx)[0];
       if (!to) return;
-      for (const [k, n] of Object.entries(counters)) if (n > 0) g.addCounters(to.id, k, n, ctx.sourceId ?? undefined);
+      if (e.counter) {
+        // "Move X +1/+1 counters from ~ onto another target artifact."
+        const want = e.amount !== undefined ? amt(e.amount) : counters[e.counter] ?? 0;
+        const have = Math.min(want, counters[e.counter] ?? 0);
+        if (have <= 0) return;
+        if (from) g.removeCounters(from.id, e.counter, have);
+        g.addCounters(to.id, e.counter, have, ctx.sourceId ?? undefined);
+        return;
+      }
+      for (const [k, n] of Object.entries(counters)) {
+        if (n <= 0) continue;
+        if (from) g.removeCounters(from.id, k, n);
+        g.addCounters(to.id, k, n, ctx.sourceId ?? undefined);
+      }
       return;
     }
     case 'becomeCopy': {

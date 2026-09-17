@@ -145,6 +145,8 @@ export function parseCost(text: string): AbilityCost | null {
         if (!noun) return null;
         cost.discard = { count: n, filter: noun.filter };
       }
+    } else if ((m = p.match(/^Remove one or more ([+-]\d\/[+-]\d|\w+) counters? from ~$/i))) {
+      cost.removeCounters = { counter: m[1] as import('@commander/engine').CounterType, amount: 'X' };
     } else if ((m = p.match(/^Remove (?:a|an|(\w+)) counters? from ~$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (n === null) return null;
