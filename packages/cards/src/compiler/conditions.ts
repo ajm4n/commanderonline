@@ -324,6 +324,20 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 107 ----
+  if (/^(?:its controller|that player|they|the player|its owner) is poisoned$/.test(t)) return { kind: 'playerStat', stat: 'poison', ref: ctx.lastPlayer ?? { ref: 'triggerPlayer' }, op: '>=', value: 1 };
+  if (/^you are poisoned$/.test(t)) return { kind: 'playerStat', stat: 'poison', ref: { ref: 'controller' }, op: '>=', value: 1 };
+  if (/^(?:~|it) is not attacking or blocking$/.test(t)) return { kind: 'not', c: { kind: 'objectMatches', ref: ctx.lastObj ?? ctx.self, filter: { attackingOrBlocking: true } } };
+  if (/^(?:~|it) is attacking or blocking$/.test(t)) return { kind: 'objectMatches', ref: ctx.lastObj ?? ctx.self, filter: { attackingOrBlocking: true } };
+  if ((m = t.match(/^an opponent controls (?:at least )?(\w+) or more (.+?) than you$/)) || (m = t.match(/^an opponent controls (?:at least )?(\w+) more (.+?) than you$/))) {
+    const noun = parseNoun(oc(m, 2));
+    if (noun) return { kind: 'opponentCompare', what: { ...noun.filter, zone: 'battlefield' }, op: '>=' };
+  }
+  if ((m = t.match(/^(?:its|that spell's|the spell's) mana value is (less than or equal to|greater than or equal to|less than|greater than|equal to) (.+)$/))) {
+    const a = parseAmount(m[2], ctx);
+    const op = ({ 'less than or equal to': '<=', 'greater than or equal to': '>=', 'less than': '<', 'greater than': '>', 'equal to': '==' } as Record<string, '<=' | '>=' | '<' | '>' | '=='>)[m[1]];
+    if (a !== null) return { kind: 'amount', a: { kind: 'manaValue', ref: ctx.lastObj ?? { ref: 'stackTarget' } }, op, b: a };
+  }
   // ---- Round 104 ----
   // "you control a God, a Demigod, or a legendary enchantment" / "you control a blue permanent and a black permanent"
   if ((m = orig.match(/^(you control|an opponent controls|you do not control) (.+)$/i)) && /(?:, | and | or )/.test(m[2])) {

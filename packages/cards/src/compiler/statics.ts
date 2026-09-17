@@ -58,15 +58,17 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // "~ is all colors."
   if (/^~ is all colors$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColors: ['W', 'U', 'B', 'R', 'G'] } }];
   // "~ attacks or blocks each combat if able." / "~ blocks each combat if able."
+  sfall1: {
   if ((m = L.match(/^(.+?) (attacks or blocks|blocks) each combat if able$/i))) {
     const rules: RuleModification['kind'][] = m[2].toLowerCase() === 'blocks' ? ['mustBlock'] : ['mustAttack', 'mustBlock'];
     const out: AbilitySpec[] = [];
     for (const k of rules) {
       const r = objRule(m[1], { kind: k } as RuleModification);
-      if (!r) return null;
+      if (!r) break sfall1;
       out.push(...r);
     }
     return out;
+  }
   }
   // "~ cannot be blocked except by creatures with flying or reach."
   if ((m = L.match(/^(.+?) cannot be blocked except by (.+)$/i))) {
@@ -306,6 +308,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const noun = parseNoun(m[1]);
     if (noun) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'blockTax', data: { filter: { ...noun.filter, zone: undefined }, cost: m[2] } } }];
   }
+  sfall2: {
   if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) unless (.+)$/i))) {
     const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     if (cond && cond.kind !== 'manual') {
@@ -313,11 +316,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       const out: AbilitySpec[] = [];
       for (const rule of rules) {
         const r = objRule(m[1], rule);
-        if (!r) return null;
+        if (!r) break sfall2;
         out.push(...r.map((a) => (a.kind === 'static' ? { ...a, condition: { kind: 'not' as const, c: cond } } : a)));
       }
       return out;
     }
+  }
   }
   // "You may play lands and cast creature spells from the top of your library."
   if ((m = L.match(/^You may (play lands and cast (.+?) spells|play lands|cast (.+?) spells(?: and (.+?) spells)?|play cards|cast spells|play lands and cast spells) from the top of your library$/i))) {
@@ -461,11 +465,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if (/^Players cannot pay life or sacrifice creatures to cast spells or activate abilities$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noLifeOrSacrificeCosts' } }];
   if (/^Spells and abilities your opponents control cannot cause their controller to search their library$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
+  sfall3: {
   if ((m = L.match(/^(.+?) cannot be the target of (spells|abilities)(?: from (.+?) sources)?$/i))) {
     const f = m[3] ? parseNoun(`a ${m[3]}`)?.filter : undefined;
-    if (m[3] && !f) return null;
+    if (m[3] && !f) break sfall3;
     const r = objRule(m[1], { kind: 'cantBeTargeted', by: /spells/i.test(m[2]) ? 'spells' : 'abilities', filter: f ? { ...f, zone: undefined } : undefined });
     if (r) return r;
+  }
   }
   if ((m = L.match(/^Each (.+?) in your graveyard has the chosen creature type in addition to its other types$/i))) {
     const noun = parseNoun(`a ${m[1]}`);
@@ -667,14 +673,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (a.ok && typeof a.affects === 'object' && amt !== null) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: a.affects, counters: { counter: m[2], amount: amt } }];
   }
   // "Enchanted land is a 3/3 red Spirit creature with haste. It is still a land."
+  sfall4: {
   if ((m = L.match(/^(.+?) is (?:a|an) (\d+)\/(\d+) (.+?) creature(?: with (.+?))?(?:\. (?:It|They) (?:is|are) still (?:a |an )?\w+s?| that (?:is|are) still (?:a |an )?\w+s?)?$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall4;
     const words = m[4].split(/\s+/);
     const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
     const subtypes = words.filter((w) => /^[A-Z]/.test(w));
     const rest = words.filter((w) => !/^(white|blue|black|red|green|and|colorless)$/i.test(w) && !/^[A-Z]/.test(w));
-    if (rest.length) return null;
+    if (rest.length) break sfall4;
     const out: AbilitySpec[] = [
       { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: ['Creature'], addSubtypes: subtypes.length ? subtypes : undefined } },
       { kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } },
@@ -682,10 +689,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (colors.length || /colorless/i.test(m[4])) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: colors } });
     if (m[5]) {
       const kws = parseKeywordList(m[5]);
-      if (!kws) return null;
+      if (!kws) break sfall4;
       out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } });
     }
     return out;
+  }
   }
   if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) return objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' });
   if ((m = L.match(/^Prevent all (combat )?damage that would be dealt to (.+?) during (your|each opponent's) turn$/i))) {
@@ -738,21 +746,24 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (a.ok && v !== null) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', powerAmount: v, toughnessAmount: v } }];
   }
   // "Creature spells you cast cost {X} less to cast, where X is the amount of life you gained this turn."
+  sfall5: {
   if ((m = L.match(/^(.+?) you cast cost \{X\} less to cast, where X is (.+)$/i))) {
     const per = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false } as never);
-    if (per === null) return null;
+    if (per === null) break sfall5;
     let filter: ObjectFilter | undefined;
     if (!/^spells$/i.test(m[1])) {
       const noun = parseNoun(m[1].replace(/ spells?$/i, ' spell'));
-      if (!noun) return null;
+      if (!noun) break sfall5;
       filter = { ...noun.filter };
       delete filter.zone;
     }
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: 1, filter, perAmount: per } }];
   }
+  }
+  sfall6: {
   if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) creatures? with base power and toughness (\d+)\/(\d+)$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall6;
     const words = m[2].split(/\s+/);
     const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
     const subtypes = words.filter((w) => /^[A-Z]/.test(w));
@@ -762,6 +773,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     ];
     if (colors.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: colors } });
     return out;
+  }
   }
   if ((m = L.match(/^While voting, you (?:may vote|get) an additional (?:time|vote)$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'extraVote', data: 1 } }];
   // Soulbond: "As long as ~ is paired with another creature, both creatures have protection from Zombies."
@@ -935,10 +947,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const b = parseStatic(`${m[1]} has ${m[3]}`, isCreatureOrPermanent);
     if (a && b) return [...a, ...b];
   }
+  sfall7: {
   if ((m = L.match(/^(.+?) (?:is|are) not (?:a|an) (creature|artifact|enchantment|land|planeswalker)$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall7;
     return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, removeTypes: [m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase()] } }];
+  }
   }
   if (/^Players cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'cantGainLife' } }];
   if (/^Skip your draw step$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'skipDrawStep' } }];
@@ -969,23 +983,27 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^If ~ would leave the battlefield, exile it instead of putting it anywhere else$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'leavesBattlefield', self: true, instead: 'exile' }];
   if ((m = L.match(/^As ~ enters, you may pay (\d+) life\.? If you do not, it enters tapped$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, payLifeOrTapped: parseInt(m[1], 10) }];
   // P/T and keyword statics
+  sfall8: {
   if ((m = L.match(/^(.+?) (?:get|gets) ([+-]\d+)\/([+-]\d+)(?: and (?:have|has) (.+))?$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall8;
     const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } }];
     if (m[4]) {
       const quoted = m[4].match(/^"(.+)"$/);
       const kws = quoted ? null : parseKeywordList(m[4]);
       if (quoted) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: [quoted[1]] } });
       else if (kws) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } });
-      else return null;
+      else break sfall8;
     }
     return out;
   }
+  }
+  sfall9: {
   if ((m = L.match(/^(.+?) (?:have|has) "(.+)"$/i)) && !/^(you|each player|all players)/i.test(m[1])) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall9;
     return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addAbilityText: [m[2]] } }];
+  }
   }
   if ((m = L.match(/^(.+?) (?:have|has) (.+)$/i)) && !/^(you|each player|each opponent|all players|players)\b/i.test(m[1])) {
     const kws = parseKeywordList(m[2]);
@@ -995,9 +1013,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "Enchanted land is a 3/3 black Ooze creature." / "~ is a 4/4 red Dragon artifact creature"
+  sfall10: {
   if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?) creatures?(?: with (.+))?(?: in addition to (?:its|their) other types)?$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall10;
     const words = m[4].split(/\s+/);
     const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
     const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
@@ -1009,24 +1028,29 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (colors.length || words.some((w) => /^colorless$/i.test(w))) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: colors } });
     if (m[5]) {
       const kws = parseKeywordList(m[5]);
-      if (!kws) return null;
+      if (!kws) break sfall10;
       out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, addKeywords: kws } });
     }
     return out;
   }
+  }
+  sfall11: {
   if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) in addition to (?:its|their) other (?:types|colors|land types|creature types)$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall11;
     const words = m[2].split(/\s+/);
     const types = words.filter((w) => /^(creature|artifact|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
     const subtypes = words.filter((w) => /^[A-Z]/.test(w));
     return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: types, addSubtypes: subtypes } }];
   }
+  }
+  sfall12: {
   if ((m = L.match(/^(.+?) (?:is|are) (white|blue|black|red|green|colorless)$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall12;
     const c = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[2].toLowerCase() as 'white'];
     return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, setColors: c ? [c] : [] } }];
+  }
   }
   // Rules on objects
   if ((m = L.match(/^(.+?) cannot block$/i))) return objRule(m[1], { kind: 'cantBlock' });
@@ -1053,18 +1077,22 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
     if (noun) return objRule(m[1], { kind: 'cantBlockFilter', filter: noun.filter });
   }
+  sfall13: {
   if ((m = L.match(/^(.+?) cannot be blocked by creatures with greater power$/i))) return objRule(m[1], { kind: 'cantBeBlockedByPowerGreaterThanSource' });
+  sfall14: {
   if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) unless (.+)$/i))) {
     const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
-    if (!cond || cond.kind === 'manual') return null;
+    if (!cond || cond.kind === 'manual') break sfall14;
     const kinds: RuleModification['kind'][] = m[2].toLowerCase() === 'attack or block' ? ['cantAttack', 'cantBlock'] : m[2].toLowerCase() === 'attack' ? ['cantAttack'] : ['cantBlock'];
     const out: AbilitySpec[] = [];
     for (const k of kinds) {
       const r = objRule(m[1], { kind: k } as RuleModification);
-      if (!r) return null;
+      if (!r) break sfall14;
       out.push(...r.map((a) => (a.kind === 'static' ? { ...a, condition: { kind: 'not' as const, c: cond } } : a)));
     }
     return out;
+  }
+  }
   }
   // "~ enters with a +1/+1 counter, a flying counter, a deathtouch counter, and a shield counter on it."
   if ((m = L.match(/^~ enters with ((?:(?:a|an|\w+) [+-]?[\w/+-]+ counters?(?:, |,? and )?){2,}) on it$/i))) {
@@ -1150,9 +1178,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if ((m = L.match(/^(?:Activated abilities of (.+?) cannot be activated|(.+?)'s activated abilities cannot be activated)$/i))) return objRule(m[1] ?? m[2], { kind: 'custom', tag: 'cantActivate' });
   if (/^You may play lands from your graveyard$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playLandsFromGraveyard' } }];
+  sfall15: {
   if ((m = L.match(/^(.+?) (?:get|gets) ([+-]\d+)\/([+-]\d+) for each (.+?)(?: on the battlefield)?$/i))) {
     const a = affectsOf(m[1]);
-    if (!a.ok) return null;
+    if (!a.ok) break sfall15;
     const both = m[4].match(/^(.+?) and (?:each |for each )?(.+)$/i);
     if (both && !/\b(and|or)\b/i.test(both[1])) {
       const rc = { self: { ref: 'self' } as Ref, lastObj: null, triggerHasObject: false };
@@ -1168,12 +1197,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
     const amt = parseAmount(`the number of ${m[4].replace(/^of /i, '').replace(/ counter on /, ' counters on ')}`, { self: { ref: 'self' }, lastObj: /^(?:enchanted|equipped) /i.test(m[1]) ? { ref: 'attachedTo' } : null, triggerHasObject: false });
     if (amt !== null) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perAmount: amt } }];
-    return null;
+    break sfall15;
   }
+  }
+  sfall16: {
   if ((m = L.match(/^(.+?) (?:get|gets) ([+-]X|[+-]\d+)\/([+-]X|[+-]\d+), where X is (.+)$/i))) {
     const a = affectsOf(m[1]);
     const amt = parseAmount(m[4], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
-    if (!a.ok || amt === null) return null;
+    if (!a.ok || amt === null) break sfall16;
     const p = m[2].toUpperCase().includes('X') ? (m[2].startsWith('-') ? -1 : 1) : 0;
     const t = m[3].toUpperCase().includes('X') ? (m[3].startsWith('-') ? -1 : 1) : 0;
     const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: p, toughness: t, perAmount: amt } }];
@@ -1181,6 +1212,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const fixedT = m[3].toUpperCase().includes('X') ? 0 : parseInt(m[3], 10);
     if (fixedP || fixedT) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: '7c', power: fixedP, toughness: fixedT } });
     return out;
+  }
   }
   if ((m = L.match(/^If (?:a|an) (.+?) would deal damage to (?:a permanent or player|a creature or player|any target|a permanent, player, or battle|a creature, planeswalker, or player), it deals (double|twice|triple|three times) that (?:much )?damage(?: to (?:that|it)[^,]*)? instead$/i))) {
     const noun = parseNoun(`a ${m[1]}`);
@@ -1396,13 +1428,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (noun) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'attackTax', data: { filter: { ...noun.filter, zone: undefined }, cost: m[2] } } }];
   }
   // "Creature spells you cast cost {1} less to cast for each +1/+1 counter on ~."
+  sfall17: {
   if ((m = L.match(/^(.+?) you cast cost \{(\d)\} less to cast for each (.+)$/i))) {
     const nounText = m[1].replace(/^Spells$/i, 'spells');
     const per = parseAmount(`the number of ${m[3]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     let filter: ObjectFilter | undefined;
     if (!/^spells$/i.test(nounText)) {
       const noun = parseNoun(nounText.replace(/ spells?$/i, ' spell'));
-      if (!noun) return null;
+      if (!noun) break sfall17;
       filter = { ...noun.filter };
       delete filter.zone;
     }
@@ -1410,6 +1443,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       if (typeof per === 'object' && per.kind === 'count') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[2], 10), filter, per: per.filter } }];
       return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[2], 10), filter, perAmount: per } }];
     }
+  }
   }
 
   if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
@@ -1443,29 +1477,33 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // Deck-construction rules have no in-game effect, but record them so the card counts as understood.
   if (/^A deck with this (?:commander|card as its commander) can have .+$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'deckConstruction' } }];
   if (/^(?:the )?damage cannot be prevented$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noDamagePrevention' } }];
+  sfall18: {
   if ((m = L.match(/^(.+?) you cast cost ((?:\{[WUBRGC\d]\})+) (less|more) to cast$/i)) || (m = L.match(/^(.+?) cost ((?:\{[WUBRGC\d]\})+) (less|more) to cast$/i))) {
     const nounText = m[1].replace(/^Spells$/i, 'spells');
     let filter: ObjectFilter | undefined;
     if (!/^spells$/i.test(nounText)) {
       const noun = parseNoun(nounText.replace(/ spells?$/i, ' spell'));
-      if (!noun) return null;
+      if (!noun) break sfall18;
       filter = { ...noun.filter };
       delete filter.zone;
     }
     const generic = m[2].match(/^\{(\d)\}$/);
     const kind = m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease';
-    if (!generic && /\d/.test(m[2])) return null;
+    if (!generic && /\d/.test(m[2])) break sfall18;
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: generic ? { kind, amount: parseInt(generic[1], 10), filter } : { kind, amount: 0, symbols: m[2], filter } }];
   }
+  }
+  sfall19: {
   if ((m = L.match(/^(.+?) your opponents cast cost \{(\d)\} more to cast$/i))) {
     let filter: ObjectFilter | undefined;
     if (!/^spells$/i.test(m[1])) {
       const noun = parseNoun(m[1].replace(/ spells?$/i, ' spell'));
-      if (!noun) return null;
+      if (!noun) break sfall19;
       filter = { ...noun.filter };
       delete filter.zone;
     }
     return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'costIncrease', amount: parseInt(m[2], 10), filter } }];
+  }
   }
   // Replacement: ETB
   if (/^~ enters tapped$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true }];
@@ -1513,20 +1551,24 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
     return out;
   }
-  if ((m = L.match(/^(.+?) (?:enter|enters) with (?:an additional|a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on (?:it|them)$/i)) && !/^~/.test(m[1])) {
+  sfall20: {
+  if ((m = L.match(/^(.+?) (?:enter|enters) with (?:an additional|a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on (?:it|them)$/i)) && !/^~/.test(m[1]) && parseNoun(m[1])) {
     const noun = parseNoun(m[1]);
-    if (!noun) return null;
+    if (!noun) break sfall20;
     const f = { ...noun.filter };
     delete f.zone;
     if (noun.other) f.other = true;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: f, counters: { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) as number) : 1 } }];
   }
-  if ((m = L.match(/^(.+?) (?:enter|enters) tapped$/i)) && !/^~/.test(m[1])) {
+  }
+  sfall21: {
+  if ((m = L.match(/^(.+?) (?:enter|enters) tapped$/i)) && !/^~/.test(m[1]) && parseNoun(m[1])) {
     const noun = parseNoun(m[1]);
-    if (!noun) return null;
+    if (!noun) break sfall21;
     const f = { ...noun.filter };
     delete f.zone;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: false, filter: f, tapped: true }];
+  }
   }
   // Doublers
   if (/^If (?:you would create|an effect would create) one or more tokens(?: under your control)?, (?:create|it creates) twice that many (?:of those )?tokens instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 1 }];
@@ -1563,6 +1605,35 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 107 ----
+  // "~ is a black Zombie in addition to its other colors and types."
+  if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) in addition to (?:its|their) other (?:colors and types|types and colors|colors|types|creature types|card types)$/i))) {
+    const a = affectsOf(m[1]);
+    const probe = parseNoun(`a ${m[2]}`);
+    if (a.ok && probe && probe.confident) {
+      const mod: Record<string, unknown> = { layer: 4 };
+      if (probe.filter.types?.length) mod.addTypes = probe.filter.types;
+      if (probe.filter.subtypes?.length) mod.addSubtypes = probe.filter.subtypes;
+      const out: AbilitySpec[] = [{ kind: 'static', text: line, affects: a.affects, modification: mod as never }];
+      if (probe.filter.colors?.length) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 5, addColors: probe.filter.colors } });
+      return out;
+    }
+  }
+  // "If at least three white mana was spent to cast ~, ~ enters with a +1/+1 counter on it."
+  if ((m = L.match(/^If (.+?), (~ enters? with .+|~ enters? tapped.*)$/i))) {
+    const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const inner = cond && cond.kind !== 'manual' ? parseStatic(m[2], isCreatureOrPermanent) : null;
+    if (inner && cond) return inner.map((ab) => (ab.kind === 'replacement' ? { ...ab, condition: cond } : ab));
+  }
+  // "If you would create a Food token, instead create a Food token and a Treasure token."
+  if ((m = L.match(/^If you would create (?:a|an) (.+?) token, (?:instead create|create) (?:a|an) \1 token and (?:a|an) (.+?) token(?: instead)?$/i))) {
+    const tok = parseTokenPhrase(`a ${m[2]} token`);
+    if (tok) return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 0, alsoToken: tok.token }];
+  }
+  // "If a source would deal 3 or less damage to ~, prevent that damage."
+  if ((m = L.match(/^If (?:a|an) source would deal (\d+) or less damage to (~|you), prevent that damage$/i))) {
+    return [{ kind: 'replacement', text: line, event: 'damage', prevent: parseInt(m[1], 10), to: /^you$/i.test(m[2]) ? 'controller' : 'self' }];
+  }
   // ---- Round 106 ----
   if (/^damage does not cause you to lose life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'damageNoLifeLoss' } }];
   if ((m = L.match(/^(.+?) gets an additional ([+-]\d+)\/([+-]\d+)$/i))) {

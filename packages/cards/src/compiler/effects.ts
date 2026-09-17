@@ -4014,7 +4014,24 @@ const PATTERNS: Pattern[] = [
       : [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, controller: 'owner' }];
   }],
   // "return to your hand all creature cards in your graveyard that were put there from the battlefield this turn"
-  // "~ deals 1 damage to any target and 1 damage to any target of an opponent's choice"
+  // "Counter target spell if its mana value is 3 or less"
+  [/^counter (target .+?) if (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const cond = parseCondition(m[2], { self: SELF, lastObj: ref, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer });
+    if (!cond || cond.kind === 'manual') return null;
+    return [{ kind: 'conditional', if: cond, then: [{ kind: 'counterSpell', what: ref }] }];
+  }],
+  // "~ deals X damage divided evenly, rounded down, among all creatures target opponent controls"
+  [/^(.+?) deals (\d+|X) damage divided (?:evenly, rounded down,|as you choose) among (.+)$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? undefined : (objRef(m[1], ctx) ?? undefined);
+    if (!/^~$/.test(m[1]) && !src) return null;
+    const to = objRef(m[3], ctx);
+    if (!to) return null;
+    const a: Amount = /^X$/i.test(m[2]) ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: a, to, source: src, divided: true }];
+  }],
+  // "~ deals 1 damage to any target and 1 damage to any target of an opponent's choice\"
   // "~ deals X damage to target creature and 1 damage to each other creature with the same controller"
   [/^(.+?) deals (\d+|X) damage to (.+?) and (\d+|X|half X, rounded (?:up|down)) damage to (.+)$/i, (m, ctx) => {
     const src = /^~$/.test(m[1]) ? undefined : (objRef(m[1], ctx) ?? undefined);

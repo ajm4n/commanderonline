@@ -89,6 +89,13 @@ export function parseNoun(raw: string): ParsedNoun | null {
     if (!inner) return null;
     return { ...inner, filter: { ...inner.filter, subtypes: ['Assassin', 'Mercenary', 'Pirate', 'Rogue', 'Warlock'] } };
   }
+  // "any artifact or creature on the battlefield" — "any" here is just an indefinite article.
+  if (/^any (?!target\b|number of\b|other player)/i.test(text)) text = text.replace(/^any /i, 'a ');
+  // "one or more target creatures"
+  if (/^one or more target /i.test(text)) {
+    const inner = parseNoun(text.replace(/^one or more /i, 'up to six '));
+    if (inner) return { ...inner, minCount: 1 };
+  }
   if (/^cards? or tokens?$/i.test(text)) return { filter: {}, target: false, count: 1, upTo: false, each: false, other: false, indefinite: true, isCard: true, kind: 'object', confident: true, text: raw.trim(), plural: /s$/.test(text) };
   const result: ParsedNoun = { filter: {}, target: false, count: 1, upTo: false, each: false, other: false, indefinite: false, isCard: false, kind: 'object', confident: true, text: raw.trim(), plural: false };
   let m: RegExpMatchArray | null;
