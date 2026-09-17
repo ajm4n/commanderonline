@@ -512,7 +512,7 @@ export interface AbilityCost {
   untap?: boolean;
   sacrificeSelf?: boolean;
   sacrifice?: { filter: ObjectFilter; count?: number | 'any' | 'X' };
-  payLife?: number | 'X';
+  payLife?: number | 'X' | 'halfUp' | 'halfDown';
   discard?: { count: number | 'X'; filter?: ObjectFilter; random?: boolean } | 'hand';
   /** amount 'X' = the chosen X ("Remove X counters", "Remove any number of counters"). */
   removeCounters?: { counter: CounterType | 'any'; amount: number | 'X' | 'all' };
@@ -535,6 +535,8 @@ export interface AbilityCost {
   beholdExile?: boolean;
   /** Reveal a matching card from your hand (free). */
   revealFromHand?: ObjectFilter;
+  /** How many cards to reveal (default 1). */
+  revealFromHandCount?: number;
   /** "As an additional cost, choose a creature type" (stored as memory `creatureType`). */
   chooseCreatureType?: boolean;
   /** Blight N: put N -1/-1 counters on a creature you control. */

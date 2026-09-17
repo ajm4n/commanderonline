@@ -1,7 +1,7 @@
 import type { Game, Gen } from './game.js';
 import type { GameObject, ObjectId, PlayerId, Step, Target } from './types.js';
 import { offerToPay } from './effects.js';
-import { summoningSick } from './casting.js';
+import { summoningSick, payAbilityCost } from './casting.js';
 import { protectionApplies, matchesFilter } from './filters.js';
 import { BASIC_LAND_TYPES } from './typeline.js';
 
@@ -172,6 +172,23 @@ function* declareAttackers(g: Game, active: PlayerId): Gen {
     g.log(valid ? 'Some creatures must attack this combat.' : 'Invalid attack declaration.');
   }
   // "Creatures can't attack you unless their controller pays {2} for each creature they control that is attacking you."
+  // "~ can't attack unless you pay {2}" / "... unless you sacrifice a land": a per-attacker cost.
+  {
+    for (let i = attacks.length - 1; i >= 0; i--) {
+      const o = g.state.objects[attacks[i].attacker];
+      if (!o) continue;
+      const rules = g.characteristics(o.id).rules.filter((r) => r.kind === 'custom' && r.tag === 'attackCost');
+      for (const r of rules) {
+        const d = (r as { data?: { cost?: import('./script.js').AbilityCost } }).data;
+        if (!d?.cost) continue;
+        const paid = yield* payAbilityCost(g, active, o, d.cost, 0, `attack with ${g.nameOf(o.id)}`);
+        if (!paid) {
+          attacks.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
   {
     const taxed = new Map<PlayerId, { cost: string; n: number }>();
     for (const a of attacks) {
@@ -257,6 +274,21 @@ function* declareBlockers(g: Game): Gen {
         for (let i = 0; i < blockTax.n; i++) {
           const paid = yield* offerToPay(g, d, blockTax.cost, `Pay ${blockTax.cost} for a blocking creature?`);
           if (!paid && blocks.length) blocks.pop();
+        }
+      }
+      // "~ can't block unless you pay {2}": a cost carried by the blocking creature itself.
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        const o = g.state.objects[blocks[i].blocker];
+        if (!o) continue;
+        for (const r of g.characteristics(o.id).rules) {
+          if (r.kind !== 'custom' || r.tag !== 'blockCost') continue;
+          const dd = (r as { data?: { cost?: import('./script.js').AbilityCost } }).data;
+          if (!dd?.cost) continue;
+          const paid = yield* payAbilityCost(g, d, o, dd.cost, 0, `block with ${g.nameOf(o.id)}`);
+          if (!paid) {
+            blocks.splice(i, 1);
+            break;
+          }
         }
       }
       // "No more than one creature can block each combat."

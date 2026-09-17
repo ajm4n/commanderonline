@@ -397,7 +397,8 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   // Check first
   if (cost.tap && (obj.tapped || (g.characteristics(obj.id).types.includes('Creature') && summoningSick(g, obj)))) return false;
   if (cost.untap && !obj.tapped) return false;
-  const nx = (v: number | 'X' | 'all' | undefined): number => (v === 'X' ? x : v === 'all' ? (cost.removeCounters ? obj.counters[cost.removeCounters.counter] ?? 0 : 0) : (v ?? 0));
+  const nx = (v: number | 'X' | 'all' | 'halfUp' | 'halfDown' | undefined): number =>
+    v === 'X' ? x : v === 'all' ? (cost.removeCounters ? obj.counters[cost.removeCounters.counter] ?? 0 : 0) : v === 'halfUp' ? Math.ceil(g.player(p).life / 2) : v === 'halfDown' ? Math.floor(g.player(p).life / 2) : (v ?? 0);
   const cnt = (v: number | 'X' | 'any' | undefined, avail: number, dflt = 1): number => (v === 'X' ? x : v === 'any' ? avail : (v ?? dflt));
   if (cost.payLife !== undefined && g.player(p).life < nx(cost.payLife)) return false;
   if (cost.energy !== undefined && g.player(p).energy < (cost.energy === 'X' ? x : cost.energy)) return false;
@@ -1066,7 +1067,7 @@ export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbi
   if (spec.cost.sacrificeSelf && obj.zone !== 'battlefield') return false;
   if (spec.cost.discardSelf && obj.zone !== 'hand') return false;
   if (spec.cost.returnSelf && obj.zone !== 'battlefield') return false;
-  if (spec.cost.payLife !== undefined && spec.cost.payLife !== 'X' && g.player(p).life < spec.cost.payLife) return false;
+  if (spec.cost.payLife !== undefined && typeof spec.cost.payLife === 'number' && g.player(p).life < spec.cost.payLife) return false;
   if (spec.cost.removeCounters && typeof spec.cost.removeCounters.amount === 'number' && (obj.counters[spec.cost.removeCounters.counter] ?? 0) < spec.cost.removeCounters.amount) return false;
   if (spec.cost.removeCounters && typeof spec.cost.removeCounters.amount !== 'number' && !(obj.counters[spec.cost.removeCounters.counter] ?? 0)) return false;
   if (spec.cost.tapUntappedTotalPower && objectsMatching(g, { ...spec.cost.tapUntappedTotalPower.filter, controller: 'you', untapped: true }, { sourceId: obj.id, controller: p }).reduce((s, o) => s + (g.characteristics(o.id).power ?? 0), 0) < spec.cost.tapUntappedTotalPower.power) return false;

@@ -324,6 +324,24 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have completed a dungeon$/)) || (m = t.match(/^you've completed a dungeon$/))) return { kind: 'playerStat', stat: 'dungeonsCompleted', op: '>=', value: 1 };
   if ((m = t.match(/^the ring has tempted you (\w+) or more times$/))) return { kind: 'playerStat', stat: 'ringLevel', op: '>=', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^an opponent has more life than you$/))) return { kind: 'manual', text: 'Does an opponent have more life than you?' };
+  // ---- Round 108 ----
+  if (/^(?:a|any) player has no cards in hand$/.test(t)) return { kind: 'not', c: { kind: 'handSize', ref: { ref: 'eachPlayer' }, op: '>=', value: 1 } };
+  if (/^(?:an )?opponent has no cards in hand$/.test(t)) return { kind: 'not', c: { kind: 'handSize', ref: { ref: 'eachOpponent' }, op: '>=', value: 1 } };
+  if ((m = t.match(/^you control (?:at least )?(\w+) or more other (.+)$/)) || (m = t.match(/^you control (?:at least )?(\w+) other (.+)$/))) {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(oc(m, 2));
+    if (noun && typeof n === 'number') return { kind: 'count', filter: { ...noun.filter, controller: 'you', other: true, zone: 'battlefield' }, op: '>=', value: n };
+  }
+  if (/^you have max speed$/.test(t)) return { kind: 'turnStat', key: 'speed', op: '>=', value: 4 };
+  if ((m = t.match(/^there is (?:a|an) (.+?) on the battlefield$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield' }, op: '>=', value: 1 };
+  }
+  if (/^(?:~|it) is paired with (?:a|another) creature(?: with soulbond)?$/.test(t)) return { kind: 'paired', ref: ctx.self };
+  if ((m = t.match(/^(?:a|an) (.+?) (?:also )?attacks$/))) {
+    const noun = parseNoun(`a ${oc(m, 1)}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, attacking: true, other: true, zone: 'battlefield' }, op: '>=', value: 1 };
+  }
   // ---- Round 107 ----
   if (/^(?:its controller|that player|they|the player|its owner) is poisoned$/.test(t)) return { kind: 'playerStat', stat: 'poison', ref: ctx.lastPlayer ?? { ref: 'triggerPlayer' }, op: '>=', value: 1 };
   if (/^you are poisoned$/.test(t)) return { kind: 'playerStat', stat: 'poison', ref: { ref: 'controller' }, op: '>=', value: 1 };

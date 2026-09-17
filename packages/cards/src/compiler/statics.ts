@@ -4,6 +4,7 @@ import { parseNoun } from './nouns.js';
 import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase } from './effects.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
+import { parseCost } from './costs.js';
 import { parseAmount } from './amounts.js';
 
 function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: boolean } {
@@ -1605,6 +1606,17 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If one or more \+1\/\+1 counters would be put on (a|another) creature you control, that many plus (one|two) \+1\/\+1 counters are put on it instead$/i))) return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: m[2].toLowerCase() === 'two' ? 2 : 1, counterType: '+1/+1', filter: { types: ['Creature'], controller: 'you', other: m[1].toLowerCase() === 'another' || undefined } }];
   if (/^If you would gain life, you gain twice that much life instead$/i.test(L)) return [{ kind: 'replacement', text: line, event: 'lifeGain', multiply: 2, who: 'you' }];
   if (/^If an opponent would gain life, that player gains no life instead$/i.test(L) || /^Your opponents cannot gain life$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'cantGainLife' } }];
+  // ---- Round 108 ----
+  // "~ cannot attack unless you pay {2}" / "... unless you sacrifice a land": a cost to attack or block.
+  if ((m = L.match(/^(~|Enchanted \w+|Equipped \w+) cannot (attack or block|attack|block) unless you (.+)$/i))) {
+    const costText = m[3].replace(/^pay /i, (w) => w).replace(/^[a-z]/, (ch) => ch.toUpperCase());
+    const cost = parseCost(costText.replace(/^Pay ((?:\{[^}]+\})+)(?: for each .+)?$/i, '$1'));
+    if (cost) {
+      const a = affectsOf(m[1]);
+      const tags = m[2].toLowerCase() === 'attack or block' ? ['attackCost', 'blockCost'] : m[2].toLowerCase() === 'attack' ? ['attackCost'] : ['blockCost'];
+      if (a.ok) return tags.map((tag) => ({ kind: 'static' as const, text: line, affects: a.affects, rule: { kind: 'custom' as const, tag, data: { cost } } }));
+    }
+  }
   // ---- Round 107 ----
   // "~ is a black Zombie in addition to its other colors and types."
   if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) in addition to (?:its|their) other (?:colors and types|types and colors|colors|types|creature types|card types)$/i))) {

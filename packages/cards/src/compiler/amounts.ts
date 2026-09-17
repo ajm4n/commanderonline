@@ -319,6 +319,10 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^your devotion to (white|blue|black|red|green)$/))) return { kind: 'devotion', colors: [({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white']] };
   if (t === 'the number of creatures you control') return { kind: 'count', filter: { types: ['Creature'], controller: 'you' } };
   if (t === 'the number of spells you have cast this turn' || t === 'the number of other spells you have cast this turn') return { kind: 'spellsCastThisTurn' };
+  // ---- Round 108 ----
+  if (/^(?:the number of )?1 life your opponents have lost this turn$/.test(t)) return { kind: 'playerTurnStat', key: 'lifeLostAmount', opponents: true };
+  if (/^(?:the number of )?opponents you(?:'ve| have)? attacked this turn$/.test(t)) return { kind: 'playerTurnStat', key: 'attackedPlayers' };
+  if (/^(?:the number of )?(?:permanents|creatures|artifacts|lands|nonland permanents) sacrificed this turn$/.test(t)) return { kind: 'playerTurnStat', key: 'sacrifice' };
   // ---- Round 105 ----
   if (/^(?:the )?(?:amount of )?\{e\} (?:you )?paid this way$/.test(t)) return { kind: 'ctxMemory', key: 'energyPaid' };
   if (/^(?:the )?excess damage dealt this way$/.test(t)) return { kind: 'triggerAmount' };
