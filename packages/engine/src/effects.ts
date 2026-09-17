@@ -1823,7 +1823,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'repeatWhile': {
       const max = e.max ?? 50;
       for (let i = 0; i < max; i++) {
-        if (!g.checkCondition(e.condition, ctx)) return;
+        if (e.condition && !g.checkCondition(e.condition, ctx)) return;
+        if (e.optional && i > 0) {
+          const r = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: 'Repeat the process again?', sourceId: ctx.sourceId ?? undefined });
+          if (r.type !== 'yesNo' || !r.value) return;
+        }
         yield* executeEffects(g, e.effects, ctx);
       }
       return;

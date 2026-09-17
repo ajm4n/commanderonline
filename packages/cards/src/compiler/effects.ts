@@ -1504,7 +1504,7 @@ const PATTERNS: Pattern[] = [
     const kinds = m[2] === 'attack or block' ? ['cantAttack', 'cantBlock'] : m[2] === 'be blocked' ? ['cantBeBlocked'] : [m[2] === 'attack' ? 'cantAttack' : 'cantBlock'];
     return kinds.map((k) => ({ kind: 'applyRule', rule: { kind: k as 'cantAttack' }, on: ref, duration: dur }));
   }],
-  [/^(.+?) becomes? (?:a|an) (?:legendary |snow )?([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)s?(?: with (.+?))?(?: and loses (.+?))?(?: that (?:is|are) (?:still|no longer) (?:a |an )?[\w ]+)?(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) becomes? (?:a|an) (?:legendary |snow )?([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)s?(?: with (.+?))?(?: and loses (.+?))?(?: in addition to (?:its|their) other types)?(?: that (?:is|are) (?:still|no longer) (?:a |an )?[\w ]+)?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
@@ -4188,6 +4188,40 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 147 ----
+  // "You may pay {E}{E}." / "You may pay {1} and 1 life."
+  [/^(?:(.+?) )?may pay ((?:\{E\})+)$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : YOU;
+    if (!who) return null;
+    return [{ kind: 'ifPays', who, cost: '', energy: (m[2].match(/\{E\}/g) ?? []).length, effects: [] }];
+  }],
+  [/^(?:(.+?) )?may pay ((?:\{[^}]+\})+)(?: and (\d+) life)?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : YOU;
+    if (!who || /\{E\}/.test(m[2])) return null;
+    return [{ kind: 'ifPays', who, cost: m[2], payLife: m[3] ? parseInt(m[3], 10) : undefined, effects: [] }];
+  }],
+  // "Put all cards exiled with ~ into their owner's graveyard."
+  [/^put (all|(\w+)) cards? (?:exiled with ~|your opponents own from exile) into (?:their|its) owner(?:'s|s'|s)? graveyards?$/i, (m) => {
+    const n = m[1].toLowerCase() === 'all' ? null : wordToNumber(m[2]);
+    const filter: ObjectFilter = /exiled with ~/i.test(m[0]) ? { zone: 'exile', exiledWithSource: true } : { zone: 'exile', owner: 'opponent' };
+    if (n === null) return [{ kind: 'moveToZone', what: { ref: 'all', filter }, zone: 'graveyard' }];
+    if (typeof n !== 'number') return null;
+    const key = 'exGy';
+    return [
+      { kind: 'chooseObjects', who: YOU, filter, count: n, key, upTo: true },
+      { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'graveyard' },
+    ];
+  }],
+  // "The next instant or sorcery spell you cast this turn has storm."
+  [/^the next (.+?) you cast this turn (?:has|gains) ([\w-]+(?: \d+| \{[^}]+\})?)$/i, (m) => {
+    const kws = parseKeywordList(m[2]);
+    const label = m[1].trim();
+    const noun = /^spell$/i.test(label) ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label}`) : parseNoun(`a ${label} spell`);
+    if (!kws || !noun || !noun.confident) return null;
+    const f = { ...noun.filter };
+    delete f.zone;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'spellsHaveKeywords', data: { keywords: kws, filter: Object.keys(f).length ? f : undefined, once: true } } }];
+  }],
   // ---- Round 145 ----
   // "Search your graveyard, hand, and/or library for an Aura card and put it onto the battlefield attached to ~."
   [/^search your ((?:library|graveyard|hand)(?:(?:,|,? and|,? and\/or|,? or|\/or) (?:your )?(?:library|graveyard|hand))*) for (?:a|an) (.+?)(?:, reveal (?:it|that card),?)?(?:,? and| then)? put (?:it|that card) onto the battlefield attached to (.+?)(?:, then shuffle| and shuffle)?$/i, (m, ctx) => {
@@ -4429,7 +4463,7 @@ const PATTERNS: Pattern[] = [
   }],
   // ---- Round 139 ----
   // "Put target face-up exiled card into its owner's graveyard."
-  [/^put (.+?) into (?:its|their) owners?'? graveyards?$/i, (m, ctx) => {
+  [/^put (.+?) into (?:its|their) owner(?:'s|s'|s)? graveyards?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx) ?? (/^(?:a|an|each) card exiled with ~$/i.test(m[1]) ? ({ ref: 'all', filter: { zone: 'exile', exiledWithSource: true } } as Ref) : null);
     return ref ? [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] : null;
   }],
@@ -4716,7 +4750,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'moveToZone', what: ref, zone: 'library', position: /bottom/i.test(m[0]) ? 'bottom' : 'top' }];
   }],
   // "Put a card exiled with ~ into its owner's graveyard."
-  [/^put (?:a|an|(\w+)|all|target) (?:cards?|face-up exiled cards?) exiled with ~ into (?:its|their) owners?'? graveyards?$/i, () => [
+  [/^put (?:a|an|(\w+)|all|target) (?:cards?|face-up exiled cards?) exiled with ~ into (?:its|their) owner(?:'s|s'|s)? graveyards?$/i, () => [
     { kind: 'moveToZone', what: { ref: 'all', filter: { exiledWithSource: true, zone: 'exile' } }, zone: 'graveyard' },
   ]],
   // "Remove any number of counters from target creature you control."
@@ -5391,7 +5425,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // "~ becomes a Construct artifact creature with "..." until end of turn"
-  if ((m = text.match(/^(.+?) becomes? (?:a|an) (\d+)\/(\d+) (.+?) creature(?: with (.+?))?(?: until end of turn)?(?: that(?:'s| is) still (?:a |an )?\w+)?$/i)) && !/"/.test(text)) {
+  if ((m = text.match(/^(.+?) becomes? (?:a|an) (\d+)\/(\d+) (.+?) creature(?: with (.+?))?(?: in addition to (?:its|their) other types)?(?: until end of turn)?(?: that(?:'s| is) still (?:a |an )?\w+)?$/i)) && !/"/.test(text)) {
     const ref = objRef(m[1], ctx);
     if (ref) {
       const words = m[4].split(/\s+/);
@@ -5403,12 +5437,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
         const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
         const out: Effect[] = [{ kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, on: ref, duration: dur }, { kind: 'setPT', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: dur }];
         if (colors.length || /colorless/i.test(m[4])) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
-        if (m[5]) {
-          const kws = parseKeywordList(m[5]);
-          if (!kws) return null;
-          out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
+        const kws5 = m[5] ? parseKeywordList(m[5]) : [];
+        if (m[5] && !kws5) {
+          // Fall through: a later pattern may read the tail differently.
+        } else {
+          if (kws5?.length) out.push({ kind: 'grantKeywords', keywords: kws5, on: ref, duration: dur });
+          return out;
         }
-        return out;
       }
     }
   }
@@ -5869,6 +5904,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (left && right) return [...left, ...right];
     ctx.targets.length = saved;
   }
+  // "It is a 1/1 Spirit creature with flying in addition to its other types" → treat as "becomes".
+  if ((m = text.match(/^(it|they|that creature|those creatures|~) (?:is|are) ((?:a|an) [\dX]+\/[\dX]+ .+|[\dX]+\/[\dX]+ .+)$/i))) {
+    const r = parseSentence(`${m[1]} becomes ${m[2]}`, ctx);
+    if (r) return r;
+  }
   // "also put a +1/+1 counter on each other creature you control" → drop the connective.
   if (/^also /i.test(text)) {
     const r = parseSentence(text.replace(/^also /i, ''), ctx);
@@ -6044,6 +6084,13 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         }
         ctx.targets.length = saved;
       }
+    }
+    // "You may repeat this process any number of times." — the previous sentence loops.
+    if (/^(?:you may )?repeat this process any number of times$/i.test(s) && effects.length > lastStart) {
+      const body = effects.slice(lastStart);
+      effects.length = lastStart;
+      effects.push({ kind: 'repeatWhile', effects: body, optional: true });
+      continue;
     }
     // "Otherwise, X" completes the previous conditional, optional effect or payment.
     if (/^otherwise, /i.test(s) && effects.length) {

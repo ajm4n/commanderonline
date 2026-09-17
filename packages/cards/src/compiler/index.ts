@@ -702,6 +702,23 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         }
       }
     }
+    // A standalone restriction line applies to the activated ability above it.
+    if (/^(?:Activate |Any player may activate this ability|Only your opponents may activate this ability)/i.test(line)) {
+      const rest = parseActivationRestriction(line);
+      const prev = [...abilities].reverse().find((a) => a.kind === 'activated');
+      if (prev && prev.kind === 'activated' && !rest.text.trim() && !rest.unhandled) {
+        if (rest.sorcerySpeed) prev.sorcerySpeed = true;
+        if (rest.oncePerTurn) prev.oncePerTurn = true;
+        if (rest.perTurnLimit) prev.perTurnLimit = rest.perTurnLimit;
+        if (rest.exhaust) prev.exhaust = true;
+        if (rest.anyPlayer) prev.anyPlayer = true;
+        if (rest.opponentsOnly) prev.opponentsOnly = true;
+        if (rest.yourTurn) prev.condition = prev.condition ? { kind: 'and', cs: [prev.condition, { kind: 'yourTurn' }] } : { kind: 'yourTurn' };
+        if (rest.condition) prev.condition = prev.condition ? { kind: 'and', cs: [prev.condition, rest.condition] } : rest.condition;
+        compiledLines.push(line);
+        continue;
+      }
+    }
     // Triggered
     if ((/^(When|Whenever|At the beginning)/i.test(line) && !/^When you next cast /i.test(line)) || (!isSpell && /^At (?:the )?end of combat, /i.test(line))) {
       const head = parseTriggerHead(line);
