@@ -40,6 +40,30 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // ---- Round 139 ----
+  // "Once each turn, you may cast an instant or sorcery spell from the top of your library."
+  if ((m = L.match(/^Once (?:each turn|during each of your turns), you may cast (.+?) (?:spells? )?from the top of your library(?: if (.+))?$/i)) && !m[2]) {
+    const raw = m[1].trim();
+    const noun = /\bspells?\b/i.test(raw) ? parseNoun(raw.replace(/^(?:a|an) /i, 'a ')) ?? parseNoun(`a ${raw}`) : parseNoun(`a ${raw.replace(/^(?:a|an) /i, '')} spell`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data: { spells: true, oncePerTurn: true, filter: f } } }];
+    }
+  }
+  // "Once each turn, you may pay {0} rather than pay the mana cost for a spell you cast from exile."
+  if ((m = L.match(/^(Once (?:each turn|during each of your turns), )?you may pay ((?:\{[^}]+\})+) rather than pay the mana cost for (?:a |an )?(.+?) you cast(?: from (your hand|exile|your graveyard))?(?: with mana value (?:X or less|(\d+) or less))?$/i))) {
+    const label = m[3].trim();
+    const noun = /^spells?$/i.test(label) ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label}`) : parseNoun(`a ${label} spell`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      if (m[5]) f.cmcLE = parseInt(m[5], 10);
+      else if (/mana value X or less/i.test(L)) f.cmcLE = 'X';
+      const zone = m[4] ? (/exile/i.test(m[4]) ? 'exile' : /graveyard/i.test(m[4]) ? 'graveyard' : 'hand') : undefined;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'altCostForSpells', data: { cost: m[2], filter: Object.keys(f).length ? f : undefined, oncePerTurn: !!m[1] || undefined, fromZone: zone } } }];
+    }
+  }
   // ---- Round 138 ----
   // "If you tap a permanent for mana, it produces twice as much of that mana instead."
   if ((m = L.match(/^If you tap (?:a|an) (.+?) for mana, it produces (twice|three times|four times) as much of that mana instead$/i))) {

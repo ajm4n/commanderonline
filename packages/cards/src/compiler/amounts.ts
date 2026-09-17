@@ -381,5 +381,10 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     return { kind: 'totalPowerRef', ref: { ref: 'lastMoved' } };
   }
   if ((m = t.match(/^(?:the )?power of the creature (?:tapped|chosen|sacrificed|exiled|revealed) this way$/))) return { kind: 'power', ref: ctx.lastObj ?? { ref: 'lastMoved' } };
+  // "the total number of instant and sorcery cards you own in exile" → plain "the number of ...".
+  if (/^the total number of /i.test(text.trim())) {
+    const r = parseAmount(text.trim().replace(/^the total number of /i, 'the number of '), ctx);
+    if (r !== null) return r;
+  }
   return null;
 }

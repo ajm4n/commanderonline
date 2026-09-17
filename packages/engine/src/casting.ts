@@ -763,12 +763,13 @@ export function playableFromTop(g: Game, p: PlayerId, obj: GameObject): boolean 
   const land = /\bLand\b/.test(faceOf(obj, 0).typeLine);
   for (const r of g.playerRules(p)) {
     if (r.kind !== 'custom' || r.tag !== 'playFromTop') continue;
-    const d = (r.data as { lands?: boolean; spells?: boolean; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+    const d = (r.data as { lands?: boolean; spells?: boolean; oncePerTurn?: boolean; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
     if (land) {
       if (d.lands) return true;
       continue;
     }
     if (!d.spells) continue;
+    if (d.oncePerTurn && g.state.turnStats[`castFromTop:${p}`]) continue;
     if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
     return true;
   }
@@ -839,7 +840,9 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   let cost: ManaCost;
   const script = g.scriptFor({ ...obj, faceIndex });
   const alt = opts.alternative ? script.alternativeCosts?.find((a) => a.id === opts.alternative) : undefined;
-  if (alt) cost = parseManaCost(alt.cost.mana ?? '');
+  const granted = opts.alternative?.startsWith('plr:') ? grantedAltCosts(g, p, obj).find((a) => a.id === opts.alternative) : undefined;
+  if (granted) cost = parseManaCost(granted.mana);
+  else if (alt) cost = parseManaCost(alt.cost.mana ?? '');
   else if (opts.alternative === 'flashback' && obj.zone === 'graveyard') {
     const fb = obj.card.oracleText.match(/Flashback (\{[^\n]+?\})(?:\s|$)/);
     cost = parseManaCost(fb?.[1] ?? face.manaCost);
@@ -902,6 +905,28 @@ export function availableAlternativeCosts(g: Game, p: PlayerId, obj: GameObject)
     if (alt.condition && !g.checkCondition(alt.condition, { sourceId: obj.id, controller: p })) continue;
     const cost = computeCastCost(g, p, obj, 0, { alternative: alt.id });
     if (solvePayment(cost, 0, g.player(p).manaPool, manaSourcesFor(g, p, castingKeywordsOf(g, obj)))) out.push({ id: alt.id, label: alt.text });
+  }
+  // "Once each turn, you may pay {0} rather than pay the mana cost for a spell you cast from exile."
+  for (const a of grantedAltCosts(g, p, obj)) {
+    const cost = computeCastCost(g, p, obj, 0, { alternative: a.id });
+    if (solvePayment(cost, 0, g.player(p).manaPool, manaSourcesFor(g, p, castingKeywordsOf(g, obj)))) out.push({ id: a.id, label: a.label });
+  }
+  return out;
+}
+
+/** Alternative costs a player rule grants for other players' spells ("you may pay {0} rather than ..."). */
+export function grantedAltCosts(g: Game, p: PlayerId, obj: GameObject): { id: string; label: string; mana: string }[] {
+  const out: { id: string; label: string; mana: string }[] = [];
+  const rules = g.playerRules(p);
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i];
+    if (r.kind !== 'custom' || r.tag !== 'altCostForSpells') continue;
+    const d = r.data as { cost?: string; filter?: import('./types.js').ObjectFilter; oncePerTurn?: boolean; fromZone?: GameObject['zone'] } | undefined;
+    if (!d?.cost) continue;
+    if (d.oncePerTurn && g.state.turnStats[`altCost:${p}`]) continue;
+    if (d.fromZone && obj.zone !== d.fromZone) continue;
+    if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+    out.push({ id: `plr:${i}`, label: `Pay ${d.cost} instead of this spell's mana cost`, mana: d.cost });
   }
   return out;
 }
@@ -1323,6 +1348,8 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     const paid = yield* payCost(g, p, cost, x, id, keywords, !!resp.manualMana);
     if (paid) {
       if (fromZone === 'graveyard' && !/^Flashback/m.test(face.oracleText) && obj.memory['castableBy'] !== p) g.state.turnStats[`castFromGy:${p}`] = 1;
+      if (fromZone === 'library') g.state.turnStats[`castFromTop:${p}`] = 1;
+      if (altId?.startsWith('plr:')) g.state.turnStats[`altCost:${p}`] = 1;
       obj.memory['wasCast'] = true;
       obj.memory['manaSpent'] = cost.symbols.reduce((acc, sym) => acc + (sym.kind === 'generic' ? sym.amount : sym.kind === 'x' ? 0 : 1), 0) + x * cost.xCount;
     }

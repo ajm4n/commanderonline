@@ -1252,8 +1252,8 @@ const PATTERNS: Pattern[] = [
     (c.pre[0] as { filter: ObjectFilter }).filter = { ...noun.filter, zone: 'graveyard', owner: 'you' };
     return [...c.pre, { kind: 'putIntoHand', what: c.ref }];
   }],
-  [/^put (?:a|an|another|(\w+|X|that many|twice that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on (.+)$/i, (m, ctx) => {
-    const n: Amount | null = m[1] ? (/that many/i.test(m[1]) ? amt(m[1], ctx) : wordToNumber(m[1])) : 1;
+  [/^put (?:a|an|another|(\w+|X|twice X|that many|twice that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on (.+)$/i, (m, ctx) => {
+    const n: Amount | null = m[1] ? (/that many/i.test(m[1]) ? amt(m[1], ctx) : /^twice x$/i.test(m[1]) ? { kind: 'times', a: 'X', b: 2 } : wordToNumber(m[1])) : 1;
     if (n === null) return null;
     const isObjectTarget = !/^(you|each player|each opponent|target player|target opponent|that player|defending player|its controller|that creature's controller|the chosen player|the chosen opponent)$/i.test(m[3]);
     const ref = isObjectTarget ? objRef(m[3], ctx) : playerRef(m[3], ctx);
@@ -1290,8 +1290,8 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[3], ctx);
     return ref ? [{ kind: 'removeCounters', counter: 'any', amount: n, on: ref }] : null;
   }],
-  [/^remove (?:a|an|all|(\w+|X|that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? from (.+)$/i, (m, ctx) => {
-    const n: Amount | 'all' | null = /all/i.test(m[0].split(' ')[1]) ? 'all' : m[1] ? (/that many/i.test(m[1]) ? { kind: 'triggerAmount' } : wordToNumber(m[1])) : 1;
+  [/^remove (?:a|an|all|(\w+|X|twice X|that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? from (.+)$/i, (m, ctx) => {
+    const n: Amount | 'all' | null = /all/i.test(m[0].split(' ')[1]) ? 'all' : m[1] ? (/that many/i.test(m[1]) ? { kind: 'triggerAmount' } : /^twice x$/i.test(m[1]) ? { kind: 'times', a: 'X', b: 2 } : wordToNumber(m[1])) : 1;
     if (n === null) return null;
     const ref = objRef(m[3], ctx);
     return ref ? [{ kind: 'removeCounters', counter: m[2], amount: n, on: ref }] : null;
@@ -4181,6 +4181,19 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 139 ----
+  // "Put target face-up exiled card into its owner's graveyard."
+  [/^put (.+?) into (?:its|their) owners?'? graveyards?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx) ?? (/^(?:a|an|each) card exiled with ~$/i.test(m[1]) ? ({ ref: 'all', filter: { zone: 'exile', exiledWithSource: true } } as Ref) : null);
+    return ref ? [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] : null;
+  }],
+  // "Put ~ and target creature on top of their owners' libraries, then those players shuffle their libraries."
+  [/^put (.+?) on top of their owners'? libraries$/i, (m, ctx) => {
+    const parts = m[1].split(/ and (?=~|target |each )/i).map((x) => x.trim()).filter(Boolean);
+    const refs = parts.map((x) => (x === '~' ? SELF : objRef(x, ctx)));
+    if (!refs.length || refs.some((r) => !r)) return null;
+    return refs.map((r) => ({ kind: 'putOnLibrary' as const, what: r as Ref, position: 'top' as const }));
   }],
   // ---- Round 137 ----
   // "Prevent the next 3 damage that would be dealt to any target this turn by a source of your choice."
