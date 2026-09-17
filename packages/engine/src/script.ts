@@ -25,6 +25,12 @@ export type Amount =
   | { kind: 'landsYouControl' }
   | { kind: 'opponents' }
   | { kind: 'commanderTax' }
+  /** Times you have cast a commander from the command zone this game. */
+  | { kind: 'commanderCasts' }
+  /** The controller's starting life total. */
+  | { kind: 'startingLife'; ref?: Ref }
+  /** The most recent die roll or chosen number in this resolution. */
+  | { kind: 'lastRoll' }
   | { kind: 'cardsDrawnThisTurn' }
   | { kind: 'spellsCastThisTurn' }
   | { kind: 'turnStat'; key: string }
@@ -347,7 +353,7 @@ export type Effect =
   /** Day/night: set the cycle, or start it when it is neither. */
   | { kind: 'setDayNight'; to: 'day' | 'night' | 'startDay' | 'startNight' }
   | { kind: 'clash' }
-  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
+  | { kind: 'preventAll'; combat?: boolean; source?: ObjectFilter; /** Shield: prevent at most this much damage, then wear off. */ amount?: number; /** Only damage from this specific object ("the next time that creature would deal damage"). */ sourceRef?: Ref; /** Run these when the prevention applies; `triggerAmount` is the prevented damage. */ effects?: Effect[]; /** Specific recipients (resolved when the effect resolves). */ toRef?: Ref; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | ObjectFilter; /** Only the next time damage would be dealt ("the next time a source of your choice would deal damage to you this turn"). */ once?: boolean }
   /** "Reveal cards from the top of your library until you reveal a X card. Put that card ... and the rest ..." */
   | { kind: 'revealUntil'; filter: ObjectFilter; /** `hold` leaves the matches where they are and remembers them for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'graveyard' | 'exile' | 'hold'; rest: 'bottom' | 'graveyard' | 'exile' | 'hand' | 'top'; tapped?: boolean; who?: Ref; /** Reveal until this many cards match ("until you reveal three nonland cards"). */ count?: Amount; key?: string }
   | { kind: 'manual'; text: string }; // engine cannot automate this; prompt the player

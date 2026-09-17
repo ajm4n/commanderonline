@@ -948,7 +948,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'preventAll': {
-      const pv: Game['state']['preventions'][number] = { combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId, once: e.once };
+      const pv: Game['state']['preventions'][number] = { combat: !!e.combat, source: e.source, to: e.to, controller: ctx.controller, sourceId: ctx.sourceId, once: e.once, effects: e.effects, amount: e.amount };
+      if (e.sourceRef) {
+        pv.sourceIds = g.resolveObjects(e.sourceRef, ctx).map((o) => o.id);
+        if (!pv.sourceIds.length) return;
+      }
       if (e.toRef) {
         const ts = g.resolveRef(e.toRef, ctx);
         pv.ids = ts.filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id);

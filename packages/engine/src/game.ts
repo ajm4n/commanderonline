@@ -89,7 +89,7 @@ export interface GameState {
   lastTurnStats: Record<string, number>;
   /** Day/night cycle: undefined until a card starts it. */
   dayNight?: 'day' | 'night';
-  preventions: { combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[] }[];
+  preventions: { effects?: import('./script.js').Effect[]; /** Only damage from these specific sources. */ sourceIds?: ObjectId[]; /** Shield: prevents at most this much, then wears off. */ amount?: number; combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[] }[];
   log: LogEntry[];
   monarch: PlayerId | null;
   initiative: PlayerId | null;
@@ -1472,6 +1472,15 @@ export class Game {
         const tally = ((ctx.memory['votes'] ?? src?.memory['votes'] ?? ctx.triggerContext['votes']) as Record<string, number> | undefined) ?? {};
         return tally[a.option] ?? 0;
       }
+      case 'commanderCasts':
+        return this.state.battlefield.concat(this.player(ctx.controller).command, this.player(ctx.controller).graveyard, this.player(ctx.controller).exile)
+          .map((id) => this.state.objects[id])
+          .filter((o) => o && o.isCommander && o.owner === ctx.controller)
+          .reduce((n, o) => n + o.commanderCasts, 0);
+      case 'startingLife':
+        return this.config.startingLife;
+      case 'lastRoll':
+        return (ctx.memory['lastRoll'] as number | undefined) ?? (ctx.triggerContext['rollResult'] as number | undefined) ?? 0;
       case 'colorCount': {
         if (a.filter) {
           const set = new Set<string>();
@@ -1724,13 +1733,14 @@ export class Game {
 
   /** Deal damage from a source to a target (object or player). Handles infect, wither, lifelink, deathtouch, prevention. */
   /** Does a turn-wide prevention effect stop this damage? */
-  private preventedByFog(sourceId: ObjectId | null, target: Target, combat: boolean, amount = 0): boolean {
-    if (this.state.turnStats['noPrevention']) return false;
+  /** How much of this damage a turn-wide prevention effect stops (0 = none, Infinity = all of it). */
+  private preventedByFog(sourceId: ObjectId | null, target: Target, combat: boolean, amount = 0): number {
+    if (this.state.turnStats['noPrevention']) return 0;
     const src = sourceId !== null ? this.state.objects[sourceId] : null;
     // "Prevent all (combat) damage that would be dealt by [this source] this turn."
     if (src && src.zone === 'battlefield') {
       const noDmg = this.characteristics(src.id).rules.find((r) => r.kind === 'custom' && r.tag === 'dealsNoDamage') as { data?: string } | undefined;
-      if (noDmg && (noDmg.data === 'combat' ? combat : noDmg.data === 'noncombat' ? !combat : true)) return true;
+      if (noDmg && (noDmg.data === 'combat' ? combat : noDmg.data === 'noncombat' ? !combat : true)) return Infinity;
     }
     // "If damage would be dealt to ~, prevent that damage and put that many +1/+1 counters on it." (a replacement on the recipient)
     if (target.kind === 'object') {
@@ -1743,7 +1753,7 @@ export class Game {
           if (ab.fromFilter && (!src || !matchesFilter(this, src, { ...ab.fromFilter, zone: undefined }, { sourceId: tobj.id, controller: tobj.controller }))) continue;
           const eff = (ab as { effects?: import('./script.js').Effect[] }).effects;
           if (eff?.length) this.pendingTriggers.push({ sourceId: tobj.id, controller: tobj.controller, ability: { kind: 'triggered', text: ab.text, event: 'dealtDamage', effects: eff }, context: { triggerAmount: amount, amount, objectId: tobj.id, sourceId } });
-          return true;
+          return Infinity;
         }
       }
     }
@@ -1757,12 +1767,13 @@ export class Game {
         if (d.combat === 'combat' && !combat) continue;
         if (d.combat === 'noncombat' && combat) continue;
         if (d.source && (!src || !matchesFilter(this, src, { ...d.source, zone: undefined }, { sourceId: target.kind === 'object' ? target.id : src.id, controller: src.controller }))) continue;
-        return true;
+        return Infinity;
       }
     }
-    if (!this.state.preventions.length) return false;
+    if (!this.state.preventions.length) return 0;
     for (const pv of this.state.preventions) {
       if (pv.combat && !combat) continue;
+      if (pv.sourceIds && (sourceId === null || !pv.sourceIds.includes(sourceId))) continue;
       if (pv.source && (!src || !matchesFilter(this, src, { ...pv.source, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller }))) continue;
       const to = pv.to;
       let hit = false;
@@ -1779,10 +1790,20 @@ export class Game {
         }
       }
       if (!hit) continue;
-      if (pv.once) this.state.preventions = this.state.preventions.filter((x) => x !== pv);
-      return true;
+      // A shield prevents at most `amount` and wears off once used up.
+      const stopped = pv.amount === undefined ? Infinity : Math.min(pv.amount, amount);
+      if (pv.amount !== undefined) {
+        pv.amount -= stopped;
+        if (pv.amount <= 0) this.state.preventions = this.state.preventions.filter((x) => x !== pv);
+      } else if (pv.once) this.state.preventions = this.state.preventions.filter((x) => x !== pv);
+      if (pv.effects?.length) {
+        // "…prevent that damage. You gain life equal to the damage prevented this way."
+        const prevented = stopped === Infinity ? amount : stopped;
+        this.pendingTriggers.push({ sourceId: pv.sourceId ?? -1, controller: pv.controller, ability: { kind: 'triggered', text: 'Prevention follow-up', event: 'dealtDamage', effects: pv.effects }, context: { triggerAmount: prevented, amount: prevented, sourceId: pv.sourceId ?? undefined } });
+      }
+      return stopped;
     }
-    return false;
+    return 0;
   }
 
   dealDamage(sourceId: ObjectId | null, target: Target, amount: number, combat: boolean): number {
@@ -1801,9 +1822,17 @@ export class Game {
       target = { kind: 'object', id };
       break;
     }
-    if (this.preventedByFog(sourceId, target, combat, amount)) {
-      this.log(`Damage to ${target.kind === 'player' ? this.player(target.id).name : target.kind === 'object' ? this.nameOf(target.id) : 'something'} is prevented.`);
-      return 0;
+    {
+      const stopped = this.preventedByFog(sourceId, target, combat, amount);
+      if (stopped > 0) {
+        const name = target.kind === 'player' ? this.player(target.id).name : target.kind === 'object' ? this.nameOf(target.id) : 'something';
+        if (stopped >= amount) {
+          this.log(`Damage to ${name} is prevented.`);
+          return 0;
+        }
+        this.log(`${stopped} damage to ${name} is prevented.`);
+        amount -= stopped;
+      }
     }
     const src = sourceId !== null ? this.state.objects[sourceId] : null;
     const sch = src ? this.characteristics(src.id) : null;

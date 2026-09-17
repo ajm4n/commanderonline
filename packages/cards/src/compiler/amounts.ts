@@ -194,6 +194,31 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^the (?:sacrificed|exiled|discarded|destroyed|chosen) \w+'s (power|toughness)$/))) return { kind: m[1] as 'power' | 'toughness', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
   if ((m = t.match(/^the (?:sacrificed|exiled|discarded|destroyed|chosen) \w+'s mana value$/))) return { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
   if ((m = t.match(/^(target|that|the) ([\w -]+?)'s (power|toughness|mana value)$/)) && ctx.lastObj) return { kind: m[3] === 'power' ? 'power' : m[3] === 'toughness' ? 'toughness' : 'manaValue', ref: ctx.lastObj };
+  if ((m = t.match(/^(?:the )?(?:total )?amount of life you(?:'ve| have)? gained this turn$/))) return { kind: 'playerTurnStat', key: 'lifeGainedAmount' };
+  if ((m = t.match(/^(?:the )?(?:number of )?(?:each )?opponents?$/)) || t === 'opponent you have') return { kind: 'opponents' };
+  if ((m = t.match(/^(?:the|that) result$/))) return { kind: 'lastRoll' };
+  if ((m = t.match(/^(?:the )?chosen number$/))) return { kind: 'chosenNumber' };
+  if ((m = t.match(/^(?:the number of )?(?:each )?times? you(?:'ve| have)? cast (?:your|a) commander from the command zone this game$/))) return { kind: 'commanderCasts' };
+  if ((m = t.match(/^your starting life total$/))) return { kind: 'startingLife' };
+  if ((m = t.match(/^the number of differently named (.+?) you control$/))) {
+    const noun = withCtrl(parseNoun(oc(m, 1).replace(/s$/i, '')), ctx);
+    if (noun) return { kind: 'distinctValues', stat: 'name', filter: { ...noun.filter, controller: 'you', zone: noun.filter.zone ?? 'battlefield' } };
+  }
+  if ((m = t.match(/^the (?:amount|number) of mana spent to cast (?:that spell|it)$/))) return { kind: 'manaSpent', of: 'total' };
+  if ((m = t.match(/^the number of tokens you(?:'ve| have)? created this turn$/))) return { kind: 'playerTurnStat', key: 'tokenCreated' };
+  if ((m = t.match(/^the number of cards in (.+?)'s (?:hand|graveyard)$/))) {
+    const r = ctx.resolvePlayer?.(m[1]);
+    if (r) return /graveyard/.test(t) ? { kind: 'graveyardSize', ref: r } : { kind: 'handSize', ref: r };
+  }
+  if ((m = t.match(/^the number of (.+?) cards in (?:its controller's|that player's|their) graveyard$/))) {
+    const noun = parseNoun(`${oc(m, 1)} card`);
+    if (noun) return { kind: 'graveyardSize', ref: thatPlayer(ctx), filter: noun.filter };
+  }
+  if ((m = t.match(/^(\d+|one|two|three|four|five) plus (.+)$/))) {
+    const base = wordToNumber(m[1]);
+    const rest = parseAmount(m[2], ctx);
+    if (base !== null && base !== 'X' && rest !== null) return { kind: 'sum', parts: [base, rest] };
+  }
   if (t === 'the number of experience counters you have' || t === 'experience counter you have' || t === 'experience counters you have') return { kind: 'turnStat', key: 'experience' };
   if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
   if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {

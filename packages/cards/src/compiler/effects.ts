@@ -265,6 +265,11 @@ function amt(text: string, ctx: ParseCtx) {
     const ref = objRef(tm[1], ctx);
     if (ref) return { kind: tm[2].toLowerCase() === 'power' ? 'power' : tm[2].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref } as Amount;
   }
+  const hm = text.trim().match(/^the number of cards in (target (?:player|opponent))'s (hand|graveyard)$/i);
+  if (hm) {
+    const who = playerRef(hm[1], ctx);
+    if (who) return (hm[2].toLowerCase() === 'hand' ? { kind: 'handSize', ref: who } : { kind: 'graveyardSize', ref: who }) as Amount;
+  }
   return parseAmount(text, { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, resolvePlayer: (p) => playerRef(p, ctx) });
 }
 
@@ -1587,6 +1592,10 @@ const PATTERNS: Pattern[] = [
     if (m[1] && !source) return null;
     return [{ kind: 'preventAll', to: 'you', source, once: true }];
   }],
+  [/^the next time (.+?) would deal damage this turn, prevent that damage$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'preventAll', to: 'all', sourceRef: ref, once: true }] : null;
+  }],
   [/^choose a player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'any' }]],
   [/^discard (it|that card|them|those cards)$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
   [/^(?:they|that player|you) puts? (it|that card|them|those cards) onto the battlefield( tapped)?(?: under (?:their|your) control)?$/i, (m, ctx) => {
@@ -2351,6 +2360,25 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // `lastStart` is where the previous sentence's effects begin: "X. If ~ was kicked, Y instead." replaces them.
     lastStart = curStart;
     curStart = effects.length;
+    // "Prevent all damage … this turn. You gain life equal to the damage prevented this way."
+    if (/^prevent |^the next time /i.test(s) && sents[i + 1] && /damage prevented this way/i.test(sents[i + 1])) {
+      const followText = sents[i + 1].replace(/^for each 1 damage prevented this way, /i, '').replace(/\bthe damage prevented this way\b/i, 'that much');
+      const saved = ctx.targets.length;
+      const eff = parseSentence(s, ctx);
+      const inner = eff ? parseSentence(followText, ctx) : null;
+      if (eff && inner) {
+        const last = eff[eff.length - 1];
+        const perOne = /^for each 1 damage prevented this way, /i.test(sents[i + 1]);
+        const body: Effect[] = perOne ? [{ kind: 'repeat', times: { kind: 'triggerAmount' }, effects: inner }] : inner;
+        if (last.kind === 'preventAll') last.effects = body;
+        else if (last.kind === 'preventDamage') eff[eff.length - 1] = { kind: 'preventAll', to: 'all', toRef: last.to, effects: body, amount: last.amount === 'all' ? undefined : typeof last.amount === 'number' ? last.amount : undefined };
+        else eff.push(...body);
+        effects.push(...eff);
+        i++;
+        continue;
+      }
+      ctx.targets.length = saved;
+    }
     // Merge "You may pay X." + "If you do, Y."
     if ((/^(?:you may )?pay/i.test(s) || /, pay (?:\{[^}]+\})+$/i.test(s)) && sents[i + 1] && /^(?:if|when) you do, |^if you (?:do not|don't), /i.test(sents[i + 1])) {
       s = `${s}. ${sents[i + 1].replace(/^when you do, /i, 'If you do, ')}`;
