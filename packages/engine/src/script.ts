@@ -634,7 +634,7 @@ export type ReplacementSpec =
   | { kind: 'replacement'; text: string; event: 'drawCard'; who: 'you' | 'opponent' | 'any'; /** Draw this many instead of one. */ draws?: number; /** Replace the draw with these effects entirely. */ effects?: Effect[]; condition?: Condition; /** Skip the first draw each of that player's draw steps. */ exceptFirstEachDrawStep?: boolean }
   | { kind: 'replacement'; text: string; event: 'lifeGain'; multiply?: number; add?: number; who: 'you' | 'opponent' }
   | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; filter?: ObjectFilter; counterType?: CounterType }
-  | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number }
+  | { kind: 'replacement'; text: string; event: 'tokenCreated'; extra: number; /** "those tokens plus a Clue token are created instead" */ alsoToken?: TokenSpec; /** Only replaces creature-token creation. */ creatureOnly?: boolean }
   | { kind: 'replacement'; text: string; event: 'wouldLoseGame'; instead: Effect[] }
   | { kind: 'replacement'; text: string; event: 'custom'; tag: string };
 

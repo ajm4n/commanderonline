@@ -78,7 +78,8 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
-    return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : null);
+    // With no antecedent in scope, fall back to the last object this script moved ("put that card onto the battlefield").
+    return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : { ref: 'lastMoved' });
   }
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker|enchantment)$/.test(l) || /^(?:enchanted|equipped) [A-Z]\w+$/i.test(t)) return { ref: 'attachedTo' };
 
@@ -137,7 +138,8 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'you') return YOU;
   if (l === 'each opponent' || l === 'your opponents' || l === 'each of your opponents') return { ref: 'eachOpponent' };
   if (l === 'each player' || l === 'all players') return { ref: 'eachPlayer' };
-  if (l === 'that player' || l === 'that opponent' || l === 'they' || l === 'the player') return ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : ctx.triggerHasObject ? { ref: 'triggerController' } : null);
+  // With no antecedent, "that player" means whoever controls the object this script last touched.
+  if (l === 'that player' || l === 'that opponent' || l === 'they' || l === 'the player') return ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : ctx.triggerHasObject ? { ref: 'triggerController' } : { ref: 'controllerOf', of: { ref: 'lastMoved' } });
   if (l === 'each other player' || l === 'all other players' || l === 'each of your opponents') return { ref: 'eachOpponent' };
   if (l === 'each other opponent' || l === 'each of their opponents' || l === 'each other player who is an opponent') return { ref: 'eachOtherOpponent' };
   if (l === 'its controller' || /^(?:that|the) [\w ]+'s controller$/.test(l) || l === 'the controller of that creature' || l === 'the controller of that permanent') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
@@ -2638,6 +2640,18 @@ const PATTERNS: Pattern[] = [
       { text: `Destroy all ${m[2]}`, effects: [{ kind: 'destroy', what: { ref: 'all', filter: { ...b.filter, zone: 'battlefield' } } }] },
     ], count: 1 }];
   }],
+  // "You may cast red spells from among them this turn."
+  [/^you may (?:cast|play) (.+?) from among them(?: this turn)?$/i, (m, ctx) => {
+    const noun = /^(?:them|cards|spells)$/i.test(m[1]) ? { filter: {} as ObjectFilter } : parseNoun(m[1].replace(/ spells?$/i, ' spell').replace(/ cards?$/i, ' card'));
+    if (!noun) return null;
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'thisTurn', filter: { ...noun.filter, zone: undefined } }];
+  }],
+  // "Those creatures fight each other."
+  [/^(?:those|the two) creatures fight each other$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'fight', a: ref, b: ref }];
+  }],
   // Extra combat
   [/^(?:after this main phase, there is an additional combat phase followed by an additional main phase|untap all creatures you control\. after this phase, there is an additional combat phase)$/i, () => [{ kind: 'untap', what: { ref: 'all', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' } } }, { kind: 'extraCombat' }]],
   // Play from exile
@@ -3501,11 +3515,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (inner && b !== null) return inner.map((e) => substituteX(e, { kind: 'minus', a: parseInt(mm[2], 10), b }));
   }
   if ((m = text.match(/^(.+), where X is (.+)$/i))) {
-    // "…deals X damage…, where X is the number of…" → substitute amount
+    // "…deals X damage…, where X is the number of…" → substitute amount.
+    // Fall through when either half fails: a later pattern may take the whole sentence.
     const a = amt(m[2], ctx);
     const inner = parseSentence(m[1], ctx);
-    if (!inner || a === null) return null;
-    return inner.map((e) => substituteX(e, a));
+    if (inner && a !== null) return inner.map((e) => substituteX(e, a));
   }
   if ((m = text.match(/^for each (.+?), (.+)$/i))) {
     const noun = parseNoun(m[1]);

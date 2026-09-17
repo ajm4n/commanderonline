@@ -1,7 +1,7 @@
 /** Static abilities and replacement effects. */
 import type { AbilitySpec, Amount, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun } from './nouns.js';
-import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions } from './effects.js';
+import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase } from './effects.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
 import { parseAmount } from './amounts.js';
@@ -320,11 +320,36 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const b = parseStatic(`As ~ enters, choose ${m[2]}`, isCreatureOrPermanent);
     if (a && b) return [...a, ...b];
   }
+  // "~ escapes with three +1/+1 counters on it."
+  if ((m = L.match(/^~ escapes with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w' -]+?) counters? on it$/i))) {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (n === null) return null;
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, condition: { kind: 'memoryFlag', key: 'escaped' }, counters: { counter: m[2], amount: n } }];
+  }
   if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) return objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' });
   // "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead."
   if ((m = L.match(/^If (?:another )?(?:a )?(\w+) sources? you control would deal (noncombat |combat )?damage to (?:an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i)) && !/^a$/i.test(m[1])) {
     const cn = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as Record<string, string>)[m[1].toLowerCase()];
     if (cn) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damagePlus', data: { filter: { controller: 'you', colors: [cn] }, plus: parseInt(m[4], 10), noncombatOnly: /noncombat/i.test(m[2] ?? '') || undefined, combatOnly: /^combat/i.test(m[2] ?? '') || undefined } } }];
+  }
+  // "If a Lizard you control would deal damage to a permanent or player, it deals that much damage plus 1 instead."
+  if ((m = L.match(/^If (?:another )?(?:a|an) (.+?) would deal (noncombat |combat )?damage to (.+?), it deals that much damage plus (\d+|an amount of damage equal to .+?)(?: to .+?)? instead$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    const plusAmt: Amount | null = /^\d+$/.test(m[4]) ? parseInt(m[4], 10) : parseAmount(m[4].replace(/^an amount of damage equal to /i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false } as never);
+    if (noun && plusAmt !== null) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damagePlus', data: { filter: f, plus: plusAmt, noncombatOnly: /noncombat/i.test(m[2] ?? '') || undefined, combatOnly: /^combat/i.test(m[2] ?? '') || undefined, toOpponents: /opponent/i.test(m[3]) || undefined } } }];
+    }
+  }
+  // "Double all damage that creature sources you control would deal."
+  if ((m = L.match(/^(Double|Triple) all damage that (.+?) would deal$/i))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (noun) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damageMultiplier', data: { filter: f, times: /triple/i.test(m[1]) ? 3 : 2 } } }];
+    }
   }
   if ((m = L.match(/^If a source you control would deal (noncombat |combat )?damage to (an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+|an amount of damage equal to .+?) (?:to (?:that permanent or player|that player|them) )?instead$/i))) {
     const plusAmt = /^\d+$/.test(m[3]) ? parseInt(m[3], 10) : parseAmount(m[3].replace(/^an amount of damage equal to /i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
@@ -481,6 +506,25 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) (?:has|have) base power and toughness (\d+)\/(\d+)$/i))) {
     const a = affectsOf(m[1]);
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', setPower: parseInt(m[2], 10), setToughness: parseInt(m[3], 10) } }];
+  }
+  // "Equipped creature has base power and toughness X/X, where X is your life total."
+  if ((m = L.match(/^(.+?) (?:has|have) base power and toughness (X|\*)\/(X|\*), where (?:X|\*) is (.+)$/i))) {
+    const a = affectsOf(m[1]);
+    const v = parseAmount(m[4], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false } as never);
+    if (a.ok && v !== null) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: '7b', powerAmount: v, toughnessAmount: v } }];
+  }
+  // "Creature spells you cast cost {X} less to cast, where X is the amount of life you gained this turn."
+  if ((m = L.match(/^(.+?) you cast cost \{X\} less to cast, where X is (.+)$/i))) {
+    const per = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false } as never);
+    if (per === null) return null;
+    let filter: ObjectFilter | undefined;
+    if (!/^spells$/i.test(m[1])) {
+      const noun = parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+      if (!noun) return null;
+      filter = { ...noun.filter };
+      delete filter.zone;
+    }
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: 1, filter, perAmount: per } }];
   }
   if ((m = L.match(/^(.+?) (?:is|are) (?:a|an) (.+?) creatures? with base power and toughness (\d+)\/(\d+)$/i))) {
     const a = affectsOf(m[1]);
@@ -1253,6 +1297,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "If one or more tokens would be created under your control, twice that many of those tokens are created instead."
+  if ((m = L.match(/^If (?:one or more (?:(.+?) )?tokens would be created under your control, those tokens plus (.+?) are created instead|you would create one or more (?:(.+?) )?tokens?, instead create those tokens plus (.+?))$/i))) {
+    const kindText = (m[1] ?? m[3] ?? '').trim();
+    const extraText = (m[2] ?? m[4] ?? '').trim().replace(/[.]$/, '');
+    const tok = parseTokenPhrase(extraText.replace(/^an additional /i, 'a '));
+    if (tok && (!kindText || /^creature$/i.test(kindText))) {
+      return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: 0, alsoToken: tok.token, creatureOnly: /^creature$/i.test(kindText) || undefined }];
+    }
+  }
   if ((m = L.match(/^If you would create one or more (?:(.+?) )?tokens?, (?:create those tokens plus an additional (.+?) token instead|instead create those tokens plus an additional (.+?) token)$/i))) {
     const noun = !m[1] ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} token`);
     if (!noun) return null;

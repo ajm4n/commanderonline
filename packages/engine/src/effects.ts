@@ -614,9 +614,16 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         // Token doubling replacements
         let count = n;
+        const alsoTokens: import('./script.js').TokenSpec[] = [];
+        const isCreatureToken = /Creature/.test(e.token.typeLine ?? '');
         for (const src of g.state.battlefield.map((id) => g.obj(id))) {
           if (src.controller !== p) continue;
-          for (const ab of g.scriptFor(src).abilities) if (ab.kind === 'replacement' && ab.event === 'tokenCreated') count += ab.extra * n;
+          for (const ab of g.scriptFor(src).abilities) {
+            if (ab.kind !== 'replacement' || ab.event !== 'tokenCreated') continue;
+            if (ab.creatureOnly && !isCreatureToken) continue;
+            count += ab.extra * n;
+            if (ab.alsoToken) alsoTokens.push(ab.alsoToken);
+          }
         }
         for (let i = 0; i < count; i++) {
           const card = tokenCard(e.token, g, ctx);
@@ -635,6 +642,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           }
         }
         if (count > 0) g.log(`${g.player(p).name} creates ${count} ${card_name(e.token)} token${count === 1 ? '' : 's'}.`, { kind: 'token', data: { player: p, count, name: card_name(e.token) } });
+        // "those tokens plus a Clue token are created instead": one extra token of the named kind.
+        if (count > 0) {
+          for (const extra of alsoTokens) {
+            const o = g.createObject(tokenCard(extra, g, ctx), p, 'battlefield', {});
+            created.push(o.id);
+            g.log(`${g.player(p).name} also creates a ${card_name(extra)} token.`);
+          }
+        }
       }
       ctx.memory['lastCreated'] = created;
       return;
