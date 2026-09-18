@@ -11,6 +11,10 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
       const n = wordToNumber(mc[1]);
       if (n !== null) return { kind: 'count', filter: { types: ['Creature'], zone: 'battlefield', attackedThisTurn: true }, op: '>=', value: n };
     }
+    if ((mc = tc.match(/^(?:it|that spell) has the same mana value as the (discarded|revealed|exiled|chosen) card$/))) {
+      const other: Amount = { kind: 'manaValue', ref: { ref: 'chosen', key: mc[1] === 'discarded' ? 'lastDiscarded' : mc[1] === 'revealed' ? 'lastRevealed' : mc[1] === 'exiled' ? 'lastMoved' : 'chosen' } };
+      return { kind: 'amount', a: { kind: 'manaValue', ref: ctx.lastObj ?? { ref: 'stackTarget' } }, op: '==', b: other };
+    }
     if ((mc = tc.match(/^(?:a|any) graveyard has (\w+) or more cards in it$/))) {
       const n = wordToNumber(mc[1]);
       if (n !== null) return { kind: 'graveyard', ref: { ref: 'eachPlayer' }, op: '>=', value: n };
@@ -405,8 +409,16 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
         const noun = parseNoun(`a ${rest.replace(/^(?:a|an) /i, '')}`) ?? parseNoun(`a ${rest.replace(/^(?:a|an) /i, '')} permanent`);
         if (noun && noun.confident) return { kind: 'objectMatches', ref, filter: noun.filter };
       } else {
+        // "has mana value 4 or less" is a characteristic, not a keyword: try the noun qualifier first.
+        {
+          const q = parseNoun(`a permanent with ${rest}`);
+          if (q && q.confident) {
+            const { types: _t, zone: _z, ...rest2 } = q.filter;
+            if (Object.keys(rest2).length > 0) return { kind: 'objectMatches', ref, filter: rest2 };
+          }
+        }
         const kwm = rest.match(/^(?:a|an )?([\w' -]+?)(?: counter on it| ability)?$/i);
-        if (kwm && /^[\w' -]+$/.test(kwm[1]) && !/counter/i.test(rest)) {
+        if (kwm && /^[\w' -]+$/.test(kwm[1]) && !/counter/i.test(rest) && !/\d/.test(kwm[1]) && kwm[1].split(/\s+/).length <= 3 && !/^(?:mana value|power|toughness|the chosen|base )/i.test(kwm[1])) {
           const kw = kwm[1].replace(/\b[a-z]/g, (c) => c.toUpperCase());
           return { kind: 'objectMatches', ref, filter: { keywords: [kw] } };
         }
