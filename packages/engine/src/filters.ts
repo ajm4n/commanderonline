@@ -65,6 +65,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'oddManaValue' && ch.manaValue % 2 !== 1) return false;
   if (filter.custom === 'evenManaValue' && ch.manaValue % 2 !== 0) return false;
   if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
+  if (filter.custom === 'targetsYouOrYours') {
+    const item = g.state.stack.find((s) => s.sourceId === obj.id);
+    const ok = (item?.targets ?? []).some((t) => (t.kind === 'player' && t.id === ctx.controller) || (t.kind === 'object' && g.state.objects[t.id]?.controller === ctx.controller));
+    if (!ok) return false;
+  }
   if (filter.custom === 'blockedOrWasBlockedThisTurn' && obj.blocking.length === 0 && obj.blockedBy.length === 0) return false;
   if (filter.custom === 'powerEqualsToughness' && !(ch.power !== null && ch.toughness !== null && ch.power === ch.toughness)) return false;
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;

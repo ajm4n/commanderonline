@@ -4235,6 +4235,34 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 190 ----
+  [/^counter target (spell|spell or ability) that targets you or (?:a|an) (?:permanent|creature) you control$/i, (m, ctx) => {
+    ctx.targets.push({ description: `target ${m[1]} that targets you or a permanent you control`, kind: m[1] === 'spell' ? 'spell' : 'spellOrAbility', min: 1, max: 1, filter: { custom: 'targetsYouOrYours' } });
+    return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  [/^starting with you, each player chooses (?:a|an) (.+)$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'chooseObjects', who: { ref: 'eachPlayer' }, filter: { ...noun.filter, zone: 'battlefield' }, owner: { ref: 'iter' }, count: 1, key: 'eachPick' }];
+  }],
+  [/^you may put (?:a|an) (.+?) card from it onto the battlefield under your control$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]} card`);
+    const owner = ctx.lastPlayer;
+    if (!noun || !noun.confident || !owner) return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'hand' }, owner, count: 1, key: 'urge', upTo: true },
+      { kind: 'returnToBattlefield', what: { ref: 'chosen', key: 'urge' }, controller: 'you' },
+    ];
+  }],
+  [/^attach ~ to target creature other than (?:enchanted|equipped) creature$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'target creature other than enchanted creature', kind: 'object', filter: { types: ['Creature'], zone: 'battlefield' }, min: 1, max: 1 });
+    return [{ kind: 'attach', what: SELF, to: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  [/^change ~'s base power to target creature's power$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'target creature', kind: 'object', filter: { types: ['Creature'], zone: 'battlefield' }, min: 1, max: 1 });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [{ kind: 'setPT', on: SELF, power: { kind: 'power', ref }, duration: 'permanent' }];
+  }],
   // ---- Round 189 ----
   [/^(.+?) can block any number of creatures(?: this turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
