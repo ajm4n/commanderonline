@@ -866,7 +866,7 @@ const PATTERNS: Pattern[] = [
     const ref = who ? objRef(m[2], ctx) : null;
     return who && ref ? [{ kind: 'gainControl', what: ref, who, duration: m[3] ? 'endOfTurn' : 'permanent' }] : null;
   }],
-  [/^(.+?) chooses? (?:a|an) (.+?) (?:they|that player) controls?$/i, (m, ctx) => {
+  [/^(.+?) chooses? (?:a|an|target) (.+?) (?:they|that player) controls?$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
     const noun = who ? parseNoun(`a ${m[2]}`) : null;
     if (!who || !noun) return null;
@@ -4235,6 +4235,33 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 186 ----
+  [/^its owner shuffles it into their library, then investigates$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    if (!ref) return null;
+    const who: Ref = { ref: 'ownerOf', of: ref };
+    return [{ kind: 'moveToZone', what: ref, zone: 'library' }, { kind: 'shuffle', who }, { kind: 'investigate', who }];
+  }],
+  [/^(.+?) reveals their hand and discards (?:a|an) (.+?) card at random$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2]} card`);
+    if (!who || !noun || !noun.confident) return null;
+    ctx.lastPlayer = who;
+    return [
+      { kind: 'revealHand', who },
+      { kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'hand' }, owner: who, count: 1, key: 'rand', random: true },
+      { kind: 'discardObjects', what: { ref: 'chosen', key: 'rand' } },
+    ];
+  }],
+  [/^(?:that|the) player sacrifices one of them of their choice$/i, (m, ctx) => {
+    const who = ctx.lastPlayer;
+    const pool = ctx.lastObj;
+    if (!who || !pool) return null;
+    return [
+      { kind: 'chooseObjects', who, from: pool, filter: {}, count: 1, key: 'sacOne' },
+      { kind: 'sacrifice', what: { ref: 'chosen', key: 'sacOne' } },
+    ];
+  }],
   // ---- Round 185 ----
   [/^investigate an additional time$/i, () => [{ kind: 'investigate', count: 1 }]],
   [/^put ([+-]\d+\/[+-]\d+) counters on (.+?) equal to its power$/i, (m, ctx) => {
@@ -5315,7 +5342,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'chooseObjects', who, from: pool, filter: {}, count: n, key }];
   }],
   // "All creatures able to block ~ do so."
-  [/^all (.+?) able to block (~|it|that creature|equipped creature|enchanted creature)(?: this turn)? do so$/i, (m, ctx) => {
+  [/^all (.+?) able to block (~|it|that creature|equipped creature|enchanted creature)(?: or (?:~|equipped creature|enchanted creature))?(?: this turn)? do so$/i, (m, ctx) => {
     const noun = parseNoun(m[1]);
     if (!noun) return null;
     const on: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } };

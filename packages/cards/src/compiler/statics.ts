@@ -933,6 +933,9 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "You have no maximum hand size for as long as you control ~."
+  if (/^You control enchanted [\w ]+$/i.test(L)) {
+    return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }];
+  }
   if (/^You have no maximum hand size(?: for as long as you control ~)?$/i.test(L)) {
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   }

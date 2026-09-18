@@ -45,9 +45,11 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   // is being used as a type there, not as a self-reference.
   const ownSubtypes = new Set((card.typeLine ?? '').split(/\u2014/)[1]?.split(/\s+/).filter(Boolean) ?? []);
   const notAType = '(?! (?:creatures?|spells?|cards?|permanents?|tokens?|lands?)\\b)';
+  // A one-word name that is also an action verb ("Exile target creature") is the verb.
+  const notAVerb = /^[A-Z][a-z]+$/.test(faceName) ? '(?! target )' : '';
   for (const n of names) {
     const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const tail = ownSubtypes.has(n) ? notAType : '';
+    const tail = (ownSubtypes.has(n) ? notAType : '') + (n === faceName ? notAVerb : '');
     t = t.replace(new RegExp(`${esc}'s${tail}`, 'g'), "~'s");
     t = t.replace(new RegExp(`${esc}${tail}`, 'g'), '~');
   }
