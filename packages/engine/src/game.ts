@@ -1825,6 +1825,14 @@ export class Game {
         if (src && typeof src.attacking === 'number') return plT([this.state.objects[src.attacking]?.controller]);
         return [];
       }
+      case 'neighbor': {
+        // Turn order runs to the left, so "the player to your left" is the next seat.
+        const seats = this.activePlayers();
+        const i = seats.indexOf(ctx.controller);
+        if (i < 0 || seats.length < 2) return [];
+        const j = ref.side === 'left' ? (i + 1) % seats.length : (i - 1 + seats.length) % seats.length;
+        return plT([seats[j]]);
+      }
       case 'activePlayer':
         return plT([this.state.turn.activePlayer]);
       case 'chosen': {

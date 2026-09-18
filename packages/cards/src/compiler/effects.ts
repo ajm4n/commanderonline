@@ -159,6 +159,7 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
   if (l === 'the active player') return { ref: 'activePlayer' };
+  if (l === 'the player to your left' || l === 'the player to your right') return { ref: 'neighbor', side: l.endsWith('left') ? 'left' : 'right' };
   if (l === "enchanted player" || l === "that player's controller") return { ref: 'attachedTo' };
   if (l === 'the chosen player' || l === 'the chosen opponent') return { ref: 'chosen', key: 'opponent' };
   if (/^the player or planeswalker (?:it|that creature|~) is attacking$/.test(l)) return { ref: 'defenderOf', of: /~ is attacking$/.test(l) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
@@ -4221,6 +4222,13 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 164 ----
+  [/^choose (?:a|an) (?:nonbasic |basic )?land type$/i, () => [{ kind: 'chooseCreatureType', key: 'landType', pool: 'land' }]],
+  [/^attach (it|~|that equipment|those equipment|that aura) to (.+)$/i, (m, ctx) => {
+    const what = /^(?:it|~)$/i.test(m[1]) ? ctx.lastObj ?? SELF : m[1].toLowerCase().startsWith('those') ? ({ ref: 'memory', key: 'lastMoved' } as Ref) : ctx.lastObj ?? SELF;
+    const to = objRef(m[2], ctx);
+    return to ? [{ kind: 'attach', what, to }] : null;
+  }],
   // ---- Round 160 ----
   [/^put (\w+) ([+-]\d+\/[+-]\d+|\w+) counters? on up to (\w+) (creature|artifact|land|permanent|planeswalker|enchantment)s?$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);
@@ -4559,7 +4567,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
   }],
   // "Counter target instant spell, sorcery spell, activated ability, or triggered ability."
-  [/^counter target (?:instant spell, sorcery spell, activated ability, or triggered ability|spell or ability)$/i, (m, ctx) => {
+  [/^counter target (?:instant spell, sorcery spell, activated ability, or triggered ability|spell or ability|triggered ability or colorless spell|activated or triggered ability)$/i, (m, ctx) => {
     ctx.targets.push({ description: 'target spell or ability', kind: 'spellOrAbility', min: 1, max: 1 });
     return [{ kind: 'counterSpell', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
   }],
@@ -6372,6 +6380,31 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
       ctx.targets.length = saved;
+    }
+    // "Repeat the following process X times." — the next sentence is the body.
+    if ((m = s.match(/^repeat the following process (X|\w+) times?$/i)) && sents[i + 1]) {
+      const times: Amount | null = m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as Amount | null);
+      const saved = ctx.targets.length;
+      const body = times !== null ? parseSentence(sents[i + 1], ctx) : null;
+      if (body) {
+        effects.push({ kind: 'repeat', times: times as Amount, effects: body });
+        i++;
+        continue;
+      }
+      ctx.targets.length = saved;
+    }
+    // "Then repeat this process X more times." — do the previous sentence again.
+    if ((m = s.match(/^(?:then )?repeat this process (X|\w+) (?:more )?times?$/i)) && effects.length > 0) {
+      const times: Amount | null = m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as Amount | null);
+      // The "process" is the previous sentence's effects, or the last one produced if that
+      // sentence only refined what came before ("… may discard a card. If they do not, …").
+      const from = effects.length > lastStart ? lastStart : effects.length - 1;
+      if (times !== null) {
+        const body = effects.splice(from);
+        effects.push(...body, { kind: 'repeat', times, effects: body.map((e) => structuredClone(e)) });
+        curStart = from;
+        continue;
+      }
     }
     // "Each opponent sacrifices a creature." + "Each opponent who cannot loses 3 life."
     if ((m = s.match(/^each (?:player|opponent) who (?:cannot|can't|does not|doesn't) (.+)$/i)) && effects.length) {

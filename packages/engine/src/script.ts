@@ -138,7 +138,9 @@ export type Ref =
   /** The union of several refs ("you and target opponent each ..."). */
   | { ref: 'players'; of: Ref[] }
   /** Every player except those this ref resolves to ("each player other than target player"). */
-  | { ref: 'playersExcept'; except: Ref };
+  | { ref: 'playersExcept'; except: Ref }
+  /** The player seated next to you: left is the next in turn order, right the previous. */
+  | { ref: 'neighbor'; side: 'left' | 'right' };
 
 export const R = {
   target: (slot = 0): Ref => ({ ref: 'target', slot }),
