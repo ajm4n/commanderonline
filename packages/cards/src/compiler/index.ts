@@ -498,6 +498,15 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    // "You can't cast ~ unless an opponent lost life this turn."
+    if ((m = line.match(/^You cannot cast (?:~|this spell) unless (.+?)\.?$/i))) {
+      const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (cond && cond.kind !== 'manual') {
+        castCondition = castCondition ? { kind: 'and', cs: [castCondition, cond] } : cond;
+        compiledLines.push(line);
+        continue;
+      }
+    }
     // Casting restrictions: "Cast ~ only during combat" / "only if you control a snow land"
     if ((m = line.match(/^Cast (?:~|this spell) only (.+?)\.?$/i))) {
       const cond = parseCastRestriction(m[1]);

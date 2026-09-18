@@ -2373,6 +2373,14 @@ export function attach(g: Game, whatId: ObjectId, toId: ObjectId) {
 export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, opts: { tapped?: boolean; counters?: Record<string, number>; ctx?: EffectContext; attacking?: PlayerId | ObjectId; fromStack?: boolean; faceDown?: boolean } = {}): Gen<GameObject | null> {
   const o = g.state.objects[id];
   if (!o) return null;
+  // "Creature cards in graveyards and libraries can't enter the battlefield." (Grafdigger's Cage)
+  for (const r of g.playerRules(controller)) {
+    if (r.kind !== 'custom' || r.tag !== 'cantEnterFromZone') continue;
+    const d = (r.data as { filter?: import('./types.js').ObjectFilter; zones?: string[] } | undefined) ?? {};
+    if (d.zones && !d.zones.includes(o.zone)) continue;
+    if (d.filter && !matchesFilter(g, o, { ...d.filter, zone: undefined }, { sourceId: null, controller })) continue;
+    return null;
+  }
   const script = g.scriptFor(o);
   let tapped = opts.tapped ?? false;
   // "Lands you control enter untapped." overrides an "enters tapped" replacement.

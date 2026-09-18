@@ -360,8 +360,6 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If ~ would (?:die|be put into a graveyard from anywhere), (?:instead )?put it on (?:the )?(top|bottom) of its owner's library(?: instead)?$/i))) {
     return [{ kind: 'replacement', text: line, event: 'dies', self: true, instead: m[1].toLowerCase() === 'top' ? 'libraryTop' : 'libraryBottom' }];
   }
-  // "~ is all colors."
-  if (/^~ is all colors$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColors: ['W', 'U', 'B', 'R', 'G'] } }];
   // "As ~ enters, choose a noncreature, nonland card name."
 
   if (/^As ~ enters, choose (?:a|an) (?:noncreature, nonland |nonland |noncreature |creature )?card name$/i.test(L)) {
@@ -925,6 +923,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const dn = m[1] ? wordToNumber(m[1]) : 1;
     const data = m[2] && typeof dn === 'number' ? { counter: m[2], amount: dn } : undefined;
     return [{ kind: 'static', text: line, affects: 'self', zone: 'hand', rule: { kind: 'custom', tag: 'discardToBattlefield', data } }];
+  }
+  // "Creature cards in graveyards and libraries can't enter the battlefield."
+  if ((m = L.match(/^(.+?) in (graveyards|libraries|graveyards and libraries) cannot enter the battlefield$/i))) {
+    const noun = parseNoun(m[1]);
+    if (noun && noun.confident) {
+      const zones = /and/i.test(m[2]) ? ['graveyard', 'library'] : /graveyards/i.test(m[2]) ? ['graveyard'] : ['library'];
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantEnterFromZone', data: { filter: { ...noun.filter, zone: undefined }, zones } } }];
+    }
+  }
+  // "You have no maximum hand size for as long as you control ~."
+  if (/^You have no maximum hand size(?: for as long as you control ~)?$/i.test(L)) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   }
   // "~ is all colors."
   if (/^~ is all colors$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColors: ['W', 'U', 'B', 'R', 'G'] } }];
