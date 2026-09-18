@@ -6428,6 +6428,10 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // `lastStart` is where the previous sentence's effects begin: "X. If ~ was kicked, Y instead." replaces them.
     lastStart = curStart;
     curStart = effects.length;
+    // A sentence that failed rolls ctx.targets back; don't let a stale "last" ref
+    // keep pointing at a target slot that no longer exists.
+    if (ctx.lastObj?.ref === 'target' && (ctx.lastObj.slot ?? 0) >= ctx.targets.length) ctx.lastObj = null;
+    if (ctx.lastPlayer?.ref === 'target' && (ctx.lastPlayer.slot ?? 0) >= ctx.targets.length) ctx.lastPlayer = null;
     // "Prevent all damage … this turn. You gain life equal to the damage prevented this way."
     if (/^prevent |^the next time /i.test(s) && sents[i + 1] && /damage prevented this way/i.test(sents[i + 1])) {
       const followText = sents[i + 1].replace(/^for each 1 damage prevented this way, /i, '').replace(/\bthe damage prevented this way\b/i, 'that much');

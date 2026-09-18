@@ -974,6 +974,29 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     abilities.splice(abilities.indexOf(ab), 1);
   }
+  // Integrity guard: an ability that refers to a target slot it never declares would
+  // resolve against nothing, so treat its line as unhandled rather than claim it works.
+  for (const ab of [...abilities]) {
+    const declared = ((ab as { targets?: unknown[] }).targets?.length ?? 0) + ((ab as { modes?: { targets?: unknown[] }[] }).modes ?? []).reduce((a, mo) => a + (mo.targets?.length ?? 0), 0);
+    let maxSlot = -1;
+    const scan = (v: unknown): void => {
+      if (Array.isArray(v)) { for (const x of v) scan(x); return; }
+      if (!v || typeof v !== 'object') return;
+      const o = v as Record<string, unknown>;
+      if (o.ref === 'target') maxSlot = Math.max(maxSlot, typeof o.slot === 'number' ? o.slot : 0);
+      for (const x of Object.values(o)) scan(x);
+    };
+    scan(ab);
+    if (maxSlot < declared) continue;
+    abilities.splice(abilities.indexOf(ab), 1);
+    const text = (ab as { text?: string }).text;
+    const line = text && lines.find((l) => l === text || l.includes(text));
+    if (line) {
+      const at = compiledLines.indexOf(line);
+      if (at >= 0) compiledLines.splice(at, 1);
+      if (!unhandledLines.includes(line)) unhandledLines.push(line);
+    }
+  }
   const meaningful = lines.filter((l) => !isKeywordLine(l));
   const automatedAbilities = abilities.filter((a) => {
     if (a.kind === 'spell') return a.effects.some((e) => e.kind !== 'manual') || (a.modes?.length ?? 0) > 0;
