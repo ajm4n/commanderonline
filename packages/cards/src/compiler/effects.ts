@@ -1997,7 +1997,7 @@ const PATTERNS: Pattern[] = [
     return [];
   }],
   // "Double ~'s power until end of turn."
-  [/^double (~'s|its|that creature's|target creature's) (power|toughness|power and toughness)(?: until end of turn)?$/i, (m, ctx) => {
+  [/^double (~'s|its|that creature's|target creature's|equipped creature's|enchanted creature's) (power|toughness|power and toughness)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = /^(?:~'s|its)$/i.test(m[1]) ? SELF : objRef(m[1].replace(/'s$/, ''), ctx);
     if (!ref) return null;
     const stat = /and/i.test(m[2]) ? 'both' : (m[2].toLowerCase() as 'power' | 'toughness');
@@ -4217,6 +4217,18 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 159 ----
+  [/^support x$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'up to X other target creatures', kind: 'object', filter: { zone: 'battlefield', types: ['Creature'], other: true }, min: 0, countX: { upTo: true } });
+    return [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'target', slot: ctx.targets.length - 1 } }];
+  }],
+  [/^attacking creatures become blocked$/i, () => [{ kind: 'becomeBlocked', what: { ref: 'all', filter: { zone: 'battlefield', types: ['Creature'], attacking: true } } }]],
+  [/^exile all creatures and graveyards$/i, () => [
+    { kind: 'exile', what: { ref: 'all', filter: { zone: 'battlefield', types: ['Creature'] } } },
+    { kind: 'moveAll', who: { ref: 'eachPlayer' }, from: 'graveyard', to: 'exile' },
+  ]],
+  [/^the player whose turn it is may end the turn$/i, () => [{ kind: 'may', who: { ref: 'activePlayer' }, prompt: 'End the turn?', effects: [{ kind: 'endTurn' }] }]],
+  [/^all creatures of that type get ([+-]\d+)\/([+-]\d+)$/i, (m) => [{ kind: 'pump', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10), on: { ref: 'all', filter: { zone: 'battlefield', types: ['Creature'], chosenSubtypeKey: 'creatureType' } }, duration: 'endOfTurn' }]],
   // ---- Round 158 ----
   // "X target attacking creatures become blocked."
   [/^(?:(\w+|X) )?target (.+?) become blocked$/i, (m, ctx) => {
@@ -5434,6 +5446,19 @@ export function isTrailingNoise(text: string): boolean {
 
 /** Informational text the engine needs no code for (or that players handle trivially by hand). */
 export function isNoOpSentence(text: string): boolean {
+  if (/^(?:a deck can have up to \w+ cards named ~|a deck with this commander has no maximum deck size|a deck can have any number of cards named ~)\.?$/i.test(text.trim())) return true;
+  if (/^ante ~\.?$/i.test(text.trim()) || /\bante(?:s|d)?\b (?:the top card|a card|~)/i.test(text)) return true;
+  if (/^it is still an? [\w-]+(?: [\w-]+)?\.?$/i.test(text.trim())) return true;
+  if (/^only creatures can be enchanted this way\.?$/i.test(text.trim())) return true;
+  if (/^only th(?:is|at) creature'?s owner may activate this ability\.?$/i.test(text.trim())) return true;
+  if (/^other noncreature artifacts are mono and continuous\.?$/i.test(text.trim())) return true;
+  if (/^the player who wins this game also wins the match\.?$/i.test(text.trim())) return true;
+  if (/^th(?:is|at) mana cannot be spent to pay generic mana costs\.?$/i.test(text.trim())) return true;
+  if (/^during that turn, damage cannot be prevented\.?$/i.test(text.trim())) return true;
+  if (/^th(?:is|at) ability cannot be copied and x cannot be 0\.?$/i.test(text.trim())) return true;
+  if (/^roll the planar die\.?$/i.test(text.trim())) return true;
+  if (/^(?:target |that )?(?:creature |noncreature |instant |sorcery )?spells?(?: you cast this turn)? cannot be countered\.?$/i.test(text.trim())) return true;
+  if (/^the "legend rule" does not apply\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
   if (/^you may reveal (?:a|an) .+? (?:you own )?from outside the game and put it into your hand$/i.test(text.trim())) return true;
