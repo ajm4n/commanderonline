@@ -4235,6 +4235,36 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 187 ----
+  [/^your maximum hand size is reduced by (\w+)(?: for the rest of the game)?$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'maxHandSize', delta: -n } }];
+  }],
+  [/^you may put the revealed cards into their owners'? graveyards$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'may', effects: [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] }];
+  }],
+  [/^(.+?) loses? (\d+) life, then reveals a card at random from their hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    ctx.lastPlayer = who;
+    return [{ kind: 'loseLife', amount: parseInt(m[2], 10), who }, { kind: 'revealHand', who, count: 1, random: true }];
+  }],
+  [/^(.+?) reveals a card at random from their hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    ctx.lastPlayer = who;
+    return [{ kind: 'revealHand', who, count: 1, random: true }];
+  }],
+  [/^(?:a|an) player of your choice adds ((?:\{[^}]+\})+)$/i, (m) => {
+    const syms = m[1].match(/\{([^}]+)\}/g)?.map((s) => s.slice(1, -1)) ?? [];
+    if (!syms.every((s) => /^[WUBRGC]$/.test(s))) return null;
+    return [
+      { kind: 'choosePlayer', key: 'manaPlayer', who: 'any' },
+      { kind: 'addMana', mana: syms as ('W' | 'U' | 'B' | 'R' | 'G' | 'C')[], who: { ref: 'chosen', key: 'manaPlayer' } },
+    ];
+  }],
   // ---- Round 186 ----
   [/^its owner shuffles it into their library, then investigates$/i, (m, ctx) => {
     const ref = ctx.lastObj;
