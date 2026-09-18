@@ -4235,6 +4235,48 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 184 ----
+  [/^you skip your next (\w+) turns?$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    return Array.from({ length: n }, () => ({ kind: 'skipTurn' as const, who: YOU }));
+  }],
+  [/^(.+?) cannot gain life for the rest of the game$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'grantPlayerRule', rule: { kind: 'cantGainLife' }, who }] : null;
+  }],
+  [/^(.+?) draws (\w+) cards? and gains control of ~$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = wordToNumber(m[2]);
+    if (!who || typeof n !== 'number') return null;
+    return [{ kind: 'draw', amount: n, who }, { kind: 'gainControl', what: SELF, who, duration: 'permanent' }];
+  }],
+  [/^turn (?:a|an|up to one) face-down (.+?) you control face up$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, controller: 'you', zone: 'battlefield', faceDown: true }, count: 1, key: 'flipUp' },
+      { kind: 'turnFaceUp', what: { ref: 'chosen', key: 'flipUp' } },
+    ];
+  }],
+  [/^(?:that|the) token (?:gains (.+?) until end of turn and )?attacks this combat if able$/i, (m) => {
+    const out: Effect[] = [];
+    if (m[1]) {
+      const kws = parseKeywordList(m[1]);
+      if (!kws) return null;
+      out.push({ kind: 'grantKeywords', keywords: kws, on: { ref: 'lastCreated' }, duration: 'endOfTurn' });
+    }
+    out.push({ kind: 'applyRule', rule: { kind: 'mustAttack' }, on: { ref: 'lastCreated' }, duration: 'endOfTurn' });
+    return out;
+  }],
+  [/^you gain life and draw cards equal to its power$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? SELF;
+    const a: Amount = { kind: 'power', ref };
+    return [{ kind: 'gainLife', amount: a }, { kind: 'draw', amount: a }];
+  }],
+  [/^each player returns to their hand all cards they own exiled with (?:it|~)$/i, () => [
+    { kind: 'moveToZone', what: { ref: 'all', filter: { zone: 'exile', exiledWithSource: true } }, zone: 'hand' },
+  ]],
   // ---- Round 183 ----
   [/^exile all cards from (.+?)'s hand$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
@@ -5365,7 +5407,7 @@ const PATTERNS: Pattern[] = [
   ]],
   // ---- Round 112 ----
   // "Each player who controls a multicolored creature draws a card."
-  [/^each (player|opponent) who (controls .+?|discarded a card this way|drew a card this way|drew a card this turn|lost life this turn|gained life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.*)$/i, (m, ctx) => {
+  [/^each (player|opponent) who ((?:does not|doesn't) control .+?|controls .+?|discarded a card this way|drew a card this way|drew a card this turn|lost life this turn|gained life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.*)$/i, (m, ctx) => {
     const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
     let cond: Condition | null = null;
     const cm = m[2].match(/^controls (.+)$/i);
