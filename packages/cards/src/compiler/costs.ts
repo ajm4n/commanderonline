@@ -419,6 +419,14 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
   const addCond = (c: Condition) => {
     out.condition = out.condition ? { kind: 'and', cs: [out.condition, c] } : c;
   };
+  // Two restrictions on one line: parse each and merge ("Activate only as a sorcery. Activate only if …").
+  if ((m = t.match(/^(Activate only [^.]+)\.\s*(Activate only .+?)\.?$/i))) {
+    const a = parseActivationRestriction(m[1]);
+    const b = parseActivationRestriction(m[2]);
+    if (a.unhandled || b.unhandled) return { text: '', unhandled: text.trim() };
+    const cond = a.condition && b.condition ? ({ kind: 'and', cs: [a.condition, b.condition] } as Condition) : a.condition ?? b.condition;
+    return { ...a, ...b, text: '', condition: cond };
+  }
   for (;;) {
     if ((m = t.match(/^(.*?)\s*Activate only as a sorcery\.?$/i))) {
       out.sorcerySpeed = true;

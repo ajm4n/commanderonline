@@ -106,11 +106,26 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (a !== null && typeof n === 'number') return { kind: 'amount', a, op: /more|greater/.test(m[3]) ? '>=' : '<=', b: n };
   }
   // "you cast two or more spells this turn" / "you drew two or more cards this turn"
-  if ((m = t.match(/^(an opponent|you|a player|each opponent) (cast|drew|discarded|sacrificed|milled) (\w+) or more (spells|cards|creatures|permanents|instant or sorcery spells|creature spells|noncreature spells) this turn$/))) {
+  if ((m = t.match(/^(an opponent|you|a player|each opponent) (cast|drew|discarded|sacrificed|milled) (\w+) or more (spells|cards|creatures|permanents|instants? (?:and\/)?or sorcery spells|instant (?:and\/)?or sorcery spells|creature spells|noncreature spells|artifact spells|enchantment spells|historic spells|legendary spells|multicolored spells|colorless spells) this turn$/))) {
     const who = m[1] === 'you' ? 'you' : m[1] === 'a player' ? 'any' : 'opponent';
     const event: import('@commander/engine').GameEventName = m[2] === 'cast' ? 'cast' : m[2] === 'drew' ? 'drawCard' : m[2] === 'discarded' ? 'discard' : m[2] === 'sacrificed' ? 'sacrifice' : 'mill';
     const n = wordToNumber(m[3]);
-    if (typeof n === 'number' && (m[2] !== 'cast' || m[4] === 'spells')) return { kind: 'eventThisTurn', event, player: who, op: '>=', value: n };
+    // Spell categories narrow a cast count; the other events only ever count cards.
+    const CAST_FILTERS: Record<string, import('@commander/engine').ObjectFilter | undefined> = {
+      spells: undefined,
+      'creature spells': { types: ['Creature'] },
+      'noncreature spells': { notTypes: ['Creature'] },
+      'artifact spells': { types: ['Artifact'] },
+      'enchantment spells': { types: ['Enchantment'] },
+      'historic spells': { historic: true },
+      'legendary spells': { supertypes: ['Legendary'] },
+      'multicolored spells': { multicolored: true },
+      'colorless spells': { colorless: true },
+    };
+    const cat = m[4];
+    const filter = /^instants? (?:and\/)?or sorcery spells$|^instant (?:and\/)?or sorcery spells$/.test(cat) ? { types: ['Instant', 'Sorcery'] } : CAST_FILTERS[cat];
+    if (typeof n === 'number' && m[2] === 'cast' && (cat === 'spells' || filter)) return { kind: 'eventThisTurn', event, player: who, op: '>=', value: n, filter };
+    if (typeof n === 'number' && m[2] !== 'cast') return { kind: 'eventThisTurn', event, player: who, op: '>=', value: n };
   }
   if ((m = t.match(/^(an opponent|each opponent|you|a player|that player) (?:has|have) (\w+) or more cards in (?:their|your) graveyard$/))) {
     const n = wordToNumber(m[2]);
