@@ -185,6 +185,42 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 178 ----
+  if ((m = L.match(/^Whenever (?:enchanted|equipped) creature deals damage to you, (.+)$/i))) return { event: 'dealsDamage', filter: { sourceAttachedTo: true, toPlayer: true, player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:enchanted|equipped) creature deals damage to a blocking creature, (.+)$/i))) return { event: 'dealsDamage', filter: { sourceAttachedTo: true, object: { blocking: true } }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ deals combat damage to defending player, (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ deals damage to a creature or (?:an )?opponent, (.+)$/i))) return { event: 'dealsDamage', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast another (.+?) spell, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun && noun.confident) { const f = { ...noun.filter, other: true }; delete f.zone; return { event: 'cast', filter: { player: 'you', object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever one or more creatures block, (.+)$/i))) return { event: 'blocks', filter: { object: { types: ['Creature'] } }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When ~ is put into exile from the battlefield, (.+)$/i))) return { event: 'exiled', filter: { self: true, fromZone: 'battlefield' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ or (?:enchanted|equipped) creature becomes blocked, (.+)$/i))) return { event: 'becomesBlocked', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'becomesBlocked', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^Whenever (?:enchanted|equipped) creature and at least one other creature attack, (.+)$/i))) return { event: 'attacks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: `if you control two or more attacking creatures, ${m[1]}` };
+  if ((m = L.match(/^At the beginning of each other player's draw step, (.+)$/i))) return { event: 'beginningOfDraw', filter: { player: 'opponent' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When you cast ~ from anywhere other than exile, (.+)$/i))) return { event: 'cast', filter: { self: true, notFromZone: 'exile' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) (?:spell or ability|ability or spell) is put onto the stack, (.+)$/i))) return { event: 'cast', filter: {}, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'abilityActivated', filter: {}, hasObject: true, hasPlayer: true }] };
+  if ((m = L.match(/^Whenever (?:a|an) card leaves your graveyard during your turn, (.+)$/i))) return { event: 'leftGraveyard', filter: { player: 'you', yourTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) card leaves an opponent's graveyard, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'leftGraveyard', filter: { object: f, player: 'opponent' }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) spell is cast during your turn, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'cast', filter: { object: f, yourTurn: true }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever another (.+?) you control enters or leaves the battlefield, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter, other: true };
+      delete f.zone;
+      delete f.controller;
+      return { event: 'entersBattlefield', filter: { object: f, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[2], also: [{ event: 'leavesBattlefield', filter: { object: f, objectController: 'you' }, hasObject: true, hasPlayer: false }] };
+    }
+  }
+  if ((m = L.match(/^Whenever a source you control deals damage to another player, (.+)$/i))) return { event: 'dealsDamage', filter: { toPlayer: true, player: 'notYou', source: { controller: 'you' } }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ attacks a player who controls (\w+) or more lands, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if that player controls ${m[1]} or more lands, ${m[2]}` };
   // ---- Round 173 ----
   if ((m = L.match(/^Whenever (another )?(.+?) dies or (?:a|an) (?:.+?) card is put into your graveyard from anywhere other than the battlefield, (.+)$/i))) {
     const noun = parseNoun(`a ${m[2]}`);

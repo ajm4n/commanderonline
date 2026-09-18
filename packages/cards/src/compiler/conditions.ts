@@ -15,6 +15,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
       const other: Amount = { kind: 'manaValue', ref: { ref: 'chosen', key: mc[1] === 'discarded' ? 'lastDiscarded' : mc[1] === 'revealed' ? 'lastRevealed' : mc[1] === 'exiled' ? 'lastMoved' : 'chosen' } };
       return { kind: 'amount', a: { kind: 'manaValue', ref: ctx.lastObj ?? { ref: 'stackTarget' } }, op: '==', b: other };
     }
+    if ((mc = tc.match(/^that player controls (\w+) or more (.+)$/))) {
+      const n = wordToNumber(mc[1]);
+      const noun = parseNoun(mc[2]);
+      if (n !== null && noun && noun.confident) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'defendingPlayer' } }, op: '>=', value: n };
+    }
     if ((mc = tc.match(/^(?:a|any) library has (\w+) or (?:fewer|less) cards in it$/))) {
       const n = wordToNumber(mc[1]);
       if (n !== null) return { kind: 'amount', a: { kind: 'librarySize', ref: { ref: 'eachPlayer' } }, op: '<=', b: n };
