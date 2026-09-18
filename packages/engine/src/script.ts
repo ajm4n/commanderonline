@@ -431,8 +431,8 @@ export type Effect =
   | { kind: 'delayedTrigger'; event: GameEventName; effects: Effect[]; text: string; once?: boolean; filter?: TriggerFilter; /** "Until end of turn, whenever X, Y": fires repeatedly this turn, then goes away. */ untilEndOfTurn?: boolean }
   | { kind: 'log'; text: string; /** Also emit this game event (for mechanics whose trigger is the action itself, e.g. exploring). */ event?: GameEventName; objectRef?: Ref }
   | { kind: 'ventureIntoDungeon' }
-  | { kind: 'investigate'; count?: Amount }
-  | { kind: 'treasure'; count?: Amount }
+  | { kind: 'investigate'; count?: Amount; who?: Ref }
+  | { kind: 'treasure'; count?: Amount; who?: Ref }
   | { kind: 'rollDie'; sides: number; results: { min: number; max: number; effects: Effect[] }[] }
   | { kind: 'phaseOut'; what: Ref }
   | { kind: 'putIntoHand'; what: Ref }

@@ -114,80 +114,83 @@ export function* checkStateBasedActions(g: Game): Gen {
       if (g.state.over) return;
     }
 
-    // Permanents
-    for (const id of [...g.state.battlefield]) {
-      const o = g.state.objects[id];
-      if (!o || o.zone !== 'battlefield') continue;
-      const ch = g.characteristics(id);
-      if (ch.types.includes('Creature')) {
-        if ((ch.toughness ?? 0) <= 0) {
-          g.log(`${g.nameOf(id)} has 0 or less toughness and is put into the graveyard.`);
-          g.moveObject(id, 'graveyard', { cause: 'other' });
-          changed = true;
-          continue;
-        }
-        if ((o.damage >= (ch.toughness ?? 0) || o.deathtouchDamage) && !ch.keywords.has('Indestructible')) {
-          const { destroyObject } = effectsMod();
-          destroyObject(g, id, null);
-          changed = true;
-          continue;
-        }
-      }
-      if (ch.types.includes('Planeswalker') && (o.counters['loyalty'] ?? 0) <= 0) {
-        g.log(`${g.nameOf(id)} has no loyalty and is put into the graveyard.`);
-        g.moveObject(id, 'graveyard', { cause: 'other' });
-        changed = true;
-        continue;
-      }
-      if (ch.types.includes('Battle') && (o.counters['defense'] ?? 0) <= 0) {
-        g.moveObject(id, 'graveyard', { cause: 'other' });
-        changed = true;
-        continue;
-      }
-      // Auras
-      if (ch.types.includes('Enchantment') && ch.subtypes.includes('Aura')) {
-        const host = o.attachedTo !== null ? g.state.objects[o.attachedTo] : null;
-        let illegal = !host || host.zone !== 'battlefield';
-        if (!illegal && host) {
-          const spec = auraTargetSpec(o.card.oracleText);
-          if (spec.kind === 'object') {
-            const legal = legalTargets(g, spec, id, o.controller);
-            if (!legal.some((t) => t.kind === 'object' && t.id === host.id)) illegal = true;
+    // Permanents. One sweep puts everything into the graveyard simultaneously, so
+    // leave-the-battlefield abilities see every other permanent that died with them.
+    g.simultaneousZoneChange(() => {
+      for (const id of [...g.state.battlefield]) {
+        const o = g.state.objects[id];
+        if (!o || o.zone !== 'battlefield') continue;
+        const ch = g.characteristics(id);
+        if (ch.types.includes('Creature')) {
+          if ((ch.toughness ?? 0) <= 0) {
+            g.log(`${g.nameOf(id)} has 0 or less toughness and is put into the graveyard.`);
+            g.moveObject(id, 'graveyard', { cause: 'other' });
+            changed = true;
+            continue;
+          }
+          if ((o.damage >= (ch.toughness ?? 0) || o.deathtouchDamage) && !ch.keywords.has('Indestructible')) {
+            const { destroyObject } = effectsMod();
+            destroyObject(g, id, null);
+            changed = true;
+            continue;
           }
         }
-        if (illegal) {
-          g.log(`${g.nameOf(id)} is no longer attached to anything legal and is put into the graveyard.`);
+        if (ch.types.includes('Planeswalker') && (o.counters['loyalty'] ?? 0) <= 0) {
+          g.log(`${g.nameOf(id)} has no loyalty and is put into the graveyard.`);
           g.moveObject(id, 'graveyard', { cause: 'other' });
           changed = true;
           continue;
         }
-      }
-      // Equipment / Fortification attached to wrong thing → unattach
-      if (o.attachedTo !== null && (ch.subtypes.includes('Equipment') || ch.subtypes.includes('Fortification'))) {
-        const host = g.state.objects[o.attachedTo];
-        const hostCh = host ? g.characteristics(host.id) : null;
-        const ok = host && host.zone === 'battlefield' && hostCh && (ch.subtypes.includes('Equipment') ? hostCh.types.includes('Creature') : hostCh.types.includes('Land'));
-        if (!ok) {
-          if (host) host.attachments = host.attachments.filter((x) => x !== id);
-          o.attachedTo = null;
-          g.emit({ name: 'becomesUnattached', objectId: id, sourceId: host?.id });
+        if (ch.types.includes('Battle') && (o.counters['defense'] ?? 0) <= 0) {
+          g.moveObject(id, 'graveyard', { cause: 'other' });
+          changed = true;
+          continue;
+        }
+        // Auras
+        if (ch.types.includes('Enchantment') && ch.subtypes.includes('Aura')) {
+          const host = o.attachedTo !== null ? g.state.objects[o.attachedTo] : null;
+          let illegal = !host || host.zone !== 'battlefield';
+          if (!illegal && host) {
+            const spec = auraTargetSpec(o.card.oracleText);
+            if (spec.kind === 'object') {
+              const legal = legalTargets(g, spec, id, o.controller);
+              if (!legal.some((t) => t.kind === 'object' && t.id === host.id)) illegal = true;
+            }
+          }
+          if (illegal) {
+            g.log(`${g.nameOf(id)} is no longer attached to anything legal and is put into the graveyard.`);
+            g.moveObject(id, 'graveyard', { cause: 'other' });
+            changed = true;
+            continue;
+          }
+        }
+        // Equipment / Fortification attached to wrong thing → unattach
+        if (o.attachedTo !== null && (ch.subtypes.includes('Equipment') || ch.subtypes.includes('Fortification'))) {
+          const host = g.state.objects[o.attachedTo];
+          const hostCh = host ? g.characteristics(host.id) : null;
+          const ok = host && host.zone === 'battlefield' && hostCh && (ch.subtypes.includes('Equipment') ? hostCh.types.includes('Creature') : hostCh.types.includes('Land'));
+          if (!ok) {
+            if (host) host.attachments = host.attachments.filter((x) => x !== id);
+            o.attachedTo = null;
+            g.emit({ name: 'becomesUnattached', objectId: id, sourceId: host?.id });
+            g.touch();
+            changed = true;
+          }
+        }
+        // +1/+1 and -1/-1 annihilate
+        const plus = o.counters['+1/+1'] ?? 0;
+        const minus = o.counters['-1/-1'] ?? 0;
+        if (plus > 0 && minus > 0) {
+          const n = Math.min(plus, minus);
+          o.counters['+1/+1'] = plus - n;
+          o.counters['-1/-1'] = minus - n;
+          if (!o.counters['+1/+1']) delete o.counters['+1/+1'];
+          if (!o.counters['-1/-1']) delete o.counters['-1/-1'];
           g.touch();
           changed = true;
         }
       }
-      // +1/+1 and -1/-1 annihilate
-      const plus = o.counters['+1/+1'] ?? 0;
-      const minus = o.counters['-1/-1'] ?? 0;
-      if (plus > 0 && minus > 0) {
-        const n = Math.min(plus, minus);
-        o.counters['+1/+1'] = plus - n;
-        o.counters['-1/-1'] = minus - n;
-        if (!o.counters['+1/+1']) delete o.counters['+1/+1'];
-        if (!o.counters['-1/-1']) delete o.counters['-1/-1'];
-        g.touch();
-        changed = true;
-      }
-    }
+    });
 
     // Control-changing continuous effects (layer 2) take effect here.
     for (const id of [...g.state.battlefield]) {

@@ -133,6 +133,23 @@ export class Game {
   private scriptCache = new Map<string, CardScript>();
   private chCache = new Map<ObjectId, { v: number; ch: Characteristics }>();
   private pendingTriggers: PendingTrigger[] = [];
+  /**
+   * Permanents that left the battlefield inside the current simultaneous batch
+   * ("destroy all creatures", one state-based-action sweep). Rule 700.4: each of
+   * them still sees the others go, so a leave-the-battlefield ability fires once
+   * per permanent instead of only for the ones that left before it.
+   */
+  private leavingTogether: Map<ObjectId, GameObject> | null = null;
+  /** Run `fn` treating every battlefield departure inside it as simultaneous. */
+  simultaneousZoneChange<T>(fn: () => T): T {
+    if (this.leavingTogether) return fn();
+    this.leavingTogether = new Map();
+    try {
+      return fn();
+    } finally {
+      this.leavingTogether = null;
+    }
+  }
   /** Queue a trigger from outside (state-based actions). */
   queueTrigger(t: PendingTrigger): void {
     this.pendingTriggers.push(t);
@@ -876,6 +893,7 @@ export class Game {
 
     if (!opts.skipEvents) {
       const base: Partial<GameEvent> = { objectId: id, fromZone, toZone, snapshot, sourceId: opts.sourceId, data: { cause: opts.cause, lkiCh } };
+      if (fromZone === 'battlefield') this.leavingTogether?.set(id, snapshot);
       if (fromZone === 'battlefield') {
         this.emit({ name: 'leavesBattlefield', ...base, playerId: snapshot.controller });
         if (toZone === 'graveyard') {
@@ -989,11 +1007,14 @@ export class Game {
         const zones = ab.zone ? (Array.isArray(ab.zone) ? ab.zone : [ab.zone]) : ['battlefield'];
         const isSelfLeaving = event.objectId === obj.id && event.snapshot && event.fromZone === 'battlefield' && (event.name === 'dies' || event.name === 'leavesBattlefield' || event.name === 'exiled' || event.name === 'putIntoGraveyard');
         const isSelfEntering = event.objectId === obj.id && event.name === 'entersBattlefield';
-        if (!isSelfLeaving && !zones.includes(obj.zone)) continue;
+        // Left the battlefield together with the object this event is about: it still sees the event.
+        const leaveEvent = event.name === 'dies' || event.name === 'leavesBattlefield' || event.name === 'exiled' || event.name === 'putIntoGraveyard' || event.name === 'sacrifice';
+        const together = !isSelfLeaving && leaveEvent && event.objectId !== obj.id && zones.includes('battlefield') ? this.leavingTogether?.get(obj.id) : undefined;
+        if (!isSelfLeaving && !together && !zones.includes(obj.zone)) continue;
         // Enter triggers ("When ~ enters") only if ability functions on battlefield.
         if (isSelfEntering && !zones.includes('battlefield')) continue;
-        const controller = isSelfLeaving && event.snapshot ? event.snapshot.controller : obj.controller;
-        const evalObj = isSelfLeaving && event.snapshot ? event.snapshot : obj;
+        const controller = isSelfLeaving && event.snapshot ? event.snapshot.controller : together ? together.controller : obj.controller;
+        const evalObj = isSelfLeaving && event.snapshot ? event.snapshot : together ?? obj;
         if (event.name === 'tappedForMana' && ab.effects.every((e) => e.kind === 'addMana')) continue; // already resolved as a mana ability
         if (!this.triggerMatches(ab.filter, event, evalObj, controller, lkiCh)) continue;
         if (ab.condition && !this.checkCondition(ab.condition, { sourceId: obj.id, controller, triggerContext: this.triggerContextFrom(event) })) continue;
@@ -1182,7 +1203,7 @@ export class Game {
         if (mine.length === 0) continue;
         let ordered = mine;
         const distinctTexts = new Set(mine.map((t) => t.ability.text)).size;
-        if (mine.length > 1 && distinctTexts > 1) {
+        if (mine.length > 1 && distinctTexts > 1 && !this.config.autoOrderTriggers) {
           const items = mine.map((t, i) => ({ id: i, text: `${this.nameOf(t.sourceId)}: ${t.ability.text}` }));
           const resp = yield* this.ask({ type: 'orderObjects', player: pid, prompt: 'Order your triggered abilities (first chosen resolves last)', objectIds: mine.map((t) => t.sourceId), context: 'triggers', items });
           if (resp.type === 'order') ordered = resp.ids.map((i) => mine[i]);

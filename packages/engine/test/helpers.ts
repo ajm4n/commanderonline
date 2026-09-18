@@ -44,6 +44,14 @@ export const MONSTER = card({ name: 'Monster', typeLine: 'Creature — Beast', m
 export const LEVELER = card({ name: 'Leveler', typeLine: 'Creature — Human', manaCost: '{W}', cmc: 1, power: '1', toughness: '1', oracleText: 'Level up {W}\nLEVEL 1-2\n2/2\nFirst strike\nLEVEL 3+\n3/3\nFirst strike, lifelink', colors: ['W'], colorIdentity: ['W'] });
 export const UPKEEP_GUY = card({ name: 'Upkeep Guy', typeLine: 'Creature — Human', manaCost: '{G}', cmc: 1, power: '1', toughness: '1', oracleText: 'At the beginning of your upkeep, you gain 1 life.', colors: ['G'], colorIdentity: ['G'] });
 
+// Cards that exercise the common "verbs" end to end.
+export const SURVEILLER = card({ name: 'Surveiller', typeLine: 'Creature — Rogue', manaCost: '{2}', cmc: 2, power: '1', toughness: '1', oracleText: 'When Surveiller enters the battlefield, surveil 2.', colors: ['B'], colorIdentity: ['B'] });
+export const SEER = card({ name: 'Seer', typeLine: 'Creature — Wizard', manaCost: '{2}', cmc: 2, power: '1', toughness: '1', oracleText: 'When Seer enters the battlefield, scry 2.', colors: ['U'], colorIdentity: ['U'] });
+export const SLEUTH = card({ name: 'Sleuth', typeLine: 'Creature — Detective', manaCost: '{2}', cmc: 2, power: '1', toughness: '1', oracleText: 'When Sleuth enters the battlefield, each opponent investigates.', colors: ['W'], colorIdentity: ['W'] });
+export const PIRATE = card({ name: 'Pirate', typeLine: 'Creature — Pirate', manaCost: '{2}', cmc: 2, power: '1', toughness: '1', oracleText: 'When Pirate enters the battlefield, create two Treasure tokens.', colors: ['R'], colorIdentity: ['R'] });
+export const MILLER = card({ name: 'Miller', typeLine: 'Creature — Horror', manaCost: '{2}', cmc: 2, power: '1', toughness: '1', oracleText: 'When Miller enters the battlefield, each opponent mills three cards.', colors: ['B'], colorIdentity: ['B'] });
+export const DRAW_WATCHER = card({ name: 'Draw Watcher', typeLine: 'Creature — Spirit', manaCost: '{2}', cmc: 2, power: '1', toughness: '1', oracleText: 'Whenever you draw a card, you gain 1 life.', colors: ['U'], colorIdentity: ['U'] });
+
 export const MORPH_GUY = card({
   name: 'Morph Dragon',
   typeLine: 'Creature — Dragon',
@@ -99,6 +107,12 @@ export const SCRIPTS: Record<string, CardScript> = {
   Counterspell: { name: 'Counterspell', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', targets: [T.spell()], effects: [E.counter()] }] },
   'Giant Growth': { name: 'Giant Growth', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', targets: [T.creature()], effects: [E.pump(3, 3, R.target())] }] },
   'Wrath of God': { name: 'Wrath of God', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', effects: [{ kind: 'destroy', what: R.all({ types: ['Creature'] }), cantRegenerate: true }] }] },
+  Surveiller: { name: 'Surveiller', coverage: 'full', origin: 'hand', abilities: [{ kind: 'triggered', text: 'When Surveiller enters the battlefield, surveil 2.', event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'surveil', amount: 2 }] }] },
+  Seer: { name: 'Seer', coverage: 'full', origin: 'hand', abilities: [{ kind: 'triggered', text: 'When Seer enters the battlefield, scry 2.', event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'scry', amount: 2 }] }] },
+  Sleuth: { name: 'Sleuth', coverage: 'full', origin: 'hand', abilities: [{ kind: 'triggered', text: 'When Sleuth enters the battlefield, each opponent investigates.', event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'investigate', who: { ref: 'eachOpponent' } }] }] },
+  Pirate: { name: 'Pirate', coverage: 'full', origin: 'hand', abilities: [{ kind: 'triggered', text: 'When Pirate enters the battlefield, create two Treasure tokens.', event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'treasure', count: 2 }] }] },
+  Miller: { name: 'Miller', coverage: 'full', origin: 'hand', abilities: [{ kind: 'triggered', text: 'When Miller enters the battlefield, each opponent mills three cards.', event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'mill', amount: 3, who: { ref: 'eachOpponent' } }] }] },
+  'Draw Watcher': { name: 'Draw Watcher', coverage: 'full', origin: 'hand', abilities: [{ kind: 'triggered', text: 'Whenever you draw a card, you gain 1 life.', event: 'drawCard', filter: { player: 'you' }, effects: [E.gainLife(1)] }] },
   'Upkeep Guy': { name: 'Upkeep Guy', coverage: 'full', origin: 'hand', abilities: [{ kind: 'triggered', text: 'At the beginning of your upkeep, you gain 1 life.', event: 'beginningOfUpkeep', filter: { player: 'you' }, effects: [E.gainLife(1)] }] },
 };
 

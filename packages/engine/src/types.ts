@@ -822,6 +822,8 @@ export interface GameConfig {
   autoPassWhenNothingToDo: boolean;
   /** Auto-yield: skip priority for players who have no instant-speed plays. */
   smartStops: boolean;
+  /** Put a player's simultaneous triggers on the stack in the order they triggered instead of asking. */
+  autoOrderTriggers: boolean;
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
@@ -833,6 +835,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   format: 'commander',
   autoPassWhenNothingToDo: true,
   smartStops: true,
+  autoOrderTriggers: true,
 };
 
 export interface DeckList {

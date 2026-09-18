@@ -154,19 +154,24 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'destroy': {
       let destroyed = 0;
-      for (const o of g.resolveObjects(e.what, ctx)) {
-        destroyObject(g, o.id, ctx.sourceId, e.cantRegenerate);
-        if (g.state.objects[o.id]?.zone !== 'battlefield') destroyed++;
-      }
+      // Everything destroyed by one effect leaves the battlefield simultaneously.
+      g.simultaneousZoneChange(() => {
+        for (const o of g.resolveObjects(e.what, ctx)) {
+          destroyObject(g, o.id, ctx.sourceId, e.cantRegenerate);
+          if (g.state.objects[o.id]?.zone !== 'battlefield') destroyed++;
+        }
+      });
       ctx.memory['destroyedThisWay'] = ((ctx.memory['destroyedThisWay'] as number) ?? 0) + destroyed;
       return;
     }
     case 'exile': {
       const moved: ObjectId[] = [];
-      for (const o of g.resolveObjects(e.what, ctx)) {
-        const r = g.moveObject(o.id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
-        if (r) moved.push(r.id);
-      }
+      g.simultaneousZoneChange(() => {
+        for (const o of g.resolveObjects(e.what, ctx)) {
+          const r = g.moveObject(o.id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
+          if (r) moved.push(r.id);
+        }
+      });
       ctx.memory['lastMoved'] = moved;
       if (e.faceDown) for (const id of moved) { const o = g.state.objects[id]; if (o) o.faceDown = true; }
       if (e.counters) for (const id of moved) g.addCounters(id, e.counters.counter, amt(e.counters.amount), ctx.sourceId ?? undefined);
@@ -181,7 +186,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'sacrifice':
-      for (const o of g.resolveObjects(e.what, ctx)) if (o.zone === 'battlefield') g.moveObject(o.id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+      g.simultaneousZoneChange(() => {
+        for (const o of g.resolveObjects(e.what, ctx)) if (o.zone === 'battlefield') g.moveObject(o.id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+      });
       return;
     case 'sacrificeChoice': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
@@ -2171,13 +2178,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     case 'investigate': {
       const n = e.count !== undefined ? amt(e.count) : 1;
-      for (let i = 0; i < n; i++) g.createObject(tokenCard({ preset: 'Clue', name: 'Clue', typeLine: '', colors: [] }, g, ctx), ctx.controller, 'battlefield');
-      if (n > 0) g.emit({ name: 'investigated', playerId: ctx.controller, amount: n, sourceId: ctx.sourceId ?? undefined });
+      for (const p of playersOf(g, e.who, ctx)) {
+        for (let i = 0; i < n; i++) g.createObject(tokenCard({ preset: 'Clue', name: 'Clue', typeLine: '', colors: [] }, g, ctx), p, 'battlefield');
+        if (n > 0) g.emit({ name: 'investigated', playerId: p, amount: n, sourceId: ctx.sourceId ?? undefined });
+      }
       return;
     }
     case 'treasure': {
       const n = e.count !== undefined ? amt(e.count) : 1;
-      for (let i = 0; i < n; i++) g.createObject(tokenCard({ preset: 'Treasure', name: 'Treasure', typeLine: '', colors: [] }, g, ctx), ctx.controller, 'battlefield');
+      for (const p of playersOf(g, e.who, ctx)) for (let i = 0; i < n; i++) g.createObject(tokenCard({ preset: 'Treasure', name: 'Treasure', typeLine: '', colors: [] }, g, ctx), p, 'battlefield');
       return;
     }
     case 'phaseOut':
