@@ -159,7 +159,7 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
   {
-    const mm = l.match(/^the player (?:with the (most|least|fewest) (life|cards in hand)|who controls the (most|fewest) (.+))$/);
+    const mm = l.match(/^the player (?:(?:with|who has) the (most|least|fewest) (life|cards in hand)|who controls the (most|fewest) (.+))$/);
     if (mm) {
       const least = mm[1] === 'least' || mm[1] === 'fewest' || mm[3] === 'fewest';
       if (mm[2]) return { ref: 'playerWithMost', what: mm[2] === 'life' ? 'life' : 'cards', least: least || undefined };
@@ -1260,7 +1260,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'applyRule', rule: /less/i.test(m[3]) ? { kind: 'cantBeBlockedByPowerLE', power: n } : { kind: 'cantBeBlockedByPowerGE', power: n }, on: ref, duration: 'endOfTurn' }];
   }],
   // "Double / Switch the power and toughness of target creature until end of turn"
-  [/^(?:switch its power and toughness)(?: until end of turn)?$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'switchPT', on: ctx.lastObj, duration: 'endOfTurn' }] : null)],
+  [/^(?:switch its power and toughness)(?: until end of turn)?$/i, (m, ctx) => [{ kind: 'switchPT', on: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF), duration: 'endOfTurn' }]],
   [/^(double|switch) the power and toughness of (.+?)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
     if (!ref) return null;
@@ -4235,6 +4235,47 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 185 ----
+  [/^investigate an additional time$/i, () => [{ kind: 'investigate', count: 1 }]],
+  [/^put ([+-]\d+\/[+-]\d+) counters on (.+?) equal to its power$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    return ref ? [{ kind: 'addCounters', counter: m[1], amount: { kind: 'power', ref }, on: ref }] : null;
+  }],
+  [/^put (\w+) ([\w' -]+?) counters? on each (.+?) you control with (.+)$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`a ${m[3]} with ${m[4]}`);
+    void ctx;
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    return [{ kind: 'addCounters', counter: m[2].toLowerCase(), amount: n, on: { ref: 'all', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' } } }];
+  }],
+  [/^(?:you )?gain life equal to the power of (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'gainLife', amount: { kind: 'power', ref } }] : null;
+  }],
+  [/^you gain (\d+) life for each card in (.+?)'s hand$/i, (m, ctx) => {
+    const who = playerRef(m[2], ctx);
+    if (!who) return null;
+    const a: Amount = { kind: 'handSize', ref: who };
+    return [{ kind: 'gainLife', amount: parseInt(m[1], 10) === 1 ? a : { kind: 'times', a, b: parseInt(m[1], 10) } }];
+  }],
+  [/^it becomes equal to your starting life total$/i, () => [{ kind: 'setLife', amount: 40, who: YOU }]],
+  [/^(?:they|each opponent|that player) loses? (\d+) life for each spell they(?:'ve| have) cast this turn$/i, (m, ctx) => {
+    const who = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? ({ ref: 'triggerPlayer' } as Ref) : { ref: 'eachOpponent' as const });
+    const a: Amount = { kind: 'eventsThisTurn', event: 'cast', player: 'opponent' };
+    return [{ kind: 'loseLife', amount: parseInt(m[1], 10) === 1 ? a : { kind: 'times', a, b: parseInt(m[1], 10) }, who }];
+  }],
+  [/^(?:that|the) player puts (?:the|all) (?:rest of the )?revealed cards into their graveyard$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }];
+  }],
+  [/^(?:then )?put the revealed card on the bottom of your library$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'moveToZone', what: ref, zone: 'library', position: 'bottom' }];
+  }],
+  [/^exile any number of other nonland permanents you own and control$/i, () => [
+    { kind: 'chooseObjects', who: YOU, filter: { nonland: true, controller: 'you', owner: 'you', zone: 'battlefield', other: true }, count: 99, key: 'yorion', upTo: true },
+    { kind: 'exile', what: { ref: 'chosen', key: 'yorion' }, untilSourceLeaves: true },
+  ]],
   // ---- Round 184 ----
   [/^you skip your next (\w+) turns?$/i, (m) => {
     const n = wordToNumber(m[1]);
