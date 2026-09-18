@@ -1,6 +1,6 @@
 /** Trigger head parsing: "Whenever X, " → event + filter. */
 import type { GameEventName, TriggerFilter, ZoneName } from '@commander/engine';
-import { parseNoun } from './nouns.js';
+import { parseNoun, singularize } from './nouns.js';
 import { parseCondition } from './conditions.js';
 import { wordToNumber } from './text.js';
 import type { ObjectFilter } from '@commander/engine';
@@ -605,7 +605,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   if ((m = L.match(/^At the beginning of your (?:second|postcombat) main phase, (.+)$/i)) || (m = L.match(/^At the beginning of each of your postcombat main phases, (.+)$/i))) return { event: 'beginningOfPostcombatMain', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^At the beginning of your combat step, (.+)$/i))) return { event: 'beginningOfCombat', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever one or more (.+?) you control enter, (.+)$/i))) {
-    const tf = nounFilter(`a ${m[1].replace(/s$/, '')} you control`);
+    const tf = nounFilter(`a ${singularize(m[1])} you control`);
     if (tf) return { event: 'entersBattlefield', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };
   }
   if ((m = L.match(/^Whenever one or more (.+?) cards? leave your graveyard, (.+)$/i))) {
@@ -892,7 +892,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
       if (noun) return { event: 'cast', filter: { player: 'you', object: { ...noun.filter, zone: undefined }, custom: 'usingSourceMana' }, hasObject: true, hasPlayer: true, rest: m[2] };
     }
     if ((m = L.match(/^When(?:ever)? one or more (.+?) you control deal (combat )?damage to your opponents, (.+)$/i))) {
-      const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+      const noun = parseNoun(`a ${singularize(m[1])}`);
       if (noun) return { event: 'dealtDamage', filter: { player: 'opponent', toPlayer: true, combat: m[2] ? true : undefined, source: { ...noun.filter, zone: undefined, controller: 'you' } }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[3] };
     }
     if ((m = L.match(/^When(?:ever)? one or more creatures you control deal combat damage to one or more players, (.+)$/i)))

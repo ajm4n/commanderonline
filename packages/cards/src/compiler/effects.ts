@@ -2,7 +2,7 @@
 import type { Effect, Ref, TargetSpec, TokenSpec, Duration, Color, ObjectFilter, Amount, Condition } from '@commander/engine';
 import { TOKEN_PRESETS, parseAddManaText } from '@commander/engine';
 import { wordToNumber, sentences, lc } from './text.js';
-import { parseNoun, toTargetSpec, type ParsedNoun } from './nouns.js';
+import { parseNoun, toTargetSpec, type ParsedNoun, singularize } from './nouns.js';
 import { parseAmount } from './amounts.js';
 import { parseCondition } from './conditions.js';
 import { parseTriggerHead } from './triggers.js';
@@ -515,7 +515,7 @@ function searchTarget(phrase: string, ctx: ParseCtx): { count: Amount; upTo: boo
     count = m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number);
     t = m[2];
   }
-  const noun = parseNoun(/\bcards?\b/i.test(t) ? t.replace(/\bcards\b/i, 'card') : `${t.replace(/s$/i, '')} card`);
+  const noun = parseNoun(/\bcards?\b/i.test(t) ? t.replace(/\bcards\b/i, 'card') : `${singularize(t)} card`);
   if (!noun) return null;
   const filter: ObjectFilter = { ...noun.filter, zone: 'library' };
   if (noun.controllerPhrase) {
@@ -555,7 +555,7 @@ const REVEAL_UNTIL_PATTERNS: Pattern[] = [
     const alts = m[2].split(/,\s*(?:or\s+)?|\s+or\s+/i).map((x) => x.trim().replace(/^(?:a|an) /i, '')).filter(Boolean);
     const filters: ObjectFilter[] = [];
     for (const a of alts) {
-      const noun = parseNoun(/\bcards?\b/i.test(a) ? a.replace(/\bcards\b/i, 'card') : `${a.replace(/s$/i, '')} card`);
+      const noun = parseNoun(/\bcards?\b/i.test(a) ? a.replace(/\bcards\b/i, 'card') : `${singularize(a)} card`);
       if (!noun) return null;
       filters.push({ ...noun.filter, zone: undefined });
     }
@@ -1012,7 +1012,7 @@ const PATTERNS: Pattern[] = [
   // Indefinite choices: "return a land you control to its owner's hand", "tap an untapped creature you control", "exile a card from your graveyard"
   [/^(return|tap|untap|exile|destroy) (?:a|an|another|up to (\w+)|(any number of)) (.+?)(?: to (?:its|their) owner'?s'? hands?| to your hand)?( until ~ leaves the battlefield)?$/i, (m, ctx) => {
     if (/target|each/i.test(m[4])) return null;
-    const c = chooseRef(`a ${m[4].replace(/s$/, '')}`, ctx, YOU, !!m[2] || !!m[3]);
+    const c = chooseRef(`a ${singularize(m[4])}`, ctx, YOU, !!m[2] || !!m[3]);
     if (!c) return null;
     if (/^(return|tap|untap|exile|destroy) another /i.test(m[0])) (c.pre[0] as { filter: ObjectFilter }).filter.other = true;
     if (m[3]) (c.pre[0] as { count: number }).count = 20;
@@ -1444,7 +1444,7 @@ const PATTERNS: Pattern[] = [
     const words = m[2].split(/\s+/).filter((w) => !/^and$/i.test(w));
     const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
     const types = words.filter((w) => /^(artifact|creature|enchantment|land|planeswalker)s?$/i.test(w)).map((w) => w.replace(/s$/i, '')).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    const subtypes = words.filter((w) => /^[A-Z]/.test(w)).map((w) => w.replace(/s$/, ''));
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w)).map((w) => singularize(w));
     if (!types.length && !subtypes.length && !colors.length) return null;
     const out: Effect[] = [];
     if (!inAddition && subtypes.length && !types.length && !colors.length) out.push({ kind: 'setSubtypes', on: ref, subtypes, duration: dur });
@@ -2583,7 +2583,7 @@ const PATTERNS: Pattern[] = [
   // "Return target creature card with total mana value 3 or less from your graveyard to the battlefield."
   [/^return (?:up to (\w+)|any number of|(\w+)) target (.+?) with total mana value (\d+) or less from your graveyard to (?:the battlefield|your hand)$/i, (m, ctx) => {
     const n = /any number of/i.test(m[0]) ? 20 : wordToNumber(m[1] ?? m[2]);
-    const noun = parseNoun(`a ${m[3].replace(/s$/, '')}`);
+    const noun = parseNoun(`a ${singularize(m[3])}`);
     if (typeof n !== 'number' || !noun) return null;
     if (/to your hand$/i.test(m[0])) {
       ctx.targets.push({ description: `target ${m[3]} from your graveyard`, kind: 'object', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, min: m[1] || /any number of/i.test(m[0]) ? 0 : n, max: n, totalManaValueLE: parseInt(m[4], 10) });
@@ -2680,12 +2680,12 @@ const PATTERNS: Pattern[] = [
   }],
   // "return all permanents to their owners' hands except for Giants, Wizards, and lands"
   [/^return all (.+?) to (?:their|its) owners'? hands? except for (.+)$/i, (m) => {
-    const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+    const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(`a ${singularize(m[1])}`);
     if (!noun) return null;
     const f: ObjectFilter = { ...noun.filter, zone: 'battlefield' };
     for (const raw of m[2].split(/,\s*and\s+|,\s*|\s+and\s+/).filter(Boolean)) {
       const w = raw.trim().replace(/[.,]$/, '');
-      const inner = parseNoun(`a ${w.replace(/s$/i, '')}`);
+      const inner = parseNoun(`a ${singularize(w)}`);
       if (!inner) return null;
       if (inner.filter.types?.length) f.notTypes = [...(f.notTypes ?? []), ...inner.filter.types];
       else if (inner.filter.subtypes?.length) f.notSubtypes = [...(f.notSubtypes ?? []), ...inner.filter.subtypes];
@@ -2828,18 +2828,18 @@ const PATTERNS: Pattern[] = [
   [/^return (\w+) (.+?) to (?:their|its) owners'? hands?$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);
     if (typeof n !== 'number') return null;
-    const c = chooseRef(`a ${m[2].replace(/s$/i, '')}`, ctx, YOU, false);
+    const c = chooseRef(`a ${singularize(m[2])}`, ctx, YOU, false);
     if (!c) return null;
     (c.pre[0] as { count: number }).count = n;
     return [...c.pre, { kind: 'returnToHand', what: c.ref }];
   }],
   // "Destroy all permanents except for artifacts and lands"
   [/^destroy all (?:other )?(.+?) except for (.+)$/i, (m) => {
-    const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+    const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(`a ${singularize(m[1])}`);
     if (!noun) return null;
     const f: ObjectFilter = { ...noun.filter, zone: 'battlefield' };
     for (const raw of m[2].split(/,\s*and\s+|,\s*|\s+and\s+/).filter(Boolean)) {
-      const inner = parseNoun(`a ${raw.trim().replace(/[.,]$/, '').replace(/s$/i, '')}`);
+      const inner = parseNoun(`a ${singularize(raw.trim().replace(/[.,]$/, ''))}`);
       if (!inner) return null;
       if (inner.filter.types?.length) f.notTypes = [...(f.notTypes ?? []), ...inner.filter.types];
       else if (inner.filter.subtypes?.length) f.notSubtypes = [...(f.notSubtypes ?? []), ...inner.filter.subtypes];
@@ -2851,7 +2851,7 @@ const PATTERNS: Pattern[] = [
   // "investigate that many times" / "sacrifice that many permanents"
   [/^investigate that many times$/i, (m, ctx) => [{ kind: 'investigate', count: { kind: 'triggerAmount' } }]],
   [/^sacrifice that many (.+)$/i, (m, ctx) => {
-    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+    const noun = parseNoun(`a ${singularize(m[1])}`);
     return noun ? [{ kind: 'sacrificeChoice', who: YOU, filter: { ...noun.filter, zone: 'battlefield' }, count: { kind: 'triggerAmount' } }] : null;
   }],
   // "destroy both creatures"
@@ -3871,7 +3871,7 @@ const PATTERNS: Pattern[] = [
   // "Another target creature you control cannot be blocked this turn except by Spirits."
   [/^(.+?) cannot be blocked this turn except by (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
-    const by = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const by = parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
     if (!ref || !by) return null;
     return [{ kind: 'applyRule', on: ref, rule: { kind: 'cantBeBlockedExceptBy', filter: { ...by.filter, zone: undefined } }, duration: 'endOfTurn' }];
   }],
@@ -4321,7 +4321,7 @@ const PATTERNS: Pattern[] = [
   // "X target attacking creatures become blocked."
   [/^(?:(\w+|X) )?target (.+?) become blocked$/i, (m, ctx) => {
     const n = m[1] ? (m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1])) : 1;
-    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+    const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
     if (n === null || !noun || !noun.confident) return null;
     const spec = toTargetSpec({ ...noun, target: true } as never);
     if (!spec) return null;
@@ -4391,7 +4391,7 @@ const PATTERNS: Pattern[] = [
   // "Return all artifacts target player owns to their hand."
   [/^return all (.+?) (target (?:player|opponent)|that player) (?:owns|controls) to (?:their|its owner's) hand$/i, (m, ctx) => {
     const who = playerRef(m[2], ctx);
-    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[1]}`);
+    const noun = parseNoun(`a ${singularize(m[1])}`) ?? parseNoun(`a ${m[1]}`);
     if (!who || !noun || !noun.confident) return null;
     const key = / owns /i.test(m[0]) ? 'ownerRef' : 'controllerRef';
     return [{ kind: 'returnToHand', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', [key]: who } } }];
@@ -4416,7 +4416,7 @@ const PATTERNS: Pattern[] = [
   // "Target creature cannot be blocked by Walls this turn."
   [/^(.+?) cannot be blocked by (.+?) this turn$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
-    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(m[2]);
+    const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(m[2]);
     if (!ref || !noun || !noun.confident) return null;
     return [{ kind: 'applyRule', rule: { kind: 'cantBeBlockedBy', filter: { ...noun.filter, zone: undefined } }, on: ref, duration: 'endOfTurn' }];
   }],
@@ -4459,7 +4459,7 @@ const PATTERNS: Pattern[] = [
   // "Choose a creature at random, then destroy the rest." / "Choose up to two creatures, then destroy the rest."
   [/^choose (?:(?:up to )?(\w+)|a) (.+?)(?: at random)?, then (destroy|exile|sacrifice) the rest$/i, (m, ctx) => {
     const n = m[1] ? wordToNumber(m[1]) : 1;
-    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+    const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
     if (typeof n !== 'number' || !noun || !noun.confident) return null;
     const key = 'keepRest';
     const base: ObjectFilter = { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' };
@@ -4617,7 +4617,7 @@ const PATTERNS: Pattern[] = [
   // "Each opponent sacrifices a tenth of the creatures they control of their choice, rounded up."
   [/^(?:(each player|each opponent|you|that player|they|target player|target opponent) )?sacrifices? (half|a third|a quarter|a tenth) (?:of )?the (.+?) (?:they|you) control of (?:their|your) choice(?:, rounded (up|down))?$/i, (m, ctx) => {
     const who = m[1] ? playerRef(m[1], ctx) : ctx.lastPlayer;
-    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    const noun = parseNoun(`a ${singularize(m[3])}`) ?? parseNoun(`a ${m[3]}`);
     if (!who || !noun || !noun.confident) return null;
     const round: 'up' | 'down' = m[4]?.toLowerCase() === 'up' ? 'up' : 'down';
     const by = m[2].toLowerCase() === 'half' ? 2 : m[2].toLowerCase() === 'a third' ? 3 : m[2].toLowerCase() === 'a quarter' ? 4 : 10;
@@ -4720,7 +4720,7 @@ const PATTERNS: Pattern[] = [
   // "Return two target creature cards that share a creature type from your graveyard to your hand."
   [/^return (\w+) target (.+?) that share (?:a|an) (creature type|card type|colou?r) from your graveyard to (your hand|the battlefield)$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);
-    const noun = parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const noun = parseNoun(`a ${singularize(m[2])}`);
     if (typeof n !== 'number' || !noun) return null;
     ctx.targets.push({ description: `target ${m[2]} from your graveyard`, kind: 'object', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, min: n, max: n, distinct: true });
     const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
@@ -4729,7 +4729,7 @@ const PATTERNS: Pattern[] = [
   // "Return target creature card and all other cards with the same name as that card from your graveyard to your hand."
   [/^return (target .+?) and all other (.+?) with the same name as that \w+ from your graveyard to (your hand|the battlefield)$/i, (m, ctx) => {
     const ref = objRef(`${m[1]} in your graveyard`, ctx) ?? objRef(m[1], ctx);
-    const noun = parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const noun = parseNoun(`a ${singularize(m[2])}`);
     if (!ref || !noun) return null;
     const others: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', owner: 'you', sameNameAs: ref, other: true } };
     return /your hand/i.test(m[3])
@@ -4739,7 +4739,7 @@ const PATTERNS: Pattern[] = [
   // "Return target nonland permanent and all other permanents with the same name as that permanent to their owners' hands."
   [/^return (target .+?) and (?:all other|each other) (.+?) with the same name as that \w+ to (?:their owners'|its owner's) hands?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
-    const noun = parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const noun = parseNoun(`a ${singularize(m[2])}`);
     if (!ref || !noun) return null;
     return [
       { kind: 'returnToHand', what: ref },
@@ -4753,7 +4753,7 @@ const PATTERNS: Pattern[] = [
   }],
   // "Return that many creature cards from your graveyard to the battlefield."
   [/^return that many (.+?) from your graveyard to (the battlefield|your hand)$/i, (m, ctx) => {
-    const noun = parseNoun(`a ${m[1].replace(/s$/, '')}`);
+    const noun = parseNoun(`a ${singularize(m[1])}`);
     if (!noun) return null;
     const key = 'retGy';
     const eff: Effect[] = [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: { kind: 'triggerAmount' }, key, upTo: true }];
@@ -4762,7 +4762,7 @@ const PATTERNS: Pattern[] = [
   }],
   // "Return half the creatures they control to their owner's hand, rounded up."
   [/^return (half|a third) the (.+?) (?:they|you) control to (?:their|its) owners?'? hands?(?:, rounded (up|down))?$/i, (m, ctx) => {
-    const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+    const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
     const who = ctx.lastPlayer;
     if (!noun || !who) return null;
     const round: 'up' | 'down' = m[3]?.toLowerCase() === 'up' ? 'up' : 'down';
@@ -4969,7 +4969,7 @@ const PATTERNS: Pattern[] = [
   // "Each player sacrifices half the creatures they control, rounded down."
   [/^(?:(each player|each opponent|you|that player|they|target player|target opponent) )?sacrifices? (half|a third|a quarter) (?:of )?the (.+?) (?:they|you) control(?:, rounded (up|down))?$/i, (m, ctx) => {
     const who = m[1] ? playerRef(m[1], ctx) : ctx.lastPlayer;
-    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    const noun = parseNoun(`a ${singularize(m[3])}`) ?? parseNoun(`a ${m[3]}`);
     if (!who || !noun || !noun.confident) return null;
     const round: 'up' | 'down' = m[4]?.toLowerCase() === 'up' ? 'up' : 'down';
     const filter: ObjectFilter = { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' };
@@ -4987,7 +4987,7 @@ const PATTERNS: Pattern[] = [
   // "Each opponent chooses two cards in their graveyard and exiles the rest."
   [/^each (player|opponent) chooses (?:up to )?(\w+) (.+?) (they control|in their graveyard|in their hand)(?:, then | and )(sacrifices|exiles|discards) (?:the rest|all (?:the )?others|all other .+)$/i, (m) => {
     const n = wordToNumber(m[2]);
-    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    const noun = parseNoun(`a ${singularize(m[3])}`) ?? parseNoun(`a ${m[3]}`);
     if (!noun || !noun.confident || typeof n !== 'number') return null;
     const where = m[4].toLowerCase();
     const base: ObjectFilter = where === 'they control'
@@ -5161,7 +5161,7 @@ const PATTERNS: Pattern[] = [
   }],
   // "destroy all Auras attached to target land"
   [/^destroy all (.+?) attached to (.+)$/i, (m, ctx) => {
-    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+    const noun = parseNoun(`a ${singularize(m[1])}`);
     if (!noun) return null;
     const host = /^you$/i.test(m[2]) ? null : objRef(m[2], ctx);
     if (!host && !/^you$/i.test(m[2])) return null;
@@ -5259,7 +5259,7 @@ const PATTERNS: Pattern[] = [
     const cm = m[2].match(/^controls (.+)$/i);
     if (cm) {
       const most = cm[1].match(/^the most (.+)$/i);
-      const noun = parseNoun(most ? `a ${most[1].replace(/s$/i, '')}` : cm[1]) ?? parseNoun(`a ${cm[1]}`);
+      const noun = parseNoun(most ? `a ${singularize(most[1])}` : cm[1]) ?? parseNoun(`a ${cm[1]}`);
       if (!noun || !noun.confident) return null;
       cond = most
         ? { kind: 'controlsMost', filter: { ...noun.filter, zone: 'battlefield' }, who: { ref: 'iter' } }
@@ -5283,7 +5283,7 @@ const PATTERNS: Pattern[] = [
   // "Each player chooses three permanents they control, then sacrifices the rest."
   [/^each (player|opponent) chooses (?:up to )?(\w+) (.+?) they control, then sacrifices the rest$/i, (m) => {
     const n = wordToNumber(m[2]);
-    const noun = parseNoun(`a ${m[3].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[3]}`);
+    const noun = parseNoun(`a ${singularize(m[3])}`) ?? parseNoun(`a ${m[3]}`);
     if (!noun || typeof n !== 'number') return null;
     const key = `keep_${Math.random().toString(36).slice(2, 6)}`;
     const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
@@ -6036,7 +6036,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   // "unless you sacrifice two Islands" / "unless you sacrifice two lands"
   if ((m = text.match(/^(.+?) unless you sacrifice (\w+) (.+?)$/i))) {
     const n = wordToNumber(m[2]);
-    const noun = parseNoun(`a ${m[3].replace(/s$/, '')}`);
+    const noun = parseNoun(`a ${singularize(m[3])}`);
     const inner = typeof n === 'number' && noun ? parseSentence(m[1], ctx) : null;
     if (typeof n === 'number' && noun && inner) return [{ kind: 'unlessPays', who: YOU, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' }, count: n }, effects: inner }];
   }
@@ -6875,7 +6875,7 @@ function splitItemList(text: string): string[] {
  * then sacrifices the rest": keep one of each listed kind, lose everything else matching the base noun.
  */
 function buildKeepList(whoWord: string, baseText: string, listText: string, act: string): Effect[] | null {
-  const base = parseNoun(`a ${baseText.replace(/s$/i, '')}`) ?? parseNoun(`a ${baseText}`);
+  const base = parseNoun(`a ${singularize(baseText)}`) ?? parseNoun(`a ${baseText}`);
   const items = splitItemList(listText).map((x) => parseNoun(x));
   if (!base || !base.confident || !items.length || items.some((n) => !n || !n.confident)) return null;
   const key = `keep_${baseText.replace(/\W+/g, '')}`;

@@ -386,16 +386,39 @@ const IRREGULAR_PLURALS: Record<string, string> = {
   children: 'Child', men: 'Man', women: 'Woman', people: 'Person', oxen: 'Ox', geese: 'Goose',
   fungi: 'Fungus', homunculi: 'Homunculus', nautili: 'Nautilus', loci: 'Locus', cacti: 'Cactus',
   wurms: 'Wurm', 'ouphes': 'Ouphe', knaves: 'Knave', dryads: 'Dryad',
+  werewolves: 'Werewolf', heroes: 'Hero', knives: 'Knife', halves: 'Half', calves: 'Calf',
+  shelves: 'Shelf', wives: 'Wife', lives: 'Life', selves: 'Self',
 };
 /** Creature types that are the same in the plural ("Fish", "Sheep", "Efreet"). */
 const UNCHANGED_PLURALS = new Set(['fish', 'sheep', 'elk', 'moose', 'djinn', 'efreet', 'yeti', 'lammasu', 'atog', 'graveborn', 'aetherborn', 'phyrexian', 'kor', 'naga', 'nissa']);
 
-function singularize(w: string): string {
-  const irr = IRREGULAR_PLURALS[w.toLowerCase()];
+/** Creature types whose singular already ends in "s" ("an Octopus", "two Aurochs"). */
+const S_SINGULARS = new Set(['aurochs', 'octopus', 'pegasus', 'cyclops', 'locus', 'lotus', 'fungus', 'homunculus', 'nautilus', 'cactus', 'plains', 'gus', 'chaos']);
+/** Types whose plural is "-ies" over a singular "-ie", not "-y" ("Zombies" → "Zombie"). */
+const IE_SINGULARS = new Set(['zombie', 'faerie', 'valkyrie', 'genie', 'pixie', 'selkie', 'brownie', 'hippie', 'coyote']);
+
+/** Words in a type list that end in "s" but are not plurals. */
+const NOT_PLURAL_WORDS = new Set(['this', 'its', 'his', 'hers', 'theirs', 'is', 'as', 'has', 'was', 'does', 'yours', 'ours', 'less', 'unless', 'plus', 'versus', 'always', 'else', 'others', 'opponents', 'players']);
+
+/** Singularise every plural word in a type list ("artifacts, creatures, and/or lands"). */
+export function singularizeList(text: string): string {
+  return text.replace(/\b[A-Za-z]+s\b/g, (w) => (NOT_PLURAL_WORDS.has(w.toLowerCase()) ? w : singularize(w)));
+}
+
+export function singularize(w: string): string {
+  const l = w.toLowerCase();
+  const irr = IRREGULAR_PLURALS[l];
   if (irr) return irr;
+  if (S_SINGULARS.has(l)) return w;
   if (/^(Plains|Aetherborn|Serpents?)$/i.test(w)) return w.replace(/^Serpents$/i, 'Serpent');
-  if (/ies$/.test(w)) return w.replace(/ies$/, 'y');
-  if (/(ch|sh|s|x|z)es$/.test(w)) return w.replace(/es$/, '');
+  if (/ies$/.test(w)) {
+    const ie = w.replace(/ies$/, 'ie');
+    return IE_SINGULARS.has(ie.toLowerCase()) ? ie : w.replace(/ies$/, 'y');
+  }
+  // "Churches" / "Foxes" drop the whole "es"; "Horses" / "Oozes" only the final "s".
+  if (/(ch|sh|x)es$/.test(w)) return w.replace(/es$/, '');
+  if (/ses$/.test(w) && S_SINGULARS.has(w.slice(0, -2).toLowerCase())) return w.slice(0, -2);
+  if (/(s|z)es$/.test(w)) return w.replace(/s$/, '');
   if (/s$/.test(w) && !/ss$/.test(w)) return w.replace(/s$/, '');
   return w;
 }
@@ -621,7 +644,7 @@ function applyQualifier(q: string, r: ParsedNoun) {
   else if (q === 'with no abilities') r.filter.noAbilities = true;
   else if (q === 'of the chosen color' || /^of the colou?r of your choice$/.test(q)) r.filter.chosenColorKey = 'color';
   else if ((m = q.match(/^without (\w+(?: or \w+)+)$/))) r.filter.withoutKeywords = m[1].split(/ or /).map((w) => w.charAt(0).toUpperCase() + w.slice(1));
-  else if ((m = q.match(/^that (?:is|are) ([A-Z][a-z]+)s? or tokens$/))) r.filter.anyOf = [{ subtypes: [m[1].replace(/s$/, '')] }, { isToken: true }];
+  else if ((m = q.match(/^that (?:is|are) ([A-Z][a-z]+)s? or tokens$/))) r.filter.anyOf = [{ subtypes: [singularize(m[1])] }, { isToken: true }];
   else if (/^attached to (?:that|target) creature$/.test(q)) r.filter.attachedToRef = { ref: 'target' };
   else if (q === 'with different controllers') { /* a targeting restriction the engine does not model */ }
   else if (q === 'your team controls') r.filter.controller = 'you';

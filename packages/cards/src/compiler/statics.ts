@@ -1,6 +1,6 @@
 /** Static abilities and replacement effects. */
 import type { AbilitySpec, Amount, Condition, Effect, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
-import { parseNoun } from './nouns.js';
+import { parseNoun, singularize } from './nouns.js';
 import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase, parseGrantList } from './effects.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
@@ -76,7 +76,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^You may play any number of lands (?:on|during) each of your turns$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'extraLandDrop', count: 99 } }];
   // "You may play Forests from your graveyard."
   if ((m = L.match(/^You may play (.+?) from your graveyard$/i))) {
-    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[1]}`);
+    const noun = parseNoun(`a ${singularize(m[1])}`) ?? parseNoun(`a ${m[1]}`);
     if (noun && noun.confident) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playLandsFromGraveyard', data: { filter: { ...noun.filter, zone: undefined } } } }];
   }
   // "You may cast spells from among cards exiled with ~."
@@ -124,7 +124,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // "Spend only mana produced by basic lands to cast ~." / "... by creatures"
   if ((m = L.match(/^Spend only mana produced by (.+?) to cast ~$/i))) {
-    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[1]}`);
+    const noun = parseNoun(`a ${singularize(m[1])}`) ?? parseNoun(`a ${m[1]}`);
     if (noun && noun.confident) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castManaSourceRestriction', data: { filter: { ...noun.filter, zone: undefined }, nameIs: '~' } } }];
   }
   // "Lands you control are 2/2 creatures with first strike."
@@ -299,7 +299,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // ---- Round 148 ----
   // "During your turn, your opponents cannot cast spells or activate abilities of artifacts, creatures, or enchantments."
   if ((m = L.match(/^During your turn, (your opponents|each opponent|players) cannot cast spells or activate abilities of (.+)$/i))) {
-    const noun = parseNoun(`a ${m[2].replace(/,? or /g, ' or ').replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+    const noun = parseNoun(`a ${singularize(m[2].replace(/,? or /g, ' or '))}`) ?? parseNoun(`a ${m[2]}`);
     const who = /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
     if (noun && noun.confident) {
       const f = { ...noun.filter };
@@ -424,7 +424,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     for (const part of parts) {
       const pm = part.match(/^(.+?) produces? ((?:\{[^}]+\})+|colorless mana)$/i);
       if (!pm) { ok = false; break; }
-      const noun = parseNoun(`a ${pm[1].replace(/s$/i, '')}`) ?? parseNoun(`a ${pm[1]}`);
+      const noun = parseNoun(`a ${singularize(pm[1])}`) ?? parseNoun(`a ${pm[1]}`);
       const produce = /colorless/i.test(pm[2]) ? ['C'] : (pm[2].match(/\{([^}]+)\}/g) ?? []).map((t) => t.slice(1, -1));
       if (!noun || !noun.confident || !produce.every((c) => /^[WUBRGC]$/.test(c))) { ok = false; break; }
       const f = { ...noun.filter };
@@ -789,7 +789,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // "Each spell you cast that is exactly three colors has replicate {3}."
   if ((m = L.match(/^Each (.+?) you cast that (?:is|are) exactly (two|three|four|five) colors has ([\w-]+(?: \{[^}]+\})?)$/i))) {
     const n = wordToNumber(m[2]);
-    const noun = parseNoun(`a ${m[1].replace(/s$/i, '')}`);
+    const noun = parseNoun(`a ${singularize(m[1])}`);
     if (noun && typeof n === 'number') {
       const f = { ...noun.filter };
       delete f.zone;
@@ -942,7 +942,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) cannot be blocked except by (.+)$/i))) {
     const kw = m[2].match(/^creatures with (.+)$/i);
     const kws = kw ? parseKeywordList(kw[1].replace(/ or /g, ' and ')) : null;
-    const noun = kws?.length ? null : parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const noun = kws?.length ? null : parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
     const filter = kws?.length ? (kws.length === 1 ? { keywords: kws } : { anyOf: kws.map((k) => ({ keywords: [k] })) }) : noun ? { ...noun.filter, zone: undefined } : null;
     if (filter) {
       const r = objRule(m[1], { kind: 'cantBeBlockedExceptBy', filter });
@@ -1252,7 +1252,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // "Spells your opponents cast that target a creature you control cost {2} more to cast."
   if ((m = L.match(/^Spells your opponents cast that target (.+?) cost \{(\d)\} more to cast$/i))) {
-    const noun = parseNoun(m[1].replace(/^one or more /i, 'a ').replace(/s$/i, ''));
+    const noun = parseNoun(singularize(m[1].replace(/^one or more /i, 'a ')));
     if (noun) {
       const f = { ...noun.filter };
       delete f.zone;
@@ -1734,7 +1734,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(m[1]);
     const words = m[2].split(/\s+/).filter((w) => !/^(and|a|an)$/i.test(w));
     const types = words.filter((w) => /^(artifact|creature|enchantment|land|planeswalker)s?$/i.test(w)).map((w) => w.replace(/s$/i, '')).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    const subtypes = words.filter((w) => /^[A-Z]/.test(w) && !/^(Artifact|Creature|Enchantment|Land|Planeswalker)s?$/.test(w)).map((w) => w.replace(/s$/, ''));
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w) && !/^(Artifact|Creature|Enchantment|Land|Planeswalker)s?$/.test(w)).map((w) => singularize(w));
     if (a.ok && (types.length || subtypes.length)) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addTypes: types, addSubtypes: subtypes } }];
     if (a.ok && /^the chosen (?:creature )?type$/i.test(m[2])) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, addSubtypesFromMemory: 'creatureType' } }];
   }
@@ -1757,7 +1757,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // "Enchanted creature is a Flagbearer." / "Enchanted land is a Swamp."
   if ((m = L.match(/^(Enchanted|Equipped) (creature|land|permanent|artifact) is (?:a|an) ([A-Z][\w' -]*)$/))) {
-    const sub = m[3].replace(/s$/, '');
+    const sub = singularize(m[3]);
     const basics = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
     if (basics.includes(sub)) return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 4, setSubtypes: [sub] } }];
     return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 4, addSubtypes: [sub] } }];
@@ -1768,7 +1768,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // "Nonbasic lands are Mountains." / "Lands you control are Plains."
   if ((m = L.match(/^(.+?) (?:is|are) (Plains|Islands?|Swamps?|Mountains?|Forests?)$/))) {
     const a = affectsOf(m[1]);
-    const sub = m[2].replace(/^Plains$/, 'Plains').replace(/s$/, '');
+    const sub = singularize(m[2]);
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setSubtypes: [sub === 'Plain' ? 'Plains' : sub] } }];
   }
   // "Equip abilities you activate cost {1} less to activate." / "Equip costs you pay cost {1} less."
@@ -1982,11 +1982,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if ((m = L.match(/^(.+?) must be blocked if able$/i))) { const _q13 = objRule(m[1], { kind: 'custom', tag: 'mustBeBlocked' }); if (_q13) return _q13; }
   if ((m = L.match(/^(.+?) cannot be blocked except by (.+)$/i))) {
-    const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
     if (noun) { const _q14 = objRule(m[1], { kind: 'canBeBlockedOnlyBy', filter: noun.filter }); if (_q14) return _q14; }
   }
   if ((m = L.match(/^(.+?) cannot block (.+?)$/i)) && !/^(alone|unless|if)\b/i.test(m[2])) {
-    const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
     if (noun) { const _q15 = objRule(m[1], { kind: 'cantBlockFilter', filter: noun.filter }); if (_q15) return _q15; }
   }
   sfall13: {
@@ -2072,7 +2072,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   if ((m = L.match(/^(.+?) cannot (attack or block|attack|block) alone$/i))) { const _q17 = objRule(m[1], { kind: 'custom', tag: m[2].toLowerCase() === 'attack or block' ? 'cantAttackOrBlockAlone' : m[2].toLowerCase() === 'attack' ? 'cantAttackAlone' : 'cantBlockAlone' }); if (_q17) return _q17; }
   if ((m = L.match(/^(.+?) cannot be blocked by (.+)$/i)) && !/power|more than one|two or more/i.test(m[2])) {
-    const noun = parseNoun(m[2]) ?? parseNoun(`a ${m[2].replace(/s$/, '')}`);
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
     if (noun) { const _q18 = objRule(m[1], { kind: 'cantBeBlockedBy', filter: noun.filter }); if (_q18) return _q18; }
   }
   if ((m = L.match(/^~ enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it if (.+)$/i))) {
@@ -2258,7 +2258,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (spell) {
       const f = { ...spell.filter, zone: undefined };
       if (m[3]) {
-        const per = parseNoun(m[3]) ?? parseNoun(`a ${m[3].replace(/s$/, '')}`);
+        const per = parseNoun(m[3]) ?? parseNoun(`a ${singularize(m[3])}`);
         if (per) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: 1, filter: f, per: { ...per.filter, controller: 'you', zone: 'battlefield' } } }];
       } else {
         return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantSpellKeyword', data: { keyword: m[2].toLowerCase(), filter: f } } }];

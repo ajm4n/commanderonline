@@ -1,6 +1,6 @@
 /** Activated-ability cost parsing. */
 import type { AbilityCost, Condition } from '@commander/engine';
-import { parseNoun } from './nouns.js';
+import { parseNoun, singularize, singularizeList } from './nouns.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
 
@@ -32,7 +32,7 @@ export function parseCost(text: string): AbilityCost | null {
     const tm = text.match(/^Tap (\w+) untapped (.+?) you control$/i);
     if (tm && /,/.test(tm[2])) {
       const n = wordToNumber(tm[1]);
-      const listed = tm[2].replace(/,? and\/or /g, ', or ').replace(/\b(\w+?)s\b/g, '$1');
+      const listed = singularizeList(tm[2].replace(/,? and\/or /g, ', or '));
       const noun = parseNoun(`an ${listed} you control`) ?? parseNoun(`a ${listed}`);
       if (noun && n !== null && n !== 'X') return { tapUntapped: { filter: { ...noun.filter, zone: 'battlefield' }, count: n } };
     }
@@ -52,7 +52,7 @@ export function parseCost(text: string): AbilityCost | null {
     }
     if (!matched) kp3: if ((m = p.match(/^Exile (?:(any number of|X|\w+) )?(.+?) (?:you control|from your graveyard)$/i))) {
       const fromGy = /from your graveyard$/i.test(p);
-      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
       if (!noun) break kp3;
       const n: number | 'any' | 'X' | null = !m[1] ? 1 : /any number of/i.test(m[1]) ? 'any' : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
       if (n === null) break kp3;
@@ -100,13 +100,13 @@ export function parseCost(text: string): AbilityCost | null {
       matched = true;
     }
     if (!matched) kp11: if ((m = p.match(/^Tap any number of untapped (.+?) you control$/i))) {
-      const noun = parseNoun(`a ${m[1].replace(/s$/, '')}`);
+      const noun = parseNoun(`a ${singularize(m[1])}`);
       if (!noun) break kp11;
       cost.tapUntapped = { filter: noun.filter, count: 'any' };
       matched = true;
     }
     if (!matched) kp12: if ((m = p.match(/^Sacrifice any number of (.+)$/i))) {
-      const noun = parseNoun(`a ${m[1].replace(/s$/, '')}`);
+      const noun = parseNoun(`a ${singularize(m[1])}`);
       if (!noun) break kp12;
       cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: 'any' };
       matched = true;
@@ -144,7 +144,7 @@ export function parseCost(text: string): AbilityCost | null {
       matched = true;
     }
     if (!matched) kp19: if ((m = p.match(/^Exile (?:(any number of|X|\w+) )?(.+?) from your hand$/i))) {
-      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
       if (!noun) break kp19;
       const n: number | 'any' | 'X' | null = !m[1] ? 1 : /any number of/i.test(m[1]) ? 'any' : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
       if (n === null) break kp19;
@@ -154,7 +154,7 @@ export function parseCost(text: string): AbilityCost | null {
     if (!matched) kp20: if ((m = p.match(/^Tap (\w+) untapped (.+?) you control$/i)) && typeof wordToNumber(m[1]) === 'number') {
       const n = wordToNumber(m[1]);
       // "artifacts, creatures, and/or lands" → "an artifact, creature, or land"
-      const listed = m[2].replace(/,? and\/or /g, ', or ').replace(/\b(\w+?)s\b/g, '$1');
+      const listed = singularizeList(m[2].replace(/,? and\/or /g, ', or '));
       const noun = parseNoun(`an ${listed} you control`) ?? parseNoun(`a ${listed}`) ?? parseNoun(`a ${m[2]}`);
       if (!noun || n === null || n === 'X') break kp20;
       cost.tapUntapped = { filter: { ...noun.filter, zone: 'battlefield' }, count: n };
@@ -285,7 +285,7 @@ export function parseCost(text: string): AbilityCost | null {
       matched = true;
     }
     if (!matched) kp43: if ((m = p.match(/^Tap (?:an|another|X|(\w+)) untapped (.+?)(?: you control)?$/i))) {
-      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
       if (!noun) break kp43;
       const n: number | 'X' | null = /\bX untapped\b/.test(p) ? 'X' : m[1] ? (wordToNumber(m[1]) as number | null) : 1;
       if (n === null) break kp43;
@@ -293,7 +293,7 @@ export function parseCost(text: string): AbilityCost | null {
       matched = true;
     }
     if (!matched) kp44: if ((m = p.match(/^Untap (?:a|an|(\w+)) tapped (.+?)(?: (?:you|an opponent) controls?)?$/i))) {
-      const noun = parseNoun(`a ${m[2].replace(/s$/i, '')}`) ?? parseNoun(`a ${m[2]}`);
+      const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (!noun || typeof n !== 'number') break kp44;
       cost.untapOther = { filter: { ...noun.filter, zone: 'battlefield', controller: /an opponent controls/i.test(p) ? 'opponent' : /you control/i.test(p) ? 'you' : undefined }, count: n };

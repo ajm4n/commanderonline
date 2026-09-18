@@ -1,6 +1,6 @@
 import type { Amount, Ref } from '@commander/engine';
 import { wordToNumber } from './text.js';
-import { parseNoun } from './nouns.js';
+import { parseNoun, singularize } from './nouns.js';
 
 export interface RefCtx {
   self: Ref;
@@ -63,7 +63,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const orig = text.trim().replace(/^[Tt]he number of /, '');
     const att = orig.match(/^([\w' -]+?)(?: and ([\w' -]+?))? attached to (?:it|~|that creature|that permanent)$/i);
     if (att) {
-      const parts = [att[1], att[2]].filter(Boolean).map((w) => { const b = String(w).replace(/s$/, ''); return parseNoun(`${/^[aeiou]/i.test(b) ? 'an' : 'a'} ${b}`); });
+      const parts = [att[1], att[2]].filter(Boolean).map((w) => { const b = singularize(String(w)); return parseNoun(`${/^[aeiou]/i.test(b) ? 'an' : 'a'} ${b}`); });
       if (parts.every((x) => x)) {
         const base: import('@commander/engine').ObjectFilter = { attachedToSource: true, zone: 'battlefield' };
         const f = parts.length === 1 ? { ...parts[0]!.filter, ...base } : { ...base, anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
@@ -268,7 +268,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^(?:the number of )?(?:each )?times? you(?:'ve| have)? cast (?:your|a) commander from the command zone this game$/))) return { kind: 'commanderCasts' };
   if ((m = t.match(/^your starting life total$/))) return { kind: 'startingLife' };
   if ((m = t.match(/^the number of differently named (.+?) you control$/))) {
-    const noun = withCtrl(parseNoun(oc(m, 1).replace(/s$/i, '')), ctx);
+    const noun = withCtrl(parseNoun(singularize(oc(m, 1))), ctx);
     if (noun) return { kind: 'distinctValues', stat: 'name', filter: { ...noun.filter, controller: 'you', zone: noun.filter.zone ?? 'battlefield' } };
   }
   if ((m = t.match(/^the (?:amount|number) of mana spent to cast (?:that spell|it)$/))) return { kind: 'manaSpent', of: 'total' };
