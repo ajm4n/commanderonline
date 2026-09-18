@@ -4226,6 +4226,15 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 177 ----
+  [/^(?:the|that) cop(?:y|ies) gains? (.+)$/i, (m) => {
+    const g = parseGrantList(m[1]);
+    if (!g || (!g.keywords.length && !g.abilities.length)) return null;
+    const out: Effect[] = [];
+    if (g.keywords.length) out.push({ kind: 'grantKeywords', keywords: g.keywords, on: { ref: 'lastCreated' }, duration: 'permanent' });
+    for (const a of g.abilities) out.push({ kind: 'grantAbility', text: a, on: { ref: 'lastCreated' }, duration: 'permanent' });
+    return out;
+  }],
   // ---- Round 174 ----
   [/^(.+?) cannot block or be blocked by (.+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -5549,9 +5558,14 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
     } else if ((m = p2.match(/^(?:it|they) (?:is|are) (\d+)\/(\d+)$/i))) {
       ex.power = m[1];
       ex.toughness = m[2];
-    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?)(?: creatures?)?(?: in addition to its other (?:types|colors|colors and types))?$/i))) {
+    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?)(?: creatures?)?(?: with ([\w, ]+))?(?: in addition to its other (?:types|colors|colors and types))?$/i))) {
       ex.power = m[1];
       ex.toughness = m[2];
+      if (m[4]) {
+        const kws = parseKeywordList(m[4]);
+        if (!kws) return null;
+        ex.keywords = [...(ex.keywords ?? []), ...kws];
+      }
       for (const w of m[3].split(/\s+/)) {
         const c = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white'];
         if (c) ex.colors = [...(ex.colors ?? []), c];
@@ -5599,6 +5613,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^counters remain on ~ as it moves to any zone other than a player's hand or library\.?$/i.test(text.trim())) return true;
   if (/^you may look at (?:each )?face-down creatures?[\w' -]*(?: any time)?\.?$/i.test(text.trim())) return true;
   if (/^x cannot be (?:greater|less) than .+\.?$/i.test(text.trim())) return true;
+  if (/^you may choose (?:a )?new targets? for (?:the|that) cop(?:y|ies)\.?$/i.test(text.trim())) return true;
   if (/^creatures? dealt damage this way cannot be regenerated this turn\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
