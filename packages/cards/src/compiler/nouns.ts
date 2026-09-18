@@ -315,7 +315,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
     result.filter.subtypes = [SUBTYPE_ALIASES[head]];
     if (['Aura', 'Equipment', 'Vehicle', 'Saga'].includes(SUBTYPE_ALIASES[head])) result.filter.types = result.filter.types ?? undefined;
   } else if (BASIC_TYPES.includes(head) || BASIC_TYPES.includes(head.replace(/s$/, ''))) {
-    result.filter.subtypes = [head.replace(/s$/, '')];
+    result.filter.subtypes = [BASIC_TYPES.includes(head) ? head : head.replace(/s$/, '')];
     result.filter.types = ['Land'];
   } else if (/^commanders?$/i.test(head)) {
     result.filter.isCommander = true;

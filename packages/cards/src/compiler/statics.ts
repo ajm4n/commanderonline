@@ -2275,7 +2275,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "Creatures entering do not cause abilities to trigger."
-  if ((m = L.match(/^(.+?) entering do not cause abilities to trigger$/i))) {
+  if ((m = L.match(/^(.+?) entering(?: the battlefield)?(?: or dying)? do not cause abilities to trigger$/i))) {
     const words = m[1].split(/,? and |, /i).map((w) => w.trim()).filter(Boolean);
     const parts = words.map((w) => parseNoun(w));
     if (parts.every((x) => x)) {

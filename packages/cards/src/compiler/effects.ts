@@ -4225,6 +4225,26 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 168 ----
+  // "Destroy target artifact, target creature, target enchantment, and target land."
+  [/^destroy target (\w+), target (\w+), target (\w+)(?:, target (\w+))?,? and target (\w+)$/i, (m, ctx) => {
+    const kinds = [m[1], m[2], m[3], m[4], m[5]].filter(Boolean);
+    const out: Effect[] = [];
+    for (const k of kinds) {
+      const noun = parseNoun(`target ${k}`);
+      if (!noun || !noun.confident) return null;
+      ctx.targets.push(toTargetSpec(noun));
+      out.push({ kind: 'destroy', what: { ref: 'target', slot: ctx.targets.length - 1 } });
+    }
+    return out;
+  }],
+  [/^each player chooses (?:a|one) colou?r$/i, () => [{ kind: 'chooseColor', key: 'color', who: { ref: 'eachPlayer' } }]],
+  [/^each player chooses (?:a|one) card in their hand$/i, () => [{ kind: 'chooseObjects', who: { ref: 'eachPlayer' }, filter: { zone: 'hand' }, owner: { ref: 'iter' }, count: 1, key: 'handPick' }]],
+  [/^each player shuffles all (.+?) they own into their library$/i, (m) => {
+    const noun = parseNoun(`all ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'moveToZone', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, zone: 'library' }, { kind: 'shuffle', who: { ref: 'eachPlayer' } }];
+  }],
   // ---- Round 167 ----
   [/^(exile them|return ~ to its owner's hand|sacrifice ~|exile ~) at the beginning of the next cleanup step$/i, (m, ctx) => {
     const verb = m[1].toLowerCase();
