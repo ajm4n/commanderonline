@@ -1590,10 +1590,13 @@ const PATTERNS: Pattern[] = [
     return [];
   }],
   // Reveal-and-discard: "You choose a nonland card from it. That player discards that card."
-  [/^you (?:may )?choose (?:a|an|up to (\w+)) (?:(.+?) )?cards?(?: of that color| of the chosen color)? from (?:it|among them|that hand)$/i, (m, ctx) => {
+  [/^you (?:may )?choose (?:a|an|up to (\w+)) (?:(.+?) )?cards?(?: of that color| of the chosen color)?(?: (with [^,]+?|that [^,]+?))? from (?:it|among them|that hand)(?: (with [^,]+?|that [^,]+?))?$/i, (m, ctx) => {
     const owner = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' as const } : null);
     if (!owner) return null;
-    const noun = !m[2] || m[2] === 'card' ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[2]} card`);
+    // The qualifier can sit either side of "from it": "a card with mana value 3 or less from it".
+    const qual = m[3] ?? m[4];
+    const adj = !m[2] || m[2] === 'card' ? '' : `${m[2]} `;
+    const noun = !adj && !qual ? { filter: {} as ObjectFilter } : parseNoun(`a ${adj}card${qual ? ` ${qual}` : ''}`);
     if (!noun) return null;
     const key = `revealed${ctx.targets.length}`;
     const n = m[1] ? (wordToNumber(m[1]) ?? 1) : 1;

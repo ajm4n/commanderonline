@@ -688,6 +688,8 @@ export interface SpellAbilitySpec {
   maxModesIf?: { condition: Condition; max: number };
   /** "You may choose the same mode more than once." */
   modesRepeatable?: boolean;
+  /** Spree: an extra mana cost per mode index, paid for each mode chosen. */
+  modeCosts?: (string | undefined)[];
   /** "Choose one that hasn't been chosen this turn": modes already used are unavailable. */
   modesNotChosen?: 'turn' | 'game';
 }

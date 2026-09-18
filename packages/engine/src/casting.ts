@@ -1321,6 +1321,15 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
 
   // X
   let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
+  // Spree: each chosen mode carries an additional cost.
+  if (!opts.free && spell && spell.kind === 'spell' && spell.modeCosts) {
+    for (const mi of modes) {
+      const mc = spell.modeCosts[mi];
+      if (!mc) continue;
+      const extra = parseManaCost(mc);
+      cost = { symbols: [...cost.symbols, ...extra.symbols], xCount: cost.xCount + extra.xCount };
+    }
+  }
   if (altId) obj.additionalCostsPaid.push(altId);
   const baseCost = parseManaCost(face.manaCost);
   let x = resp.xValue ?? 0;

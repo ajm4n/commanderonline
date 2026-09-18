@@ -77,6 +77,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   let castCondition: Condition | undefined;
   let additionalCost: CardScript['additionalCost'];
   let modalX: Amount | null = null;
+  let modeCosts: (string | undefined)[] | null = null;
   let modalNotChosen: 'turn' | 'game' | null = null;
   const alternativeCosts: NonNullable<CardScript['alternativeCosts']> = [];
   const costModifiers: CostModifier[] = [];
@@ -621,6 +622,25 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
+    // Spree: "+ {2}{B} — Destroy target creature." Each mode has its own additional cost.
+    if ((m = line.match(/^\+\s*((?:\{[^}]+\})+)\s*\u2014\s*(.+)$/))) {
+      const ctx = newCtx({ isSpell: true });
+      const { effects, unhandled } = parseEffects(m[2], ctx);
+      if (unhandled.length) {
+        unhandledLines.push(...unhandled);
+        continue;
+      }
+      if (!modal) {
+        modal = [];
+        modeCosts = [];
+        [minModes, maxModes] = [1, 6];
+      }
+      modeCosts ??= [];
+      modeCosts[modal.length] = m[1];
+      modal.push({ text: line, targets: ctx.targets, effects });
+      compiledLines.push(line);
+      continue;
+    }
     if (modal && (m = line.match(/^•\s*(.+)$/))) {
       const ctx = newCtx({ isSpell: true });
       const { effects, unhandled } = parseEffects(stripModeLabel(m[1]), ctx);
@@ -916,7 +936,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   // Dice result rows ("1—9 | effect") attach to the preceding roll.
   void 0;
   if (isSpell || modal || spellEffects.length) {
-    if (modal) abilities.push({ kind: 'spell', modes: modal, minModes, maxModes, maxModesIf: modalMaxIf, modesRepeatable: modalRepeatable || undefined, modesNotChosen: modalNotChosen ?? undefined, effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : [] });
+    if (modal) abilities.push({ kind: 'spell', modes: modal, modeCosts: modeCosts ?? undefined, minModes, maxModes, maxModesIf: modalMaxIf, modesRepeatable: modalRepeatable || undefined, modesNotChosen: modalNotChosen ?? undefined, effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : [] });
     else abilities.push({ kind: 'spell', effects: spellEffects, targets: spellCtx.targets.length ? spellCtx.targets : undefined });
     void spellTargets;
   }
