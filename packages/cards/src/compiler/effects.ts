@@ -4225,6 +4225,37 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 171 ----
+  // "Target player reveals their hand and discards all cards of that color / with that name."
+  [/^(.+?) reveals their hand and discards all (.+?)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`all ${m[2]}`);
+    if (!who || !noun || !noun.confident) return null;
+    ctx.lastPlayer = who;
+    return [
+      { kind: 'revealHand', who },
+      { kind: 'discardObjects', what: { ref: 'all', filter: { ...noun.filter, zone: 'hand', ownerRef: who } } },
+    ];
+  }],
+  [/^(?:the|that) player puts those cards into their hand, then shuffles$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    const who = ctx.lastPlayer;
+    if (!ref || !who) return null;
+    return [{ kind: 'moveToZone', what: ref, zone: 'hand' }, { kind: 'shuffle', who }];
+  }],
+  [/^target creature loses all landwalk abilities(?: until end of turn)?$/i, (m, ctx) => {
+    const noun = parseNoun('target creature');
+    if (!noun) return null;
+    ctx.targets.push(toTargetSpec(noun));
+    return [{ kind: 'removeKeywords', keywords: ['Plainswalk', 'Islandwalk', 'Swampwalk', 'Mountainwalk', 'Forestwalk', 'Landwalk'], on: { ref: 'target', slot: ctx.targets.length - 1 }, duration: 'endOfTurn' }];
+  }],
+  [/^(?:that|this) creature can block up to (\w+) additional creatures?(?: this turn)?$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const ref = ctx.lastObj;
+    if (typeof n !== 'number' || !ref) return null;
+    // Each "extraBlock" rule allows one more blocked attacker.
+    return Array.from({ length: n }, () => ({ kind: 'applyRule' as const, rule: { kind: 'custom' as const, tag: 'extraBlock' }, on: ref, duration: 'endOfTurn' as const }));
+  }],
   // ---- Round 168 ----
   // "Destroy target artifact, target creature, target enchantment, and target land."
   [/^destroy target (\w+), target (\w+), target (\w+)(?:, target (\w+))?,? and target (\w+)$/i, (m, ctx) => {

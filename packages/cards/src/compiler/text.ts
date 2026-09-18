@@ -119,7 +119,8 @@ const DASH_KEYWORDS = /^(Choose|Companion|Boast|Escape|Suspend|Awaken|Reinforce|
 export function stripAbilityWord(line: string): string {
   const m = line.match(/^([A-Z][A-Za-z']*(?: [A-Za-z']+){0,3}) — (?=[A-Z{~•])/);
   if (!m) return line;
-  if (DASH_KEYWORDS.test(m[1])) return line;
+  // "Warp Blast — When ~ enters, …" starts with a keyword word but is a flavour label.
+  if (DASH_KEYWORDS.test(m[1]) && !(/ /.test(m[1]) && /^(?:When|Whenever|At |You |Each |Target |Sacrifice|Exile|Destroy|Draw|Create|Put|Return|Add|Choose|~)/.test(line.slice(m[0].length)))) return line;
   if (/^To solve$/i.test(m[1])) return line; // Cases: the condition after it is the solve condition
   if (/^(?:I|II|III|IV|V|VI)(?:, (?:I|II|III|IV|V|VI))*$/.test(m[1])) return line; // Saga chapters
   return line.slice(m[0].length);

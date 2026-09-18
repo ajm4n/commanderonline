@@ -185,6 +185,14 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 171 ----
+  if ((m = L.match(/^When(?:ever)? the Ring tempts you, (.+)$/i))) return { event: 'ringTempted', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? you proliferate, (.+)$/i))) return { event: 'proliferated', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? you roll a natural 20, (.+)$/i))) return { event: 'rolledDie', filter: { player: 'you', minAmount: 20 }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? you cast your commander, (.+)$/i))) return { event: 'cast', filter: { player: 'you', object: { isCommander: true } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? (?:enchanted|equipped) creature becomes the target of (?:a spell|a spell or ability|an ability), (.+)$/i))) return { event: 'becomesTarget', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? (?:enchanted|equipped) creature becomes tapped or is dealt damage, (.+)$/i))) return { event: 'tapped', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'dealtDamage', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^When(?:ever)? ~ becomes untapped or you lose control of ~, (.+)$/i))) return { event: 'untapped', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'controlChanged', filter: { self: true }, hasObject: true, hasPlayer: false }] };
   // ---- Round 166 ----
   if ((m = L.match(/^As ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^As ~ becomes attached to (?:a|an) (?:creature|permanent|player), (.+)$/i))) return { event: 'becomesAttached', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
