@@ -185,6 +185,40 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 181 ----
+  if ((m = L.match(/^Whenever ~ deals combat damage to a player for the first time each turn, (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { self: true, firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ is dealt damage for the first time each turn, (.+)$/i))) return { event: 'dealtDamage', filter: { self: true, firstEachTurn: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ deals (\d+) or more damage, (.+)$/i))) return { event: 'dealsDamage', filter: { self: true, minAmount: parseInt(m[1], 10) }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever (?:a|an) permanent owned by another player dies, (.+)$/i))) return { event: 'dies', filter: { object: { owner: 'opponent' } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:enchanted|equipped) creature blocks (?:a|an) creature, (.+)$/i))) return { event: 'blocks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast (?:a|an) (.*?)spell during combat, (.+)$/i))) {
+    const noun = m[1].trim() ? parseNoun(`a ${m[1].trim()} spell`) : null;
+    const f = noun && noun.confident ? { ...noun.filter } : {};
+    delete (f as { zone?: unknown }).zone;
+    return { event: 'cast', filter: { player: 'you', custom: 'duringCombat', ...(Object.keys(f).length ? { object: f } : {}) }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever you draw a card during an opponent's turn, (.+)$/i))) return { event: 'drawCard', filter: { player: 'you', notYourTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) player attacks one or more of your opponents, (.+)$/i))) return { event: 'attacks', filter: { otherPlayer: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever an opponent attacks another one of your opponents, (.+)$/i))) return { event: 'attacks', filter: { player: 'opponent', otherPlayer: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever an opponent discards a card or mills one or more cards, (.+)$/i))) return { event: 'discard', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'mill', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true }] };
+  if ((m = L.match(/^Whenever you play a legendary land or cast a legendary spell, (.+)$/i))) return { event: 'landPlayed', filter: { player: 'you', object: { supertypes: ['Legendary'] } }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'cast', filter: { player: 'you', object: { supertypes: ['Legendary'] } }, hasObject: true, hasPlayer: true }] };
+  if ((m = L.match(/^Whenever (?:a|an) player sacrifices another permanent, (.+)$/i))) return { event: 'sacrifice', filter: { object: { other: true } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever one or more (.+?) you control attack an opponent, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; delete f.controller; return { event: 'attacks', filter: { object: f, objectController: 'you', otherPlayer: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever an Aura you control becomes attached to (?:a|an) creature you control, (.+)$/i))) return { event: 'becomesAttached', filter: { object: { subtypes: ['Aura'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever one or more (.+?) permanents are returned to hand, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} permanent`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'returnedToHand', filter: { object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^When ~ enters from your graveyard, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true, fromZone: 'graveyard' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ becomes the target of an ability that targets only it, (.+)$/i))) return { event: 'becomesTarget', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell that targets only ~, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'cast', filter: { player: 'you', targetsSource: true, object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever you tap one or more untapped creatures your opponents control, (.+)$/i))) return { event: 'tapped', filter: { object: { types: ['Creature'], controller: 'opponent' }, player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
   // ---- Round 180 ----
   if ((m = L.match(/^Whenever you (surveil|investigate|scry|proliferate) for the first time each turn, (.+)$/i))) {
     const ev = ({ surveil: 'surveil', investigate: 'investigated', scry: 'scry', proliferate: 'proliferated' } as const)[m[1].toLowerCase() as 'surveil'];

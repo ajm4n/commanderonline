@@ -1143,6 +1143,7 @@ export class Game {
     if (f.custom === 'exhaust' && !(e.data as { exhaust?: boolean } | undefined)?.exhaust) return false;
     if (f.custom === 'wonFlip' && !(e.data as { won?: boolean } | undefined)?.won) return false;
     if (f.custom === 'wonClash' && !(e.data as { won?: boolean } | undefined)?.won) return false;
+    if (f.custom === 'duringCombat' && !['beginCombat', 'declareAttackers', 'declareBlockers', 'firstStrikeDamage', 'combatDamage', 'endCombat'].includes(this.state.turn.step)) return false;
     if (f.custom === 'attachedToSelf' && e.sourceId !== obj.id) return false;
     if (f.custom === 'declareAttackersStep' && this.state.turn.step !== 'declareAttackers') return false;
     if (f.custom === 'attacksEnchantedPlayer' && (obj.attachedTo === null || e.otherPlayerId === undefined || e.otherPlayerId !== this.state.objects[obj.attachedTo]?.controller)) return false;
