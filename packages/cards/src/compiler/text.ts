@@ -71,16 +71,27 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
       }
     }
   }
+  // "Jedit Ojanen of Efrava" also calls itself "Jedit Ojanen": try each leading-word prefix.
+  if (/Legendary/.test(card.typeLine)) {
+    const ws = faceName.replace(/,/g, '').split(/\s+/).filter(Boolean);
+    for (let k = ws.length - 1; k >= 2; k--) {
+      const pre = ws.slice(0, k).join(' ');
+      if (pre === faceName || /\b(?:of|the|and)$/i.test(pre)) continue;
+      const esc = pre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      t = t.replace(new RegExp(`\\b${esc}'s\\b`, 'g'), "~'s").replace(new RegExp(`\\b${esc}\\b`, 'g'), '~');
+    }
+  }
   // Legendary permanents without a comma sometimes refer to themselves by their first name ("Catti-brie of Mithral Hall" → "Catti-brie").
   if (/Legendary/.test(card.typeLine) && !faceName.includes(',') && faceName.includes(' ')) {
     const first = faceName.split(' ')[0];
-    if (first.length >= 4 && /^[A-Z][a-zà-ÿÀ-Ÿ]/u.test(first) && !/'s$/.test(first) && !/^(The|Sword|Shield|Tower|Temple|Throne|Hall|Book|Staff|Crown|Ring|Blade|Gate|Cradle|Academy|Palace|Hammer|Heart|Scroll|Mask)$/.test(first)) {
+    if (first.length >= 3 && /^[A-Z][a-zà-ÿÀ-Ÿ]/u.test(first) && !/'s$/.test(first) && !/^(The|Sword|Shield|Tower|Temple|Throne|Hall|Book|Staff|Crown|Ring|Blade|Gate|Cradle|Academy|Palace|Hammer|Heart|Scroll|Mask)$/.test(first)) {
       const esc = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const notAType = '(?! (?:creatures?|spells?|cards?|permanents?|tokens?|lands?)\\b)';
       t = t.replace(new RegExp(`\\b${esc}'s\\b${notAType}`, 'g'), "~'s").replace(new RegExp(`\\b${esc}\\b(?! [A-Z])${notAType}`, 'g'), '~');
     }
   }
   t = t.replace(/\b[Tt]his (creature|permanent|artifact|enchantment|land|spell|card|planeswalker|Aura|Equipment|Vehicle|token|battle|Class|Spacecraft|Case|Siege|Room|Saga|Contraption)\b/g, '~');
+  t = t.replace(/^When ~ die,/gm, 'When ~ dies,').replace(/\bWhenever ~ die\b/g, 'Whenever ~ dies');
   t = t.replace(/\benters the battlefield\b/g, 'enters');
   t = t.replace(/\bput onto the battlefield\b/g, 'put onto the battlefield');
   t = t.replace(/\bmana value\b/g, 'mana value');

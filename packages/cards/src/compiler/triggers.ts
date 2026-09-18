@@ -185,6 +185,35 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 180 ----
+  if ((m = L.match(/^Whenever you (surveil|investigate|scry|proliferate) for the first time each turn, (.+)$/i))) {
+    const ev = ({ surveil: 'surveil', investigate: 'investigated', scry: 'scry', proliferate: 'proliferated' } as const)[m[1].toLowerCase() as 'surveil'];
+    return { event: ev, filter: { player: 'you', firstEachTurn: true }, hasObject: false, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever you cast your first spell during each of your turns, (.+)$/i))) return { event: 'cast', filter: { player: 'you', nthThisTurn: 1, yourTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast your first spell with \{X\} in its mana cost each turn, (.+)$/i))) return { event: 'cast', filter: { player: 'you', nthThisTurn: 1, object: { custom: 'hasX' } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever an opponent is dealt (\d+) or more damage by a single source, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'opponent', toPlayer: true, minAmount: parseInt(m[1], 10) }, hasObject: false, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever ~ attacks a player and is not blocked, (.+)$/i))) return { event: 'attacksUnblocked', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) you control attacks and is not blocked, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; delete f.controller; return { event: 'attacksUnblocked', filter: { object: f, objectController: 'you' }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever an opponent activates a loyalty ability, (.+)$/i))) return { event: 'abilityActivated', filter: { player: 'opponent', object: { types: ['Planeswalker'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) permanent is put into an opponent's graveyard, (.+)$/i))) return { event: 'putIntoGraveyard', filter: { player: 'opponent', fromZone: 'battlefield' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever an opponent sacrifices a noncreature token, (.+)$/i))) return { event: 'sacrifice', filter: { objectController: 'opponent', object: { isToken: true, notTypes: ['Creature'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you discard one or more cards for the first time each turn, (.+)$/i))) return { event: 'discard', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When ~ enters from your hand, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true, fromZone: 'hand' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) creature blocks (?:a|an) (white|blue|black|red|green)(?: or (white|blue|black|red|green))? creature, (.+)$/i))) {
+    const cols = [m[1], m[2]].filter(Boolean).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    return { event: 'blocks', filter: { object: { types: ['Creature'] }, source: { colors: cols } }, hasObject: true, hasPlayer: false, rest: m[3] };
+  }
+  if ((m = L.match(/^Whenever (?:a|an) player mills one or more (.+?) cards, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'mill', filter: { object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever ~ is dealt noncombat damage, (.+)$/i))) return { event: 'dealtDamage', filter: { self: true, combat: false }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) player casts a spell that targets ~, (.+)$/i))) return { event: 'cast', filter: { targetsSource: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever another player loses the game, (.+)$/i))) return { event: 'playerLost', filter: { player: 'notYou' }, hasObject: false, hasPlayer: true, rest: m[1] };
   // ---- Round 179 ----
   if ((m = L.match(/^Whenever ~ becomes blocked by (?:a|an) nonartifact(?: creature)?, (.+)$/i))) return { event: 'becomesBlocked', filter: { self: true, source: { notTypes: ['Artifact'] } }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever ~ or another permanent is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: {}, hasObject: true, hasPlayer: false, rest: m[1] };
