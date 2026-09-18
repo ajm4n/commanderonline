@@ -185,6 +185,9 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 166 ----
+  if ((m = L.match(/^As ~ is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^As ~ becomes attached to (?:a|an) (?:creature|permanent|player), (.+)$/i))) return { event: 'becomesAttached', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   // ---- Round 163 ----
   if ((m = L.match(/^Whenever (?:a|an) spell you(?:'ve| have) cast is countered, (.+)$/i))) return { event: 'countered', filter: { objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever the (\w+) spell of a turn is cast, (.+)$/i))) {

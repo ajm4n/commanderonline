@@ -4225,6 +4225,40 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 166b ----
+  // Chain spells: "Then that player may sacrifice a land. If the player does, they may copy ~ …"
+  [/^(?:(?:if (?:the|that) player does, )?(?:they|that player)|you) may copy ~(?: and may choose (?:a )?new targets? for that copy)?$/i, (m, ctx) => {
+    const who = /^you /i.test(m[0]) ? YOU : ctx.lastPlayer;
+    if (!who) return null;
+    return [{ kind: 'may', who, prompt: 'Copy the spell?', effects: [{ kind: 'copySpell', what: SELF }] }];
+  }],
+  [/^return ~ and (.+?) to (?:their|its) owners'? hands?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToHand', what: SELF }, { kind: 'returnToHand', what: ref }] : null;
+  }],
+  [/^put (?:a|an) ([+-]\d+\/[+-]\d+) counter or (?:a|an) ([+-]\d+\/[+-]\d+) counter on (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[3], ctx);
+    return ref ? [{ kind: 'addCounters', counter: m[1], amount: 1, on: ref, counterOptions: [m[1], m[2]] }] : null;
+  }],
+  [/^its controller loses life equal to its power plus its toughness$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    if (!ref) return null;
+    return [{ kind: 'loseLife', amount: { kind: 'sum', parts: [{ kind: 'power', ref }, { kind: 'toughness', ref }] }, who: { ref: 'controllerOf', of: ref } }];
+  }],
+  // ---- Round 166 ----
+  [/^(.+?) reveals (\w+) cards? from their hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = wordToNumber(m[2]);
+    if (!who || typeof n !== 'number') return null;
+    ctx.lastPlayer = who;
+    return [{ kind: 'revealHand', who, count: n }];
+  }],
+  [/^choose (?:a|one) colou?r(?: of (?:a|an) permanent you control| of your choice)?$/i, () => [{ kind: 'chooseColor', key: 'color' }]],
+  [/^creatures dealt damage this way cannot block this turn$/i, () => [{ kind: 'applyRule', rule: { kind: 'cantBlock' }, on: { ref: 'chosen', key: 'lastDamaged' }, duration: 'endOfTurn' }]],
+  [/^(equipped|enchanted) creature gets ([+-]\d+)\/([+-]\d+) and is all creature types$/i, (m) => [
+    { kind: 'pump', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: { ref: 'attachedTo' }, duration: 'permanent' },
+    { kind: 'grantKeywords', keywords: ['Changeling'], on: { ref: 'attachedTo' }, duration: 'permanent' },
+  ]],
   // ---- Round 164 ----
   [/^choose (?:a|an) (?:nonbasic |basic )?land type$/i, () => [{ kind: 'chooseCreatureType', key: 'landType', pool: 'land' }]],
   [/^attach (it|~|that equipment|those equipment|that aura) to (.+)$/i, (m, ctx) => {
@@ -5486,6 +5520,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^(?:target |that )?(?:creature |noncreature |instant |sorcery )?spells?(?: you cast this turn)? cannot be countered\.?$/i.test(text.trim())) return true;
   if (/^the "legend rule" does not apply\.?$/i.test(text.trim())) return true;
   if (/^target (?:permanent|creature|player|opponent|spell)\.?$/i.test(text.trim())) return true;
+  if (/^counters remain on ~ as it moves to any zone other than a player's hand or library\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
   if (/^you may reveal (?:a|an) .+? (?:you own )?from outside the game and put it into your hand$/i.test(text.trim())) return true;
@@ -6687,15 +6722,19 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
     // "Do X. If you do, Y." — the follow-up belongs to the optional effect just made.
     {
-      const fu = s.match(/^if you do, (.+)$/i);
+      const fu = s.match(/^if (?:you|the player|that player|they) do(?:es)?, (.+)$/i);
       const prev = effects[effects.length - 1];
       if (fu && prev && (prev.kind === 'may' || prev.kind === 'ifPays')) {
         const saved = ctx.targets.length;
+        const savedPlayer = ctx.lastPlayer;
+        // "If the player does, …": the player is whoever was offered the choice.
+        if (!/^you do/i.test(fu[0]) && prev.who) ctx.lastPlayer = prev.who;
         const inner = parseSentence(fu[1], ctx);
         if (inner) {
           prev.effects = [...prev.effects, ...inner];
           continue;
         }
+        ctx.lastPlayer = savedPlayer;
         ctx.targets.length = saved;
       }
     }

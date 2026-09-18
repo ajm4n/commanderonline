@@ -788,6 +788,8 @@ export class Game {
           this.shuffleLibrary(obj.owner);
           return r;
         }
+        if ((ab as { instead: string }).instead === 'libraryTop') return this.moveObject(id, 'library', { ...opts, position: 'top' });
+        if ((ab as { instead: string }).instead === 'libraryBottom') return this.moveObject(id, 'library', { ...opts, position: 'bottom' });
         if ((ab as { instead: string }).instead === 'commandZone') return this.moveObject(id, 'command', { ...opts, skipEvents: true });
       }
     }

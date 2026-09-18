@@ -339,6 +339,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const opts = all.filter((t) => !excluded.includes(t.toLowerCase()));
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'option', chooseOptions: opts, chooseKey: 'cardType' }];
   }
+  // "If ~ would die, put it on top/bottom of its owner's library instead."
+  if ((m = L.match(/^If ~ would (?:die|be put into a graveyard from anywhere), (?:instead )?put it on (?:the )?(top|bottom) of its owner's library(?: instead)?$/i))) {
+    return [{ kind: 'replacement', text: line, event: 'dies', self: true, instead: m[1].toLowerCase() === 'top' ? 'libraryTop' : 'libraryBottom' }];
+  }
+  // "As ~ enters, choose a noncreature, nonland card name."
+  if (/^As ~ enters, choose (?:a|an) (?:noncreature, nonland |nonland |noncreature |creature )?card name$/i.test(L)) {
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'cardName', chooseKey: 'cardName' }];
+  }
   // "As ~ enters, an opponent chooses a creature type."
   if ((m = L.match(/^As ~ enters, an opponent chooses (a creature type|a color|a card name)$/i))) {
     const key = /creature type/i.test(m[1]) ? 'creatureType' : /color/i.test(m[1]) ? 'color' : 'cardName';
