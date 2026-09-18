@@ -520,6 +520,8 @@ export interface TriggerFilter {
   objectController?: 'you' | 'opponent' | 'any';
   /** Trigger only when the cast spell was the Nth this turn, etc. */
   nthThisTurn?: number;
+  /** Nth such event this turn counting every player ("whenever the fourth spell of a turn is cast"). */
+  nthThisTurnAllPlayers?: number;
   /** Trigger only when this is at least the Nth such event this turn ("other than your first spell each turn"). */
   minNthThisTurn?: number;
   /** Event amount threshold (e.g. "5 or more damage"). */

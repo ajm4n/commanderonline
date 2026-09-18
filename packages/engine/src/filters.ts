@@ -151,6 +151,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   const x = ctx.x ?? 0;
   const num = (v: number | 'X') => (v === 'X' ? x : v);
   if (filter.powerLE !== undefined && !(ch.power !== null && ch.power <= num(filter.powerLE))) return false;
+  if (filter.powerEQ !== undefined && ch.power !== num(filter.powerEQ)) return false;
+  if (filter.toughnessEQ !== undefined && ch.toughness !== num(filter.toughnessEQ)) return false;
   if (filter.powerGE !== undefined && !(ch.power !== null && ch.power >= num(filter.powerGE))) return false;
   if (filter.toughnessLE !== undefined && !(ch.toughness !== null && ch.toughness <= filter.toughnessLE)) return false;
   if (filter.toughnessGE !== undefined && !(ch.toughness !== null && ch.toughness >= filter.toughnessGE)) return false;
@@ -244,6 +246,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   }
   if (filter.dealtDamageThisTurn && !Object.keys(g.state.turnStats).some((k) => k.startsWith(`damageDealtBy:${obj.id}`))) return false;
   if (filter.blockingSource && (ctx.sourceId === null || ctx.sourceId === undefined || !obj.blocking.includes(ctx.sourceId))) return false;
+  if (filter.blockedBySource && (ctx.sourceId === null || ctx.sourceId === undefined || !obj.blockedBy.includes(ctx.sourceId))) return false;
   if (filter.blockingOrBlockedBySource) {
     const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : null;
     if (!src) return false;

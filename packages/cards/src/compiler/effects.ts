@@ -6312,6 +6312,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const inner = parseSentence(m[1], ctx);
     if (inner) return inner;
   }
+  // Some patterns spell the end-of-turn duration " this turn"; try that wording last.
+  if (/ until end of turn$/i.test(text)) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(text.replace(/ until end of turn$/i, ' this turn'), ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
+  }
   return null;
 }
 

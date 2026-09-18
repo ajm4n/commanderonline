@@ -1720,7 +1720,6 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'clash': {
-      g.emit({ name: 'clashed', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined });
       const opps = g.activePlayers().filter((x) => x !== ctx.controller);
       if (!opps.length) return;
       let opp = opps[0];
@@ -1745,6 +1744,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.log(won ? `${g.player(ctx.controller).name} wins the clash.` : `${g.player(ctx.controller).name} does not win the clash.`);
       if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) g.state.objects[ctx.sourceId].memory['clashWon'] = won;
       ctx.memory['clashWon'] = won ? 1 : 0;
+      g.emit({ name: 'clashed', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined, data: { won } });
       return;
     }
     case 'discover': {
@@ -2192,6 +2192,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'phaseOut':
       for (const o of g.resolveObjects(e.what, ctx)) {
         o.phasedOut = true;
+        g.emit({ name: 'phasedOut', objectId: o.id, playerId: o.controller });
         g.touch();
       }
       return;

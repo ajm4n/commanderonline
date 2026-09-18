@@ -185,6 +185,20 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 163 ----
+  if ((m = L.match(/^Whenever (?:a|an) spell you(?:'ve| have) cast is countered, (.+)$/i))) return { event: 'countered', filter: { objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever the (\w+) spell of a turn is cast, (.+)$/i))) {
+    const ORDINALS: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10 };
+    const n = ORDINALS[m[1].toLowerCase()];
+    if (n !== undefined) return { event: 'cast', filter: { player: 'any', nthThisTurnAllPlayers: n }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever you search your library, (.+)$/i))) return { event: 'searchedLibrary', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ is dealt (\d+) or more damage, (.+)$/i))) return { event: 'dealtDamage', filter: { self: true, minAmount: parseInt(m[1], 10) }, hasObject: true, hasPlayer: false, rest: m[2] };
+  if ((m = L.match(/^When (?:enchanted|equipped) (?:creature|permanent|artifact|land|vehicle) is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When (?:enchanted|equipped) (?:creature|permanent|artifact|land|vehicle) transforms, (.+)$/i))) return { event: 'transformed', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ phases out, (.+)$/i))) return { event: 'phasedOut', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever you clash and win, (.+)$/i))) return { event: 'clashed', filter: { player: 'you', custom: 'wonClash' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you clash, (.+)$/i))) return { event: 'clashed', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   {
     // "When you cast ~ from your hand, ..."
     const cf = line.match(/^When(?:ever)? you cast ~ from (your hand|your graveyard|a graveyard|exile), (.+)$/i);

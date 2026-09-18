@@ -373,6 +373,8 @@ export interface ObjectFilter {
   keywords?: string[]; // has any of these keywords
   withoutKeywords?: string[];
   powerLE?: number | 'X';
+  powerEQ?: number | 'X';
+  toughnessEQ?: number | 'X';
   powerGE?: number | 'X';
   toughnessLE?: number;
   toughnessGE?: number;
@@ -410,6 +412,8 @@ export interface ObjectFilter {
   damagedBySource?: boolean;
   /** Creatures blocking the filter's source object ("creatures blocking it"). */
   blockingSource?: boolean;
+  /** The object is blocked by the ability's source ("target creature ~ is blocking"). */
+  blockedBySource?: boolean;
   /** Blocking the source, or blocked by it ("creatures blocking or blocked by ~"). */
   blockingOrBlockedBySource?: boolean;
   /** The creature the filter's source is paired with (soulbond). */
@@ -606,6 +610,7 @@ export type GameEventName =
   | 'proliferated'
   | 'connived'
   | 'phasedIn'
+  | 'phasedOut'
   | 'crewed'
   | 'plotted'
   | 'clashed'
