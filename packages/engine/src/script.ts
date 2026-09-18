@@ -140,7 +140,9 @@ export type Ref =
   /** Every player except those this ref resolves to ("each player other than target player"). */
   | { ref: 'playersExcept'; except: Ref }
   /** The player seated next to you: left is the next in turn order, right the previous. */
-  | { ref: 'neighbor'; side: 'left' | 'right' };
+  | { ref: 'neighbor'; side: 'left' | 'right' }
+  /** The player with the most (or least) of something; ties resolve to nobody. */
+  | { ref: 'playerWithMost'; what: 'life' | 'cards' | { filter: ObjectFilter }; least?: boolean };
 
 export const R = {
   target: (slot = 0): Ref => ({ ref: 'target', slot }),

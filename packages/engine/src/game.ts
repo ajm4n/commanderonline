@@ -1836,6 +1836,19 @@ export class Game {
         const j = ref.side === 'left' ? (i + 1) % seats.length : (i - 1 + seats.length) % seats.length;
         return plT([seats[j]]);
       }
+      case 'playerWithMost': {
+        const score = (p: PlayerId): number => {
+          if (ref.what === 'life') return this.player(p).life;
+          if (ref.what === 'cards') return this.player(p).hand.length;
+          return objectsMatching(this, { ...ref.what.filter, zone: ref.what.filter.zone ?? 'battlefield', controller: undefined }, { sourceId: ctx.sourceId, controller: p }).filter((o) => o.controller === p).length;
+        };
+        const seats = this.activePlayers();
+        if (!seats.length) return [];
+        const vals = seats.map((p) => ({ p, v: score(p) }));
+        const best = vals.reduce((a, b) => (ref.least ? (b.v < a.v ? b : a) : b.v > a.v ? b : a));
+        const tied = vals.filter((x) => x.v === best.v);
+        return tied.length === 1 ? plT([best.p]) : [];
+      }
       case 'activePlayer':
         return plT([this.state.turn.activePlayer]);
       case 'chosen': {

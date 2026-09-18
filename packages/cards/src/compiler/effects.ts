@@ -158,6 +158,15 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(?:enchanted|equipped) \w+'s controller$/.test(l)) return { ref: 'controllerOf', of: { ref: 'attachedTo' } };
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
+  {
+    const mm = l.match(/^the player (?:with the (most|least|fewest) (life|cards in hand)|who controls the (most|fewest) (.+))$/);
+    if (mm) {
+      const least = mm[1] === 'least' || mm[1] === 'fewest' || mm[3] === 'fewest';
+      if (mm[2]) return { ref: 'playerWithMost', what: mm[2] === 'life' ? 'life' : 'cards', least: least || undefined };
+      const noun = parseNoun(mm[4]!);
+      if (noun && noun.confident) return { ref: 'playerWithMost', what: { filter: { ...noun.filter, zone: 'battlefield' } }, least: least || undefined };
+    }
+  }
   if (l === 'the active player' || l === 'the attacking player') return { ref: l === 'the active player' ? 'activePlayer' : 'triggerPlayer' };
   if (l === 'the player to your left' || l === 'the player to your right') return { ref: 'neighbor', side: l.endsWith('left') ? 'left' : 'right' };
   if (l === "enchanted player" || l === "that player's controller") return { ref: 'attachedTo' };
@@ -4226,6 +4235,52 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 183 ----
+  [/^exile all cards from (.+?)'s hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'exile', what: { ref: 'all', filter: { zone: 'hand', ownerRef: who } } }] : null;
+  }],
+  [/^return (\w+) (.+?) you control to (?:their|its) owners'? hands?$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`a ${m[2]}`);
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    const key = `ret${ctx.targets.length}`;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, count: n, key },
+      { kind: 'returnToHand', what: { ref: 'chosen', key } },
+    ];
+  }],
+  [/^discard any number of (.+?) cards$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (!noun || !noun.confident) return null;
+    const key = 'discAny';
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'hand', owner: 'you' }, count: 99, key, upTo: true },
+      { kind: 'discardObjects', what: { ref: 'chosen', key } },
+    ];
+  }],
+  [/^each player chooses (?:a|an) (.+?) and puts (?:a|an) ([\w' -]+?) counter on it$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [
+      { kind: 'chooseObjects', who: { ref: 'eachPlayer' }, filter: { ...noun.filter, zone: 'battlefield' }, count: 1, key: 'doom' },
+      { kind: 'addCounters', counter: m[2].toLowerCase(), amount: 1, on: { ref: 'chosen', key: 'doom' } },
+    ];
+  }],
+  [/^put (?:a|an) (.+?) card from your hand or graveyard onto the battlefield( tapped)?$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (!noun || !noun.confident) return null;
+    const key = 'fromHandGy';
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: ['hand', 'graveyard'], owner: 'you' }, count: 1, key },
+      { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[2] },
+    ];
+  }],
+  [/^~ and that creature phase out$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'phaseOut', what: SELF }, { kind: 'phaseOut', what: ctx.lastObj }] : null)],
+  [/^reveal your hand and put all land cards from it onto the battlefield$/i, () => [
+    { kind: 'revealHand', who: YOU },
+    { kind: 'returnToBattlefield', what: { ref: 'all', filter: { zone: 'hand', owner: 'you', types: ['Land'] } } },
+  ]],
   // ---- Round 177 ----
   [/^(?:the|that) cop(?:y|ies) gains? (.+)$/i, (m) => {
     const g = parseGrantList(m[1]);
