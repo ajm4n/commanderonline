@@ -185,6 +185,30 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 188 ----
+  if ((m = L.match(/^Whenever you cast an Aura spell that targets ~, (.+)$/i))) return { event: 'cast', filter: { player: 'you', targetsSource: true, object: { subtypes: ['Aura'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell during your main phase, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'cast', filter: { player: 'you', custom: 'duringMainPhase', object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever an opponent casts (?:or copies )?(?:a|an) (.+?) spell, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'cast', filter: { player: 'opponent', object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever one or more of your opponents are attacked, (.+)$/i))) return { event: 'attacks', filter: { otherPlayer: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you draw your first card during each of your draw steps, (.+)$/i))) return { event: 'drawCard', filter: { player: 'you', firstEachTurn: true, custom: 'duringDrawStep' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When you gain control of ~ from another player, (.+)$/i))) return { event: 'controlChanged', filter: { self: true, player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When the (\w+) ([\w' -]+?) counter is put on ~, (.+)$/i))) {
+    const ORD: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, eleventh: 11, twelfth: 12 };
+    const n = ORD[m[1].toLowerCase()];
+    if (n !== undefined) return { event: 'counterAdded', filter: { self: true, counterType: m[2].toLowerCase() }, stateCondition: undefined, hasObject: true, hasPlayer: false, rest: `if ~ has ${n} or more ${m[2].toLowerCase()} counters on it, ${m[3]}` };
+  }
+  if ((m = L.match(/^When the last ([\w' -]+?) counter is removed from ~, (.+)$/i))) return { event: 'counterRemoved', filter: { self: true, counterType: m[1].toLowerCase() }, hasObject: true, hasPlayer: false, rest: `if ~ has no ${m[1].toLowerCase()} counters on it, ${m[2]}` };
+  if ((m = L.match(/^Whenever (?:a|an) creature has (\w+) or more ([\w' -]+?) counters on it, (.+)$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { event: 'stateTrigger', stateCondition: { kind: 'count', filter: { types: ['Creature'], zone: 'battlefield', counters: { [m[2].toLowerCase()]: n } } as never, op: '>=', value: 1 }, hasObject: true, hasPlayer: false, rest: m[3] };
+  }
+  if ((m = L.match(/^Whenever fortified land is tapped for mana, (.+)$/i))) return { event: 'tappedForMana', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   // ---- Round 182 ----
   if ((m = L.match(/^Whenever one or more opponents lose life, (.+)$/i))) return { event: 'lifeLost', filter: { player: 'opponent' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever (?:a|an) creature you own but do not control attacks, (.+)$/i))) return { event: 'attacks', filter: { object: { types: ['Creature'], owner: 'you', controller: 'opponent' } }, hasObject: true, hasPlayer: true, rest: m[1] };

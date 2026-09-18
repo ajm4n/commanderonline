@@ -4442,9 +4442,25 @@ const PATTERNS: Pattern[] = [
     ];
   }],
   // ---- Round 173 ----
-  [/^at (?:this turn's next end of combat|the beginning of the next end of combat), (.+)$/i, (m, ctx) => {
+  [/^at (?:this turn's next end of combat|the beginning of the next end of combat|the end of combat this turn), (.+)$/i, (m, ctx) => {
     const inner = parseSentence(m[1], ctx);
     return inner ? [{ kind: 'delayedTrigger', event: 'endOfCombat', text: m[0], effects: inner, once: true }] : null;
+  }],
+  [/^at the beginning of (?:your |the )?next (upkeep|first main phase|main phase|precombat main phase|postcombat main phase|combat phase|combat|end step|draw step)(?: this turn)?, (.+)$/i, (m, ctx) => {
+    const EV = {
+      upkeep: 'beginningOfUpkeep',
+      'first main phase': 'beginningOfPrecombatMain',
+      'main phase': 'beginningOfPrecombatMain',
+      'precombat main phase': 'beginningOfPrecombatMain',
+      'postcombat main phase': 'beginningOfPostcombatMain',
+      'combat phase': 'beginningOfCombat',
+      combat: 'beginningOfCombat',
+      'end step': 'beginningOfEndStep',
+      'draw step': 'beginningOfDraw',
+    } as const;
+    const ev = EV[m[1].toLowerCase() as keyof typeof EV];
+    const inner = parseSentence(m[2], ctx);
+    return ev && inner ? [{ kind: 'delayedTrigger', event: ev, text: m[0], effects: inner, once: true }] : null;
   }],
   // ---- Round 171 ----
   // "Target player reveals their hand and discards all cards of that color / with that name."
