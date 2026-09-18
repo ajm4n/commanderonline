@@ -65,6 +65,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'oddManaValue' && ch.manaValue % 2 !== 1) return false;
   if (filter.custom === 'evenManaValue' && ch.manaValue % 2 !== 0) return false;
   if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
+  if (filter.custom === 'powerEqualsToughness' && !(ch.power !== null && ch.toughness !== null && ch.power === ch.toughness)) return false;
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
   // "other creatures you control attacking that player": the same player the source is attacking.
   if (filter.custom === 'attackingSameDefender') {

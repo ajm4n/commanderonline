@@ -185,6 +185,48 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 179 ----
+  if ((m = L.match(/^Whenever ~ becomes blocked by (?:a|an) nonartifact(?: creature)?, (.+)$/i))) return { event: 'becomesBlocked', filter: { self: true, source: { notTypes: ['Artifact'] } }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ or another permanent is turned face up, (.+)$/i))) return { event: 'turnedFaceUp', filter: {}, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) creature you control with power equal to its toughness (enters|attacks), (.+)$/i))) return { event: m[1].toLowerCase() === 'enters' ? 'entersBattlefield' : 'attacks', filter: { object: { types: ['Creature'], custom: 'powerEqualsToughness' }, objectController: 'you' }, hasObject: true, hasPlayer: m[1].toLowerCase() !== 'enters', rest: m[2] };
+  if ((m = L.match(/^Whenever (?:a|an) permanent is returned to (?:a|an) player's hand, (.+)$/i))) return { event: 'returnedToHand', filter: {}, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever an opponent puts one or more counters on a creature they control, (.+)$/i))) return { event: 'counterAdded', filter: { player: 'opponent', objectController: 'opponent', object: { types: ['Creature'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever one or more cards are put into exile from your graveyard, (.+)$/i))) return { event: 'exiled', filter: { player: 'you', fromZone: 'graveyard' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever one or more opponents are dealt noncombat damage, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'opponent', toPlayer: true, combat: false }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast your (\w+) (.+?) spell each turn, (.+)$/i))) {
+    const ORD: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
+    const n = ORD[m[1].toLowerCase()];
+    const noun = parseNoun(`a ${m[2]} spell`);
+    if (n !== undefined && noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'cast', filter: { player: 'you', nthThisTurn: n, object: f }, hasObject: true, hasPlayer: true, rest: m[3] }; }
+  }
+  if ((m = L.match(/^Whenever you cycle another card for the first time each turn, (.+)$/i))) return { event: 'cycled', filter: { player: 'you', firstEachTurn: true, object: { other: true } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When (?:enchanted|equipped) permanent dies or is put into exile, (.+)$/i))) return { event: 'dies', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'exiled', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^Whenever ~ becomes untapped during your untap step, (.+)$/i))) return { event: 'untapped', filter: { self: true, yourTurn: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ or another (.+?) you control deals combat damage to a player, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      delete f.controller;
+      return { event: 'dealtCombatDamageToPlayer', filter: { object: { anyOf: [{ self: true }, f] }, objectController: 'you' }, hasObject: true, hasPlayer: true, rest: m[2] };
+    }
+  }
+  if ((m = L.match(/^Whenever (?:a|an) creature you control mutates, (.+)$/i))) return { event: 'mutates', filter: { object: { types: ['Creature'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) player casts (?:a|an) (.+?) card, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; return { event: 'cast', filter: { object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever (?:a|an) player casts a card, (.+)$/i))) return { event: 'cast', filter: {}, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever an opponent casts a spell from anywhere other than their hand, (.+)$/i))) return { event: 'cast', filter: { player: 'opponent', notFromZone: 'hand' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever combat damage is dealt to you or a planeswalker you control, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, combat: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:enchanted|equipped) creature deals combat damage to defending player, (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever your opponents are dealt combat damage, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'opponent', toPlayer: true, combat: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever ~ blocks one or more (white|blue|black|red|green) creatures, (.+)$/i))) {
+    const c = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1].toLowerCase() as 'white'];
+    return { event: 'blocks', filter: { self: true, source: { colors: [c] } }, hasObject: true, hasPlayer: false, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever (?:a|an) creature you control of the chosen type (enters|attacks), (.+)$/i))) return { event: m[1].toLowerCase() === 'enters' ? 'entersBattlefield' : 'attacks', filter: { object: { types: ['Creature'], chosenSubtypeKey: 'creatureType' }, objectController: 'you' }, hasObject: true, hasPlayer: m[1].toLowerCase() !== 'enters', rest: m[2] };
+  if ((m = L.match(/^Whenever (?:a|an) spell or ability causes (?:a|its) (?:player|controller) to shuffle their library, (.+)$/i))) return { event: 'shuffle', filter: {}, hasObject: false, hasPlayer: true, rest: m[1] };
   // ---- Round 178 ----
   if ((m = L.match(/^Whenever (?:enchanted|equipped) creature deals damage to you, (.+)$/i))) return { event: 'dealsDamage', filter: { sourceAttachedTo: true, toPlayer: true, player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever (?:enchanted|equipped) creature deals damage to a blocking creature, (.+)$/i))) return { event: 'dealsDamage', filter: { sourceAttachedTo: true, object: { blocking: true } }, hasObject: true, hasPlayer: false, rest: m[1] };
