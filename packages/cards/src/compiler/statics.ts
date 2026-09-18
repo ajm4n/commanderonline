@@ -933,6 +933,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "You have no maximum hand size for as long as you control ~."
+  if ((m = L.match(/^(Equipped|Enchanted) creature gets ([+-]\d+)\/([+-]\d+) and is all creature types$/i))) {
+    return [
+      { kind: 'static', text: line, affects: 'attachedTo', modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } },
+      { kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 6, addKeywords: ['Changeling'] } },
+    ];
+  }
   if (/^You control enchanted [\w ]+$/i.test(L)) {
     return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 'control', controller: 'sourceController' } }];
   }

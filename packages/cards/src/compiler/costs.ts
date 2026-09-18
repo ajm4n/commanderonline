@@ -437,7 +437,7 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
     if ((m = t.match(/^(.*?)\s*Activate only as a sorcery\.?$/i))) {
       out.sorcerySpeed = true;
       t = m[1];
-    } else if ((m = t.match(/^(.*?)\s*Any player may activate this ability(?: but only during (?:any|an) upkeep step)?\.?$/i))) {
+    } else if ((m = t.match(/^(.*?)\s*Any player may activate this ability(?: but only during (?:any|an) upkeep step| but only during their (?:draw step|turn|upkeep))?\.?$/i))) {
       out.anyPlayer = true;
       if (/upkeep/i.test(m[0])) addCond({ kind: 'turnStep', steps: ['upkeep'] });
       t = m[1];

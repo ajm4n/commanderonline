@@ -4235,6 +4235,13 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 189 ----
+  [/^(.+?) can block any number of creatures(?: this turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    // Each extraBlock rule allows one more blocked attacker; twenty covers any real board.
+    return Array.from({ length: 20 }, () => ({ kind: 'applyRule' as const, rule: { kind: 'custom' as const, tag: 'extraBlock' }, on: ref, duration: 'endOfTurn' as const }));
+  }],
   // ---- Round 187 ----
   [/^your maximum hand size is reduced by (\w+)(?: for the rest of the game)?$/i, (m) => {
     const n = wordToNumber(m[1]);
@@ -5521,7 +5528,7 @@ const PATTERNS: Pattern[] = [
   ]],
   // ---- Round 112 ----
   // "Each player who controls a multicolored creature draws a card."
-  [/^each (player|opponent) who ((?:does not|doesn't) control .+?|controls .+?|discarded a card this way|drew a card this way|drew a card this turn|lost life this turn|gained life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.*)$/i, (m, ctx) => {
+  [/^each (player|opponent) who ((?:does not|doesn't) control .+?|controls .+?|discarded a card this way|drew a card this way|sacrificed a creature this way|sacrificed a permanent this way|drew a card this turn|lost life this turn|gained life this turn) ((?:draws|loses|gains|discards|sacrifices|mills|investigates|creates|exiles|puts|returns|taps|untaps|may)\b.*)$/i, (m, ctx) => {
     const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
     let cond: Condition | null = null;
     const cm = m[2].match(/^controls (.+)$/i);
@@ -5825,6 +5832,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^you may look at (?:each )?face-down creatures?[\w' -]*(?: any time)?\.?$/i.test(text.trim())) return true;
   if (/^x cannot be (?:greater|less) than .+\.?$/i.test(text.trim())) return true;
   if (/^you may choose (?:a )?new targets? for (?:the|that) cop(?:y|ies)\.?$/i.test(text.trim())) return true;
+  if (/^th(?:is|at) ability does not affect its colou?r identity\.?$/i.test(text.trim())) return true;
   if (/^creatures? dealt damage this way cannot be regenerated this turn\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
