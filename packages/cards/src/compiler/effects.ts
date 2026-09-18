@@ -4226,6 +4226,17 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 174 ----
+  [/^(.+?) cannot block or be blocked by (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const by = parseNoun(m[2]);
+    if (!ref || !by || !by.confident) return null;
+    const f = { ...by.filter, zone: undefined };
+    return [
+      { kind: 'applyRule', rule: { kind: 'cantBlockFilter', filter: f }, on: ref, duration: 'permanent' },
+      { kind: 'applyRule', rule: { kind: 'cantBeBlockedBy', filter: f }, on: ref, duration: 'permanent' },
+    ];
+  }],
   // ---- Round 173 ----
   [/^at (?:this turn's next end of combat|the beginning of the next end of combat), (.+)$/i, (m, ctx) => {
     const inner = parseSentence(m[1], ctx);
@@ -5586,6 +5597,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^the "legend rule" does not apply\.?$/i.test(text.trim())) return true;
   if (/^target (?:permanent|creature|player|opponent|spell)\.?$/i.test(text.trim())) return true;
   if (/^counters remain on ~ as it moves to any zone other than a player's hand or library\.?$/i.test(text.trim())) return true;
+  if (/^you may look at (?:each )?face-down creatures?[\w' -]*(?: any time)?\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
   if (/^you may reveal (?:a|an) .+? (?:you own )?from outside the game and put it into your hand$/i.test(text.trim())) return true;

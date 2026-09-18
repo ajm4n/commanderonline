@@ -71,7 +71,8 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     const first = faceName.split(' ')[0];
     if (first.length >= 4 && /^[A-Z][a-zà-ÿÀ-Ÿ]/u.test(first) && !/'s$/.test(first) && !/^(The|Sword|Shield|Tower|Temple|Throne|Hall|Book|Staff|Crown|Ring|Blade|Gate|Cradle|Academy|Palace|Hammer|Heart|Scroll|Mask)$/.test(first)) {
       const esc = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      t = t.replace(new RegExp(`\\b${esc}'s\\b`, 'g'), "~'s").replace(new RegExp(`\\b${esc}\\b(?! [A-Z])`, 'g'), '~');
+      const notAType = '(?! (?:creatures?|spells?|cards?|permanents?|tokens?|lands?)\\b)';
+      t = t.replace(new RegExp(`\\b${esc}'s\\b${notAType}`, 'g'), "~'s").replace(new RegExp(`\\b${esc}\\b(?! [A-Z])${notAType}`, 'g'), '~');
     }
   }
   t = t.replace(/\b[Tt]his (creature|permanent|artifact|enchantment|land|spell|card|planeswalker|Aura|Equipment|Vehicle|token|battle|Class|Spacecraft|Case|Siege|Room|Saga|Contraption)\b/g, '~');
