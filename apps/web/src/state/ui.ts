@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import type { Decision, ObjectId, ObjectView, PlayerId, Target } from '@commander/engine';
 import { sameTarget } from '../lib/format.js';
+import type { HoverRect } from '../components/Card.js';
 
 export type MenuState = { kind: 'object'; id: ObjectId; x: number; y: number } | { kind: 'player'; id: PlayerId; x: number; y: number } | null;
 export type BrowseState = { player: PlayerId; zone: 'graveyard' | 'exile' | 'command' | 'hand' } | null;
@@ -26,6 +27,8 @@ interface UiState {
   blocks: { blocker: ObjectId; attacker: ObjectId }[];
   objects: ObjectId[];
   hover: ObjectView | null;
+  /** Where the hovered card sits on screen, so the large view can grow out of it. */
+  hoverRect: HoverRect | null;
   menu: MenuState;
   browse: BrowseState;
   dialog: DialogState;
@@ -40,7 +43,7 @@ interface UiState {
   addBlock(blocker: ObjectId, attacker: ObjectId): void;
   removeBlock(blocker: ObjectId): void;
   toggleObject(id: ObjectId, max: number): void;
-  setHover(o: ObjectView | null): void;
+  setHover(o: ObjectView | null, rect?: HoverRect): void;
   setMenu(m: MenuState): void;
   setBrowse(b: BrowseState): void;
   setDialog(d: DialogState): void;
@@ -53,6 +56,7 @@ export const useUi = create<UiState>((set, get) => ({
   decisionId: null,
   ...emptySelection,
   hover: null,
+  hoverRect: null,
   menu: null,
   browse: null,
   dialog: null,
@@ -127,8 +131,8 @@ export const useUi = create<UiState>((set, get) => ({
     else if (cur.length >= max) set({ objects: max === 1 ? [id] : cur });
     else set({ objects: [...cur, id] });
   },
-  setHover(o) {
-    set({ hover: o });
+  setHover(o, rect) {
+    set({ hover: o, hoverRect: o ? rect ?? null : null });
   },
   setMenu(m) {
     set({ menu: m });

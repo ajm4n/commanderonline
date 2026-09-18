@@ -2,6 +2,14 @@ import { memo, useState, type MouseEvent, type ReactNode } from 'react';
 import type { ObjectView } from '@commander/engine';
 import { cachedCard } from '../lib/scryfall.js';
 
+/** Viewport rect of the hovered card, so the large view can expand out of it. */
+export interface HoverRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 export interface CardFlags {
   playable?: boolean;
   activatable?: boolean;
@@ -17,7 +25,7 @@ export interface CardProps extends CardFlags {
   tappedCount?: number;
   onClick?: (obj: ObjectView, e: MouseEvent) => void;
   onContextMenu?: (obj: ObjectView, e: MouseEvent) => void;
-  onHover?: (obj: ObjectView | null) => void;
+  onHover?: (obj: ObjectView | null, rect?: HoverRect) => void;
   children?: ReactNode;
   className?: string;
   /** Do not rotate when tapped (zone browsers). */
@@ -89,7 +97,10 @@ export const Card = memo(function Card(props: CardProps) {
         e.preventDefault();
         onContextMenu?.(obj, e);
       }}
-      onMouseEnter={() => onHover?.(obj)}
+      onMouseEnter={(e) => {
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        onHover?.(obj, { left: r.left, top: r.top, width: r.width, height: r.height });
+      }}
       onMouseLeave={() => onHover?.(null)}
     >
       {!obj.hidden && img && !imgFailed ? <img src={img} alt={obj.name} loading="lazy" draggable={false} onError={() => setImgFailed(true)} /> : !obj.hidden ? <CardText obj={obj} /> : null}

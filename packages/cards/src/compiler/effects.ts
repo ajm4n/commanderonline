@@ -816,7 +816,11 @@ const PATTERNS: Pattern[] = [
   [/^look at the top (?:card|(\w+|X) cards) of (.+?)'s library(?:, then put them back in any order| in any order)?$/i, (m, ctx) => {
     const who = playerRef(m[2], ctx);
     const n = m[1] ? wordToNumber(m[1]) : 1;
-    return who && n !== null ? [{ kind: 'lookAtTop', amount: n, who, then: 'reorder' }] : null;
+    if (!who || n === null) return null;
+    // The imperative form is the ability's controller looking, whoever owns the library.
+    if (/in any order/i.test(m[0])) return [{ kind: 'lookAtTop', amount: n, who, looker: YOU, then: 'reorder' }];
+    ctx.lastObj = { ref: 'memory', key: 'looked' };
+    return [{ kind: 'lookAtTop', amount: n, who, looker: YOU, then: 'hold', key: 'looked' }];
   }],
   [/^(?:until end of turn, )?(.+?) gains? (.+?) and gets? ([+-]\d+|[+-]X)\/([+-]\d+|[+-]X)(?: until end of turn)?$/i, (m, ctx) => {
     const kws = parseKeywordList(m[2]);

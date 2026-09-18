@@ -1378,15 +1378,17 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const n = Math.min(amt(e.amount), pl.library.length);
         const top = pl.library.slice(0, n);
         if (!top.length) return;
-        g.log(`${pl.name} ${e.reveal ? 'reveals' : 'looks at'} the top ${n} card${n === 1 ? '' : 's'}${e.reveal ? `: ${top.map((id) => g.nameOf(id)).join(', ')}` : ''}.`);
+        const asker = e.looker ? playersOf(g, e.looker, ctx)[0] ?? p : p;
+        const whose = asker === p ? 'your' : `${pl.name}'s`;
+        g.log(`${g.player(asker).name} ${e.reveal ? 'reveals' : 'looks at'} the top ${n} card${n === 1 ? '' : 's'} of ${whose} library${e.reveal ? `: ${top.map((id) => g.nameOf(id)).join(', ')}` : ''}.`);
         if (e.then === 'hold') {
-          if (!e.reveal) yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Top ${n} card${n === 1 ? '' : 's'} of your library`, candidates: top, min: 0, max: 0, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
+          if (!e.reveal) yield* g.ask({ type: 'chooseObjects', player: asker, prompt: `Top ${n} card${n === 1 ? '' : 's'} of ${whose} library`, candidates: top, min: 0, max: 0, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
           ctx.memory[e.key ?? 'looked'] = top;
           ctx.memory['lastMoved'] = top;
           return;
         }
         if (e.then === 'reorder') {
-          const resp = yield* g.ask({ type: 'orderObjects', player: p, prompt: 'Put them back in any order (first = top)', objectIds: top, context: 'libraryTop' });
+          const resp = yield* g.ask({ type: 'orderObjects', player: asker, prompt: 'Put them back in any order (first = top)', objectIds: top, context: 'libraryTop' });
           if (resp.type === 'order') pl.library.splice(0, n, ...resp.ids);
           g.touch();
           return;

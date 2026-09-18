@@ -1,12 +1,12 @@
 import type { MouseEvent } from 'react';
 import type { GameView, ObjectView, ObjectId } from '@commander/engine';
-import { Card, type CardFlags } from './Card.js';
+import { Card, type CardFlags, type HoverRect } from './Card.js';
 import type { Highlights } from '../state/ui.js';
 
 export interface CardHandlers {
   onClick: (obj: ObjectView, e: MouseEvent) => void;
   onContextMenu: (obj: ObjectView, e: MouseEvent) => void;
-  onHover: (obj: ObjectView | null) => void;
+  onHover: (obj: ObjectView | null, rect?: HoverRect) => void;
 }
 
 export function flagsFor(id: ObjectId, h: Highlights, decisionActive: boolean): CardFlags {
@@ -72,6 +72,13 @@ export function Battlefield({ view, controller, highlights, decisionActive, hand
     );
   };
 
+  // Spells on the stack keep a presence on their controller's battlefield, so a card
+  // being cast is visible both here and in the stack panel.
+  const casting = view.stack
+    .filter((s) => s.kind === 'spell')
+    .map((s) => view.objects[s.sourceId])
+    .filter((o): o is ObjectView => !!o && o.zone === 'stack' && o.controller === controller);
+
   const commandIds = view.players.find((p) => p.id === controller)?.command ?? [];
   const commandCards = commandIds.map((id) => view.objects[id]).filter((o): o is ObjectView => !!o);
   return (
@@ -80,6 +87,16 @@ export function Battlefield({ view, controller, highlights, decisionActive, hand
         <div className="bf-row command" title="Command zone">
           <span className="bf-label">Command zone</span>
           {commandCards.map((o) => (
+            <div key={o.id} className="card-wrap">
+              <Card obj={o} noRotate {...flagsFor(o.id, highlights, decisionActive)} onClick={handlers.onClick} onContextMenu={handlers.onContextMenu} onHover={handlers.onHover} showCoverage />
+            </div>
+          ))}
+        </div>
+      )}
+      {casting.length > 0 && (
+        <div className="bf-row casting" title="On the stack">
+          <span className="bf-label">On the stack</span>
+          {casting.map((o) => (
             <div key={o.id} className="card-wrap">
               <Card obj={o} noRotate {...flagsFor(o.id, highlights, decisionActive)} onClick={handlers.onClick} onContextMenu={handlers.onContextMenu} onHover={handlers.onHover} showCoverage />
             </div>

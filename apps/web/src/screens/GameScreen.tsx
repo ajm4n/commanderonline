@@ -13,6 +13,7 @@ import { ObjectMenu, PlayerMenu } from '../components/Menus.js';
 import { Dialogs } from '../components/Dialogs.js';
 import { ZoneBrowser } from '../components/ZoneBrowser.js';
 import { CardPreview } from '../components/CardPreview.js';
+import { CastAnnounce } from '../components/CastAnnounce.js';
 import { playerName } from '../lib/format.js';
 
 const FACE_CHOICE_LAYOUTS = new Set(['modal_dfc', 'adventure', 'split']);
@@ -142,7 +143,7 @@ export function GameScreen() {
     () => ({
       onClick: onCardClick,
       onContextMenu: (obj, e) => ui.setMenu({ kind: 'object', id: obj.id, x: e.clientX, y: e.clientY }),
-      onHover: (obj) => ui.setHover(obj),
+      onHover: (obj, rect) => ui.setHover(obj, rect),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [decision, ui.slot, ui.targets, ui.attacks, ui.blocker, ui.blocks, ui.objects, ui.defender, view],
@@ -302,11 +303,12 @@ export function GameScreen() {
           )}
         </div>
         <StackPanel view={view} highlights={highlights} selected={ui.selectedStackItem} onSelect={onStackSelect} />
-        <LogPanel view={view} chat={chat} onChat={sendChat} />
+        <LogPanel view={view} chat={chat} onChat={sendChat} onHoverCard={handlers.onHover} />
       </aside>
 
       <DecisionModal view={view} decision={decision} respond={respond} handlers={handlers} />
-      <CardPreview obj={ui.hover} />
+      <CastAnnounce view={view} />
+      <CardPreview obj={ui.hover} rect={ui.hoverRect} />
       {ui.menu?.kind === 'object' && menuObj && <ObjectMenu view={view} obj={menuObj} at={ui.menu} decision={decision} onClose={() => ui.setMenu(null)} manual={manual} onCast={(o) => cast(o)} onPlayLand={playLand} onActivate={activate} />}
       {ui.menu?.kind === 'player' && <PlayerMenu view={view} playerId={ui.menu.id} at={ui.menu} onClose={() => ui.setMenu(null)} manual={manual} />}
       {ui.browse && <ZoneBrowser view={view} player={ui.browse.player} zone={ui.browse.zone} highlights={highlights} decisionActive={decisionActive} handlers={handlers} onClose={() => ui.setBrowse(null)} />}

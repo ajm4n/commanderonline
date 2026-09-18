@@ -340,7 +340,7 @@ export type Effect =
   | { kind: 'goad'; what: Ref }
   | { kind: 'regenerate'; what: Ref }
   | { kind: 'preventDamage'; amount: Amount | 'all'; to: Ref; duration?: Duration }
-  | { kind: 'lookAtTop'; amount: Amount; who?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'topRestGraveyard' | 'graveyardRestTop' | 'handRestTop' | 'hold'; filter?: ObjectFilter; pick?: Amount; /** `hold`: leave the cards in the library and remember them under this memory key (default "looked") for follow-up effects. */ key?: string; /** Reveal the looked-at cards to all players. */ reveal?: boolean }
+  | { kind: 'lookAtTop'; amount: Amount; who?: Ref; /** Who actually sees the cards; defaults to the library's owner. "Look at the top card of target player's library" is the controller looking. */ looker?: Ref; then: 'handRestBottom' | 'handRestGraveyard' | 'battlefieldRestBottom' | 'reorder' | 'topRestGraveyard' | 'graveyardRestTop' | 'handRestTop' | 'hold'; filter?: ObjectFilter; pick?: Amount; /** `hold`: leave the cards in the library and remember them under this memory key (default "looked") for follow-up effects. */ key?: string; /** Reveal the looked-at cards to all players. */ reveal?: boolean }
   /** Move the remembered cards (see lookAtTop `hold`) that are still in their library to a destination ("put the rest on the bottom of your library"). */
   | { kind: 'moveRest'; key: string; to: 'bottom' | 'bottomRandom' | 'graveyard' | 'exile' | 'top' | 'hand' }
   | { kind: 'revealTop'; who?: Ref; ifMatches?: ObjectFilter; then?: Effect[]; else?: Effect[]; destination?: 'hand' | 'graveyard' | 'bottom' | 'stay' }
