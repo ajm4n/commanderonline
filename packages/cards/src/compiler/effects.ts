@@ -4226,6 +4226,11 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 173 ----
+  [/^at (?:this turn's next end of combat|the beginning of the next end of combat), (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], ctx);
+    return inner ? [{ kind: 'delayedTrigger', event: 'endOfCombat', text: m[0], effects: inner, once: true }] : null;
+  }],
   // ---- Round 171 ----
   // "Target player reveals their hand and discards all cards of that color / with that name."
   [/^(.+?) reveals their hand and discards all (.+?)$/i, (m, ctx) => {

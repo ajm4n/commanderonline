@@ -185,6 +185,34 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 173 ----
+  if ((m = L.match(/^Whenever (another )?(.+?) dies or (?:a|an) (?:.+?) card is put into your graveyard from anywhere other than the battlefield, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      if (m[1]) f.other = true;
+      return { event: 'dies', filter: { object: f }, hasObject: true, hasPlayer: false, rest: m[3], also: [{ event: 'putIntoGraveyard', filter: { object: f, player: 'you', notFromZone: 'battlefield' }, hasObject: true, hasPlayer: true }] };
+    }
+  }
+  if ((m = L.match(/^Whenever ~ or (?:a|an) (.+?) you control enters, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      delete f.controller;
+      return { event: 'entersBattlefield', filter: { object: { anyOf: [{ self: true }, f] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[2] };
+    }
+  }
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) you control enters or is turned face up, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      delete f.controller;
+      return { event: 'entersBattlefield', filter: { object: f, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[2], also: [{ event: 'turnedFaceUp', filter: { object: f, objectController: 'you' }, hasObject: true, hasPlayer: false }] };
+    }
+  }
   // ---- Round 172 ----
   if ((m = L.match(/^Whenever a commander you control enters or attacks, (.+)$/i))) return { event: 'entersBattlefield', filter: { object: { isCommander: true }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'attacks', filter: { object: { isCommander: true }, objectController: 'you' }, hasObject: true, hasPlayer: true }] };
   if ((m = L.match(/^Whenever a creature attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { object: { types: ['Creature'] } }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { object: { types: ['Creature'] } }, hasObject: true, hasPlayer: false }] };
