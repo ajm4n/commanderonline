@@ -15,6 +15,10 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
       const other: Amount = { kind: 'manaValue', ref: { ref: 'chosen', key: mc[1] === 'discarded' ? 'lastDiscarded' : mc[1] === 'revealed' ? 'lastRevealed' : mc[1] === 'exiled' ? 'lastMoved' : 'chosen' } };
       return { kind: 'amount', a: { kind: 'manaValue', ref: ctx.lastObj ?? { ref: 'stackTarget' } }, op: '==', b: other };
     }
+    if ((mc = tc.match(/^(?:a|any) library has (\w+) or (?:fewer|less) cards in it$/))) {
+      const n = wordToNumber(mc[1]);
+      if (n !== null) return { kind: 'amount', a: { kind: 'librarySize', ref: { ref: 'eachPlayer' } }, op: '<=', b: n };
+    }
     if ((mc = tc.match(/^there are (\w+) or more cards in a single graveyard$/))) {
       const n = wordToNumber(mc[1]);
       if (n !== null) return { kind: 'graveyard', ref: { ref: 'eachPlayer' }, op: '>=', value: n };

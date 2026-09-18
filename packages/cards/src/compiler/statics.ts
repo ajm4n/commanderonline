@@ -360,7 +360,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If ~ would (?:die|be put into a graveyard from anywhere), (?:instead )?put it on (?:the )?(top|bottom) of its owner's library(?: instead)?$/i))) {
     return [{ kind: 'replacement', text: line, event: 'dies', self: true, instead: m[1].toLowerCase() === 'top' ? 'libraryTop' : 'libraryBottom' }];
   }
+  // "~ is all colors."
+  if (/^~ is all colors$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColors: ['W', 'U', 'B', 'R', 'G'] } }];
   // "As ~ enters, choose a noncreature, nonland card name."
+
   if (/^As ~ enters, choose (?:a|an) (?:noncreature, nonland |nonland |noncreature |creature )?card name$/i.test(L)) {
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'cardName', chooseKey: 'cardName' }];
   }

@@ -5598,6 +5598,8 @@ export function isNoOpSentence(text: string): boolean {
   if (/^target (?:permanent|creature|player|opponent|spell)\.?$/i.test(text.trim())) return true;
   if (/^counters remain on ~ as it moves to any zone other than a player's hand or library\.?$/i.test(text.trim())) return true;
   if (/^you may look at (?:each )?face-down creatures?[\w' -]*(?: any time)?\.?$/i.test(text.trim())) return true;
+  if (/^x cannot be (?:greater|less) than .+\.?$/i.test(text.trim())) return true;
+  if (/^creatures? dealt damage this way cannot be regenerated this turn\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
   if (/^you may reveal (?:a|an) .+? (?:you own )?from outside the game and put it into your hand$/i.test(text.trim())) return true;

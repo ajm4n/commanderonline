@@ -344,6 +344,8 @@ export interface ObjectFilter {
   colorless?: boolean;
   /** Must be ALL of `colors`, not just any of them ("a spell that is both red and white"). */
   allColors?: boolean;
+  /** Not every colour ("each creature that is not all colors"). */
+  notAllColors?: boolean;
   monocolored?: boolean;
   /** Exactly this many colours ("a spell that is exactly three colors"). */
   colorCount?: number;

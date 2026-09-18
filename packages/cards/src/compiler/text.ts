@@ -41,10 +41,15 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     const first = faceName.split(' ')[0];
     if (first.length >= 3 && /^[A-Z]/.test(first)) names.push(first);
   }
+  // "Target Assembly-Worker creature": a name that is also one of the card's own subtypes
+  // is being used as a type there, not as a self-reference.
+  const ownSubtypes = new Set((card.typeLine ?? '').split(/\u2014/)[1]?.split(/\s+/).filter(Boolean) ?? []);
+  const notAType = '(?! (?:creatures?|spells?|cards?|permanents?|tokens?|lands?)\\b)';
   for (const n of names) {
     const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    t = t.replace(new RegExp(esc + "'s", 'g'), "~'s");
-    t = t.replace(new RegExp(esc, 'g'), '~');
+    const tail = ownSubtypes.has(n) ? notAType : '';
+    t = t.replace(new RegExp(`${esc}'s${tail}`, 'g'), "~'s");
+    t = t.replace(new RegExp(`${esc}${tail}`, 'g'), '~');
   }
   // Legendary/planeswalker cards sometimes use a nickname built from their own name words
   // ("Captain James T. Kirk" → "Captain Kirk"): replace variants keeping the first and last word.
