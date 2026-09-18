@@ -185,6 +185,31 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 182 ----
+  if ((m = L.match(/^Whenever one or more opponents lose life, (.+)$/i))) return { event: 'lifeLost', filter: { player: 'opponent' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) creature you own but do not control attacks, (.+)$/i))) return { event: 'attacks', filter: { object: { types: ['Creature'], owner: 'you', controller: 'opponent' } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever another creature you control or (?:a|an) land you control dies, (.+)$/i))) return { event: 'dies', filter: { object: { anyOf: [{ types: ['Creature'], other: true }, { types: ['Land'] }] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell or (?:a|an) (.+?) spell, (.+)$/i))) {
+    const a = parseNoun(`a ${m[1]} spell`);
+    const b = parseNoun(`a ${m[2]} spell`);
+    if (a && a.confident && b && b.confident) {
+      const fa = { ...a.filter };
+      const fb = { ...b.filter };
+      delete fa.zone;
+      delete fb.zone;
+      return { event: 'cast', filter: { player: 'you', object: { anyOf: [fa, fb] } }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+  }
+  if ((m = L.match(/^Whenever an opponent attacks one or more planeswalkers you control, (.+)$/i))) return { event: 'attacks', filter: { player: 'opponent', attacksYou: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^At the end of combat on your turn, (.+)$/i))) return { event: 'endOfCombat', filter: { player: 'you', yourTurn: true }, hasObject: false, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever fortified land becomes tapped, (.+)$/i))) return { event: 'tapped', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) creature with (?:a|an) ([\w' -]+?) counter on it dies or is put into exile, (.+)$/i))) {
+    const f = { types: ['Creature'], counters: { [m[1].toLowerCase()]: 1 } } as unknown as ObjectFilter;
+    return { event: 'dies', filter: { object: f }, hasObject: true, hasPlayer: false, rest: m[2], also: [{ event: 'exiled', filter: { object: f }, hasObject: true, hasPlayer: false }] };
+  }
+  if ((m = L.match(/^Whenever an opponent gains control of (?:a|an) permanent from you, (.+)$/i))) return { event: 'controlChanged', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever one or more cards are put into exile during your turn, (.+)$/i))) return { event: 'exiled', filter: { yourTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) creature you control dies or is put into the command zone, (.+)$/i))) return { event: 'dies', filter: { object: { types: ['Creature'] }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'leavesBattlefield', filter: { object: { types: ['Creature'] }, objectController: 'you', toZone: 'command' }, hasObject: true, hasPlayer: false }] };
   // ---- Round 181 ----
   if ((m = L.match(/^Whenever ~ deals combat damage to a player for the first time each turn, (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { self: true, firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ is dealt damage for the first time each turn, (.+)$/i))) return { event: 'dealtDamage', filter: { self: true, firstEachTurn: true }, hasObject: true, hasPlayer: false, rest: m[1] };
@@ -336,7 +361,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
       return { event: 'dies', filter: { object: f }, hasObject: true, hasPlayer: false, rest: m[3], also: [{ event: 'putIntoGraveyard', filter: { object: f, player: 'you', notFromZone: 'battlefield' }, hasObject: true, hasPlayer: true }] };
     }
   }
-  if ((m = L.match(/^Whenever ~ or (?:a|an) (.+?) you control enters, (.+)$/i))) {
+  if ((m = L.match(/^Whenever ~ or (?:a|an|another) (.+?) you control enters, (.+)$/i))) {
     const noun = parseNoun(`a ${m[1]}`);
     if (noun && noun.confident) {
       const f = { ...noun.filter };

@@ -87,7 +87,9 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     if (first.length >= 3 && /^[A-ZÀ-Þ][a-zà-ÿÀ-Ÿ]/u.test(first) && !/'s$/.test(first) && !/^(The|Sword|Shield|Tower|Temple|Throne|Hall|Book|Staff|Crown|Ring|Blade|Gate|Cradle|Academy|Palace|Hammer|Heart|Scroll|Mask)$/.test(first)) {
       const esc = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const notAType = '(?! (?:creatures?|spells?|cards?|permanents?|tokens?|lands?)\\b)';
-      t = t.replace(new RegExp(`\\b${esc}'s\\b${notAType}`, 'g'), "~'s").replace(new RegExp(`\\b${esc}\\b(?! [A-Z])${notAType}`, 'g'), '~');
+      const pre = "(?<![\\p{L}\\p{N}'])";
+      const post = '(?![\\p{L}\\p{N}])';
+      t = t.replace(new RegExp(`${pre}${esc}'s${post}${notAType}`, 'gu'), "~'s").replace(new RegExp(`${pre}${esc}${post}(?! [A-Z])${notAType}`, 'gu'), '~');
     }
   }
   t = t.replace(/\b[Tt]his (creature|permanent|artifact|enchantment|land|spell|card|planeswalker|Aura|Equipment|Vehicle|token|battle|Class|Spacecraft|Case|Siege|Room|Saga|Contraption)\b/g, '~');
