@@ -11,6 +11,9 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
       const n = wordToNumber(mc[1]);
       if (n !== null) return { kind: 'count', filter: { types: ['Creature'], zone: 'battlefield', attackedThisTurn: true }, op: '>=', value: n };
     }
+    if ((mc = tc.match(/^(?:that|defending|the defending) player has (more|less) life than you$/))) {
+      return { kind: 'life', ref: { ref: 'defendingPlayer' }, op: mc[1] === 'more' ? '>' : '<', value: { kind: 'life', ref: { ref: 'controller' } } };
+    }
     if ((mc = tc.match(/^there are (\w+)(?: or more)? colors among permanents you control$/))) {
       const n = wordToNumber(mc[1]);
       if (n !== null) return { kind: 'amount', a: { kind: 'colorCount', filter: { zone: 'battlefield', controller: 'you' } }, op: '>=', b: n };

@@ -6155,10 +6155,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   // "It gets +2/+2 until end of turn and can block an additional creature this turn."
   if ((m = text.match(/^(.+?) and (can block an additional creature this turn|cannot be blocked this turn)$/i))) {
     const saved = ctx.targets.length;
+    const savedObj = ctx.lastObj;
     const subj = m[1].match(/^(.+?) (?:gets?|gains?|has|have)\b/i);
     const left = parseSentence(m[1], ctx);
-    const right = subj ? parseSentence(`${subj[1]} ${m[2]}`, ctx) : null;
+    // Both clauses describe the same object: reuse the target the left clause chose
+    // rather than naming the subject again, which would add a second target slot.
+    if (left && ctx.targets.length > saved) ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    const right = !left ? null : ctx.lastObj ? parseSentence(`it ${m[2]}`, ctx) : subj ? parseSentence(`${subj[1]} ${m[2]}`, ctx) : null;
     if (left && right) return [...left, ...right];
+    ctx.lastObj = savedObj;
     ctx.targets.length = saved;
   }
   // "It is a 1/1 Spirit creature with flying in addition to its other types" → treat as "becomes".
@@ -6241,8 +6246,17 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       const p = parts[pi];
       let r = parseSentence(p, ctx);
       if (!r && pi > 0 && verb && !/^(you|each player|each opponent|target player|target opponent|that player|those players|it|they|~|its|their)\b/i.test(p)) r = parseSentence(`${verb} ${p}`, ctx);
-      // "target creature gains haste and gets +X/+0": the second clause shares the first clause's subject.
-      if (!r && pi > 0 && /^(gets?|gains?|loses?|has|have|cannot|can|becomes?|is|deals?|must|fights?|doesn't|does not)\b/i.test(p) && ctx.lastObj) r = parseSentence(`it ${p}`, ctx);
+      // "target creature gains haste and gets +X/+0": the second clause shares the first clause's
+      // subject. Reuse the target the first clause chose rather than adding a second target slot.
+      if (!r && pi > 0 && /^(gets?|gains?|loses?|has|have|cannot|can|becomes?|is|deals?|must|fights?|doesn't|does not)\b/i.test(p)) {
+        const subject = ctx.lastObj ?? (ctx.targets.length > saved ? ({ ref: 'target', slot: ctx.targets.length - 1 } as Ref) : null);
+        if (subject) {
+          const prev = ctx.lastObj;
+          ctx.lastObj = subject;
+          r = parseSentence(`it ${p}`, ctx);
+          if (!r) ctx.lastObj = prev;
+        }
+      }
       if (!r) {
         ok = false;
         break;

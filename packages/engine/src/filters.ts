@@ -65,6 +65,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'evenManaValue' && ch.manaValue % 2 !== 0) return false;
   if (filter.custom === 'unblocked' && (obj.attacking === null || obj.wasBlocked || obj.blockedBy.length > 0)) return false;
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
+  // "other creatures you control attacking that player": the same player the source is attacking.
+  if (filter.custom === 'attackingSameDefender') {
+    const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+    if (!src || src.attacking === null || obj.attacking === null || obj.attacking !== src.attacking) return false;
+  }
   if (filter.custom === 'createdBySource' && (ctx.sourceId === null || obj.memory.createdBy !== ctx.sourceId)) return false;
   if (filter.castFromZone && obj.castFromZone !== filter.castFromZone) return false;
   if (filter.notChosenKey) {

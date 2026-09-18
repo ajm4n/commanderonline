@@ -140,6 +140,8 @@ export class Game {
    * per permanent instead of only for the ones that left before it.
    */
   private leavingTogether: Map<ObjectId, GameObject> | null = null;
+  /** Whether the last target choice was declined rather than impossible (for the log). */
+  private lastTargetChoiceCancelled = false;
   /** Run `fn` treating every battlefield departure inside it as simultaneous. */
   simultaneousZoneChange<T>(fn: () => T): T {
     if (this.leavingTogether) return fn();
@@ -1221,7 +1223,7 @@ export class Game {
     if (t.ability.targets?.length) {
       const chosen = yield* this.chooseTargets(t.controller, t.sourceId, t.ability.targets, t.context, `${this.nameOf(t.sourceId)}: ${t.ability.text}`);
       if (chosen === null) {
-        this.log(`${this.nameOf(t.sourceId)}'s trigger has no legal targets and is removed.`);
+        this.log(this.lastTargetChoiceCancelled ? `${this.nameOf(t.sourceId)}'s controller chose no target, so the trigger is removed.` : `${this.nameOf(t.sourceId)}'s trigger has no legal targets and is removed.`);
         return;
       }
       targets = chosen;
@@ -1245,6 +1247,7 @@ export class Game {
 
   /** Ask a player to choose targets for a list of specs. Returns null if a required slot has no legal targets. */
   *chooseTargets(player: PlayerId, sourceId: ObjectId | null, specs: TargetSpec[], ctx: Record<string, unknown>, prompt: string, x?: number): Gen<Target[] | null> {
+    this.lastTargetChoiceCancelled = false;
     const slots = specs.map((spec) => {
       const legal = legalTargets(this, spec, sourceId, player, x);
       const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
@@ -1260,12 +1263,18 @@ export class Game {
       if (slots.some((s) => s.min === 0 && s.legal.length > 0 && s.max >= 1)) {
         // Optional target with candidates: still ask.
         const resp = yield* this.ask({ type: 'chooseTargets', player, prompt, sourceId: sourceId ?? undefined, slots });
-        if (resp.type === 'cancel') return null;
+        if (resp.type === 'cancel') {
+          this.lastTargetChoiceCancelled = true;
+          return null;
+        }
         targets = (resp as { targets: Target[][] }).targets;
       }
     } else {
       const resp = yield* this.ask({ type: 'chooseTargets', player, prompt, sourceId: sourceId ?? undefined, slots });
-      if (resp.type === 'cancel') return null;
+      if (resp.type === 'cancel') {
+          this.lastTargetChoiceCancelled = true;
+          return null;
+        }
       targets = (resp as { targets: Target[][] }).targets;
     }
     // Flatten preserving slot order; pad empty slots with 'none'.

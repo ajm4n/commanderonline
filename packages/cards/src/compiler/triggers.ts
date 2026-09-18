@@ -250,6 +250,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     if (tf) return { event: 'attacks', filter: tf, hasObject: true, hasPlayer: true, rest: `if you control exactly one attacking creature, ${m[2]}` };
   }
   if ((m = L.match(/^Whenever you attack with (\w+) or more creatures, (.+)$/i))) return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking creatures, ${m[2]}` };
+  if ((m = L.match(/^Whenever ~ attacks a player who has (more|less) life than you, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if that player has ${m[1]} life than you, ${m[2]}` };
   if ((m = L.match(/^Whenever ~ attacks while you control (.+?), (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]}, ${m[2]}` };
   if ((m = L.match(/^When(?:ever)? ~ enters or is turned face up, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
   if ((m = L.match(/^Whenever (?:enchanted|equipped) creature attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { attachedToSource: true }, hasObject: true, hasPlayer: false }] };
