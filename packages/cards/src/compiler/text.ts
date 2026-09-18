@@ -108,7 +108,7 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     .map((l) => l.replace(ABILITY_WORDS, (m) => (/^Choose/i.test(m) ? m : '')).trim())
     .map(stripAbilityWord)
     // Flavor words ("Nitro-9 — Whenever ~ attacks", "Power-up — {5}: ...") are decorative: strip anything dash-prefixed that isn't a real keyword or Saga chapter.
-    .map((l) => l.replace(/^([A-Z][\w' !,.-]{1,40}?) — (?=[A-Z{~•+−-])/, (m0, w: string) => (DASH_KEYWORDS.test(w) || /^(I|II|III|IV|V|VI)(, (I|II|III|IV|V|VI))*$/.test(w) || /^Choose/i.test(w) ? m0 : '')))
+    .map((l) => l.replace(/^([A-Z][\w' !,.-]{1,40}?) — (?=[A-Z{~•+−-])/, (m0, w: string) => (DASH_KEYWORDS.test(w) || /^(I|II|III|IV|V|VI)(, (I|II|III|IV|V|VI))*$/.test(w) || /^Choose/i.test(w) || /^To solve$/i.test(w) ? m0 : '')))
     .filter(Boolean);
 }
 

@@ -331,8 +331,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       }
     }
     // Cases: "To solve — <condition>." marks the Case solved once the condition holds.
-    if ((m = line.match(/^To solve — (.+?)\\.?$/i))) {
-      const cond = parseCondition(m[1].replace(/\\.$/, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if ((m = line.match(/^To solve — (.+?)\.?$/i))) {
+      const cond = parseCondition(m[1].replace(/\.$/, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
       if (cond && cond.kind !== 'manual') {
         abilities.push({ kind: 'triggered', text: line, event: 'stateTrigger', condition: cond, effects: [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'solved' }, on: { ref: 'self' }, duration: 'permanent' }] });
         compiledLines.push(line);

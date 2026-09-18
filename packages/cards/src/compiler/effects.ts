@@ -1572,7 +1572,7 @@ const PATTERNS: Pattern[] = [
     const n = wordToNumber(m[1]);
     return n === null ? null : [{ kind: 'surveil', amount: n }];
   }],
-  [/^(?:(.+?) )?mills? (\w+|X|that many|half that many) cards?$/i, (m, ctx) => {
+  [/^(?:(.+?) )?mills? ((?:twice |three times |four times )?(?:\w+|X)|that many|half that many) cards?$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
     const n = wordToNumber(m[2]) ?? amt(m[2], ctx);
     return who && n !== null ? [{ kind: 'mill', amount: n, who }] : null;
@@ -4221,6 +4221,17 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 160 ----
+  [/^put (\w+) ([+-]\d+\/[+-]\d+|\w+) counters? on up to (\w+) (creature|artifact|land|permanent|planeswalker|enchantment)s?$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const max = wordToNumber(m[3]);
+    if (n === null || typeof max !== 'number') return null;
+    const type = m[4].charAt(0).toUpperCase() + m[4].slice(1).toLowerCase();
+    ctx.targets.push({ description: `up to ${m[3]} target ${m[4]}s`, kind: 'object', filter: { zone: 'battlefield', types: [type] }, min: 0, max });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'addCounters', counter: m[2], amount: n, on: ref }];
+  }],
   // ---- Round 159 ----
   [/^support x$/i, (m, ctx) => {
     ctx.targets.push({ description: 'up to X other target creatures', kind: 'object', filter: { zone: 'battlefield', types: ['Creature'], other: true }, min: 0, countX: { upTo: true } });
@@ -5026,7 +5037,7 @@ const PATTERNS: Pattern[] = [
   }],
   // "An opponent chooses one of them." / "An opponent chooses a creature card from among them."
   [/^(an opponent|target opponent|each opponent|that player|target player) chooses (?:a|an|one|(\w+)) (?:of (?:them|those cards|the piles)|(.+?) from among them)$/i, (m, ctx) => {
-    const who = playerRef(m[1] === 'an opponent' ? 'target opponent' : m[1], ctx);
+    const who = playerRef(m[1].toLowerCase() === 'an opponent' ? 'target opponent' : m[1], ctx);
     if (!who) return null;
     const n = m[2] ? wordToNumber(m[2]) : 1;
     if (typeof n !== 'number') return null;
@@ -5463,6 +5474,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^roll the planar die\.?$/i.test(text.trim())) return true;
   if (/^(?:target |that )?(?:creature |noncreature |instant |sorcery )?spells?(?: you cast this turn)? cannot be countered\.?$/i.test(text.trim())) return true;
   if (/^the "legend rule" does not apply\.?$/i.test(text.trim())) return true;
+  if (/^target (?:permanent|creature|player|opponent|spell)\.?$/i.test(text.trim())) return true;
   if (/^(?:then )?(?:that|each) player shuffles(?: their library)?\.?$/i.test(text.trim())) return true;
   if (/^the same is true for .+$/i.test(text.trim())) return true;
   if (/^you may reveal (?:a|an) .+? (?:you own )?from outside the game and put it into your hand$/i.test(text.trim())) return true;

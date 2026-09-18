@@ -4,6 +4,18 @@ import { parseAmount, type RefCtx } from './amounts.js';
 import { wordToNumber } from './text.js';
 
 export function parseCondition(text: string, ctx: RefCtx): Condition | null {
+  {
+    const tc = text.trim().toLowerCase().replace(/\.$/, '');
+    let mc: RegExpMatchArray | null;
+    if ((mc = tc.match(/^(\w+) or more creatures? attacked this turn$/))) {
+      const n = wordToNumber(mc[1]);
+      if (n !== null) return { kind: 'count', filter: { types: ['Creature'], zone: 'battlefield', attackedThisTurn: true }, op: '>=', value: n };
+    }
+    if ((mc = tc.match(/^there are (\w+)(?: or more)? colors among permanents you control$/))) {
+      const n = wordToNumber(mc[1]);
+      if (n !== null) return { kind: 'amount', a: { kind: 'colorCount', filter: { zone: 'battlefield', controller: 'you' } }, op: '>=', b: n };
+    }
+  }
 
   {
     const t1 = text.trim().toLowerCase().replace(/\.$/, '');
