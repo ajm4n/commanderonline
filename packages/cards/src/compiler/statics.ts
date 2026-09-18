@@ -339,7 +339,24 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const opts = all.filter((t) => !excluded.includes(t.toLowerCase()));
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'option', chooseOptions: opts, chooseKey: 'cardType' }];
   }
+  // "Players can't play lands as long as ten or more lands are on the battlefield."
+  if ((m = L.match(/^Players cannot play lands as long as (.+)$/i))) {
+    const cond = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond && cond.kind !== 'manual') return [{ kind: 'static', text: line, rule: { kind: 'custom', tag: 'cantPlayLands' }, ruleAffects: 'allPlayers', condition: cond }];
+  }
+  // "If you would draw a card, you may skip that draw instead."
+  if (/^If you would draw a card, you may skip that draw instead$/i.test(L)) {
+    return [{ kind: 'replacement', text: line, event: 'drawCard', who: 'you', skip: true }];
+  }
+  // "Enchanted creature gets +2/+2 and can't become suspected."
+  if ((m = L.match(/^(Enchanted|Equipped) creature gets ([+-]\d+)\/([+-]\d+) and cannot become suspected$/i))) {
+    return [
+      { kind: 'static', text: line, affects: 'attachedTo', modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } },
+      { kind: 'static', text: line, affects: 'attachedTo', rule: { kind: 'custom', tag: 'cantBecomeSuspected' } },
+    ];
+  }
   // "If ~ would die, put it on top/bottom of its owner's library instead."
+
   if ((m = L.match(/^If ~ would (?:die|be put into a graveyard from anywhere), (?:instead )?put it on (?:the )?(top|bottom) of its owner's library(?: instead)?$/i))) {
     return [{ kind: 'replacement', text: line, event: 'dies', self: true, instead: m[1].toLowerCase() === 'top' ? 'libraryTop' : 'libraryBottom' }];
   }

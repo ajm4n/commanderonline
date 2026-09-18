@@ -4225,6 +4225,14 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 167 ----
+  [/^(exile them|return ~ to its owner's hand|sacrifice ~|exile ~) at the beginning of the next cleanup step$/i, (m, ctx) => {
+    const verb = m[1].toLowerCase();
+    const what = verb === 'exile them' ? ctx.lastObj : SELF;
+    if (!what) return null;
+    const inner: Effect = verb.startsWith('return') ? { kind: 'returnToHand', what } : verb.startsWith('sacrifice') ? { kind: 'sacrifice', what } : { kind: 'exile', what };
+    return [{ kind: 'delayedTrigger', event: 'cleanup', text: m[0], effects: [inner], once: true }];
+  }],
   // ---- Round 166b ----
   // Chain spells: "Then that player may sacrifice a land. If the player does, they may copy ~ …"
   [/^(?:(?:if (?:the|that) player does, )?(?:they|that player)|you) may copy ~(?: and may choose (?:a )?new targets? for that copy)?$/i, (m, ctx) => {

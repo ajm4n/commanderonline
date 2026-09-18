@@ -233,6 +233,10 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.modified && !(Object.values(obj.counters).some((n) => n > 0) || g.state.battlefield.some((id) => { const a = g.state.objects[id]; return !!a && a.attachedTo === obj.id && a.controller === obj.controller && ['Equipment', 'Aura'].some((t) => g.characteristics(a.id).subtypes.includes(t)); }))) return false;
   if (filter.customRule && !ch.rules.some((r) => r.kind === 'custom' && r.tag === filter.customRule)) return false;
   if (filter.faceDown !== undefined && obj.faceDown !== filter.faceDown) return false;
+  if (filter.topOfGraveyard) {
+    const gy = g.state.players[obj.owner]?.graveyard ?? [];
+    if (gy[gy.length - 1] !== obj.id) return false;
+  }
   if (filter.counterAtLeast && (obj.counters[filter.counterAtLeast.counter] ?? 0) < filter.counterAtLeast.n) return false;
   if (filter.withoutCounter && (obj.counters[filter.withoutCounter] ?? 0) > 0) return false;
   if (filter.sameNameAs) {

@@ -420,6 +420,8 @@ export interface ObjectFilter {
   pairedWithSource?: boolean;
   /** Face-down permanents (morph, manifest). */
   faceDown?: boolean;
+  /** The most recently added card in its owner's graveyard ("the top card of your graveyard"). */
+  topOfGraveyard?: boolean;
   /** At least n counters of a kind ("a creature with three or more level counters on it"). */
   counterAtLeast?: { counter: string; n: number };
   /** No counters of this kind ("a creature that doesn't have a +1/+1 counter on it"). */

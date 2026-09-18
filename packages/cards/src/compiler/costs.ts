@@ -250,6 +250,12 @@ export function parseCost(text: string): AbilityCost | null {
       cost.exileFromGraveyard = { filter: noun.filter, count: n };
       matched = true;
     }
+    if (!matched) kp37b: if ((m = p.match(/^Exile the top (?:(.+?) )?cards? of your graveyard$/i))) {
+      const noun = m[1] ? parseNoun(`a ${m[1]} card`) : { filter: {} };
+      if (!noun) break kp37b;
+      cost.exileFromGraveyard = { filter: { ...noun.filter, topOfGraveyard: true }, count: 1 };
+      matched = true;
+    }
     if (!matched) kp38: if ((m = p.match(/^Exile (?:a|an|(\w+)) cards? from your graveyard$/i))) {
       const n = m[1] ? wordToNumber(m[1]) : 1;
       if (n === null || n === 'X') break kp38;

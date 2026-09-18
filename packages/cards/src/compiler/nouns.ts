@@ -454,6 +454,7 @@ function parseAdjectives(wordsIn: string[], r: ParsedNoun): boolean {
       /* "artifact and/or enchantment" handled loosely */
     } else if (l === 'snow') r.filter.supertypes = ['Snow'];
     else if (l === 'face-down') r.filter.faceDown = true;
+    else if (l === 'face-up') r.filter.faceDown = false;
     else if (l === 'nonsnow') r.filter.custom = 'nonsnow';
     else if (l === 'suspected') r.filter.customRule = 'suspected';
     else if (l === 'unblocked') r.filter.custom = 'unblocked';
