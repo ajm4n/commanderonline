@@ -158,7 +158,7 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(?:enchanted|equipped) \w+'s controller$/.test(l)) return { ref: 'controllerOf', of: { ref: 'attachedTo' } };
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
-  if (l === 'the active player') return { ref: 'activePlayer' };
+  if (l === 'the active player' || l === 'the attacking player') return { ref: l === 'the active player' ? 'activePlayer' : 'triggerPlayer' };
   if (l === 'the player to your left' || l === 'the player to your right') return { ref: 'neighbor', side: l.endsWith('left') ? 'left' : 'right' };
   if (l === "enchanted player" || l === "that player's controller") return { ref: 'attachedTo' };
   if (l === 'the chosen player' || l === 'the chosen opponent') return { ref: 'chosen', key: 'opponent' };
@@ -1251,6 +1251,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'applyRule', rule: /less/i.test(m[3]) ? { kind: 'cantBeBlockedByPowerLE', power: n } : { kind: 'cantBeBlockedByPowerGE', power: n }, on: ref, duration: 'endOfTurn' }];
   }],
   // "Double / Switch the power and toughness of target creature until end of turn"
+  [/^(?:switch its power and toughness)(?: until end of turn)?$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'switchPT', on: ctx.lastObj, duration: 'endOfTurn' }] : null)],
   [/^(double|switch) the power and toughness of (.+?)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
     if (!ref) return null;
@@ -6416,6 +6417,12 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^[A-Z][^\u2014]{0,40}\u2014 (.+)$/))) {
     const inner = parseSentence(m[1], ctx);
     if (inner) return inner;
+  }
+  if (/ this combat$/i.test(text)) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(text.replace(/ this combat$/i, ' this turn'), ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
   }
   // Some patterns spell the end-of-turn duration " this turn"; try that wording last.
   if (/ until end of turn$/i.test(text)) {

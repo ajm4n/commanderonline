@@ -185,6 +185,30 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 172 ----
+  if ((m = L.match(/^Whenever a commander you control enters or attacks, (.+)$/i))) return { event: 'entersBattlefield', filter: { object: { isCommander: true }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'attacks', filter: { object: { isCommander: true }, objectController: 'you' }, hasObject: true, hasPlayer: true }] };
+  if ((m = L.match(/^Whenever a creature attacks or blocks, (.+)$/i))) return { event: 'attacks', filter: { object: { types: ['Creature'] } }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'blocks', filter: { object: { types: ['Creature'] } }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^Whenever a player mills (?:a|an) (.+?) card, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (noun) { const f = { ...noun.filter }; delete f.zone; return { event: 'mill', filter: { object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^Whenever a player sacrifices another creature, (.+)$/i))) return { event: 'sacrifice', filter: { object: { types: ['Creature'], other: true } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever a source you control deals (\d+) or more damage to a player, (.+)$/i))) return { event: 'dealsDamage', filter: { toPlayer: true, minAmount: parseInt(m[1], 10), source: { controller: 'you' } }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[2] };
+  if ((m = L.match(/^Whenever an opponent is dealt damage, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'opponent', toPlayer: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever combat damage is dealt to you, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, combat: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you become the target of (?:a spell|a spell or ability|an ability), (.+)$/i))) return { event: 'becomesTarget', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you cast another spell that has (\w+), (.+)$/i))) return { event: 'cast', filter: { player: 'you', object: { keywords: [m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()], other: true } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  if ((m = L.match(/^Whenever you create or sacrifice a token, (.+)$/i))) return { event: 'tokenCreated', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'sacrifice', filter: { object: { isToken: true }, objectController: 'you' }, hasObject: true, hasPlayer: true }] };
+  if ((m = L.match(/^Whenever the first (noncreature|creature|instant|sorcery|artifact) spell of a turn is cast, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]} spell`);
+    if (noun) { const f = { ...noun.filter }; delete f.zone; return { event: 'cast', filter: { player: 'any', nthThisTurnAllPlayers: 1, object: f }, hasObject: true, hasPlayer: true, rest: m[2] }; }
+  }
+  if ((m = L.match(/^When ~ leaves the battlefield or becomes untapped, (.+)$/i))) return { event: 'leavesBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1], also: [{ event: 'untapped', filter: { self: true }, hasObject: true, hasPlayer: false }] };
+  if ((m = L.match(/^When ~ is put into your hand from your graveyard, (.+)$/i))) return { event: 'returnedToHand', filter: { self: true, fromZone: 'graveyard' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When ~ has (\w+) or (?:fewer|less) (\w+) counters? on it, (.+)$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { event: 'stateTrigger', stateCondition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: m[2].toLowerCase(), op: '<=', value: n }, filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[3] };
+  }
   // ---- Round 171 ----
   if ((m = L.match(/^When(?:ever)? the Ring tempts you, (.+)$/i))) return { event: 'ringTempted', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^When(?:ever)? you proliferate, (.+)$/i))) return { event: 'proliferated', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };

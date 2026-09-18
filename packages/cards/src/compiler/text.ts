@@ -92,6 +92,7 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   t = t.replace(/\b(to|on) (?:her|him)\b(?! (?:power|toughness|controller|owner|hand|library|graveyard))/g, '$1 ~');
   // Universes Beyond cards use gendered pronouns for the card itself.
   t = t.replace(/\b(?:He|She)'s\b/g, 'It is').replace(/\b(?:he|she)'s\b/g, 'it is');
+  t = t.replace(/\b(?:him|her) (deals?|dealt|attacks?|attacked|blocks?|blocked|enters?|entered|dies|died)\b/g, '~ $1');
   t = t.replace(/\b(?:he|she) (was|is|has|isn't|is not|was not|wasn't|would|dealt|deals|attacked|blocked|entered|died|left)\b/g, 'it $1').replace(/\b(?:He|She) (was|is|has|is not|was not|would|dealt|attacked|blocked|entered|died|left)\b/g, 'It $1');
   t = t.replace(/\b(?:his|her) (power|toughness|name|owner|owner's|controller|controller's|mana value|mana cost|other types|base|colors?|abilities|activated abilities|triggered abilities|types|loyalty)\b/g, 'its $1').replace(/\b(?:His|Her) (power|toughness|name|owner|controller|mana value|base|colors?|abilities|types|loyalty)\b/g, 'Its $1');
   t = t.replace(/\b(?:himself|herself)\b/g, 'itself');
