@@ -185,6 +185,30 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 192 ----
+  // "Whenever you activate a ninjutsu ability, ..." / "Whenever you activate a boast ability, ..."
+  if ((m = L.match(/^Whenever you activate (?:a|an) (ninjutsu|boast|exhaust|equip|crew|channel|cycling|level up|outlast|reconfigure|unearth|monstrosity|adapt|forecast) ability, (.+)$/i)))
+    return { event: 'abilityActivated', filter: { player: 'you', abilityTextPrefix: m[1].replace(/^\w/, (c) => c.toUpperCase()) }, hasObject: true, hasPlayer: true, rest: m[2] };
+  // "Whenever the chosen player casts a spell, ..."
+  if ((m = L.match(/^Whenever the chosen player casts (?:a|an) (?:(.+?) )?spell, (.+)$/i))) {
+    const noun = m[1] ? parseNoun(`a ${m[1]} spell`) : null;
+    if (!m[1] || noun) return { event: 'cast', filter: { custom: 'chosenPlayersStep', ...(noun ? { object: { ...noun.filter, zone: undefined } } : {}) }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever you cast a spell that targets one or more permanents, ..."
+  if ((m = L.match(/^Whenever you cast (?:a|an) (?:(.+?) )?spell that targets one or more (.+?), (.+)$/i))) {
+    const sp = m[1] ? parseNoun(`a ${m[1]} spell`) : null;
+    const tn = parseNoun(`a ${singularize(m[2])}`);
+    if (tn && (!m[1] || sp)) return { event: 'cast', filter: { player: 'you', targetsAny: { ...tn.filter, zone: tn.filter.zone ?? 'battlefield' }, ...(sp ? { object: { ...sp.filter, zone: undefined } } : {}) }, hasObject: true, hasPlayer: true, rest: m[3] };
+  }
+  // "Whenever ~ blocks two or more creatures, ..."
+  if ((m = L.match(/^Whenever ~ blocks two or more creatures, (.+)$/i)))
+    return { event: 'blocks', filter: { self: true, custom: 'blocksTwoOrMore' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  // "Whenever you attack the player who has the initiative, ..."
+  if ((m = L.match(/^Whenever you attack the player who has the initiative, (.+)$/i)))
+    return { event: 'attacks', filter: { player: 'you', firstEachTurn: true, custom: 'attacksInitiativeHolder' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  // "When the token leaves the battlefield, ..."
+  if ((m = L.match(/^When the token leaves the battlefield, (.+)$/i)))
+    return { event: 'leavesBattlefield', filter: { object: { isToken: true, custom: 'createdBySource' } }, leaves: true, hasObject: true, hasPlayer: false, rest: m[1] };
   // ---- Round 188 ----
   if ((m = L.match(/^Whenever you cast an Aura spell that targets ~, (.+)$/i))) return { event: 'cast', filter: { player: 'you', targetsSource: true, object: { subtypes: ['Aura'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell during your main phase, (.+)$/i))) {

@@ -1140,6 +1140,10 @@ export class Game {
       const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
       if (!item || !item.targets.some((t) => t.kind === 'object' && this.state.objects[t.id] && this.state.objects[t.id].controller === controller && matchesFilter(this, this.state.objects[t.id], { ...f.targetsControlled, zone: undefined }, { sourceId: obj.id, controller }))) return false;
     }
+    if (f.targetsAny) {
+      const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
+      if (!item || !item.targets.some((t) => t.kind === 'object' && this.state.objects[t.id] && matchesFilter(this, this.state.objects[t.id], f.targetsAny!, { sourceId: obj.id, controller }))) return false;
+    }
     if (f.custom === 'exhaust' && !(e.data as { exhaust?: boolean } | undefined)?.exhaust) return false;
     if (f.custom === 'wonFlip' && !(e.data as { won?: boolean } | undefined)?.won) return false;
     if (f.custom === 'wonClash' && !(e.data as { won?: boolean } | undefined)?.won) return false;
@@ -1154,6 +1158,16 @@ export class Game {
     if (f.custom?.startsWith('door:') && (e.data as { door?: number } | undefined)?.door !== Number(f.custom.slice(5))) return false;
     if (f.custom === 'lostFlip' && (e.data as { won?: boolean } | undefined)?.won) return false;
     if (f.custom === 'nonManaAbility' && (e.data as { mana?: boolean } | undefined)?.mana) return false;
+    if (f.abilityTextPrefix !== undefined) {
+      const at = (e.data as { abilityText?: string } | undefined)?.abilityText;
+      if (typeof at !== 'string' || !new RegExp(`^${f.abilityTextPrefix}`, 'i').test(at)) return false;
+    }
+    if (f.custom === 'blocksTwoOrMore' && (this.state.objects[e.objectId ?? -1]?.blocking.length ?? 0) < 2) return false;
+    if (f.custom === 'attacksInitiativeHolder') {
+      const atk = e.objectId !== undefined ? this.state.objects[e.objectId] : undefined;
+      const def = atk?.attacking ?? null;
+      if (typeof def !== 'string' || this.state.initiative !== def) return false;
+    }
     if (f.custom === 'chosenPlayersStep') {
       const src = this.state.objects[obj.id] ?? obj;
       const chosen = src.memory['opponent'] ?? src.memory['player'] ?? src.memory['chosenPlayer'];

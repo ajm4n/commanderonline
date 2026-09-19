@@ -416,6 +416,9 @@ export interface ObjectFilter {
   blockingSource?: boolean;
   /** The object is blocked by the ability's source ("target creature ~ is blocking"). */
   blockedBySource?: boolean;
+  /** Printed power, ignoring counters and pump ("with base power 1"). */
+  basePowerEQ?: number;
+  basePowerLE?: number;
   /** Blocking the source, or blocked by it ("creatures blocking or blocked by ~"). */
   blockingOrBlockedBySource?: boolean;
   /** The creature the filter's source is paired with (soulbond). */

@@ -159,6 +159,12 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   const x = ctx.x ?? 0;
   const num = (v: number | 'X') => (v === 'X' ? x : v);
   if (filter.powerLE !== undefined && !(ch.power !== null && ch.power <= num(filter.powerLE))) return false;
+  if (filter.basePowerEQ !== undefined || filter.basePowerLE !== undefined) {
+    const bp = obj.card.power !== undefined && obj.card.power !== null ? parseInt(obj.card.power, 10) : NaN;
+    if (Number.isNaN(bp)) return false;
+    if (filter.basePowerEQ !== undefined && bp !== filter.basePowerEQ) return false;
+    if (filter.basePowerLE !== undefined && bp > filter.basePowerLE) return false;
+  }
   if (filter.powerEQ !== undefined && ch.power !== num(filter.powerEQ)) return false;
   if (filter.toughnessEQ !== undefined && ch.toughness !== num(filter.toughnessEQ)) return false;
   if (filter.powerGE !== undefined && !(ch.power !== null && ch.power >= num(filter.powerGE))) return false;

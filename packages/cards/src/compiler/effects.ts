@@ -90,6 +90,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(that|those) tokens?$/.test(l) || l === 'the tokens' || l === 'the token') return { ref: 'lastCreated' };
   if (/^(that|the) spell$/.test(l)) return ctx.lastObj ?? { ref: 'stackTarget' };
   if (/^the chosen (?:creatures|permanents|lands|artifacts|players)$/.test(l) && ctx.lastObj) return ctx.lastObj;
+  if (/^any of those cards you (?:didn't|did not) play$/.test(l)) return ctx.lastObj ?? { ref: 'lastMoved' };
   if (l === 'the chosen creature' || l === 'the chosen permanent') return { ref: 'chosen', key: 'chosen' };
   const gy = t.match(/^~ from your graveyard$/i);
   if (gy) return SELF;
@@ -4239,6 +4240,26 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 192 ----
+  // "Put any of those cards you didn't play into your graveyard"
+  [/^put (.+?) into (?:your|their|his or her) graveyards?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] : null;
+  }],
+  // "It has flying and is an Angel in addition to its other types"
+  [/^(it|they|those creatures) (has|have) (.+?) and (is|are) ((?:a|an) [A-Z][\w-]+(?: creature)? in addition to (?:its|their) other types)$/i, (m, ctx) => {
+    const a = parseSentence(`${m[1]} ${m[2]} ${m[3]}`, ctx);
+    const b = parseSentence(`${m[1]} ${m[4]} ${m[5]}`, ctx);
+    return a && b ? [...a, ...b] : null;
+  }],
+  // "When you lose control of the creature, tap it" (a delayed trigger left behind by a gain-control spell)
+  [/^when you lose control of (?:the|that) (creature|permanent|artifact|land), (.+)$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    if (!ref) return null;
+    const inner = parseSentence(m[2], ctx);
+    if (!inner) return null;
+    return [{ kind: 'delayedTrigger', event: 'controlChanged', text: m[0], filter: { objectRef: ref }, effects: inner, once: true }];
   }],
   // ---- Round 191 ----
   // "Target player sacrifices an artifact and a land of their choice."
