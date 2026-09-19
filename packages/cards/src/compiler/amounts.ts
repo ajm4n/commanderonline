@@ -294,6 +294,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const noun = parseNoun(`a ${singularize(m[1])}`);
     if (noun) return { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: noun.filter };
   }
+  if (/^(?:the number of )?creatures? it devoured$/.test(t)) return { kind: 'memory', key: 'devoured' };
   if ((m = t.match(/^(x|\d+) plus (\d+)$/))) {
     const base: Amount | null = m[1].toLowerCase() === 'x' ? 'X' : parseInt(m[1], 10);
     if (base !== null) return { kind: 'sum', parts: [base, parseInt(m[2], 10)] };

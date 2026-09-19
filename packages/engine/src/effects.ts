@@ -2490,6 +2490,24 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
         }
       }
     }
+    if (ab.devour) {
+      const cands = g.state.battlefield.filter((cid) => {
+        const c2 = g.state.objects[cid];
+        return !!c2 && c2.controller === controller && cid !== id && g.characteristics(cid).types.includes('Creature');
+      });
+      if (cands.length) {
+        const r = yield* g.ask({ type: 'chooseObjects', player: controller, prompt: `Devour ${ab.devour}: sacrifice any number of creatures`, candidates: cands, min: 0, max: cands.length, sourceId: id });
+        const picks = r.type === 'objects' ? r.ids : [];
+        if (picks.length) {
+          g.simultaneousZoneChange(() => {
+            for (const pid of picks) if (g.state.objects[pid]?.zone === 'battlefield') g.moveObject(pid, 'graveyard', { cause: 'sacrifice', sourceId: id });
+          });
+          counters['+1/+1'] = (counters['+1/+1'] ?? 0) + ab.devour * picks.length;
+          o.memory['devoured'] = picks.length;
+          g.log(`${o.card.name} devours ${picks.length} creature${picks.length === 1 ? '' : 's'}.`);
+        }
+      }
+    }
     if (ab.tapped && !(ab.unless && g.checkCondition(ab.unless, { sourceId: id, controller }))) tapped = true;
     if (ab.payLifeOrTapped !== undefined) {
       let paid = false;

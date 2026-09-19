@@ -593,6 +593,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       // Cycling: an activated ability from hand.
       if ((m = line.match(/^Cycling ((?:\{[^}]+\})+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: m[1], discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
       if ((m = line.match(/^Cycling (\d+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: `{${m[1]}}`, discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
+      // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
+      if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
     }
     // Landcycling variants
