@@ -331,7 +331,7 @@ export type Effect =
   | { kind: 'mill'; amount: Amount; who?: Ref }
   | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; /** The player may discard fewer ("discards any number of cards"). */ upTo?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter; /** With amount 'hand': keep these cards ("chooses a card in their hand and discards the rest"). */ except?: Ref }
   | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor' | 'triggerMana'; amount?: Amount; who?: Ref }
-  | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
+  | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean; /** "put it on top of its owner's library instead": where the countered card goes. */ to?: 'hand' | 'libraryTop' | 'libraryBottom' }
   | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; /** `hold`: leave the found cards where they are and remember them under `key` for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile' | 'hold'; key?: string; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your graveyard, hand, and/or library" */ zones?: ('library' | 'graveyard' | 'hand')[]; /** Pick at random instead of choosing ("return a card at random from your graveyard"). */ random?: boolean }
   | { kind: 'shuffle'; who?: Ref }
   | { kind: 'gainControl'; what: Ref; duration?: Duration; who?: Ref }

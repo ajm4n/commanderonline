@@ -4313,7 +4313,6 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
-  // ---- Round 259 ----
   // "You get half X rad counters, rounded up."
   [/^(?:(.+?) )?gets? (half X, rounded (?:up|down)|half X|X|\d+|[a-z]+) ([\w'-]+) counters?$/i, (m, ctx) => {
     const who = m[1] ? playerRef(m[1], ctx) : YOU;
@@ -9630,6 +9629,24 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // "If you cast a spell this way, you may spend mana as though it were mana of any color to
     // cast it." — a rider on the play-from-exile effect before it.
     if (/^(?:if you cast a spell this way, )?(?:you|they) may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to (?:cast|pay)\b/i.test(s) && setAnyMana(effects)) continue;
+    // "If that spell is countered this way, put it on top of its owner's library instead of into
+    // that player's graveyard." — a rider on the counter before it.
+    if ((m = s.match(/^if that spell (?:is countered this way|would be put into (?:a|its owner's|that player's) graveyard), put it (?:on (?:the )?(top|bottom) of (?:its owner's|that player's) library|into (?:its owner's|that player's) hand)(?: instead.*)?$/i))) {
+      const to = m[1] ? (/^top$/i.test(m[1]) ? 'libraryTop' : 'libraryBottom') : 'hand';
+      const find = (list: Effect[]): Extract<Effect, { kind: 'counterSpell' }> | null => {
+        for (let k = list.length - 1; k >= 0; k--) {
+          const e = list[k];
+          if (e.kind === 'counterSpell') return e;
+          const nested = (e as { effects?: Effect[] }).effects;
+          if (Array.isArray(nested)) { const inner = find(nested); if (inner) return inner; }
+          const thenEff = (e as { then?: Effect[] }).then;
+          if (Array.isArray(thenEff)) { const inner = find(thenEff); if (inner) return inner; }
+        }
+        return null;
+      };
+      const c = find(effects);
+      if (c) { c.to = to; continue; }
+    }
     // "The tokens enter tapped and attacking." — a rider on the create-token effect before it.
     if ((m = s.match(/^(?:the tokens?|it) enters? (tapped and attacking|tapped|attacking)$/i))) {
       const find = (list: Effect[]): Extract<Effect, { kind: 'createToken' }> | null => {

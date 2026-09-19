@@ -1136,7 +1136,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const paid = yield* offerToPay(g, item.controller, e.unlessPays, `Pay ${e.unlessPays} to prevent ${item.text} from being countered?`);
           if (paid) continue;
         }
-        counterStackItem(g, item.id, e.exileInstead ? 'exile' : 'graveyard');
+        counterStackItem(g, item.id, e.exileInstead ? 'exile' : (e.to ?? 'graveyard'));
       }
       return;
     }
@@ -2406,14 +2406,18 @@ export function destroyObject(g: Game, id: ObjectId, sourceId: ObjectId | null, 
   g.moveObject(id, 'graveyard', { cause: 'destroy', sourceId: sourceId ?? undefined });
 }
 
-export function counterStackItem(g: Game, stackId: number, toZone: 'graveyard' | 'exile' = 'graveyard') {
+export function counterStackItem(g: Game, stackId: number, toZone: 'graveyard' | 'exile' | 'hand' | 'libraryTop' | 'libraryBottom' = 'graveyard') {
   const item = g.state.stack.find((s) => s.id === stackId);
   if (!item) return;
   g.state.stack = g.state.stack.filter((s) => s.id !== stackId);
   g.log(`${item.text} is countered.`);
   if (item.kind === 'spell' && !item.copiedCard) {
     const o = g.state.objects[item.sourceId];
-    if (o && o.zone === 'stack') g.moveObject(item.sourceId, toZone, { cause: 'countered' });
+    if (o && o.zone === 'stack') {
+      if (toZone === 'hand') g.moveObject(item.sourceId, 'hand', { cause: 'countered' });
+      else if (toZone === 'libraryTop' || toZone === 'libraryBottom') g.moveObject(item.sourceId, 'library', { cause: 'countered', position: toZone === 'libraryTop' ? 'top' : 'bottom' });
+      else g.moveObject(item.sourceId, toZone, { cause: 'countered' });
+    }
   }
   g.emit({ name: 'countered', objectId: item.sourceId, playerId: item.controller });
   g.touch();
