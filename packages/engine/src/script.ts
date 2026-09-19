@@ -482,6 +482,8 @@ export type Effect =
   | { kind: 'explore'; what: Ref }
   | { kind: 'monstrosity'; amount: Amount }
   | { kind: 'plot' }
+  /** Foretell: exile this card face down; it may be cast on a later turn for `cost`. */
+  | { kind: 'foretell'; cost: string }
   /** Move every card of a player's zone somewhere else ("exile target player's graveyard"). */
   | { kind: 'moveAll'; who: Ref; from: ZoneName; to: ZoneName }
   /** Choose a player and remember them under `key` (readable as { ref: 'chosen', key }). */

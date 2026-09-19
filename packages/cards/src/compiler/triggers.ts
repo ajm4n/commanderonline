@@ -887,6 +887,8 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   // Crew, plot, clash, energy, discards, counters, targets
   if ((m = L.match(/^Whenever ~ (?:crews a Vehicle|saddles a Mount or crews a Vehicle)(?: during your main phase)?, (.+)$/i))) return { event: 'crewed', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^When(?:ever)? ~ becomes plotted, (.+)$/i))) return { event: 'plotted', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever you foretell a card, (.+)$/i))) return { event: 'foretold', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? ~ becomes foretold, (.+)$/i))) return { event: 'foretold', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you clash, (.+)$/i))) return { event: 'clashed', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you get one or more \{E\}, (.+)$/i))) return { event: 'gotEnergy', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^When(?:ever)? (?:you discard ~|a spell or ability an opponent controls causes you to discard ~), (.+)$/i))) return { event: 'discard', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };

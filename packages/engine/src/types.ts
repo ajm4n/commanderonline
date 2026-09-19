@@ -640,6 +640,7 @@ export type GameEventName =
   | 'phasedOut'
   | 'crewed'
   | 'plotted'
+  | 'foretold'
   | 'clashed'
   | 'gotEnergy'
   | 'mutates'

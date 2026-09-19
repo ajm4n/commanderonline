@@ -417,6 +417,12 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
+    // "Foretell {1}{U}": {2} now to exile it face down, that cost to cast it on a later turn.
+    if ((m = line.match(/^Foretell ((?:\{[^}]+\})+)$/i))) {
+      abilities.push({ kind: 'activated', text: line, cost: { mana: '{2}' }, effects: [{ kind: 'foretell', cost: m[1] }], zone: 'hand', sorcerySpeed: true });
+      compiledLines.push(line);
+      continue;
+    }
     if ((m = line.match(/^Warp ((?:\{[^}]+\})+)$/i))) {
       alternativeCosts.push({ id: 'warp', text: `Warp ${m[1]}`, cost: { mana: m[1] }, zone: 'hand' });
       compiledLines.push(line);

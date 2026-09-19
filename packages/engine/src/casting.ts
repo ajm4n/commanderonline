@@ -908,6 +908,7 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
     const until = obj.memory['playableUntil'];
     if (obj.memory['playableBy'] !== p) return false;
     if (typeof obj.memory['plotted'] === 'number' && obj.memory['plotted'] >= g.state.turn.number) return false; // plot: a later turn
+    if (typeof obj.memory['foretoldTurn'] === 'number' && obj.memory['foretoldTurn'] >= g.state.turn.number) return false; // foretell: a later turn
     return until === 'permanent' || until === g.state.turn.number;
   }
   return false;
@@ -945,6 +946,9 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   } else if (typeof obj.memory['playForCost'] === 'string' && obj.zone === 'exile') {
     // Airbend and similar: cast it from exile for a fixed cost instead of its mana cost.
     cost = parseManaCost(obj.memory['playForCost'] as string);
+  } else if (obj.zone === 'exile' && typeof obj.memory['foretellCost'] === 'string') {
+    // Foretold: the only cost it can be cast for is its foretell cost.
+    cost = parseManaCost(obj.memory['foretellCost'] as string);
   } else cost = parseManaCost(face.manaCost);
   if (obj.isCommander && obj.zone === 'command') cost = adjustGeneric(cost, obj.commanderCasts * 2);
   if (opts.kicker) {

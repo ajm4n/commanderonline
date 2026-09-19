@@ -2350,6 +2350,17 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.emit({ name: 'becomesMonstrous', objectId: src.id, playerId: src.controller });
       return;
     }
+    case 'foretell': {
+      const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+      if (!src) return;
+      const moved = src.zone === 'exile' ? src : g.moveObject(src.id, 'exile', { cause: 'exile', sourceId: src.id });
+      if (!moved) return;
+      moved.faceDown = true;
+      Object.assign(moved.memory, { foretold: true, foretoldTurn: g.state.turn.number, foretellCost: e.cost, playableBy: ctx.controller, playableUntil: 'permanent' });
+      g.emit({ name: 'foretold', objectId: moved.id, playerId: ctx.controller });
+      g.log(`${g.player(ctx.controller).name} foretells a card.`);
+      return;
+    }
     case 'plot': {
       const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
       if (!src) return;
