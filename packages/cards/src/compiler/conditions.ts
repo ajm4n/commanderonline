@@ -712,6 +712,24 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (typeof n301 === 'number' && noun301)
       return { kind: 'amount', a: { kind: 'countersOn', ref: { ref: 'all', filter: { ...noun301.filter, zone: 'battlefield' } }, counter: 'any' }, op: '>=', b: n301 };
   }
+  // Statements about the permanent an Aura or Equipment is attached to.
+  if ((m = t.match(/^(?:enchanted|equipped) (?:creature|artifact|permanent|land|player|opponent) (?:is|are) not (?:a|an) (creature|artifact|land|enchantment|planeswalker)$/)))
+    return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { notTypes: [m[1].charAt(0).toUpperCase() + m[1].slice(1)] } };
+  if ((m = t.match(/^(?:enchanted|equipped) (?:creature|artifact|permanent|land) (?:is|are) ((?:white|blue|black|red|green)(?: or (?:white|blue|black|red|green))*)$/))) {
+    const cols = m[1].split(/ or /).map((c) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' })[c] as 'W');
+    return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { colors: cols } };
+  }
+  if ((m = t.match(/^(?:enchanted|equipped) (?:creature|artifact|permanent) (?:has|have) ([a-z][a-z' -]+)$/))) {
+    const kw = m[1].trim().replace(/\b\w/g, (ch) => ch.toUpperCase());
+    return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { keywords: [kw] } };
+  }
+  if (/^you(?:'ve| have) surveilled this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'surveil', player: 'you' };
+  if ((m = t.match(/^there (?:is|are) (\w+) or more card types among cards exiled with ~$/))) {
+    const n302 = wordToNumber(m[1]);
+    if (typeof n302 === 'number') return { kind: 'amount', a: { kind: 'cardTypesAmong', filter: { exiledWithSource: true } }, op: '>=', b: n302 };
+  }
+  if (/^your life total is greater than or equal to your starting life total$/.test(t))
+    return { kind: 'amount', a: { kind: 'life', ref: { ref: 'controller' } }, op: '>=', b: { kind: 'startingLife' } };
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
   if (t === '~ is suspended' || t === 'it is suspended') return { kind: 'objectMatches', ref: ctx.self, filter: { suspended: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
