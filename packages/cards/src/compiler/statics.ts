@@ -87,6 +87,49 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 212 ----
+  // "Activated abilities cost {2} more to activate unless they are mana abilities."
+  if ((m = L.match(/^Activated abilities cost \{(\d+)\} more to activate unless they are mana abilities$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'abilityCostIncrease', data: { amount: parseInt(m[1], 10), notMana: true } } }];
+  }
+  // "This ability costs {1} more to activate for each card in your hand."
+  if ((m = L.match(/^This ability costs \{(\d+)\} more to activate for each (.+?)$/i))) {
+    const a212 = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (a212 !== null) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'thisAbilityCostIncrease', data: { amount: parseInt(m[1], 10), perAmount: a212 } } }];
+  }
+  // "Enchanted creature's controller cannot cast creature spells."
+  if ((m = L.match(/^(Enchanted|Equipped) \w+'s controller cannot cast (.+?) spells$/i))) {
+    const n212 = /^spells?$/i.test(m[2]) ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[2]} spell`);
+    if (n212) return [{ kind: 'static', text: line, ruleAffects: 'attachedToController', rule: { kind: 'custom', tag: 'cantCast', data: { filter: { ...n212.filter, zone: undefined } } } }];
+  }
+  // "Skip your upkeep step if you have no cards in hand."
+  if ((m = L.match(/^Skip your (upkeep|draw|combat|end) step if (.+?)$/i))) {
+    const c212 = parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (c212 && c212.kind !== 'manual') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'skipStep', data: m[1].toLowerCase() }, condition: c212 }];
+  }
+  // "Players cannot play lands as long as ten or more lands are on the battlefield."
+  if ((m = L.match(/^Players cannot play lands as long as (.+?)$/i))) {
+    const c212b = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (c212b && c212b.kind !== 'manual') return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' }, condition: c212b }];
+  }
+  // "Each opponent cannot venture into the dungeon more than once each turn."
+  if (/^Each opponent cannot venture into the dungeon more than once each turn$/i.test(L)) {
+    return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'ventureOncePerTurn' } }];
+  }
+  // "~ cannot block or be blocked by creatures with power 2 or greater."
+  if ((m = L.match(/^(.+?) cannot block or be blocked by (.+?)$/i))) {
+    const n212c = parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
+    if (n212c && n212c.confident) {
+      const f212 = { ...n212c.filter, zone: undefined };
+      const r1 = objRule(m[1], { kind: 'cantBeBlockedBy', filter: f212 });
+      const r2 = objRule(m[1], { kind: 'custom', tag: 'cantBlockMatching', data: { filter: f212 } });
+      if (r1 && r2) return [...r1, ...r2];
+    }
+  }
+  // "Lands you control and land cards in your library are basic."
+  if (/^Lands you control and land cards in your library are basic$/i.test(L)) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'landsAreBasic' } }];
+  }
   // ---- Round 199 ----
   // "Creatures with flying cannot attack you or block creatures you control."
   if ((m = L.match(/^(.+?) cannot attack you(?: or planeswalkers you control)? or block creatures you control$/i))) {

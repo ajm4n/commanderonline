@@ -4249,6 +4249,34 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 212 ----
+  // "Target creature gets +2/+2 until end of turn for each of its colors"
+  [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+)(?: until end of turn)? for each of its colou?rs$/i, (m, ctx) => {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    const per: Amount = { kind: 'colorCount', ref };
+    return [{ kind: 'pump', power: { kind: 'times', a: parseInt(m[2], 10) as Amount, b: per }, toughness: { kind: 'times', a: parseInt(m[3], 10) as Amount, b: per }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "You gain 2 life for each green mana symbol in those cards' mana costs"
+  [/^you gain (\d+) life for each (white|blue|black|red|green) mana symbol in those cards' mana costs$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    const per: Amount = { kind: 'manaSymbolCount', ref, color: ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[2].toLowerCase() as 'white'] };
+    const n = parseInt(m[1], 10);
+    return [{ kind: 'gainLife', amount: n === 1 ? per : ({ kind: 'times', a: n as Amount, b: per } as Amount), who: YOU }];
+  }],
+  // "You may have it become no longer suspected"
+  [/^you may have (?:it|that creature) become no longer suspected$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'may', prompt: 'Remove suspected?', effects: [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'suspected', data: '__clear__' }, on: ref, duration: 'permanent' }] }];
+  }],
+  // "Destroy any of them that are Walls"
+  [/^(destroy|exile|tap) any of them that are (.+?)$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (!base || !noun || !noun.confident) return null;
+    const ref: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } };
+    return [/destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : /exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'tap', what: ref }];
+  }],
   // ---- Round 211 ----
   // "Have ~'s base power and toughness become 4/2 until end of turn"
   [/^have (.+?)'s base power and toughness become ([\dX]+)\/([\dX]+)(?: until end of turn)?$/i, (m, ctx) => {
