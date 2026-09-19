@@ -1922,7 +1922,18 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'unlessPays': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
         let paid = false;
-        if (typeof e.cost === 'object' && 'tap' in e.cost) {
+        if (typeof e.cost === 'object' && 'removeCounters' in e.cost) {
+          const d = e.cost.removeCounters;
+          const cands = objectsMatching(g, { ...d.filter, controller: p, zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).filter((o) => (o.counters[d.counter] ?? 0) >= d.amount).map((o) => o.id);
+          if (cands.length) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Remove ${d.amount} ${d.counter} counter${d.amount === 1 ? '' : 's'}? (choose none to decline)`, candidates: cands, min: 0, max: 1, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'objects' && r.ids.length === 1) {
+              const o = g.obj(r.ids[0]);
+              o.counters[d.counter] = (o.counters[d.counter] ?? 0) - d.amount;
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'tap' in e.cost) {
           const f = e.cost.tap;
           const need = e.cost.count ?? 1;
           const cands = objectsMatching(g, { ...f, controller: p, zone: 'battlefield', untapped: true }, { sourceId: ctx.sourceId, controller: p }).map((o) => o.id);

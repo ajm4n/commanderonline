@@ -4306,7 +4306,33 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
-  // ---- Round 256 ----
+  // ---- Round 257 ----
+  // "You may play that card from exile this turn."
+  [/^(?:you may|they may) play (?:that card|it|those cards|them) from exile this turn$/i, (m, ctx) => {
+    const ref = objRef('that card', ctx);
+    return ref ? [{ kind: 'playFromExile', what: ref, duration: 'thisTurn', owner: /^they may/i.test(m[0]) }] : null;
+  }],
+  // "Put its +1/+1 counters on target creature you control."
+  [/^put its ([+-]\d\/[+-]\d|[\w'-]+) counters on (.+)$/i, (m, ctx) => {
+    const from = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : SELF);
+    const to = objRef(m[2], ctx);
+    return to ? [{ kind: 'moveCounters', from, to, counter: m[1] }] : null;
+  }],
+  // "Sacrifice ~ unless you remove a counter from a permanent you control."
+  [/^(.+?) unless you remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from (?:a|an) (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], ctx);
+    const noun = parseNoun(`a ${m[4]}`);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!inner || !noun || !noun.confident || typeof n !== 'number') return null;
+    return [{ kind: 'unlessPays', who: YOU, cost: { removeCounters: { counter: m[3], amount: n, filter: { ...noun.filter, zone: 'battlefield' } } }, effects: inner, text: m[0].slice(m[1].length + 8) }];
+  }],
+  // "Return it to your hand unless target opponent pays 3 life."
+  [/^(.+?) unless (target opponent|target player) pays (\d+) life$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], ctx);
+    const who = playerRef(m[2], ctx);
+    if (!inner || !who) return null;
+    return [{ kind: 'unlessPays', who, cost: { payLife: parseInt(m[3], 10) }, effects: inner, text: m[0].slice(m[1].length + 8) }];
+  }],
   // "Each of them searches their library for a card, then shuffles and puts that card on top."
   [/^(.+?) searches? their library for (?:a|an) (.+?)(, reveals? it)?, then shuffles? and puts? (?:the|that) card on top$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
@@ -5780,7 +5806,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'forEach', over, effects: [{ kind: 'sacrificeChoice', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'iter' } }, count: { kind: 'chosenNumber' } }] }];
   }],
   // "Target Mount you control becomes saddled until end of turn"
-  [/^(target .+?) becomes (saddled|crewed|monstrous)(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(target .+?|it|that creature|~) becomes (saddled|crewed|monstrous)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const tag = m[2].toLowerCase() === 'saddled' ? 'saddled' : m[2].toLowerCase() === 'crewed' ? 'crewed' : 'monstrous';
