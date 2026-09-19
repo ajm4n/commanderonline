@@ -128,6 +128,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.custom === 'powerGTSource' && ctx.sourceId !== null) { const sp = g.characteristics(ctx.sourceId).power ?? 0; if ((ch.power ?? 0) <= sp) return false; }
   if (filter.custom === 'toughnessLTSource' && ctx.sourceId !== null) { const st = g.characteristics(ctx.sourceId).toughness ?? 0; if ((ch.toughness ?? 0) >= st) return false; }
   if (filter.custom === 'toughnessGTSource' && ctx.sourceId !== null) { const st = g.characteristics(ctx.sourceId).toughness ?? 0; if ((ch.toughness ?? 0) <= st) return false; }
+  if (filter.custom === 'powerLessThanSource' && !(ctx.sourceId !== null && ctx.sourceId !== undefined && (ch.power ?? 0) < (g.characteristics(ctx.sourceId).power ?? 0))) return false;
   if (filter.custom === 'cmcLTSource' && ctx.sourceId !== null && ch.manaValue >= g.characteristics(ctx.sourceId).manaValue) return false;
   if (filter.custom === 'cmcGTSource' && ctx.sourceId !== null && ch.manaValue <= g.characteristics(ctx.sourceId).manaValue) return false;
   if (filter.custom === 'notCast' && obj.wasCast) return false;

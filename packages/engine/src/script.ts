@@ -288,7 +288,7 @@ export type Effect =
   | { kind: 'sacrifice'; what: Ref }
   | { kind: 'sacrificeChoice'; who: Ref; filter: ObjectFilter; count: Amount; /** "sacrifice any number of lands": the player may sacrifice fewer. */ upTo?: boolean; unlessAlso?: never }
   | { kind: 'returnToHand'; what: Ref }
-  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean; /** Return attached to this object (Auras/Equipment). */ attachTo?: Ref }
+  | { kind: 'returnToBattlefield'; what: Ref; tapped?: boolean; /** "return it to the battlefield face down" */ faceDown?: boolean; controller?: 'you' | 'owner'; counters?: { counter: CounterType; amount: Amount }; transformed?: boolean; /** "tapped and attacking" */ attacking?: boolean; /** Return attached to this object (Auras/Equipment). */ attachTo?: Ref }
   | { kind: 'putOnLibrary'; what: Ref; position: 'top' | 'bottom' | 'secondFromTop' | 'ownerChoice'; /** 0-based depth from the top ("third from the top" = 2). */ depth?: number }
   /** Exert: the object won't untap during its controller's next untap step. */
   | { kind: 'exert'; what: Ref }

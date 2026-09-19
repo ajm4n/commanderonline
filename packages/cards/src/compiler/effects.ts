@@ -4249,6 +4249,98 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 225 ----
+  // "If you do, you may choose new targets for the spell"
+  [/^(?:you may )?choose new targets for (?:the|that) (spell|ability|copy)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
+    return [{ kind: 'changeTargets', what: ref }];
+  }],
+  // "It deals 6 damage to each creature it blocked this combat"
+  [/^(it|~) deals (\d+|X) damage to each creature it blocked this (?:combat|turn)$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const amt225: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt225, source: src, to: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', blockedBySource: true } } }];
+  }],
+  // "Sacrifice half the non-Demon permanents you control, rounded up"
+  [/^sacrifice half the (.+?) you control,? rounded (up|down)$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const f: ObjectFilter = { ...noun.filter, zone: 'battlefield', controller: 'you' };
+    return [{ kind: 'sacrificeChoice', who: YOU, filter: f, count: { kind: 'half', a: { kind: 'count', filter: f }, round: /up/i.test(m[2]) ? 'up' : 'down' } }];
+  }],
+  // "That Mount or Vehicle gets +2/+0 and gains trample until end of turn"
+  [/^that (Mount or Vehicle|Vehicle|Mount|Equipment|creature) gets ([+-]\d+)\/([+-]\d+) and (?:gains?|has) (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    const g = parseGrantList(m[4]);
+    if (!ref || !g) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const out: Effect[] = [{ kind: 'pump', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), on: ref, duration: dur }];
+    if (g.keywords.length) out.push({ kind: 'grantKeywords', keywords: g.keywords, on: ref, duration: dur });
+    for (const a of g.abilities) out.push({ kind: 'grantAbility', text: a, on: ref, duration: dur });
+    return out;
+  }],
+  // "Exile one of them from your graveyard"
+  [/^(exile|return) one of them from your graveyard(?: to your hand)?$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    if (!base) return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: {}, count: 1, key: 'oneOf225', from: base },
+      /exile/i.test(m[1]) ? { kind: 'moveToZone', what: { ref: 'chosen', key: 'oneOf225' }, zone: 'exile' } : { kind: 'returnToHand', what: { ref: 'chosen', key: 'oneOf225' } },
+    ];
+  }],
+  // "Choose a noncreature, nonland card from among them and copy it"
+  [/^choose (?:a|an) (.+?) from among them and (copy|exile|cast) it$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!base || !noun) return null;
+    const key = `amongst225`;
+    const ref: Ref = { ref: 'chosen', key };
+    const pick: Effect = { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: undefined }, count: 1, key, from: base };
+    ctx.lastObj = ref;
+    if (/copy/i.test(m[2])) return [pick, { kind: 'copyCard', what: ref }];
+    if (/exile/i.test(m[2])) return [pick, { kind: 'moveToZone', what: ref, zone: 'exile' }];
+    return [pick, { kind: 'castFrom', what: ref }];
+  }],
+  // "Then choose another attacking creature with lesser power"
+  [/^choose another attacking creature with lesser power$/i, (ctx0, ctx) => {
+    const key = 'lesser225';
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: { types: ['Creature'], attacking: true, zone: 'battlefield', other: true, custom: 'powerLessThanSource' }, count: 1, key }];
+  }],
+  // "Attach target Equipment you control with mana value 2 or 3 to ~"
+  [/^attach (target .+?) to ~$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'attach', what: ref, to: SELF }] : null;
+  }],
+  // "Put a lore counter on each of any number of target Sagas you control"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on each of any number of (target .+?)$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(m[3]);
+    if (typeof n !== 'number' || !noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), min: 0, max: 6 });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: n, on: ref }];
+  }],
+  // "Return it to the battlefield face down under its owner's control"
+  [/^return (?:it|that card) to the battlefield face down under (?:its owner's|your) control$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'returnToBattlefield', what: ref, controller: /owner/i.test(m[0]) ? 'owner' : undefined, faceDown: true } as never];
+  }],
+  // "They may tap that permanent"
+  [/^(?:they|that player|its controller) may tap that permanent$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const who = ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    return [{ kind: 'may', prompt: 'Tap that permanent?', who, effects: [{ kind: 'tap', what: ref }] }];
+  }],
+  // "That player mills a card for each 1 damage dealt to them"
+  [/^(.+?) mills (?:a card|(\w+) cards) for each 1 damage dealt to them$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const base = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || typeof base !== 'number') return null;
+    const per: Amount = { kind: 'triggerAmount' };
+    return [{ kind: 'mill', amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), who }];
+  }],
   // ---- Round 224 ----
   // "Counter target spell that is the second spell cast this turn"
   [/^counter (target .+?) that is the (second|third|fourth) spell cast this turn$/i, (m, ctx) => {

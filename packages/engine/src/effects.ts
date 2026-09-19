@@ -635,6 +635,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         }
         if (r) {
           moved.push(r.id);
+          if (e.faceDown) r.faceDown = true;
           if (e.transformed && r.card.faces && r.card.faces.length > 1) {
             r.faceIndex = 1;
             g.touch();
