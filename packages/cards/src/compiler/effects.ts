@@ -825,6 +825,13 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'revealHand', who }, { kind: 'chooseObjects', who: YOU, filter: { zone: 'hand' }, owner: who, count: n, key }];
   }],
   [/^(?:that player|they) discards? those cards$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'discardObjects', what: ctx.lastObj }] : null)],
+  [/^(?:(.+?) )?discovers? (\w+)$/i, (m, ctx) => {
+    if (m[1] && !/^(?:you|they|that player|each player|each opponent|target player|target opponent|its controller)$/i.test(m[1])) return null;
+    const n1 = m[2].toUpperCase() === 'X' ? 'X' : wordToNumber(m[2]);
+    if (n1 === null) return null;
+    void ctx;
+    return [{ kind: 'discover', amount: n1 as Amount }];
+  }],
   [/^discover (\w+)$/i, (m) => {
     const n = wordToNumber(m[1]);
     return n === null ? null : [{ kind: 'discover', amount: n }];
@@ -4306,7 +4313,26 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
-  // ---- Round 257 ----
+  // ---- Round 258 ----
+  // "That player looks at the top three cards of your library, then puts them back in any order."
+  [/^(.+?) looks? at the top (\w+|X) cards? of (your|their|that player's) library, then puts? them back in any order$/i, (m, ctx) => {
+    const looker = playerRef(m[1], ctx);
+    const owner = /^your$/i.test(m[3]) ? YOU : playerRef('that player', ctx);
+    const n = m[2].toUpperCase() === 'X' ? 'X' : wordToNumber(m[2]);
+    if (!looker || !owner || n === null) return null;
+    return [{ kind: 'lookAtTop', amount: n as Amount, who: owner, looker, then: 'reorder' }];
+  }],
+  // "Remove a lore counter from each of any number of Sagas you control."
+  [/^remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from each of any number of (.+)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (!noun || !noun.confident || typeof n !== 'number') return null;
+    const key = `loseCtr${ctx.targets.length}`;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'battlefield' }, count: 99, key, upTo: true },
+      { kind: 'removeCounters', counter: m[2], amount: n, on: { ref: 'chosen', key } },
+    ];
+  }],
   // "You may play that card from exile this turn."
   [/^(?:you may|they may) play (?:that card|it|those cards|them) from exile this turn$/i, (m, ctx) => {
     const ref = objRef('that card', ctx);
@@ -9489,7 +9515,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     let b = a ? parseSentence(m[2], ctx) : null;
     if (a && !b) {
       // "Target opponent loses 3 life and puts a card ...": the second half shares the subject.
-      const sub = m[1].match(/^((?:target |each |that |the )?[\w' -]+?) (?:loses?|gains?|loses|deals?|fights?|attacks?|blocks?|gains?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
+      const sub = m[1].match(/^((?:target |each |that |the )?[~\w' -]+?) (?:loses?|gains?|loses|deals?|fights?|attacks?|blocks?|gains?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
       if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
     }
     if (a && b) return [...a, ...b];
@@ -9531,7 +9557,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     let b = a ? parseSentence(m[2], ctx) ?? parseSentence(`you ${m[2]}`, ctx) : null;
     if (a && !b) {
       // "Each player discards their hand, then returns up to three cards ...": shared subject.
-      const sub = m[1].match(/^((?:target |each |that |the )?[\w' -]+?) (?:loses?|gains?|deals?|fights?|attacks?|blocks?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
+      const sub = m[1].match(/^((?:target |each |that |the )?[~\w' -]+?) (?:loses?|gains?|deals?|fights?|attacks?|blocks?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
       if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
     }
     if (a && b) return [...a, ...b];

@@ -87,6 +87,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 258 ----
+  // "Creatures you control can't be the targets of blue spells or abilities from blue sources."
+  if ((m = L.match(/^(.+?) cannot be the targets? of (white|blue|black|red|green) spells or abilities from \2 sources$/i))) {
+    const c258 = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[2].toLowerCase() as 'white'];
+    const r258 = objRule(m[1], { kind: 'cantBeTargeted', filter: { colors: [c258] } });
+    if (r258) return r258;
+  }
   // ---- Round 245 ----
   // "During your turn, ~ is a Bear with base power and toughness 4/2."
   sx245: {
