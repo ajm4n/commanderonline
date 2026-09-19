@@ -4249,6 +4249,59 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 223 ----
+  // "You draw a card for each Mountain and red card in it"
+  [/^(?:you )?draws? (?:a card|(\w+|X) cards?) for each ([A-Z][\w-]+) and (\w+) card in it$/i, (m, ctx) => {
+    const base = m[1] ? wordToNumber(m[1]) : 1;
+    const a1 = parseNoun(`a ${m[2]} card`);
+    const a2 = parseNoun(`a ${m[3]} card`);
+    if (typeof base !== 'number' || !a1 || !a2) return null;
+    const who = ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    const per: Amount = { kind: 'count', filter: { anyOf: [{ ...a1.filter, zone: undefined }, { ...a2.filter, zone: undefined }], zone: 'hand', ownerRef: who } };
+    return [{ kind: 'draw', amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), who: YOU }];
+  }],
+  // "You may choose new targets for target instant or sorcery spell"
+  [/^(?:you may )?choose new targets for (target .+?)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'changeTargets', what: ref }] : null;
+  }],
+  // "Target player other than ~'s owner gains control of it"
+  [/^target player other than ~'s owner gains control of it$/i, (m, ctx) => {
+    ctx.targets.push({ description: "target player other than ~'s owner", kind: 'player', playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [{ kind: 'gainControl', what: SELF, who: ref, duration: 'permanent' }];
+  }],
+  // "Put four +1/+1 counters on each artifact that became a creature this way"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on each (.+?) that became (?:a|an) creature this way$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const base = ctx.lastObj;
+    if (typeof n !== 'number' || !base) return null;
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: n, on: base }];
+  }],
+  // "Then that player discards all cards with that name revealed this way"
+  [/^(.+?) discards all cards with that name(?: revealed this way)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'discard', amount: 'hand', who, filter: { nameIsChosen: 'cardName' } }] : null;
+  }],
+  // "Each of those creatures deals damage equal to its toughness to the other"
+  [/^each of those creatures deals damage equal to its (power|toughness) to the other$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    if (!ref) return null;
+    return [{ kind: 'fight', a: ref, b: ref, useToughness: /toughness/i.test(m[1]) || undefined }];
+  }],
+  // "For each creature, its controller sacrifices it unless they pay X life"
+  [/^for each (.+?), its controller sacrifices it unless they pay (X|\d+) life$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const life = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'forEach', over: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, effects: [
+      { kind: 'unlessPays', who: { ref: 'controllerOf', of: { ref: 'iter' } }, cost: { payLife: life as never }, effects: [{ kind: 'sacrifice', what: { ref: 'iter' } }] },
+    ] }];
+  }],
+  // "The attacking player chooses how each creature blocks each combat."
+  [/^the (attacking|defending) player chooses how each creature blocks each combat$/i, (m) => [
+    { kind: 'grantPlayerRule', who: /attacking/i.test(m[1]) ? { ref: 'eachPlayer' } : YOU, rule: { kind: 'custom', tag: 'attackerChoosesBlocks' } },
+  ]],
   // ---- Round 222 ----
   // "Destroy target non-Elf creature whose power and toughness aren't equal"
   [/^(destroy|exile|tap) (target .+?) whose power and toughness (?:aren't|are not) equal$/i, (m, ctx) => {

@@ -333,7 +333,7 @@ export type Effect =
   | { kind: 'copySpell'; what: Ref; count?: Amount }
   /** Copy a card (not a spell): a token copy is created in exile that its controller may then cast ("Copy target instant card in your graveyard. You may cast the copy"). */
   | { kind: 'copyCard'; what: Ref }
-  | { kind: 'fight'; a: Ref; b: Ref }
+  | { kind: 'fight'; a: Ref; b: Ref; /** "deals damage equal to its toughness" */ useToughness?: boolean }
   | { kind: 'bite'; a: Ref; b: Ref } // a deals damage equal to its power to b
   | { kind: 'attach'; what: Ref; to: Ref }
   | { kind: 'transform'; what: Ref }

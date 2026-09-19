@@ -1261,8 +1261,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const a = g.resolveObjects(e.a, ctx)[0];
       const b = g.resolveObjects(e.b, ctx)[0];
       if (!a || !b || a.zone !== 'battlefield' || b.zone !== 'battlefield') return;
-      const pa = g.characteristics(a.id).power ?? 0;
-      const pb = g.characteristics(b.id).power ?? 0;
+      const cha = g.characteristics(a.id);
+      const chb = g.characteristics(b.id);
+      const pa = (e.useToughness ? cha.toughness : cha.power) ?? 0;
+      const pb = (e.useToughness ? chb.toughness : chb.power) ?? 0;
       g.dealDamage(a.id, { kind: 'object', id: b.id }, pa, false);
       g.dealDamage(b.id, { kind: 'object', id: a.id }, pb, false);
       g.emit({ name: 'fights', objectId: a.id, sourceId: b.id, playerId: a.controller });

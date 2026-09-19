@@ -875,7 +875,20 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     const colon = line.indexOf(': ');
     if (colon > 0 && !/^(Choose|Enchant|Equip)/i.test(line)) {
       const costText = line.slice(0, colon);
-      const cost = parseCost(costText);
+      let altCosts: AbilityCost[] | null = null;
+      let cost = parseCost(costText);
+      if (!cost) {
+        // "{3}, {T} or {R}, {T}: ..." — two alternative costs for the same ability.
+        const orm = costText.match(/^(.+?) or (.+)$/);
+        if (orm) {
+          const c1 = parseCost(orm[1]);
+          const c2 = parseCost(orm[2]);
+          if (c1 && c2) {
+            altCosts = [c1, c2];
+            cost = c1;
+          }
+        }
+      }
       if (cost) {
         const rest = parseActivationRestriction(line.slice(colon + 2));
         const ctx = newCtx();
@@ -917,7 +930,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           ab.condition = { kind: 'manual', text: `${rest.unhandled}?` };
           unhandledLines.push(rest.unhandled);
         }
-        abilities.push(...withBlock([ab]));
+        abilities.push(...withBlock(altCosts ? altCosts.map((c) => ({ ...ab, cost: c })) : [ab]));
         if (unhandled.length) unhandledLines.push(...unhandled);
         else compiledLines.push(line);
         continue;
