@@ -162,11 +162,11 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
   {
-    const mm = l.match(/^the player (?:(?:with|who has) the (most|least|fewest) (life|cards in hand)|who controls the (most|fewest) (.+))$/);
+    const mm = l.match(/^the player (?:(?:with|who has) the (most|least|fewest|lowest|highest|greatest) (life|life total|cards in hand)|who controls the (most|fewest) (.+))$/);
     if (mm) {
-      const least = mm[1] === 'least' || mm[1] === 'fewest' || mm[3] === 'fewest';
-      if (mm[2]) return { ref: 'playerWithMost', what: mm[2] === 'life' ? 'life' : 'cards', least: least || undefined };
-      const noun = parseNoun(mm[4]!);
+      const least = mm[1] === 'least' || mm[1] === 'fewest' || mm[1] === 'lowest' || mm[3] === 'fewest';
+      if (mm[2]) return { ref: 'playerWithMost', what: /^life/.test(mm[2]) ? 'life' : 'cards', least: least || undefined };
+      const noun = parseNoun(mm[4]!) ?? parseNoun(`a ${singularize(mm[4]!)}`) ?? parseNoun(`a ${singularize(mm[4]!).replace(/^\w/, (c) => c.toUpperCase())}`);
       if (noun && noun.confident) return { ref: 'playerWithMost', what: { filter: { ...noun.filter, zone: 'battlefield' } }, least: least || undefined };
     }
   }
@@ -4242,6 +4242,60 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 196 ----
+  // "It is a Spirit Detective."
+  [/^(?:[Ii]t|[Tt]hey) (?:is|are) (?:a|an) ((?:[A-Z][\w-]+)(?: [A-Z][\w-]+)*)$/, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
+    const subs = m[1].split(/\s+/);
+    return [{ kind: 'addTypes', types: [], subtypes: subs, on: ref, duration: 'permanent' }];
+  }],
+  // "The blocking creature gets +1/+1 until end of turn"
+  [/^the (blocking|attacking|blocked) creature (gets|gains) (.+)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    if (!ref) return null;
+    const sub = newCtx({ ...ctx, targets: ctx.targets, lastObj: ref });
+    return parseSentence(`it ${m[2]} ${m[3]}`, sub);
+  }],
+  // "That spell gains rebound." / "That spell gains cascade."
+  [/^that spell gains ([\w-]+)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
+    return [{ kind: 'grantKeywords', keywords: [m[1].replace(/^\w/, (c) => c.toUpperCase())], on: ref, duration: 'permanent' }];
+  }],
+  // "The next spell you cast this turn costs {1} less to cast"
+  [/^the next spell you cast this turn costs \{(\d+)\} less to cast$/i, (m) => [
+    { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'nextSpellCostReduction', data: { amount: parseInt(m[1], 10) } }, duration: 'thisTurn' },
+  ]],
+  // "Exile one or more creature cards from your graveyard"
+  [/^(exile|return) (one or more|any number of) (.+?) from your graveyard(?: to your hand)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (!noun || !noun.confident) return null;
+    const key = `gy${ctx.targets.length}`;
+    const ref: Ref = { ref: 'chosen', key };
+    ctx.lastObj = ref;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: 'X', key, upTo: true },
+      /^exile$/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'returnToHand', what: ref },
+    ];
+  }],
+  // "Put a creature you control on top of its owner's library"
+  [/^put ((?:a|an) .+? you control) on (top|the bottom) of (?:its|their) owner'?s'? library$/i, (m, ctx) => {
+    const c = chooseRef(m[1], ctx);
+    return c ? [...c.pre, { kind: 'putOnLibrary', what: c.ref, position: /^top$/i.test(m[2]) ? 'top' : 'bottom' }] : null;
+  }],
+  // "Put a flying, lifelink, or +1/+1 counter on it"
+  [/^put (?:a|an) ([\w'+/-]+(?:, [\w'+/-]+)*),? or ([\w'+/-]+) counter on (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[3], ctx);
+    if (!ref) return null;
+    const kinds = [...m[1].split(/, /), m[2]].map((x) => x.trim()).filter(Boolean);
+    return [{ kind: 'chooseMode', count: 1, options: kinds.map((k) => ({ text: `${k} counter`, effects: [{ kind: 'addCounters' as const, counter: k as never, amount: 1, on: ref }] })) }];
+  }],
+  // "Put that card onto the battlefield or into your hand"
+  [/^put that card (onto the battlefield|into your hand|into your graveyard) or (onto the battlefield|into your hand|into your graveyard)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const mk = (where: string): Effect =>
+      /battlefield/i.test(where) ? { kind: 'returnToBattlefield', what: ref } : { kind: 'moveToZone', what: ref, zone: /hand/i.test(where) ? 'hand' : 'graveyard' };
+    return [{ kind: 'chooseMode', count: 1, options: [m[1], m[2]].map((w) => ({ text: `Put it ${w}`, effects: [mk(w)] })) }];
+  }],
   // ---- Round 195 ----
   // "Mill a card for each shred counter on ~"
   [/^(?:(.+?) )?mills? (?:a card|(\w+|X) cards?) for each (.+)$/i, (m, ctx) => {
@@ -6005,6 +6059,7 @@ export function isNoOpSentence(text: string): boolean {
   if (/^(?:players|your opponents|each opponent) play with (?:their hands|the top card of their libraries) revealed\.?$/i.test(text.trim())) return true;
   if (/^spend only \w+ mana on x\.?$/i.test(text.trim())) return true;
   if (/^you may look at cards exiled with ~\.?$/i.test(text.trim())) return true;
+  if (/^this ability triggers only once\.?$/i.test(text.trim())) return true;
   if (/^you cannot cast ~ during your (?:first|second|third)(?:, (?:first|second|third))*(?:,? or (?:first|second|third))? turns? of the game\.?$/i.test(text.trim())) return true;
   if (/^~ saddles mounts and crews vehicles as though its power were \d+ greater\.?$/i.test(text.trim())) return true;
   return /^(if you cast a spell this way, mana of any type can be spent to cast it|draft ~ face up|play with the top card of your library revealed|spend this mana only to .+|you may spend mana as though it were mana of any color|mana of any type can be spent to cast (?:spells|a spell) this way|you may spend mana as though it were mana of any color to activate those abilities|you may look at (?:it|that card|those cards) for as long as (?:it remains|they remain) exiled|reveal the first card you draw each turn|this change in ownership is permanent|the new target must be a player|you may reveal the first card you draw each turn as you draw it|a spell cast this way costs .+|spend this mana only on costs that contain .+|it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|you may choose the same mode more than once|~ can be your commander|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|doctor's companion|fuse|~ enters prepared|partner|friends forever|choose a background|this spell cannot be countered|~ cannot be countered|this ability triggers only once each turn|do this only once each turn|reveal it|reveal them|reveal that card|reveal those cards)\.?$/i.test(text.trim());
