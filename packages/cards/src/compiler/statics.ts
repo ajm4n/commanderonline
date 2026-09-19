@@ -1909,7 +1909,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return out;
   }
   }
-  if ((m = L.match(/^(.+?) can attack as though (?:it|they) didn't have defender$/i))) { const _q4 = objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' }); if (_q4) return _q4; }
+  if ((m = L.match(/^(.+?) can attack as though (?:it|they) (?:did not|didn't) have defender$/i))) { const _q4 = objRule(m[1], { kind: 'custom', tag: 'canAttackWithDefender' }); if (_q4) return _q4; }
   if ((m = L.match(/^Prevent all (combat )?damage that would be dealt to (.+?) during (your|each opponent's) turn$/i))) {
     const a = affectsOf(m[2]);
     if (a.ok) return [{ kind: 'static', text: line, affects: a.affects, rule: { kind: 'custom', tag: 'preventDamageTo', data: { combat: m[1] ? 'combat' : undefined } }, condition: /^your$/i.test(m[3]) ? { kind: 'yourTurn' } : { kind: 'notYourTurn' } }];

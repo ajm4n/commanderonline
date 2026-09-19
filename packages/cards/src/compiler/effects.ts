@@ -3224,7 +3224,7 @@ const PATTERNS: Pattern[] = [
     return /you may/i.test(m[0]) ? [{ kind: 'may', effects: [eff] }] : [eff];
   }],
   // "Put the exiled cards not cast this way on the bottom of your library in a random order"
-  [/^(?:then )?put (?:the exiled cards not cast this way|all cards revealed this way that weren't put onto the battlefield|the exiled cards that weren't cast this way) (?:on the bottom of (?:your|their) library in a random order|into your graveyard)$/i, (m, ctx) => {
+  [/^(?:then )?put (?:the exiled cards not cast this way|all cards revealed this way that (?:were not|weren't) put onto the battlefield|the exiled cards that (?:were not|weren't) cast this way) (?:on the bottom of (?:your|their) library in a random order|into your graveyard)$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
     return [/graveyard/i.test(m[0]) ? { kind: 'putIntoGraveyard', what: ref } : { kind: 'putOnLibrary', what: ref, position: 'bottom' }];
   }],
@@ -4267,6 +4267,50 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 243 ----
+  // "~ deals half X damage, rounded down, to any target."
+  [/^(.+?) deals half X damage, rounded (up|down), to (.+)$/i, (m, ctx) => {
+    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    if (!src) return null;
+    return damageTo(m[3], { kind: 'half', a: 'X', round: m[2].toLowerCase() as 'up' | 'down' }, ctx, src);
+  }],
+  // "Search your library for a creature card, reveal it, then shuffle and put the card on top."
+  [/^search your library for (?:a|an) (.+?)(, reveal it)?, then shuffle and put (?:the|that) card on top$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'searchLibrary', filter: noun.filter, count: 1, destination: 'top', reveal: !!m[2], shuffle: true }];
+  }],
+  // "Put up to one land card discarded this way onto the battlefield tapped under your control."
+  [/^put up to one (.+?) (?:discarded|milled|exiled|revealed) this way onto the battlefield( tapped)?(?: under your control)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    const key = `thisWay${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard' }, from: { ref: 'lastMoved' }, count: 1, key, upTo: true },
+      { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[2] },
+    ];
+  }],
+  // "Exile an instant or sorcery card with mana value 3 or less from your graveyard at random."
+  [/^exile (?:a|an) (.+?) from your graveyard at random$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    const key = `randGy${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard' }, count: 1, key, random: true },
+      { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'exile' },
+    ];
+  }],
+  // "Return ~ and up to one other target creature card from your graveyard to the battlefield."
+  [/^return ~ and (up to one other target .+? card) from your graveyard to the battlefield( tapped)?$/i, (m, ctx) => {
+    const ref = objRef(`${m[1]} from your graveyard`, ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'returnToBattlefield', what: SELF, tapped: !!m[2] },
+      { kind: 'returnToBattlefield', what: ref, tapped: !!m[2] },
+    ];
   }],
   // ---- Round 242 ----
   // "That player shuffles, then draws a card for each card exiled from their hand this way."
@@ -8400,7 +8444,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       if (inner) return [{ kind: 'forEach', over: { ref: 'lastMoved' }, effects: inner, filter: { ...noun.filter, zone: undefined } } as Effect];
     }
   }
-  if ((m = text.match(/^(.+?) can attack this turn as though (?:it|they) didn't have defender$/i))) {
+  if ((m = text.match(/^(.+?) can attack this turn as though (?:it|they) (?:did not|didn't) have defender$/i))) {
     const ref = objRef(m[1], ctx);
     if (ref) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'canAttackWithDefender' }, on: ref, duration: 'endOfTurn' }];
   }
@@ -8481,7 +8525,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^(.+?) for as long as (~ remains tapped|you control ~|~ remains on the battlefield|~ remains untapped|you control ~ and ~ remains tapped|~ remains tapped and you control ~)$/i))) {
     const inner = parseSentence(m[1], ctx);
     const dur: Duration = /remains tapped/i.test(m[2]) ? 'whileSourceTapped' : /you control/i.test(m[2]) ? 'whileYouControlSource' : 'untilSourceLeaves';
-    if (inner && inner.length && inner.every((e) => e.kind === 'gainControl' || e.kind === 'applyRule' || e.kind === 'pump' || e.kind === 'setPT' || e.kind === 'grantKeywords' || e.kind === 'addTypes' || e.kind === 'grantAbility' || e.kind === 'loseAllAbilities')) {
+    if (inner && inner.length && inner.every((e) => e.kind === 'gainControl' || e.kind === 'applyRule' || e.kind === 'pump' || e.kind === 'setPT' || e.kind === 'grantKeywords' || e.kind === 'addTypes' || e.kind === 'setSubtypes' || e.kind === 'setColors' || e.kind === 'grantAbility' || e.kind === 'loseAllAbilities')) {
       return inner.map((e) => ('duration' in e ? ({ ...e, duration: dur } as Effect) : e));
     }
   }
@@ -9083,10 +9127,22 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     let b = a ? parseSentence(m[2], ctx) : null;
     if (a && !b) {
       // "Target opponent loses 3 life and puts a card ...": the second half shares the subject.
-      const sub = m[1].match(/^((?:target |each |that |the )?[\w' -]+?) (?:loses?|gains?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?)\b/i);
+      const sub = m[1].match(/^((?:target |each |that |the )?[\w' -]+?) (?:loses?|gains?|loses|deals?|fights?|attacks?|blocks?|gains?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
       if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
     }
     if (a && b) return [...a, ...b];
+    ctx.targets.length = saved;
+  }
+  // "~ deals 2 damage to each attacking creature or ~ deals 2 damage to each blocking creature":
+  // a choice between two whole effects. Only when neither half wants a target, since a mode's
+  // targets would otherwise all have to be chosen up front.
+  if ((m = text.match(/^(.+?) or (.+)$/i)) && !/"/.test(text) && !/^(?:if|when|whenever|until|unless|as long as)\b/i.test(text)) {
+    const saved = ctx.targets.length;
+    const a = parseSentence(m[1], ctx);
+    const b = a && ctx.targets.length === saved ? parseSentence(m[2], ctx) : null;
+    if (a && b && ctx.targets.length === saved) {
+      return [{ kind: 'chooseMode', options: [{ text: m[1], effects: a }, { text: m[2], effects: b }], count: 1 }];
+    }
     ctx.targets.length = saved;
   }
   // "Choose a card name, then reveal a card at random from your hand": two steps in one
