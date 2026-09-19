@@ -4249,6 +4249,74 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 204 ----
+  // "Then each creature you control is no longer goaded"
+  [/^(each|all) (.+?) (?:is|are) no longer goaded$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'goaded', data: '__clear__' }, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, duration: 'permanent' }];
+  }],
+  // "Then shuffle the rest into your library"
+  [/^shuffle the rest into your library$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'moveToZone', what: ref, zone: 'library' }, { kind: 'shuffle', who: YOU }];
+  }],
+  // "Until your next turn, spells your opponents cast cost {1} more to cast"
+  [/^until your next turn, spells (your opponents|you) casts? cost \{(\d+)\} (more|less) to cast$/i, (m) => [
+    { kind: 'grantPlayerRule', who: /opponents/i.test(m[1]) ? { ref: 'eachOpponent' } : YOU, rule: { kind: /more/i.test(m[3]) ? 'costIncrease' : 'costReduction', amount: parseInt(m[2], 10) } },
+  ]],
+  // "~ deals 2 damage to the creature with the least toughness"
+  [/^(.+?) deals (\d+|X) damage to the (.+?) with the (least|greatest|lowest|highest) (power|toughness|mana value)$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (!src || !noun || !noun.confident) return null;
+    const least = /least|lowest/i.test(m[4]);
+    const stat = m[5].toLowerCase();
+    const sel: ObjectFilter | null =
+      least && stat === 'toughness' ? { lowestToughness: true }
+      : least && stat === 'power' ? { lowestPower: true }
+      : !least && stat === 'power' ? { highestPower: true }
+      : !least && stat === 'mana value' ? { highestManaValue: true }
+      : null;
+    if (!sel) return null;
+    const filter: ObjectFilter = { ...noun.filter, zone: 'battlefield', ...sel };
+    const amt: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt, source: src, to: { ref: 'all', filter } }];
+  }],
+  // "That player discards cards equal to the damage"
+  [/^(.+?) discards cards equal to the damage$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'discard', amount: { kind: 'triggerAmount' }, who }] : null;
+  }],
+  // "It and Zombies you control gain deathtouch until end of turn"
+  [/^(it|~) and (.+?) (gain|gains|have|has) (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const a = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
+    const g = parseGrantList(m[4]);
+    if (!noun || !noun.confident || !g || !g.keywords.length || g.abilities.length) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [
+      { kind: 'grantKeywords', keywords: g.keywords, on: a, duration: dur },
+      { kind: 'grantKeywords', keywords: g.keywords, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, duration: dur },
+    ];
+  }],
+  // "Target opponent gains control of ~ and puts a charge counter on it"
+  [/^(target opponent|target player|that player|an opponent) gains control of ~ and puts (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || typeof n !== 'number') return null;
+    return [{ kind: 'gainControl', what: SELF, who, duration: 'permanent' }, { kind: 'addCounters', counter: m[3] as never, amount: n, on: SELF }];
+  }],
+  // "~ deals 3 damage to you and attacks this turn if able"
+  [/^(.+?) deals (\d+|X) damage to you and attacks this turn if able$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!src) return null;
+    const amt: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [
+      { kind: 'damage', amount: amt, source: src, to: YOU },
+      { kind: 'applyRule', rule: { kind: 'custom', tag: 'mustAttack' }, on: src, duration: 'endOfTurn' },
+    ];
+  }],
   // ---- Round 203 ----
   // "This ability still resolves if its target becomes illegal." — a rules reminder.
   [/^this ability still resolves if its target becomes illegal$/i, () => []],
@@ -7350,6 +7418,12 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     {
       const ta = s.match(/^(?:the token|the tokens|it|they|[A-Z][\w' ,-]*) enters? (tapped and attacking|tapped|attacking)(?: that player)?$/i);
       const prev = effects[effects.length - 1];
+      const refineTarget = prev && prev.kind === 'forEach' ? [...prev.effects].reverse().find((e) => e.kind === 'createToken' || e.kind === 'populate') : prev;
+      if (ta && refineTarget && (refineTarget.kind === 'createToken' || refineTarget.kind === 'populate' || refineTarget.kind === 'returnToBattlefield')) {
+        if (/tapped/i.test(ta[1])) (refineTarget as { tapped?: boolean }).tapped = true;
+        if (/attacking/i.test(ta[1])) (refineTarget as { attacking?: boolean }).attacking = true;
+        continue;
+      }
       if (ta && prev && (prev.kind === 'createToken' || prev.kind === 'populate' || prev.kind === 'returnToBattlefield')) {
         if (/tapped/i.test(ta[1])) (prev as { tapped?: boolean }).tapped = true;
         if (/attacking/i.test(ta[1])) (prev as { attacking?: boolean }).attacking = true;
