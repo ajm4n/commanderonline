@@ -87,6 +87,17 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 242 ----
+  // "Creature spells you cast that share a creature type with ~ cost {1} less to cast."
+  sx242: {
+  if ((m = L.match(/^(.+? spells) you cast (that .+?) cost \{(\d)\} less to cast$/i))) {
+    const n242 = parseNoun(`a ${singularize(m[1])} ${m[2]}`);
+    if (!n242 || !n242.confident) break sx242;
+    const f242 = { ...n242.filter };
+    delete f242.zone;
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[3], 10), filter: { ...f242, controller: 'you' } } }];
+  }
+  }
   // ---- Round 240 ----
   // "You may play lands and cast spells from among cards exiled with ~."
   if ((m = L.match(/^(?:During your turn, )?You may (?:play lands and cast spells|play cards|cast spells|play|cast)(?: from among(?: the)? cards| cards)? exiled with ~(?:, and you may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to cast (?:those spells|them|it))?$/i)))
@@ -3091,7 +3102,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/ and /i.test(L) && !/"/.test(L) && !/^(?:as long as|while|during|if)\b/i.test(L)) {
     for (const mm of [...L.matchAll(/ and /gi)].reverse()) {
       if (mm.index === undefined || mm.index < 4) continue;
-      const left = L.slice(0, mm.index).trim();
+      const left = L.slice(0, mm.index).trim().replace(/,$/, '');
       const right = L.slice(mm.index + 5).trim();
       if (!left || !right || !/\s/.test(right)) continue;
       const a = parseStatic(left, isCreatureOrPermanent);

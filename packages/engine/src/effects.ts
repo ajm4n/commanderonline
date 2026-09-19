@@ -955,7 +955,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: 'Choose one or more colors', options: (['W', 'U', 'B', 'R', 'G'] as const).map((c) => ({ id: c, label: c })), min: 1, max: 5, sourceId: ctx.sourceId ?? undefined });
         if (r.type === 'options' && r.ids.length) colors = r.ids as typeof e.colors;
       }
-      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 5, setColors: colors } });
+      g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: e.add ? { layer: 5, addColors: colors } : { layer: 5, setColors: colors } });
       return;
     }
     case 'applyRule': {

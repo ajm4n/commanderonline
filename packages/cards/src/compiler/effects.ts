@@ -4268,6 +4268,61 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 242 ----
+  // "That player shuffles, then draws a card for each card exiled from their hand this way."
+  [/^(.+?) shuffles?, then draws? a card for each card exiled from their hand this way$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'shuffle', who }, { kind: 'draw', amount: { kind: 'countRef', ref: { ref: 'lastMoved' } }, who }] : null;
+  }],
+  // "Prevent the next 4 damage that would be dealt this turn to target creature you control."
+  [/^prevent the next (\d+|X) ((?:combat |noncombat )?)damage that would be dealt this turn to (.+)$/i, (m, ctx) =>
+    parseSentence(`prevent the next ${m[1]} ${m[2]}damage that would be dealt to ${m[3]} this turn`, ctx)],
+  // "Shuffle all creature cards from target player's graveyard into that player's library."
+  [/^shuffle all (.+?) from (.+?)'s graveyard into (?:that player's|their|its owner's) library$/i, (m, ctx) => {
+    const who = playerRef(m[2], ctx);
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!who || !noun || !noun.confident) return null;
+    return [
+      { kind: 'moveToZone', what: { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', ownerRef: who } }, zone: 'library' },
+      { kind: 'shuffle', who },
+    ];
+  }],
+  // "Put all creature cards exiled with ~ onto the battlefield face down under your control."
+  [/^put all (.+?) exiled with (?:~|it) onto the battlefield( face down)?(?: under your control)?$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'returnToBattlefield', what: { ref: 'all', filter: { ...noun.filter, zone: 'exile', exiledWithSource: true } }, faceDown: !!m[1] && !!m[2] }];
+  }],
+  // "Target opponent chooses a permanent they control and returns it to its owner's hand."
+  [/^(.+?) chooses (?:a|an) (.+?)(?: they control| of their choice)? and (returns it to its owner's hand|sacrifices it|exiles it)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!who || !noun || !noun.confident) return null;
+    const key = `oppChoice${ctx.targets.length}`;
+    const f: ObjectFilter = { ...noun.filter, zone: 'battlefield', controllerRef: who };
+    ctx.lastObj = { ref: 'chosen', key };
+    const pick: Effect = { kind: 'chooseObjects', who, filter: f, count: 1, key };
+    const what: Ref = { ref: 'chosen', key };
+    if (/returns it/i.test(m[3])) return [pick, { kind: 'returnToHand', what }];
+    if (/sacrifices it/i.test(m[3])) return [pick, { kind: 'sacrifice', what }];
+    return [pick, { kind: 'moveToZone', what, zone: 'exile' }];
+  }],
+  // "Each of those creatures is a black Zombie in addition to its other colors and types."
+  // "They are black Zombies in addition to their other colors and types."
+  [/^(?:each of those creatures is|each of them is|they are) (?:a |an )?((?:white|blue|black|red|green) )?([A-Z][\w-]+?)s? in addition to (?:its|their) other colors and types$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? { ref: 'lastMoved' as const };
+    const out: Effect[] = [{ kind: 'addTypes', types: ['Creature'], subtypes: [m[2].replace(/s$/, '')], on: ref, duration: 'permanent' }];
+    if (m[1]) {
+      const c = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1].trim().toLowerCase() as 'white'];
+      out.unshift({ kind: 'setColors', colors: [c], on: ref, duration: 'permanent', add: true });
+    }
+    return out;
+  }],
+  // "You may play target Elemental card from your graveyard without paying its mana cost."
+  [/^you may (?:play|cast) (target .+?) from your graveyard without paying its mana cost$/i, (m, ctx) => {
+    const ref = objRef(`${m[1]} from your graveyard`, ctx);
+    return ref ? [{ kind: 'castFrom', what: ref, free: true }] : null;
+  }],
   // ---- Round 241 ----
   // "~ becomes a 4/3 creature with vigilance and all creature types until end of turn"
   [/^(.+?) becomes? (?:a|an) ([\dX]+)\/([\dX]+)((?: [A-Za-z]+)*?) creature with (.+?)(?: until end of turn)?$/i, (m, ctx) => {
@@ -9018,6 +9073,20 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
         return [mk(head), ...(head.also ?? []).map(mk)];
       }
     }
+    ctx.targets.length = saved;
+  }
+  // "Target opponent loses 3 life and puts a card from their hand on top of their library":
+  // two steps in one sentence that no pattern spells out together.
+  if ((m = text.match(/^(.+?) and (.+)$/i)) && !/^(?:if|when|whenever|until|unless|as long as)\b/i.test(text) && !/"/.test(text)) {
+    const saved = ctx.targets.length;
+    const a = parseSentence(m[1], ctx);
+    let b = a ? parseSentence(m[2], ctx) : null;
+    if (a && !b) {
+      // "Target opponent loses 3 life and puts a card ...": the second half shares the subject.
+      const sub = m[1].match(/^((?:target |each |that |the )?[\w' -]+?) (?:loses?|gains?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?)\b/i);
+      if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
+    }
+    if (a && b) return [...a, ...b];
     ctx.targets.length = saved;
   }
   // "Choose a card name, then reveal a card at random from your hand": two steps in one
