@@ -1733,8 +1733,8 @@ const PATTERNS: Pattern[] = [
     return null;
   }],
   // Counter
-  [/^counter (that spell|it)(?: unless (?:its controller|that player|they|the controller|that spell's controller) pays? (\{.+\}|\d+))?$/i, (m, ctx) => {
-    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : null);
+  [/^counter (that spell|the spell|it)(?: unless (?:its controller|that player|they|the controller|that spell's controller) pays? (\{.+\}|\d+))?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : /the spell/i.test(m[1]) ? { ref: 'stackTarget' as const } : null);
     if (!ref) return null;
     const pays = m[2] ? (/^\d+$/.test(m[2]) ? `{${m[2]}}` : m[2]) : undefined;
     return [{ kind: 'counterSpell', what: ref, unlessPays: pays }];
@@ -4268,6 +4268,22 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 249 ----
+  // "Put any number of target artifact cards from target player's graveyard on top of their library in any order."
+  [/^put (?:(any number of|up to \w+|\w+) )?(target .+? cards?) from (.+?)'s graveyard on (?:the )?(top|bottom) of (?:their|its owner's|that player's) library(?: in any order)?$/i, (m, ctx) => {
+    const ref = objRef(`${m[2]} in ${/^target (?:player|opponent)/i.test(m[3]) ? "that player's" : 'a'} graveyard`, ctx) ?? objRef(m[2], ctx);
+    if (!ref) return null;
+    return [{ kind: 'moveToZone', what: ref, zone: 'library', position: /^top$/i.test(m[4]) ? 'top' : 'bottom' }];
+  }],
+  // "Put a +1/+1 counter and a lifelink counter on that creature."
+  [/^put (?:a|an) ([+-]\d\/[+-]\d|[\w'-]+) counter and (?:a|an) ([+-]\d\/[+-]\d|[\w'-]+) counter on (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[3], ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'addCounters', counter: m[1], amount: 1, on: ref },
+      { kind: 'addCounters', counter: m[2], amount: 1, on: ref },
+    ];
+  }],
   // ---- Round 248 ----
   // "Put ~ and target creature on top of their owners' libraries, then those players shuffle."
   [/^put ~ and (.+?) on top of their owners'? libraries(?:, then those players shuffle(?: their libraries)?)?$/i, (m, ctx) => {
@@ -4313,7 +4329,7 @@ const PATTERNS: Pattern[] = [
     return on ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignAsUnblocked' }, on, duration: 'endOfTurn' }] : null;
   }],
   // "Return target creature you control and all Auras you control attached to it to their owner's hand."
-  [/^return (target .+?) and all (Auras|Equipment)(?: you control)? attached to (?:it|them) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
+  [/^return ((?:another |up to one )?target .+?) and all (Auras|Equipment)(?: you control)? attached to (?:it|them) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     return [

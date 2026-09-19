@@ -62,9 +62,10 @@ export function parseCost(text: string): AbilityCost | null {
     }
     if (!matched) kp3: if ((m = p.match(/^Exile (?:(any number of|X|\w+) )?(.+?) (?:you control|from your graveyard)$/i))) {
       const fromGy = /from your graveyard$/i.test(p);
-      const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
+      const other3 = /^another$/i.test(m[1] ?? '');
+      const noun = parseNoun(`${other3 ? 'another' : 'a'} ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
       if (!noun) break kp3;
-      const n: number | 'any' | 'X' | null = !m[1] ? 1 : /any number of/i.test(m[1]) ? 'any' : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
+      const n: number | 'any' | 'X' | null = !m[1] || other3 ? 1 : /any number of/i.test(m[1]) ? 'any' : m[1].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[1]) as number | null);
       if (n === null) break kp3;
       if (fromGy) cost.exileFromGraveyard = { filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, count: n === 'any' ? 'X' : n };
       else cost.exileObjects = { filter: { ...noun.filter, zone: 'battlefield', controller: 'you' }, count: n };
