@@ -741,6 +741,36 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           effects: [{ kind: 'moveCounters', from: { ref: 'self' }, to: { ref: 'triggerObject' }, counter: '+1/+1', amount: 1 }],
         } as never);
       }
+      // "Casualty 2": sacrifice a big enough creature as you cast it and the spell is copied.
+      if ((m = line.match(/^Casualty (\d+|X)$/i))) {
+        const n291 = m[1].toUpperCase() === 'X' ? ('X' as const) : parseInt(m[1], 10);
+        additionalCost = { optional: true, sacrifice: { filter: { types: ['Creature'], controller: 'you', zone: 'battlefield', powerGE: n291 } } };
+        abilities.push({
+          kind: 'triggered', text: line, event: 'cast', filter: { self: true },
+          condition: { kind: 'memoryFlag', key: 'additionalCostPaid' },
+          effects: [{ kind: 'copySpell', what: { ref: 'self' } }],
+        } as never);
+      }
+      // "Hideaway 4": look at the top four and tuck one away face down.
+      if ((m = line.match(/^Hideaway (\d+)$/i))) {
+        const key291 = 'hideawayLook';
+        abilities.push({
+          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true },
+          effects: [
+            { kind: 'lookAtTop', amount: parseInt(m[1], 10), then: 'hold', key: key291 },
+            { kind: 'chooseObjects', from: { ref: 'chosen', key: key291 }, filter: {}, count: 1, key: 'hideaway' },
+            { kind: 'exile', what: { ref: 'chosen', key: 'hideaway' }, faceDown: true, remember: 'hideaway' },
+            { kind: 'moveRest', key: key291, to: 'bottom' },
+          ],
+        } as never);
+      }
+      // "Backup 1": the counters half of the keyword (the abilities it hands over are printed below it).
+      if ((m = line.match(/^Backup (\d+)$/i)))
+        abilities.push({
+          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true },
+          targets: [{ description: 'target creature', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield' } }],
+          effects: [{ kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'target', slot: 0 } }],
+        } as never);
       // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
       if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
