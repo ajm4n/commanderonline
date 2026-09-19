@@ -1668,7 +1668,9 @@ export function splitTriggerRest(rest: string): { optional: boolean; condition: 
     r = m[2];
   }
   let optional = false;
-  if ((m = r.match(/^you may (.+)$/i)) && !/^you may pay /i.test(r)) {
+  // Keep "you may" inline when a later sentence branches on it ("If you do, ..." / "Otherwise, ..."),
+  // so the optional effect and its branches stay one unit.
+  if ((m = r.match(/^you may (.+)$/i)) && !/^you may pay /i.test(r) && !/\.\s*(?:If you do|Otherwise|When you do)[,.]/i.test(r)) {
     optional = true;
     r = m[1];
     r = r.replace(/^have (.+?) deal /i, '$1 deals ').replace(/^have (.+?) fight /i, '$1 fights ');

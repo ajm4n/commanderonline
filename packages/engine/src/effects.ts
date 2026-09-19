@@ -1490,6 +1490,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'revealTop': {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
+        const n = e.amount !== undefined ? amt(e.amount) : 1;
+        if (n > 1) {
+          const ids = pl.library.slice(0, n);
+          if (!ids.length) continue;
+          for (const rid of ids) g.log(`${pl.name} reveals ${g.nameOf(rid)} from the top of their library.`, { kind: 'reveal', data: { objectId: rid } });
+          ctx.memory['revealed'] = ids;
+          ctx.memory['lastMoved'] = ids;
+          continue;
+        }
         const id = pl.library[0];
         if (id === undefined) return;
         g.log(`${pl.name} reveals ${g.nameOf(id)} from the top of their library.`, { kind: 'reveal', data: { objectId: id } });

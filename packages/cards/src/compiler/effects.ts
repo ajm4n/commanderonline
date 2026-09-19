@@ -4250,6 +4250,75 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 236 ----
+  // "That player reveals the top two cards of their library"
+  [/^(.+?) reveals? the top (?:(\w+) cards|card) of their library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || typeof n !== 'number') return null;
+    ctx.lastObj = { ref: 'lastRevealed' };
+    return [{ kind: 'revealTop', who, amount: n, destination: 'stay' }];
+  }],
+  // "It deals damage equal to its power to you and any target"
+  [/^(it|~) deals damage equal to its power to you and any target$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    ctx.targets.push({ description: 'any target', kind: 'any', playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const pw: Amount = { kind: 'power', ref: src };
+    return [{ kind: 'damage', amount: pw, source: src, to: YOU }, { kind: 'damage', amount: pw, source: src, to: ref }];
+  }],
+  // "It deals that much damage to any target that is not a Dinosaur"
+  [/^(it|~) deals that much damage to any target that is not (?:a|an) ([A-Z][\w-]+)$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    ctx.targets.push({ description: `any target that is not a ${m[2]}`, kind: 'any', filter: { notSubtypes: [singularize(m[2])], zone: 'battlefield' }, playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [{ kind: 'damage', amount: { kind: 'triggerAmount' }, source: src, to: ref }];
+  }],
+  // "It gets +1/+0 until end of turn for each {B} or {R} spent this way"
+  [/^(it|~) gets ([+-]\d+)\/([+-]\d+) until end of turn for each ((?:\{[^}]+\})+(?: or (?:\{[^}]+\})+)?) spent this way$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const per: Amount = { kind: 'manaSpent', of: 'total', symbols: m[4].replace(/ or /g, '') };
+    const mul = (n: number): Amount => (n === 0 ? 0 : n === 1 ? per : { kind: 'times', a: n as Amount, b: per });
+    return [{ kind: 'pump', power: mul(parseInt(m[2], 10)), toughness: mul(parseInt(m[3], 10)), on: ref, duration: 'endOfTurn' }];
+  }],
+  // "If you're the monarch, each of those players mills ten cards instead"
+  [/^if you(?:'re| are) the monarch, (.+?) instead$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], newCtx({ ...ctx, targets: ctx.targets }));
+    return inner ? [{ kind: 'conditional', if: { kind: 'isMonarch', ref: YOU }, then: inner }] : null;
+  }],
+  // "The token enters with half that many +1/+1 counters on it, rounded down"
+  [/^the tokens? enters? with half that many ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it,? rounded (up|down)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
+    return [{ kind: 'addCounters', counter: m[1] as never, amount: { kind: 'half', a: { kind: 'triggerAmount' }, round: /up/i.test(m[2]) ? 'up' : 'down' }, on: ref }];
+  }],
+  // "For each flip you won, create a token that is a copy of that creature"
+  [/^for each flip you won, create (?:a|an) token that is a copy of (that creature|it|~)$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'createToken', token: { name: 'Copy', typeLine: '', colors: [], copyOf: src }, count: { kind: 'ctxMemory', key: 'flipsWon' } }];
+  }],
+  // "As long as ~ remains on the battlefield, that creature is also goaded"
+  [/^as long as ~ remains on the battlefield, (?:that creature|it) is also goaded$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'goaded', data: '__you__' }, on: ref, duration: 'untilSourceLeaves' }];
+  }],
+  // "Choose up to one target creature spell or planeswalker spell"
+  [/^choose up to one (target .+? spell) or (.+? spell)$/i, (m, ctx) => {
+    const a = parseNoun(m[1]);
+    const b = parseNoun(`a ${m[2]}`);
+    if (!a || !b) return null;
+    ctx.targets.push({ description: `${m[1]} or ${m[2]}`, kind: 'spell', filter: { anyOf: [{ ...a.filter, zone: undefined }, { ...b.filter, zone: undefined }], zone: 'stack' }, min: 0, max: 1 });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  // "~ deals 2 damage to that player unless they sacrifice enchanted artifact"
+  [/^(.+?) deals (\d+|X) damage to that player unless they sacrifice (enchanted \w+|~)$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    const victim = ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    const sacRef = /^~$/.test(m[3]) ? SELF : objRef(m[3], ctx);
+    if (!src || !sacRef) return null;
+    const amt236: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'unlessPays', who: victim, cost: { sacrifice: { self: true, zone: 'battlefield' }, count: 1 }, effects: [{ kind: 'damage', amount: amt236, source: src, to: victim }] }];
+  }],
   // ---- Round 235 ----
   // "Then each player gains control of each permanent for which they were chosen"
   [/^each player gains control of each (.+?) for which they were chosen$/i, (m) => {
@@ -8852,7 +8921,26 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
     // "Otherwise, X" completes the previous conditional, optional effect or payment.
     if (/^otherwise, /i.test(s) && effects.length) {
-      const prev = effects[effects.length - 1];
+      // The branch this completes is usually the last effect, but may sit behind later refinements
+      // ("Reveal ... . Put it into your hand. Otherwise, ...") or inside a for-each.
+      const branchKinds = ['conditional', 'revealTop', 'may', 'ifPays', 'flipCoin'];
+      let prev = effects[effects.length - 1];
+      if (!branchKinds.includes(prev.kind)) {
+        for (let k = effects.length - 1; k >= 0; k--) {
+          const e = effects[k];
+          if (branchKinds.includes(e.kind)) {
+            prev = e;
+            break;
+          }
+          if (e.kind === 'forEach') {
+            const innerBranch = [...e.effects].reverse().find((x) => branchKinds.includes(x.kind));
+            if (innerBranch) {
+              prev = innerBranch;
+              break;
+            }
+          }
+        }
+      }
       if (prev.kind === 'conditional' || prev.kind === 'revealTop' || prev.kind === 'may' || prev.kind === 'ifPays' || prev.kind === 'flipCoin') {
         const saved = ctx.targets.length;
         const inner = parseSentence(s.replace(/^otherwise, /i, ''), ctx);
