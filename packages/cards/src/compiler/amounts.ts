@@ -290,6 +290,10 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const noun = parseNoun(`${oc(m, 1)} card`);
     if (noun) return { kind: 'graveyardSize', ref: thatPlayer(ctx), filter: noun.filter };
   }
+  if ((m = t.match(/^(x|\d+) plus (\d+)$/))) {
+    const base: Amount | null = m[1].toLowerCase() === 'x' ? 'X' : parseInt(m[1], 10);
+    if (base !== null) return { kind: 'sum', parts: [base, parseInt(m[2], 10)] };
+  }
   if ((m = t.match(/^(\d+|one|two|three|four|five) plus (.+)$/))) {
     const base = wordToNumber(m[1]);
     const rest = parseAmount(m[2], ctx);

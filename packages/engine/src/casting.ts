@@ -833,6 +833,12 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (obj.zone === 'exile' && obj.memory['playableBy'] !== p) {
     // "You may play cards you don't own with stash counters on them from exile" style permissions.
     for (const r of g.playerRules(p)) {
+      if (r.kind === 'custom' && r.tag === 'playExiledWithSource') {
+        const d = r.data as { yourTurn?: boolean } | undefined;
+        const srcId = (r as { sourceId?: ObjectId }).sourceId ?? null;
+        if (d?.yourTurn && g.state.turn.activePlayer !== p) continue;
+        if (matchesFilter(g, obj, { exiledWithSource: true }, { sourceId: srcId, controller: p })) return true;
+      }
       if (r.kind === 'custom' && r.tag === 'playExiledWithCounter') {
         const d = r.data as { counter: string; notOwned?: boolean; yourTurn?: boolean } | undefined;
         if (!d) continue;
@@ -1205,7 +1211,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   });
   const isInstantSpeed = /Instant/.test(face.typeLine) || /^Flash\b/m.test(face.oracleText) || ch.keywords.has('Flash') || altInstant || flashRule;
   if (freeFromExile(g, obj)) opts = { ...opts, free: true };
-  if (fromZone === 'exile' && obj.memory['playableBy'] !== p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playExiledWithCounter' && (r.data as { anyMana?: boolean } | undefined)?.anyMana)) opts = { ...opts, anyMana: true };
+  if (fromZone === 'exile' && obj.memory['playableBy'] !== p && g.playerRules(p).some((r) => r.kind === 'custom' && (r.tag === 'playExiledWithCounter' || r.tag === 'playExiledWithSource') && (r.data as { anyMana?: boolean } | undefined)?.anyMana)) opts = { ...opts, anyMana: true };
   if (obj.memory['playAnyMana']) opts = { ...opts, anyMana: true };
   if ((obj.memory['sorceryOnly'] === true || (!opts.free && !isInstantSpeed)) && !canCastSorcerySpeed(g, p)) return false;
   for (const r of g.playerRules(p)) {

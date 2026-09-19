@@ -469,6 +469,9 @@ export function parseActivationRestriction(text: string): { text: string; sorcer
     } else if ((m = t.match(/^(.*?)\s*Activate only during (your|an opponent's|each|the) (upkeep|draw step|end step|combat|main phase|precombat main phase|postcombat main phase|declare attackers step|declare blockers step)\.?$/i))) {
       addCond({ kind: 'turnStep', steps: STEP_WORDS[m[3].toLowerCase()], player: m[2].toLowerCase() === 'your' ? 'you' : /opponent/i.test(m[2]) ? 'opponent' : 'any' });
       t = m[1];
+    } else if ((m = t.match(/^(.*?)\s*You cannot activate this ability during combat\.?$/i))) {
+      addCond({ kind: 'turnStep', steps: ['untap', 'upkeep', 'draw', 'main1', 'main2', 'end', 'cleanup'] });
+      t = m[1];
     } else if ((m = t.match(/^(.*?)\s*Activate only during an opponent's turn\.?$/i))) {
       addCond({ kind: 'notYourTurn' });
       t = m[1];

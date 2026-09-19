@@ -4268,6 +4268,39 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 240 ----
+  // "Exile any number of target creatures and all Auras attached to them."
+  [/^(exile|destroy) (.+?) and all (Auras|Equipment) attached to (?:them|it)$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    if (!ref) return null;
+    const f: ObjectFilter = { subtypes: [/^Auras$/i.test(m[3]) ? 'Aura' : 'Equipment'], zone: 'battlefield', attachedToRef: ref };
+    const all: Ref = { ref: 'all', filter: f };
+    return /^exile$/i.test(m[1])
+      ? [{ kind: 'moveToZone', what: ref, zone: 'exile' }, { kind: 'moveToZone', what: all, zone: 'exile' }]
+      : [{ kind: 'destroy', what: ref }, { kind: 'destroy', what: all }];
+  }],
+  // "Choose a creature card at random from target opponent's graveyard."
+  [/^choose (?:a|an|one) (.+?) at random from (.+?)'s graveyard$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const who = playerRef(m[2], ctx);
+    if (!noun || !who) return null;
+    const key = `rand${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', ownerRef: who }, count: 1, key, random: true }];
+  }],
+  // "Choose a card at random that was exiled with ~."
+  [/^choose (?:a|an|one) (.+?) at random (?:that was |)exiled with (?:~|it)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const key = `rand${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'exile', exiledWithSource: true }, count: 1, key, random: true }];
+  }],
+  // "Return ~ and the exiled card to their owner's hand."
+  [/^return ~ and the exiled cards? to (?:their|its) owners?'? hands?$/i, () => [
+    { kind: 'returnToHand', what: SELF },
+    { kind: 'returnToHand', what: { ref: 'chosen', key: 'exiled' } },
+  ]],
   // ---- Round 238 ----
   // "As ~ is turned face up, you may attach it to a creature."
   [/^attach (~|it) to (?:a|an) (.+)$/i, (m, ctx) => {
@@ -9557,6 +9590,10 @@ export function parseGrantList(text: string): { keywords: string[]; abilities: s
     const q = raw.match(/^"(.*)"$/s);
     if (q) {
       abilities.push(q[1]);
+      continue;
+    }
+    if (/^all creature types$/i.test(raw)) {
+      keywords.push('Changeling');
       continue;
     }
     const kws = parseKeywordList(raw);

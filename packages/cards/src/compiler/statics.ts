@@ -87,6 +87,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 240 ----
+  // "You may play lands and cast spells from among cards exiled with ~."
+  if ((m = L.match(/^(?:During your turn, )?You may (?:play lands and cast spells|play cards|cast spells|play|cast)(?: from among(?: the)? cards| cards)? exiled with ~(?:, and you may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to cast (?:those spells|them|it))?$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playExiledWithSource', data: { yourTurn: /^During your turn/i.test(L), anyMana: /spend mana as though/i.test(L) } } }];
+  // "Double all damage ~ would deal."
+  if (/^(?:Double|Triple) all damage ~ would deal$/i.test(L))
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'damageMultiplier', data: { filter: { self: true }, times: /^Triple/i.test(L) ? 3 : 2 } } }];
   // ---- Round 239 ----
   // "You may spend mana as though it were mana of any color to cast planeswalker spells."
   if ((m = L.match(/^You may spend mana as though it were mana of any (?:colou?r|type) to cast (.+?) spells$/i))) {
@@ -2677,7 +2684,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   }
 
-  if (/^You have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
+  if (/^You have no maximum hand size(?: for as long as you control ~)?$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You have hexproof$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'hexproof' } }];
   if (/^You have shroud$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'shroud' } }];
   if (/^You cannot lose the game and your opponents cannot win the game$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'cantLose' } }];
