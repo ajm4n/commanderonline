@@ -17,7 +17,7 @@ function affectsOf(text: string): { affects: StaticAbilitySpec['affects']; ok: b
     if (!n) return { affects: undefined, ok: false };
     return { affects: { ...n.filter, zone: n.filter.zone ?? 'battlefield', controllerRef: { ref: 'attachedTo' } }, ok: n.confident };
   }
-  if (l === '~') return { affects: 'self', ok: true };
+  if (l === '~' || l === 'it') return { affects: 'self', ok: true };
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|artifact|planeswalker)$/.test(l)) return { affects: 'attachedTo', ok: true };
   const noun = parseNoun(text.trim());
   if (!noun) return { affects: undefined, ok: false };
@@ -85,6 +85,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (amt199 !== null) {
       const who199 = /^your$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
+    }
+  }
+  // ---- Round 270 ----
+  // "As long as you control exactly one creature, that creature gets +2/+0 and has lifelink."
+  if ((m = L.match(/^As long as you control exactly one creature, that creature (.+)$/i))) {
+    const inner270 = parseStatic(`Creatures you control ${m[1].replace(/^gets /i, 'get ').replace(/^has /i, 'have ')}`, isCreatureOrPermanent);
+    if (inner270) {
+      const c270: Condition = { kind: 'count', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' }, op: '==', value: 1 };
+      return inner270.map((a) => (a.kind === 'static' ? { ...a, text: line, condition: a.condition ? { kind: 'and' as const, cs: [a.condition, c270] } : c270 } : a));
     }
   }
   // ---- Round 258 ----
