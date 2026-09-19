@@ -87,6 +87,52 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 229 ----
+  // "~'s power is equal to the number of tapped lands the chosen player controls."
+  if ((m = L.match(/^~'s (power|toughness) is equal to (.+?)$/i))) {
+    const a229 = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (a229 !== null)
+      return [{ kind: 'static', text: line, affects: 'self', modification: { layer: '7b', ...(/power/i.test(m[1]) ? { powerAmount: a229 } : { toughnessAmount: a229 }) } }];
+  }
+  // "Equipped creature gets +3/+1 and must be blocked by an Eldrazi if able."
+  if ((m = L.match(/^(Equipped|Enchanted) (\w+) gets ([+-]\d+)\/([+-]\d+) and must be blocked by (?:a|an) (.+?) if able$/i))) {
+    const n229 = parseNoun(`a ${m[5]}`);
+    if (n229 && n229.confident)
+      return [
+        { kind: 'static', text: line, affects: 'attachedTo', modification: { layer: '7c', power: parseInt(m[3], 10), toughness: parseInt(m[4], 10) } },
+        { kind: 'static', text: line, affects: 'attachedTo', rule: { kind: 'custom', tag: 'mustBeBlockedBy', data: { filter: { ...n229.filter, zone: undefined } } } },
+      ];
+  }
+  // "Equipped creature has menace and mobilize X, where X is its power."
+  if ((m = L.match(/^(Equipped|Enchanted) (\w+) has ([\w ]+?) and (mobilize|bushido|rampage|annihilator|afflict) X, where X is its power$/i))) {
+    const g229 = parseGrantList(m[3]);
+    if (g229 && g229.keywords.length && !g229.abilities.length)
+      return [{ kind: 'static', text: line, affects: 'attachedTo', modification: { layer: 6, addKeywords: [...g229.keywords, `${m[4].replace(/^\w/, (c) => c.toUpperCase())} X`] } }];
+  }
+  // "Other creatures you control of a type you noted for cards named ~ get +1/+1."
+  if ((m = L.match(/^Other (.+?) of a type you noted for cards named ~ get ([+-]\d+)\/([+-]\d+)$/i))) {
+    const n229b = parseNoun(`a ${singularize(m[1])}`);
+    if (n229b && n229b.confident)
+      return [{ kind: 'static', text: line, affects: { ...n229b.filter, zone: 'battlefield', other: true, typeIsChosen: 'notedType' }, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } }];
+  }
+  // "Spells with the chosen name enchanted player casts cost {2} more to cast."
+  if ((m = L.match(/^Spells with the chosen name enchanted player casts cost \{(\d+)\} (more|less) to cast$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'attachedToController', rule: { kind: /more/i.test(m[2]) ? 'costIncrease' : 'costReduction', amount: parseInt(m[1], 10), filter: { nameIsChosen: 'cardName' } } }];
+  // "Each Sliver card in each player's hand has slivercycling {3}."
+  if ((m = L.match(/^Each (.+?) card in each player's hand has ([\w-]+) ((?:\{[^}]+\})+)$/i))) {
+    const n229c = parseNoun(`a ${m[1]} card`);
+    if (n229c && n229c.confident)
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'grantHandKeyword', data: { filter: { ...n229c.filter, zone: 'hand' }, keyword: `${m[2]} ${m[3]}` } } }];
+  }
+  // "Black and/or red permanents and spells are colorless sources of damage."
+  if ((m = L.match(/^(.+?) permanents and spells are colorless sources of damage$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'colorlessDamageSources', data: m[1] } }];
+  // "Noncreature spells with mana value equal to the chosen number cannot be cast."
+  if ((m = L.match(/^(.+?) spells with mana value equal to the chosen number cannot be cast$/i))) {
+    const n229d = /^spells?$/i.test(m[1]) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(`a ${m[1]} spell`);
+    if (n229d && n229d.confident)
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantCast', data: { filter: { ...n229d.filter, zone: undefined, cmcEQAmount: { kind: 'chosenNumber' } } } } }];
+  }
   // ---- Round 221 ----
   if ((m = L.match(/^~ can be attached only to (?:a|an) (.+?)$/i))) {
     const n221 = parseNoun(`a ${m[1]}`);
