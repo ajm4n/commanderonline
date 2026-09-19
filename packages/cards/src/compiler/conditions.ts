@@ -733,6 +733,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     return { kind: 'amount', a: { kind: 'life', ref: { ref: 'controller' } }, op: '>=', b: { kind: 'startingLife' } };
   if ((m = t.match(/^you(?:'re| are) attacking (\w+) or more opponents$/)))
     { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'amount', a: { kind: 'playersBeingAttacked' }, op: '>=', b: n }; }
+  if ((m = t.match(/^there (?:is|are) (\w+) or more (.+?) in your graveyard$/))) {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
+    if (typeof n === 'number' && noun) return { kind: 'count', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, op: '>=', value: n };
+  }
   if ((m = t.match(/^there (?:is|are) at least (\w+) (.+?) in your graveyard$/))) {
     const n = wordToNumber(m[1]);
     const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
