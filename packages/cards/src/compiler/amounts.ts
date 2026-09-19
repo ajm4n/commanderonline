@@ -84,6 +84,8 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     if (/^basic land types? among lands (?:they|you) controls?$/.test(t1)) {
       return { kind: 'distinctValues', stat: 'name', filter: { types: ['Land'], supertypes: ['Basic'], zone: 'battlefield', controller: /they/.test(t1) ? undefined : 'you' } };
     }
+    // "each player who was dealt combat damage this turn"
+    if (/^players? who (?:was|were) dealt combat damage this turn$/.test(t1)) return { kind: 'eventsThisTurn', event: 'dealtCombatDamageToPlayer', player: 'any' };
     // "each card returned to your hand this way"
     if (/^cards? (?:returned|put) (?:to|into|onto) (?:your hand|their owners'? hands?|the battlefield|your graveyard) this way$/.test(t1)) return { kind: 'countRef', ref: { ref: 'lastMoved' } };
     // "each of those creatures" / "each of them"

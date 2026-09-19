@@ -548,6 +548,9 @@ export interface TriggerFilter {
   objectRef?: Ref;
   /** For cast events: the spell must target an object you control matching this ("Whenever you cast a spell that targets a creature you control"). */
   targetsControlled?: ObjectFilter;
+  /** For cast events: how many targets the spell must have. */
+  minTargets?: number;
+  maxTargets?: number;
   /** For cast events: the spell must target one or more objects matching this, whoever controls them. */
   targetsAny?: ObjectFilter;
   /** For abilityActivated events: the ability's text must start with this ("whenever you activate a ninjutsu ability"). */

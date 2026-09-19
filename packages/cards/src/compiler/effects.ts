@@ -6279,6 +6279,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const inner = cost ? parseSentence(m[2], ctx) : null;
     if (cost && inner) return [{ kind: 'ifPays', cost: '', payCostSpec: cost, effects: inner, text: `${m[1]}?` }];
   }
+  if ((m = text.match(/^at (?:this turn's next end of combat|the next end of combat(?: this turn)?), (.+)$/i))) {
+    const inner = parseSentence(m[1], ctx);
+    if (inner) return [{ kind: 'delayedTrigger', event: 'endOfCombat', effects: inner, text, once: true }];
+  }
+  if ((m = text.match(/^at the beginning of the next (?:post-?combat )?main phase(?: this turn)?, (.+)$/i))) {
+    const inner = parseSentence(m[1], ctx);
+    if (inner) return [{ kind: 'delayedTrigger', event: 'beginningOfPostcombatMain', effects: inner, text, once: true }];
+  }
   if ((m = text.match(/^at the beginning of (the next end step|your next end step|that turn's end step|the next turn's upkeep|your next upkeep|the next upkeep|the next cleanup step), (.+)$/i))) {
     const inner = parseSentence(m[2], ctx);
     if (inner) {

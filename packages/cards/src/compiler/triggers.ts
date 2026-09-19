@@ -45,6 +45,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   // "When a Dragon you control enters" behaves like "Whenever ..."; "attacks while saddled" is an attack trigger with a condition.
   line = line
     .replace(/ is put into graveyards from anywhere\b/i, ' is put into a graveyard from anywhere')
+    .replace(/\benchanted opponent\b/gi, 'enchanted player')
     .replace(/^When (a|an|another|one or more) /, 'Whenever $1 ')
     .replace(/^When (~|you|equipped creature|enchanted creature|enchanted player|your commander) (attacks|blocks|deals|casts|enters|dies|cycles|becomes|taps|untaps)\b/i, 'Whenever $1 $2')
     .replace(/^Whenever (~(?: and ~)?) (enter|attack|block|deal|die|become|tap|untap)\b/i, (_x, who: string, verb: string) => `Whenever ${who} ${verb}s`)
@@ -185,6 +186,62 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 193 ----
+  // "Whenever two or more creatures your opponents control attack, ..." / "Whenever three or more creatures you control with flying attack, ..."
+  if ((m = L.match(/^Whenever (\w+) or more creatures (you control|your opponents control|an opponent controls)((?: with [\w ]+)?) attack(?: one or more players)?, (.+)$/i))) {
+    const mine = /^you control$/i.test(m[2]);
+    return { event: 'attacks', filter: { objectController: mine ? 'you' : 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if ${mine ? 'you' : 'your opponents'} control ${m[1]} or more attacking creatures${m[3]}, ${m[4]}` };
+  }
+  // "Whenever another player attacks with two or more creatures, ..."
+  if ((m = L.match(/^Whenever another player attacks with (\w+) or more creatures, (.+)$/i)))
+    return { event: 'attacks', filter: { objectController: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if your opponents control ${m[1]} or more attacking creatures, ${m[2]}` };
+  // "Whenever one or more Devils you control attack one or more players, ..."
+  if ((m = L.match(/^Whenever one or more (.+?) attack one or more players, (.+)$/i))) {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (noun && noun.confident) return { event: 'attacks', filter: { object: { ...noun.filter, zone: undefined }, firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever you cast a spell with one or more targets, ..."
+  if ((m = L.match(/^Whenever you cast (?:a|an) spell with one or more targets, (.+)$/i)))
+    return { event: 'cast', filter: { player: 'you', minTargets: 1 }, hasObject: true, hasPlayer: true, rest: m[1] };
+  // "Whenever you cast a spell that targets only a single creature (you control), ..."
+  if ((m = L.match(/^Whenever you cast (?:a|an) (?:(.+?) )?spell that targets only (?:a single|one) (.+?), (.+)$/i))) {
+    const sp = m[1] ? parseNoun(`a ${m[1]} spell`) : null;
+    const tn = parseNoun(`a ${m[2]}`);
+    if (tn && (!m[1] || sp)) return { event: 'cast', filter: { player: 'you', minTargets: 1, maxTargets: 1, targetsAny: { ...tn.filter, zone: tn.filter.zone ?? 'battlefield' }, ...(sp ? { object: { ...sp.filter, zone: undefined } } : {}) }, hasObject: true, hasPlayer: true, rest: m[3] };
+  }
+  // "Whenever a player casts an instant or sorcery spell that targets only ~, ..."
+  if ((m = L.match(/^Whenever (a player|an opponent) casts (?:a|an) (.+?) spell that targets only ~, (.+)$/i))) {
+    const sp = parseNoun(`a ${m[2]} spell`);
+    if (sp) return { event: 'cast', filter: { player: /opponent/i.test(m[1]) ? 'opponent' : 'any', maxTargets: 1, targetsSource: true, object: { ...sp.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[3] };
+  }
+  // "Whenever you activate ~'s outlast ability, ..."
+  if ((m = L.match(/^Whenever you activate ~'s ([\w-]+) ability, (.+)$/i)))
+    return { event: 'abilityActivated', filter: { self: true, player: 'you', abilityTextPrefix: m[1].replace(/^\w/, (c) => c.toUpperCase()) }, hasObject: true, hasPlayer: true, rest: m[2] };
+  // "Whenever you activate an eternalize or embalm ability, ..."
+  if ((m = L.match(/^Whenever you activate (?:a|an) ([\w-]+) or ([\w-]+) ability, (.+)$/i)))
+    return { event: 'abilityActivated', filter: { player: 'you', abilityTextPrefix: `(?:${m[1]}|${m[2]})` }, hasObject: true, hasPlayer: true, rest: m[3] };
+  // "When ~ enters from your graveyard, ..."
+  if ((m = L.match(/^When(?:ever)? ~ enters from (?:your|a|an) (hand|graveyard|exile|library), (.+)$/i)))
+    return { event: 'entersBattlefield', filter: { self: true, fromZone: m[1].toLowerCase() as ZoneName }, hasObject: true, hasPlayer: false, rest: m[2] };
+  // "At the beginning of the monarch's end step, ..."
+  if ((m = L.match(/^At the beginning of the monarch's (upkeep|end step|draw step), (.+)$/i)))
+    return { event: /upkeep/i.test(m[1]) ? 'beginningOfUpkeep' : /end step/i.test(m[1]) ? 'beginningOfEndStep' : 'beginningOfDraw', filter: { custom: 'monarchsStep' }, hasObject: false, hasPlayer: true, rest: m[2] };
+  // "When enchanted player loses the game, ..."
+  if ((m = L.match(/^When(?:ever)? enchanted player loses the game, (.+)$/i)))
+    return { event: 'playerLost', filter: { custom: 'enchantedPlayer' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  // "Whenever a creature enchanted player controls enters, ..."
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) enchanted player controls (enters|dies|attacks|becomes tapped), (.+)$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) {
+      const ev: GameEventName = /enters/i.test(m[2]) ? 'entersBattlefield' : /dies/i.test(m[2]) ? 'dies' : /attacks/i.test(m[2]) ? 'attacks' : 'tapped';
+      return { event: ev, filter: { object: { ...noun.filter, zone: undefined }, custom: 'enchantedPlayerControls' }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+  }
+  // "When ~ has eight traffic counters on it, ..."
+  if ((m = L.match(/^When ~ has (\w+) ([\w' -]+?) counters on it, (.+)$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { event: 'stateTrigger', hasObject: true, hasPlayer: true, rest: m[3], stateCondition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: m[2].toLowerCase(), op: '>=', value: n } };
+  }
   // ---- Round 192 ----
   // "Whenever you activate a ninjutsu ability, ..." / "Whenever you activate a boast ability, ..."
   if ((m = L.match(/^Whenever you activate (?:a|an) (ninjutsu|boast|exhaust|equip|crew|channel|cycling|level up|outlast|reconfigure|unearth|monstrosity|adapt|forecast) ability, (.+)$/i)))

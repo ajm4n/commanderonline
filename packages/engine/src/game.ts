@@ -1140,6 +1140,13 @@ export class Game {
       const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
       if (!item || !item.targets.some((t) => t.kind === 'object' && this.state.objects[t.id] && this.state.objects[t.id].controller === controller && matchesFilter(this, this.state.objects[t.id], { ...f.targetsControlled, zone: undefined }, { sourceId: obj.id, controller }))) return false;
     }
+    if (f.minTargets !== undefined || f.maxTargets !== undefined) {
+      const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
+      const n = item ? item.targets.length : 0;
+      if (f.minTargets !== undefined && n < f.minTargets) return false;
+      if (f.maxTargets !== undefined && n > f.maxTargets) return false;
+    }
+    if (f.custom === 'monarchsStep' && (this.state.monarch === null || e.playerId !== this.state.monarch)) return false;
     if (f.targetsAny) {
       const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === e.objectId);
       if (!item || !item.targets.some((t) => t.kind === 'object' && this.state.objects[t.id] && matchesFilter(this, this.state.objects[t.id], f.targetsAny!, { sourceId: obj.id, controller }))) return false;
