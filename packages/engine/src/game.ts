@@ -1609,6 +1609,13 @@ export class Game {
         return this.resolveObjects(a.ref, ctx).reduce((s2, o) => s2 + (this.characteristics(o.id).toughness ?? 0), 0);
       case 'totalManaValueRef':
         return this.resolveObjects(a.ref, ctx).reduce((s2, o) => s2 + this.characteristics(o.id).manaValue, 0);
+      case 'playersComparingCount': {
+        const candsC = a.who === 'opponent' ? this.opponentsOf(ctx.controller) : this.state.playerOrder;
+        const countFor = (p: PlayerId): number =>
+          this.state.battlefield.filter((id) => this.obj(id).controller === p && matchesFilter(this, this.obj(id), { ...a.filter, zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p })).length;
+        const mine = countFor(ctx.controller);
+        return candsC.filter((p) => (a.cmp === 'fewer' ? countFor(p) < mine : countFor(p) > mine)).length;
+      }
       case 'playersMatching': {
         const cands = a.who === 'opponent' ? this.opponentsOf(ctx.controller) : this.state.playerOrder;
         return cands.filter((p) => (this.state.players[p]?.turnStats[a.stat] ?? 0) > 0).length;

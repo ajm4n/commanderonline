@@ -112,6 +112,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.notCastFromZone !== undefined && obj.castFromZone === filter.notCastFromZone) return false;
   if (filter.custom === 'noName' && ch.name !== '') return false;
   if (filter.custom === 'attackedLastTurn' && !obj.memory['attackedLastTurn']) return false;
+  if (filter.custom === 'crewedSource') {
+    const srcK = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
+    const idsK = (srcK?.memory['crewedBy'] as number[] | undefined) ?? [];
+    if (!idsK.includes(obj.id)) return false;
+  }
   if (filter.custom === 'blockedRelatedSource' && (ctx.sourceId === null || ctx.sourceId === undefined || (!obj.blocking.includes(ctx.sourceId) && !obj.blockedBy.includes(ctx.sourceId)))) return false;
   if (filter.custom === 'highestToughness') {
     const all = g.state.battlefield.map((x) => g.characteristics(x).toughness ?? 0);
@@ -219,6 +224,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
     const want = src?.chosen[filter.typeIsChosen];
     if (typeof want !== 'string' || !(ch.types.includes(want) || ch.subtypes.includes(want))) return false;
+  }
+  if (filter.convokedSource) {
+    const srcC = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
+    const ids = (srcC?.memory['convokedBy'] as number[] | undefined) ?? [];
+    if (!ids.includes(obj.id)) return false;
   }
   if (filter.suspended && !(obj.zone === 'exile' && (obj.counters['time'] ?? 0) > 0)) return false;
   if (filter.manaValueParityChosen) {

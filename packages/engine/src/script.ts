@@ -90,6 +90,8 @@ export type Amount =
   | { kind: 'totalManaValueRef'; ref: Ref }
   /** Number of players with a non-zero turn stat ("each opponent who lost life this turn"). */
   | { kind: 'playersMatching'; who: 'opponent' | 'any'; stat: string }
+  /** Players controlling fewer (or more) matching permanents than you. */
+  | { kind: 'playersComparingCount'; who: 'opponent' | 'any'; filter: ObjectFilter; cmp: 'fewer' | 'more' }
   /** Number of graveyards with at least this many cards. */
   | { kind: 'graveyardsWithAtLeast'; count: number }
   /** Number of distinct values of a stat among matching objects ("creatures with different powers"). */

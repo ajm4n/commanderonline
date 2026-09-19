@@ -403,6 +403,8 @@ export interface ObjectFilter {
   manaValueParityChosen?: string;
   /** "a suspended card": exiled with one or more time counters. */
   suspended?: boolean;
+  /** "each creature that convoked it" */
+  convokedSource?: boolean;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];

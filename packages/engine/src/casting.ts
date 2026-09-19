@@ -326,6 +326,10 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
     if (src.kind === 'delve') continue;
     if (src.kind === 'convoke' || src.kind === 'improvise') {
       g.tap(src.id);
+      if (src.kind === 'convoke' && sourceId !== null && sourceId !== undefined) {
+        const so = g.state.objects[sourceId];
+        if (so) so.memory['convokedBy'] = [...((so.memory['convokedBy'] as number[] | undefined) ?? []), src.id];
+      }
       for (const c of src.alternatives[solution.alternatives[i]]) player.manaPool[c]++;
       g.log(`${player.name} taps ${g.nameOf(src.id)} to help pay (${src.kind}).`);
       continue;

@@ -4249,6 +4249,55 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 203 ----
+  // "This ability still resolves if its target becomes illegal." — a rules reminder.
+  [/^this ability still resolves if its target becomes illegal$/i, () => []],
+  // "Any player may exile a card from their graveyard." / "... three cards ..."
+  [/^any player may exile (?:a|an|(\w+)) cards? from their graveyard$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'may', prompt: `Exile ${n} card(s) from your graveyard?`, who: { ref: 'iter' }, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { zone: 'graveyard', ownerRef: { ref: 'iter' } }, count: n, key: 'gyExile' }, { kind: 'moveToZone', what: { ref: 'chosen', key: 'gyExile' }, zone: 'exile' }] }] }];
+  }],
+  // "Each of its controller's opponents draws a card and gains 2 life"
+  [/^each of (?:its controller's|that player's|their) opponents (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(`each opponent ${m[1]}`, newCtx({ ...ctx, targets: ctx.targets }));
+    return inner && inner.length ? inner : null;
+  }],
+  // "Draw a card for each opponent who controls fewer creatures than you"
+  [/^(?:you )?draws? (?:a card|(\w+|X) cards?) for each (opponent|player) who controls (fewer|more) (.+?) than you$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[4])}`);
+    if (!noun || !noun.confident) return null;
+    const base = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof base !== 'number') return null;
+    const per: Amount = { kind: 'playersComparingCount', who: /opponent/i.test(m[2]) ? 'opponent' : 'any', filter: { ...noun.filter, zone: 'battlefield' }, cmp: /more/i.test(m[3]) ? 'more' : 'fewer' };
+    return [{ kind: 'draw', amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), who: YOU }];
+  }],
+  // "Exile that creature." / "Destroy that creature." with only the trigger's object in scope
+  [/^(exile|destroy|tap|untap|sacrifice) that (creature|permanent|artifact|land|token)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    if (!ref) return null;
+    const k = m[1].toLowerCase();
+    if (k === 'exile') return [{ kind: 'moveToZone', what: ref, zone: 'exile' }];
+    if (k === 'destroy') return [{ kind: 'destroy', what: ref, cantRegenerate: false }];
+    if (k === 'sacrifice') return [{ kind: 'sacrifice', what: ref }];
+    return [{ kind: k === 'tap' ? 'tap' : 'untap', what: ref }];
+  }],
+  // "Sacrifice ~ unless you remove a +1/+1 counter from it"
+  [/^sacrifice ~ unless you remove (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? from it$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'unlessPays', who: YOU, cost: { removeCounters: { counter: m[2] as never, amount: n } } as never, effects: [{ kind: 'sacrifice', what: SELF }] }];
+  }],
+  // "You gain protection from the color of your choice until end of turn"
+  [/^you gain protection from the colou?r of your choice(?: until end of turn)?$/i, () => [
+    { kind: 'chooseColor', key: 'color' },
+    { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'protectionFromChosenColor' } },
+  ]],
+  // "Exile all tokens with the same name as that creature"
+  [/^(exile|destroy) all tokens with the same name as (?:that|the) creature$/i, (m, ctx) => {
+    const ref: Ref = { ref: 'all', filter: { isToken: true, zone: 'battlefield', sameNameAs: ctx.lastObj ?? { ref: 'triggerObject' } } };
+    return [/exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'destroy', what: ref, cantRegenerate: false }];
+  }],
   // ---- Round 202 ----
   // "Choose a number greater than 0 and a color"
   [/^choose a number greater than (\d+) and a colou?r$/i, (m) => [
