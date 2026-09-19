@@ -175,7 +175,10 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const c = { kind: 'objectMatches' as const, ref: ctx.self, filter: { hasAttachment: 'any' as const } };
     return m[2] ? { kind: 'not', c } : c;
   }
-  if ((m = t.match(/^(?:equipped|enchanted) (?:creature|permanent) is legendary$/))) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { supertypes: ['Legendary'] } };
+  if ((m = t.match(/^(?:equipped|enchanted) (?:creature|permanent) is (not )?legendary$/))) {
+    const c = { kind: 'objectMatches' as const, ref: { ref: 'attachedTo' as const }, filter: { supertypes: ['Legendary' as const] } };
+    return m[1] ? { kind: 'not', c } : c;
+  }
   // "Activate only if ~ is not enchanted." / "... is enchanted" / "... is equipped"
   if ((m = t.match(/^(~|it|that creature|enchanted creature|equipped creature) is (not )?(enchanted|equipped|tapped|untapped|attacking|blocking|monstrous)$/))) {
     const ref = /^(?:enchanted|equipped) creature$/.test(m[1]) ? { ref: 'attachedTo' as const } : ctx.self;

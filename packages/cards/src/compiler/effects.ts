@@ -225,7 +225,7 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
       if (noun && noun.confident) return { ref: 'playerWithMost', what: { filter: { ...noun.filter, zone: 'battlefield' } }, least: least || undefined };
     }
   }
-  if (l === 'the active player' || l === 'the attacking player' || l === 'that attacking player') return { ref: l === 'the active player' ? 'activePlayer' : 'triggerPlayer' };
+  if (l === 'the active player' || l === 'the attacking player' || l === 'that attacking player' || l === 'attacking player' || l === 'defending player' || l === 'the defending player') return { ref: l === 'the active player' ? 'activePlayer' : /defending/.test(l) ? 'defendingPlayer' : 'triggerPlayer' };
   if (l === 'the player to your left' || l === 'the player to your right') return { ref: 'neighbor', side: l.endsWith('left') ? 'left' : 'right' };
   if (l === "enchanted player" || l === "that player's controller") return { ref: 'attachedTo' };
   if (l === 'the chosen player' || l === 'the chosen opponent') return { ref: 'chosen', key: 'opponent' };
@@ -4409,7 +4409,15 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
-  // ---- Round 268 ----
+  // ---- Round 269 ----
+  // "Permanents you control can't be the targets of blue or black spells your opponents control this turn."
+  [/^(.+?) cannot be the targets? of ((?:white|blue|black|red|green)(?: or (?:white|blue|black|red|green))*) spells (?:your opponents control|an opponent controls)(?: this turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const map = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const;
+    const colors = m[2].split(/ or /i).map((w) => map[w.trim().toLowerCase() as 'white']);
+    return [{ kind: 'applyRule', rule: { kind: 'cantBeTargeted', filter: { colors, controller: 'opponent' } }, on: ref, duration: 'endOfTurn' }];
+  }],
   // A permissive fallback for searches the main pattern's fixed word order misses:
   // "Search your library for a land card of each basic land type, put those cards onto the
   // battlefield, then shuffle." / "..., reveal it, put it into your hand, then shuffle."
