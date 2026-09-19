@@ -1866,7 +1866,7 @@ const PATTERNS: Pattern[] = [
     ctx.lastObj = ref;
     return [{ kind: 'changeTargets', what: ref }];
   }],
-  [/^copy (.+?)(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
+  [/^copy (.+?)(?:, except that the copy is (?:white|blue|black|red|green|colorless))?(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
     const isCard = /\bcards?\b|^(?:the exiled card|that card|the revealed card|it)$/i.test(m[1]) && !/\bspell\b/i.test(m[1]);
     const ref = objRef(m[1], ctx);
     if (!ref) return null;

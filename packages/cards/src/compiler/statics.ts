@@ -87,6 +87,41 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 218 ----
+  // "Activated abilities of white enchantments cost {3} more to activate."
+  if ((m = L.match(/^(?:Activated )?abilities of (.+?) cost \{(\d+)\} more to activate$/i))) {
+    const n218 = parseNoun(m[1]);
+    if (n218) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'abilityCostIncrease', data: { amount: parseInt(m[2], 10), filter: { ...n218.filter, zone: n218.filter.zone ?? 'battlefield' } } } }];
+  }
+  // "Mana abilities of ~ cost an additional 1 life to activate."
+  if ((m = L.match(/^Mana abilities of ~ cost an additional (\d+) life to activate$/i)))
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'manaAbilityLifeCost', data: parseInt(m[1], 10) } }];
+  // "~ cannot be the target of spells unless it attacked or blocked this turn."
+  if ((m = L.match(/^(.+?) cannot be the target of (spells|spells or abilities|abilities) unless (.+)$/i))) {
+    const c218 = parseCondition(m[3].replace(/^it /i, '~ '), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (c218 && c218.kind !== 'manual') {
+      const a218 = affectsOf(m[1]);
+      if (a218.ok) return [{ kind: 'static', text: line, affects: a218.affects, rule: { kind: 'cantBeTargeted', by: /abilities$/i.test(m[2]) && !/spells/i.test(m[2]) ? 'abilities' : 'spells' }, condition: { kind: 'not', c: c218 } }];
+    }
+  }
+  // "Enchanted creature cannot attack unless its controller pays {3}." / "~ cannot block creatures with power 3 or greater unless you pay {1}."
+  if ((m = L.match(/^(.+?) cannot (attack|block|attack or block)(?: (.+?))? unless (?:its controller|you|their controller) pays ((?:\{[^}]+\})+)$/i))) {
+    const a218b = affectsOf(m[1]);
+    if (a218b.ok) {
+      const f218 = m[3] ? (parseNoun(m[3]) ?? parseNoun(`a ${singularize(m[3])}`)) : null;
+      if (!m[3] || f218)
+        return [{ kind: 'static', text: line, affects: a218b.affects, rule: { kind: 'custom', tag: /^block$/i.test(m[2]) ? 'blockCost' : 'attackCost', data: { cost: m[4], filter: f218 ? { ...f218.filter, zone: undefined } : undefined } } }];
+    }
+  }
+  // "Creatures attacking the last chosen player have menace."
+  if ((m = L.match(/^Creatures attacking the last chosen player (?:have|has) (.+?)$/i))) {
+    const g218b = parseGrantList(m[1]);
+    if (g218b && g218b.keywords.length && !g218b.abilities.length)
+      return [{ kind: 'static', text: line, affects: { types: ['Creature'], attacking: true, zone: 'battlefield', custom: 'attackingChosenPlayer' }, modification: { layer: 6, addKeywords: g218b.keywords } }];
+  }
+  // "You have protection from the chosen card name."
+  if (/^You have protection from the chosen card name$/i.test(L))
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'protectionFromChosenName' } }];
   // ---- Round 212 ----
   // "Activated abilities cost {2} more to activate unless they are mana abilities."
   if ((m = L.match(/^Activated abilities cost \{(\d+)\} more to activate unless they are mana abilities$/i))) {
