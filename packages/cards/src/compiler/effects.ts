@@ -76,7 +76,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l)) return ctx.lastObj ?? { ref: 'lastMoved' };
   if ((m0 = l.match(/^the player or planeswalker (it|that creature|~) is attacking$/))) return { ref: 'defenderOf', of: m0[1] === '~' ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
-  if (/^(?:the|a|an|one of the) (?:card|creature card|permanent card)s? exiled with ~$/.test(l) || /^the exiled cards?$/.test(l) || /^cards exiled with ~$/.test(l) || /^(?:a|the) card (?:you )?exiled with cards named ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
+  if (/^(?:the|a|an|one of the) (?:card|creature card|permanent card)s? exiled with (?:~|it)$/.test(l) || /^the exiled cards?$/.test(l) || /^cards exiled with ~$/.test(l) || /^(?:a|the) card (?:you )?exiled with cards named ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
   if (/^the creature that attacked$/.test(l)) return ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF;
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/i.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
@@ -170,7 +170,7 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
       if (noun && noun.confident) return { ref: 'playerWithMost', what: { filter: { ...noun.filter, zone: 'battlefield' } }, least: least || undefined };
     }
   }
-  if (l === 'the active player' || l === 'the attacking player') return { ref: l === 'the active player' ? 'activePlayer' : 'triggerPlayer' };
+  if (l === 'the active player' || l === 'the attacking player' || l === 'that attacking player') return { ref: l === 'the active player' ? 'activePlayer' : 'triggerPlayer' };
   if (l === 'the player to your left' || l === 'the player to your right') return { ref: 'neighbor', side: l.endsWith('left') ? 'left' : 'right' };
   if (l === "enchanted player" || l === "that player's controller") return { ref: 'attachedTo' };
   if (l === 'the chosen player' || l === 'the chosen opponent') return { ref: 'chosen', key: 'opponent' };
@@ -1906,7 +1906,7 @@ const PATTERNS: Pattern[] = [
   }],
   [/^you win the game$/i, () => [{ kind: 'winGame' }]],
   [/^you lose the game$/i, () => [{ kind: 'loseGame' }]],
-  [/^(.+?) loses the game$/i, (m, ctx) => {
+  [/^(.+?) los(?:es|e) the game$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
     return who ? [{ kind: 'loseGame', who }] : null;
   }],
@@ -2056,7 +2056,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'addCounters', counter: 'energy', amount: n, on: who }];
   }],
   // "Exile that many cards from the top of your library." / "look at that many cards from the top of your library"
-  [/^(exile|look at|mill|reveal) (that many|\w+|X) cards? from the top of (your|their|that player's) library$/i, (m, ctx) => {
+  [/^(exile|look at|mill|reveal) (that many|\w+|X) cards? from the top of (your|their|that player's) library(?: face down)?$/i, (m, ctx) => {
     const n: Amount | null = /that many/i.test(m[2]) ? { kind: 'triggerAmount' } : wordToNumber(m[2]);
     if (n === null) return null;
     const who: Ref = /^your$/i.test(m[3]) ? YOU : ctx.lastPlayer ?? YOU;
@@ -3291,7 +3291,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'setLife', amount: { kind: 'memory', key: 'number' }, who }];
   }],
   // "The tokens are goaded for the rest of the game"
-  [/^(?:the tokens|they|those creatures|it) (?:are|is) goaded(?: for the rest of the game)?$/i, (m, ctx) => {
+  [/^(?:the tokens?|they|those creatures|it|that creature) (?:are|is) goaded(?: for the rest of the game)?$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
     return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'goaded', data: '__you__' }, on: ref, duration: 'permanent' }];
   }],
@@ -4242,6 +4242,36 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 197 ----
+  // "You and another target player each draw a card"
+  [/^you and (another target player|target player|target opponent|the attacking player|that player) each (.+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const mine = parseSentence(`you ${m[2]}`, newCtx({ ...ctx, targets: ctx.targets }));
+    if (!mine) return null;
+    return [...mine, ...retargetToPlayer(mine, who)];
+  }],
+  // "You can't become the monarch this turn."
+  [/^you cannot become the monarch(?: this turn)?$/i, () => [
+    { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'cantBecomeMonarch' }, duration: 'thisTurn' },
+  ]],
+  // "Put the cards exiled with it into their owner's hand"
+  [/^put (.+?) into (?:their|its) owner(?:'s|s'|s)? hands?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToHand', what: ref }] : null;
+  }],
+  // "Remove a +1/+1 counter from each of two creatures you control"
+  [/^remove (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? from each of ((?:a|an|two|three|four|five) .+)$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const c = chooseRef(m[3], ctx);
+    if (typeof n !== 'number' || !c) return null;
+    return [...c.pre, { kind: 'removeCounters', counter: m[2] as never, amount: n, on: c.ref }];
+  }],
+  // "Put it onto the battlefield attacking"
+  [/^put (it|that card|that creature|them) onto the battlefield( tapped)?(?: and)? attacking(?: that player)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx) ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, attacking: true }];
+  }],
   // ---- Round 196 ----
   // "It is a Spirit Detective."
   [/^(?:[Ii]t|[Tt]hey) (?:is|are) (?:a|an) ((?:[A-Z][\w-]+)(?: [A-Z][\w-]+)*)$/, (m, ctx) => {
@@ -4257,7 +4287,7 @@ const PATTERNS: Pattern[] = [
     return parseSentence(`it ${m[2]} ${m[3]}`, sub);
   }],
   // "That spell gains rebound." / "That spell gains cascade."
-  [/^that spell gains ([\w-]+)$/i, (m, ctx) => {
+  [/^that spell (?:gains|has) ([\w-]+)$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
     return [{ kind: 'grantKeywords', keywords: [m[1].replace(/^\w/, (c) => c.toUpperCase())], on: ref, duration: 'permanent' }];
   }],
@@ -7087,9 +7117,9 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
     // "Create a token. The token enters tapped and attacking." refines the creation just made.
     {
-      const ta = s.match(/^(?:the token|the tokens|it|they|[A-Z][\w' ,-]*) enters? (tapped and attacking|tapped|attacking)$/i);
+      const ta = s.match(/^(?:the token|the tokens|it|they|[A-Z][\w' ,-]*) enters? (tapped and attacking|tapped|attacking)(?: that player)?$/i);
       const prev = effects[effects.length - 1];
-      if (ta && prev && (prev.kind === 'createToken' || prev.kind === 'populate')) {
+      if (ta && prev && (prev.kind === 'createToken' || prev.kind === 'populate' || prev.kind === 'returnToBattlefield')) {
         if (/tapped/i.test(ta[1])) (prev as { tapped?: boolean }).tapped = true;
         if (/attacking/i.test(ta[1])) (prev as { attacking?: boolean }).attacking = true;
         continue;
