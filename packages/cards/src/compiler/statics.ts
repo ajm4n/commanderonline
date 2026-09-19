@@ -3231,6 +3231,11 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [...a, ...b];
     }
   }
+  if ((m = L.match(/^~ cannot attack alone unless (.+?)$/i))) {
+    const c310 = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (c310 && c310.kind !== 'manual')
+      return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantAttackAlone' }, condition: { kind: 'not', c: c310 } }];
+  }
   // "As long as ~ has a counter on it, it can attack as though it didn't have defender."
   // A leading condition applies to whatever static follows it.
   if ((m = L.match(/^As long as (.+?), (.+)$/i))) {

@@ -393,6 +393,15 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    // "You may cast ~ from your graveyard using its blitz ability."
+    if ((m = line.match(/^You may cast ~ from your graveyard using its (\w+) ability\.?$/i))) {
+      const kwCost = text.match(new RegExp(`^${m[1]}[ —]((?:\\{[^}]+\\})+)`, 'im'))?.[1];
+      if (kwCost) {
+        alternativeCosts.push({ id: `gy${m[1].toLowerCase()}`, text: line, cost: { mana: kwCost }, zone: 'graveyard' });
+        compiledLines.push(line);
+        continue;
+      }
+    }
     // Cases: "To solve — <condition>." marks the Case solved once the condition holds.
     if ((m = line.match(/^To solve — (.+?)\.?$/i))) {
       const cond = parseCondition(m[1].replace(/\.$/, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
