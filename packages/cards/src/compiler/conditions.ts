@@ -704,6 +704,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^~ (?:is|was) (saddled|solved)$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: m[1] } };
   if ((m = t.match(/^~ (?:is|was) (renowned|foretold|suspected)$/))) return { kind: 'memoryFlag', key: m[1] };
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
+  if (t === '~ is suspended' || t === 'it is suspended') return { kind: 'objectMatches', ref: ctx.self, filter: { suspended: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
   if ((m = t.match(/^(?:~|it) (?:is|was) (?:a|an) (.+?) card$/))) {
     const noun = parseNoun(`a ${oc(m, 1)} card`);

@@ -771,6 +771,35 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           targets: [{ description: 'target creature', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield' } }],
           effects: [{ kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'target', slot: 0 } }],
         } as never);
+      // "Suspend 3—{1}{R}": exile it with time counters instead of casting it, and it casts itself later.
+      if ((m = line.match(/^Suspend (\d+|X)—((?:\{[^}]+\})+)$/i))) {
+        const n292: Amount = m[1].toUpperCase() === 'X' ? 'X' : parseInt(m[1], 10);
+        abilities.push({
+          kind: 'activated', text: line, zone: 'hand', sorcerySpeed: true, cost: { mana: m[2] },
+          effects: [{ kind: 'exile', what: { ref: 'self' }, counters: { counter: 'time', amount: n292 } }],
+        } as never);
+        abilities.push({
+          kind: 'triggered', text: line, zone: 'exile', event: 'beginningOfUpkeep', filter: { player: 'you' },
+          condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { suspended: true } },
+          effects: [
+            { kind: 'removeCounters', counter: 'time', amount: 1, on: { ref: 'self' } },
+            {
+              kind: 'conditional',
+              if: { kind: 'hasCounter', ref: { ref: 'self' }, counter: 'time', op: '==', value: 0 },
+              then: [
+                { kind: 'castWithoutPaying', what: { ref: 'self' } },
+                { kind: 'grantKeywords', keywords: ['Haste'], on: { ref: 'self' }, duration: 'permanent' },
+              ],
+            },
+          ],
+        } as never);
+      }
+      // "Dredge 3": from the graveyard, replace a draw with milling three and taking this card back.
+      if ((m = line.match(/^Dredge (\d+)$/i)))
+        abilities.push({
+          kind: 'replacement', text: line, event: 'drawCard', who: 'you', zone: 'graveyard', optional: true,
+          effects: [{ kind: 'mill', amount: parseInt(m[1], 10), who: { ref: 'controller' } }, { kind: 'putIntoHand', what: { ref: 'self' } }],
+        } as never);
       // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
       if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;

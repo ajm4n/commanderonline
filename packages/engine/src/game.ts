@@ -2046,6 +2046,11 @@ export class Game {
           continue;
         }
         if (repl.ab.effects?.length) {
+          if (repl.ab.optional) {
+            this.pendingTriggers.push({ sourceId: repl.sourceId, controller: pid, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', optional: true, effects: repl.ab.effects }, context: { playerId: pid } });
+            this.state.turnStats[`drawReplaced:${pid}`] = (this.state.turnStats[`drawReplaced:${pid}`] ?? 0) + 1;
+            continue;
+          }
           this.state.turnStats[`drawReplaced:${pid}`] = (this.state.turnStats[`drawReplaced:${pid}`] ?? 0) + 1;
           this.pendingTriggers.push({ sourceId: repl.sourceId, controller: pid, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', effects: repl.ab.effects }, context: { playerId: pid } });
           continue;
@@ -2090,11 +2095,12 @@ export class Game {
       return { ab: { kind: 'replacement', text: 'Draw replacement', event: 'drawCard', who: 'you', effects: d.effects }, sourceId: -1 };
     }
     for (const ab of this.turnReplacementsFor(pid, 'drawCard')) return { ab, sourceId: -1 };
-    for (const id of this.state.battlefield) {
+    for (const id of [...this.state.battlefield, ...this.player(pid).graveyard]) {
       const src = this.state.objects[id];
       if (!src) continue;
       for (const ab of this.scriptFor(src).abilities) {
         if (ab.kind !== 'replacement' || ab.event !== 'drawCard') continue;
+        if ((ab.zone ?? 'battlefield') !== src.zone) continue;
         const applies = ab.who === 'any' || (ab.who === 'you' && src.controller === pid) || (ab.who === 'opponent' && src.controller !== pid);
         if (!applies) continue;
         if (ab.condition && !this.checkCondition(ab.condition, { sourceId: id, controller: pid })) continue;
