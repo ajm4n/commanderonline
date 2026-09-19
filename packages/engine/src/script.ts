@@ -321,7 +321,7 @@ export type Effect =
   | { kind: 'scry'; amount: Amount; who?: Ref }
   | { kind: 'surveil'; amount: Amount; who?: Ref }
   | { kind: 'mill'; amount: Amount; who?: Ref }
-  | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; /** The player may discard fewer ("discards any number of cards"). */ upTo?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter }
+  | { kind: 'discard'; amount: Amount | 'hand'; who?: Ref; random?: boolean; /** The player may discard fewer ("discards any number of cards"). */ upTo?: boolean; chooser?: 'self' | 'controller'; /** With amount 'hand': only cards matching ("discards all nonland cards"). */ filter?: ObjectFilter; /** With amount 'hand': keep these cards ("chooses a card in their hand and discards the rest"). */ except?: Ref }
   | { kind: 'addMana'; mana: ManaColor[] | 'anyColor' | 'anyOneColor' | 'commanderColors' | 'chosenColor' | 'triggerMana'; amount?: Amount; who?: Ref }
   | { kind: 'counterSpell'; what: Ref; unlessPays?: string; exileInstead?: boolean }
   | { kind: 'searchLibrary'; who?: Ref; filter: ObjectFilter; count: Amount; /** `hold`: leave the found cards where they are and remember them under `key` for follow-up sentences. */ destination: 'hand' | 'battlefield' | 'top' | 'graveyard' | 'exile' | 'hold'; key?: string; tapped?: boolean; reveal?: boolean; shuffle?: boolean; /** "search your graveyard, hand, and/or library" */ zones?: ('library' | 'graveyard' | 'hand')[]; /** Pick at random instead of choosing ("return a card at random from your graveyard"). */ random?: boolean }
@@ -368,7 +368,7 @@ export type Effect =
   /** "Repeat this process": run the effects again while the condition holds (bounded). */
   | { kind: 'repeatWhile'; condition?: Condition; effects: Effect[]; max?: number; /** "You may repeat this process any number of times": ask before each extra iteration. */ optional?: boolean }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
-  | { kind: 'unlessPays'; who: Ref; cost: string | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number } | { tap: ObjectFilter; count?: number }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { mana: string; payLife: number } | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number } | { tap: ObjectFilter; count?: number }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; /** Run these if the cost is not paid. */ else?: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */

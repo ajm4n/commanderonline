@@ -992,7 +992,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         if (e.amount === 'hand') {
-          const all = e.filter ? pl.hand.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: 'hand' }, { sourceId: ctx.sourceId, controller: ctx.controller })) : [...pl.hand];
+          let all = e.filter ? pl.hand.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: 'hand' }, { sourceId: ctx.sourceId, controller: ctx.controller })) : [...pl.hand];
+          if (e.except) {
+            const keep = new Set(g.resolveRef(e.except, ctx).filter((t) => t.kind === 'object').map((t) => t.id));
+            all = all.filter((id) => !keep.has(id));
+          }
           for (const id of all) g.moveObject(id, 'graveyard', { cause: 'discard' });
           if (all.length) g.emit({ name: 'discardBatch', playerId: p, amount: all.length, objectId: all[0] });
           rememberDiscard(ctx, p, all);
@@ -1936,6 +1940,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
               for (const id of r.ids) g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
               paid = true;
             }
+          }
+        } else if (typeof e.cost === 'object' && 'mana' in e.cost) {
+          if (g.player(p).life >= e.cost.payLife) {
+            paid = yield* offerToPay(g, p, e.cost.mana, e.text ?? `Pay ${e.cost.mana} and ${e.cost.payLife} life? Otherwise: ${describe(e.effects)}`);
+            if (paid) g.loseLife(p, e.cost.payLife, ctx.sourceId ?? undefined);
           }
         } else if (typeof e.cost === 'object' && 'payLife' in e.cost) {
           if (g.player(p).life >= e.cost.payLife) {

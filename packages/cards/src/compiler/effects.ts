@@ -229,6 +229,11 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
     t = m[1];
     tapped = true;
   }
+  // "an 8/8 Beast creature token that is red, green, and white": the colours trail the body.
+  if ((m = t.match(/^(.+?) token that (?:is|are) ((?:white|blue|black|red|green|colorless)(?:(?:, and|, or|,| and| or) (?:white|blue|black|red|green))*)$/i))) {
+    const pm2 = m[1].match(/^(.*?)([\dX*]+\/[\dX*]+ )(.*)$/);
+    t = pm2 ? `${pm2[1]}${pm2[2]}${m[2]} ${pm2[3].trim()} token` : `${m[2]} ${m[1]} token`;
+  }
   // "a tapped and attacking 1/1 red Devil creature token": the flags may come before the body.
   if ((m = t.match(/^((?:a|an|\w+|X)) tapped and attacking (.+)$/i)) && !/tokens? that/i.test(t)) {
     t = `${m[1]} ${m[2]}`;
@@ -273,7 +278,7 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
     const rm = t.match(/^(.+? tokens?) (with .+?) (named (?:~'s |[A-Z])[\w' ,-]*)$/i);
     if (rm) t = `${rm[1]} ${rm[3]} ${rm[2]}`;
   }
-  m = t.match(/^(a|an|twice that many|that many|\w+|X) (.+?) tokens?(?: named ((?:~'s |[A-Z])[\w' ,-]*?))?(?: with (.+))?$/i);
+  m = t.match(/^(a|an|twice that many|that many|\w+|X) (.+?) tokens?(?: named ((?:~'s |[A-Z])[\w' ,~-]*?))?(?: with (.+))?$/i);
   if (!m) return null;
   const n: Amount | null = /that many/i.test(m[1]) ? (/twice/i.test(m[1]) ? { kind: 'times', a: { kind: 'triggerAmount' }, b: 2 } : { kind: 'triggerAmount' }) : wordToNumber(m[1]);
   if (n === null) return null;
@@ -4133,7 +4138,7 @@ const PATTERNS: Pattern[] = [
   // "Draw another card if you've completed a dungeon."
   [/^draw another card$/i, () => [{ kind: 'draw', amount: 1 }]],
   // "Each opponent chooses a creature card in their graveyard."
-  [/^each (player|opponent) chooses (?:a|an) (.+?) in their graveyard$/i, (m, ctx) => {
+  [/^(each player|each opponent|target player|target opponent|that player|an opponent) chooses (?:a|an) (.+?) in their graveyard$/i, (m, ctx) => {
     const noun = parseNoun(`a ${m[2]}`);
     if (!noun) return null;
     const key = `pick_${Math.random().toString(36).slice(2, 6)}`;
@@ -4230,6 +4235,8 @@ const PATTERNS: Pattern[] = [
     const counter: Effect[] = [{ kind: 'counterSpell', what: ref }];
     const pay = body.match(/^pays? ((?:\{[^}]+\})+)$/i);
     if (pay) { const e2: Effect = { kind: 'unlessPays', who, cost: pay[1], effects: counter }; return [e2]; }
+    const both = body.match(/^pays? ((?:\{[^}]+\})+) and (\d+) life$/i);
+    if (both) { const e2: Effect = { kind: 'unlessPays', who, cost: { mana: both[1], payLife: parseInt(both[2], 10) }, effects: counter }; return [e2]; }
     const life = body.match(/^pays? (\d+) life$/i);
     if (life) { const e2: Effect = { kind: 'unlessPays', who, cost: { payLife: parseInt(life[1], 10) }, effects: counter }; return [e2]; }
     if (/^discards their hand$/i.test(body)) { const e2: Effect = { kind: 'unlessPays', who, cost: { discard: 99 }, effects: counter }; return [e2]; }
@@ -4241,6 +4248,54 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 198b ----
+  // "Turn all other nontoken creatures face down."
+  [/^turn (all|each) (.+?) face (down|up)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (!noun || !noun.confident) return null;
+    const ref: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } };
+    return [/down/i.test(m[3]) ? { kind: 'turnFaceDown', what: ref } : { kind: 'turnFaceUp', what: ref }];
+  }],
+  // "Return ~ and target green or blue creature you control to their owner's hand"
+  [/^return ~ and (target .+?) to (?:their|its) owner'?s'? hands?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'returnToHand', what: SELF }, { kind: 'returnToHand', what: ref }] : null;
+  }],
+  // "Attach it to another permanent it can enchant"
+  [/^attach (it|~|that Equipment|that Aura) to another (permanent|creature) it can (?:enchant|equip)$/i, (m, ctx) => {
+    const what = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx) ?? SELF;
+    const key = `host${ctx.targets.length}`;
+    const filter: ObjectFilter = /creature/i.test(m[2]) ? { types: ['Creature'], zone: 'battlefield', other: true } : { zone: 'battlefield', other: true };
+    return [{ kind: 'chooseObjects', who: YOU, filter, count: 1, key }, { kind: 'attach', what, to: { ref: 'chosen', key } }];
+  }],
+  // ---- Round 198 ----
+  // "~ becomes a 2/2 creature with all creature types until end of turn"
+  [/^(.+?) becomes? (?:a|an) ([\dX]+)\/([\dX]+)((?: [\w-]+)*?) creature with all creature types(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    const words = m[4].trim().split(/\s+/).filter(Boolean);
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment|land)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+    const dur: Duration = 'endOfTurn';
+    const out: Effect[] = [
+      { kind: 'addTypes', types, on: ref, duration: dur },
+      { kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur },
+      { kind: 'grantKeywords', keywords: ['Changeling'], on: ref, duration: dur },
+    ];
+    if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+    return out;
+  }],
+  // "Target player chooses a card in their hand and discards the rest"
+  [/^(.+?) chooses (?:a|an|(\w+)) cards? in their hand and discards the rest$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || typeof n !== 'number') return null;
+    const key = `keep${ctx.targets.length}`;
+    return [
+      { kind: 'chooseObjects', who, filter: { zone: 'hand', ownerRef: who }, count: n, key },
+      { kind: 'discard', amount: 'hand', who, except: { ref: 'chosen', key } },
+    ];
   }],
   // ---- Round 197 ----
   // "You and another target player each draw a card"

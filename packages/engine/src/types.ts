@@ -397,6 +397,8 @@ export interface ObjectFilter {
   anyOf?: ObjectFilter[];
   /** The spell was cast from this zone. */
   castFromZone?: ZoneName;
+  /** "that wasn't cast from its owner's hand" */
+  notCastFromZone?: ZoneName;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];
