@@ -689,6 +689,58 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           targets: [{ description: 'target artifact creature', kind: 'object', min: 1, max: 1, filter: { types: ['Artifact', 'Creature'], zone: 'battlefield' } }],
         } as never);
       }
+      // "Echo {2}{G}": pay it again at your next upkeep or lose the permanent.
+      if ((m = line.match(/^Echo ((?:\{[^}]+\})+)$/i))) {
+        abilities.push({ kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'setMemory', key: 'echoDue', value: true }] });
+        abilities.push({
+          kind: 'triggered', text: line, event: 'beginningOfUpkeep', filter: { player: 'you' },
+          condition: { kind: 'memoryFlag', key: 'echoDue' },
+          effects: [
+            { kind: 'unlessPays', who: { ref: 'controller' }, cost: m[1], effects: [{ kind: 'sacrifice', what: { ref: 'self' } }] },
+            { kind: 'setMemory', key: 'echoDue', value: false },
+          ],
+        });
+      }
+      // "Vanishing 3" / "Fading 3": a countdown on the permanent's own upkeep.
+      if ((m = line.match(/^(Vanishing|Fading) (\d+)$/i))) {
+        const counter = /^vanishing$/i.test(m[1]) ? 'time' : 'fade';
+        abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter, amount: parseInt(m[2], 10) } } as never);
+        abilities.push({
+          kind: 'triggered', text: line, event: 'beginningOfUpkeep', filter: { player: 'you' },
+          effects: counter === 'time'
+            ? [
+                { kind: 'removeCounters', counter, amount: 1, on: { ref: 'self' } },
+                { kind: 'conditional', if: { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '==', value: 0 }, then: [{ kind: 'sacrifice', what: { ref: 'self' } }] },
+              ]
+            : [
+                {
+                  kind: 'conditional',
+                  if: { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '>=', value: 1 },
+                  then: [{ kind: 'removeCounters', counter, amount: 1, on: { ref: 'self' } }],
+                  else: [{ kind: 'sacrifice', what: { ref: 'self' } }],
+                },
+              ],
+        });
+      }
+      // "Outlast {1}{W}": a sorcery-speed tap ability for a +1/+1 counter.
+      if ((m = line.match(/^Outlast ((?:\{[^}]+\})+)$/i)))
+        abilities.push({ kind: 'activated', text: line, cost: { mana: m[1], tap: true }, sorcerySpeed: true, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'self' } }] });
+      // "Reinforce 2—{1}{G}": discard it from hand for counters.
+      if ((m = line.match(/^Reinforce (\d+)—((?:\{[^}]+\})+)$/i)))
+        abilities.push({
+          kind: 'activated', text: line, zone: 'hand', cost: { mana: m[2], discardSelf: true },
+          targets: [{ description: 'target creature', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield' } }],
+          effects: [{ kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'target', slot: 0 } }],
+        } as never);
+      // "Graft 3": it arrives with counters and feeds them to arriving creatures.
+      if ((m = line.match(/^Graft (\d+)$/i))) {
+        abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: parseInt(m[1], 10) } } as never);
+        abilities.push({
+          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { object: { types: ['Creature'], other: true } }, optional: true,
+          condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: '+1/+1', op: '>=', value: 1 },
+          effects: [{ kind: 'moveCounters', from: { ref: 'self' }, to: { ref: 'triggerObject' }, counter: '+1/+1', amount: 1 }],
+        } as never);
+      }
       // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
       if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
