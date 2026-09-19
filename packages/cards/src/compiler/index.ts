@@ -70,6 +70,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   const spellEffects: Effect[] = [];
   let lastSpellLine: string | null = null;
   let lastSpellStart = 0;
+  let lastSpellTargets = 0;
   const spellTargets: TargetSpec[] = [];
   const spellCtx = newCtx({ isSpell: true });
   let modal: { text: string; targets?: TargetSpec[]; effects: Effect[] }[] | null = null;
@@ -990,19 +991,21 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if (isSpell) {
       // "Morbid — ~ deals 5 damage instead if a creature died this turn." rewrites the previous line's effects.
       // Oracle text writes it either way round: "X instead" or "instead X".
-      if (lastSpellLine !== null && lastSpellStart === 0 && /\binstead\b/i.test(line) && !/ would /i.test(line)) {
+      if (lastSpellLine !== null && /\binstead\b/i.test(line) && !/ would /i.test(line)) {
         const fresh = newCtx({ isSpell: true });
         const r = parseEffects(`${lastSpellLine}. ${line}`, fresh);
+        // Only the previous line's effects and targets are replaced; earlier lines stand.
         if (!r.unhandled.length) {
-          spellEffects.length = 0;
+          spellEffects.length = lastSpellStart;
           spellEffects.push(...r.effects);
-          spellCtx.targets.length = 0;
+          spellCtx.targets.length = lastSpellTargets;
           spellCtx.targets.push(...fresh.targets);
           compiledLines.push(line);
           continue;
         }
       }
       lastSpellStart = spellEffects.length;
+      lastSpellTargets = spellCtx.targets.length;
       lastSpellLine = line;
       const { effects, unhandled } = parseEffects(line, spellCtx);
       spellEffects.push(...effects);

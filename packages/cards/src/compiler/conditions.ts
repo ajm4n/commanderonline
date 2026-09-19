@@ -209,6 +209,13 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === "you have the city's blessing") return { kind: 'cityBlessing' };
   if (t === 'it was kicked' || t === 'this spell was kicked') return { kind: 'wasKicked' };
   if (t === 'the gift was promised') return { kind: 'giftPromised' };
+  // "If you control artifacts named Crown of Empires and Throne of Empires, ..." (names keep their case)
+  if ((m = orig.trim().replace(/\.$/, '').match(/^[Yy]ou control (artifacts|creatures|permanents|lands) named ([A-Z][\w' ,-]*?) and ([A-Z][\w' ,-]*?)$/))) {
+    const kindWord = m[1].toLowerCase();
+    const types = kindWord === 'artifacts' ? ['Artifact'] : kindWord === 'creatures' ? ['Creature'] : kindWord === 'lands' ? ['Land'] : [];
+    const one = (name: string): Condition => ({ kind: 'count', filter: { ...(types.length ? { types } : {}), nameIs: name, controller: 'you', zone: 'battlefield' }, op: '>=', value: 1 });
+    return { kind: 'and', cs: [one(m[2]), one(m[3])] };
+  }
   if (t === 'evidence was collected' || t === 'you collected evidence') return { kind: 'memoryFlag', key: 'evidenceCollected' };
   if (t === "tribute wasn't paid" || t === 'tribute was not paid') return { kind: 'not', c: { kind: 'memoryFlag', key: 'tributePaid' } };
   if (t === 'tribute was paid') return { kind: 'memoryFlag', key: 'tributePaid' };
