@@ -6763,6 +6763,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [{ kind: 'delayedTrigger', event: upkeep ? 'beginningOfUpkeep' : /cleanup/i.test(m[1]) ? 'cleanup' : 'beginningOfEndStep', filter: /your next/i.test(m[1]) ? { player: 'you' } : undefined, effects: inner, text, once: true }];
     }
   }
+  text = text.replace(/^when you cast your next (.+?) this turn, /i, 'when you next cast $1 this turn, ');
   if ((m = text.match(/^when you next cast (.+?) this turn, (.+)$/i))) {
     const sub = newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: true });
     const inner = parseSentence(m[2].replace(/\bcopy it\b/i, 'copy that spell'), sub);
@@ -6794,10 +6795,25 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       ctx.lastObj = saved;
     }
   }
-  if ((m = text.match(/^when (that creature|that permanent|it|that token|those creatures) (dies|die|leaves the battlefield|is put into a graveyard) this turn, (.+)$/i))) {
+  if ((m = text.match(/^when (that creature|that permanent|it|that token|those creatures|target creature(?: other than ~)?|target permanent) (dies|die|leaves the battlefield|is put into a graveyard) this turn, (.+)$/i))) {
     const ref = objRef(m[1], ctx);
     const inner = ref ? parseSentence(m[3], ctx) : null;
     if (ref && inner) return [{ kind: 'delayedTrigger', event: /dies|die|graveyard/i.test(m[2]) ? 'dies' : 'leavesBattlefield', filter: { objectRef: ref }, effects: inner, text, once: true }];
+  }
+  // "Whenever that creature is dealt damage this turn, ..." / "Whenever target creature deals damage this turn, ..."
+  if ((m = text.match(/^when(?:ever)? (that creature|that permanent|it|those creatures|target creature(?: other than ~)?) (is dealt damage by an attacking creature|is dealt damage|deals combat damage|deals damage) this turn, (.+)$/i))) {
+    const dref = objRef(m[1], ctx);
+    const dinner = dref ? parseSentence(m[3], newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true })) : null;
+    if (dref && dinner) {
+      const dealt = /is dealt damage/i.test(m[2]);
+      return [{ kind: 'delayedTrigger', event: dealt ? 'dealtDamage' : 'dealsDamage', filter: { objectRef: dref, ...(/combat/i.test(m[2]) && !dealt ? { combat: true } : {}), ...(/by an attacking creature/i.test(m[2]) ? { source: { attacking: true } } : {}) }, effects: dinner, text, untilEndOfTurn: true }];
+    }
+  }
+  // "When a creature dealt damage this way dies this turn, ..."
+  if ((m = text.match(/^when(?:ever)? (?:a|an) (.+?) dealt damage this way dies this turn, (.+)$/i))) {
+    const dn = parseNoun(`a ${m[1]}`);
+    const di = dn ? parseSentence(m[2], newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true })) : null;
+    if (dn && di) return [{ kind: 'delayedTrigger', event: 'dies', filter: { object: { ...dn.filter, zone: undefined, damagedBySource: true } }, effects: di, text, untilEndOfTurn: true }];
   }
   // Delayed triggers: "X at the beginning of the next end step" / "…of the next turn's upkeep"
   if ((m = text.match(/^(.+?) at the beginning of (?:the next end step|your next end step|the next turn's upkeep|your next upkeep|the next upkeep)$/i))) {

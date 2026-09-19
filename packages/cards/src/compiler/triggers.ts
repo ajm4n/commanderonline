@@ -201,7 +201,12 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     const noun = parseNoun(`a ${singularize(m[1])}`);
     if (noun && noun.confident) return { event: 'attacks', filter: { object: { ...noun.filter, zone: undefined }, firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[2] };
   }
-  // "Whenever you cast a spell with one or more targets, ..."
+  // "Whenever you cast an instant or sorcery spell with a single target, ..."
+  if ((m = L.match(/^Whenever you cast (?:a|an) (?:(.+?) )?spell with (?:a single target|exactly one target), (.+)$/i))) {
+    const sp205 = m[1] ? parseNoun(`a ${m[1]} spell`) : null;
+    if (!m[1] || sp205) return { event: 'cast', filter: { player: 'you', minTargets: 1, maxTargets: 1, ...(sp205 ? { object: { ...sp205.filter, zone: undefined } } : {}) }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever you cast a spell with one or more targets, ..." 
   if ((m = L.match(/^Whenever you cast (?:a|an) spell with one or more targets, (.+)$/i)))
     return { event: 'cast', filter: { player: 'you', minTargets: 1 }, hasObject: true, hasPlayer: true, rest: m[1] };
   // "Whenever you cast a spell that targets only a single creature (you control), ..."
