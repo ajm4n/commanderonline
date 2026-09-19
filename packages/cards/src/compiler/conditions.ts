@@ -160,6 +160,13 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (noun) return { kind: 'objectMatches', ref: ctx.self, filter: noun.filter };
   }
   if ((m = t.match(/^(?:equipped|enchanted) (?:creature|permanent) is legendary$/))) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { supertypes: ['Legendary'] } };
+  // "Activate only if ~ is not enchanted." / "... is enchanted" / "... is equipped"
+  if ((m = t.match(/^(~|it|that creature|enchanted creature|equipped creature) is (not )?(enchanted|equipped|tapped|untapped|attacking|blocking|monstrous)$/))) {
+    const ref = /^(?:enchanted|equipped) creature$/.test(m[1]) ? { ref: 'attachedTo' as const } : ctx.self;
+    const f = ({ enchanted: { hasAttachment: 'Aura' }, equipped: { hasAttachment: 'Equipment' }, tapped: { tapped: true }, untapped: { untapped: true }, attacking: { attacking: true }, blocking: { blocking: true }, monstrous: { monstrous: true } } as const)[m[3] as 'enchanted'];
+    const c = { kind: 'objectMatches' as const, ref, filter: { ...f } };
+    return m[2] ? { kind: 'not', c } : c;
+  }
   if ((m = t.match(/^(?:equipped|enchanted) creature is attacking$/))) return { kind: 'isAttacking', ref: { ref: 'attachedTo' } };
   if ((m = t.match(/^(?:equipped|enchanted) (?:creature|permanent) is (tapped|untapped)$/))) return m[1] === 'tapped' ? { kind: 'isTapped', ref: { ref: 'attachedTo' } } : { kind: 'not', c: { kind: 'isTapped', ref: { ref: 'attachedTo' } } };
   if ((m = t.match(/^there (?:is|are) exactly (\w+) ([+\-\w\/]+) counters? on (?:~|it)$/))) return { kind: 'hasCounter', ref: ctx.self, counter: oc(m, 2), op: '==', value: wordToNumber(m[1]) as number };

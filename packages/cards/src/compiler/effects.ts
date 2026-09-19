@@ -68,6 +68,23 @@ function duration(text: string): { rest: string; duration: Duration | undefined 
 /** Resolve an object phrase to a Ref, registering targets. */
 export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   const t = phrase.trim().replace(/[.,]$/, '').replace(/^a second target /i, 'another target ');
+  // "target artifact card in a graveyard or artifact on the battlefield": one filter, two zones.
+  {
+    const gb = t.match(/^(target|another target) (\w+) cards? in (?:a|your|an opponent's) graveyard or \2 on the battlefield$/i);
+    if (gb) {
+      const noun = parseNoun(`a ${gb[2]}`);
+      if (noun && noun.confident) {
+        const f: ObjectFilter = { ...noun.filter, zoneIn: ['graveyard', 'battlefield'] };
+        delete f.zone;
+        if (/your graveyard/i.test(t)) f.owner = 'you';
+        else if (/an opponent's graveyard/i.test(t)) f.owner = 'opponent';
+        ctx.targets.push({ description: t, kind: 'object', filter: f, min: 1, max: 1 });
+        const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+        ctx.lastObj = ref;
+        return ref;
+      }
+    }
+  }
   // "target spell or nonland permanent": one filter covering the stack and the battlefield.
   // Nothing on the stack is a land, so excluding lands is enough to spell "nonland permanent".
   {
@@ -4283,6 +4300,23 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 252 ----
+  // "Look at the top two cards of your library and exile them face down."
+  [/^look at the top (\w+|X) cards? of your library and exile (?:them|it|those cards|that card) face down$/i, (m) => {
+    const n = m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1]);
+    return n === null ? null : [{ kind: 'exileTop', who: YOU, amount: n as Amount, faceDown: true }];
+  }],
+  // "You choose two of those cards and put them into that player's graveyard."
+  [/^you choose (?:a|an|(\w+)) of those cards and put (?:it|them) into (.+?)'s graveyard$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const who = playerRef(m[2], ctx);
+    if (n === null || !who) return null;
+    const key = `ofThose${ctx.targets.length}`;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: {}, from: { ref: 'lastMoved' }, count: n as Amount, key },
+      { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'graveyard' },
+    ];
+  }],
   // ---- Round 249 ----
   // "Put any number of target artifact cards from target player's graveyard on top of their library in any order."
   [/^put (?:(any number of|up to \w+|\w+) )?(target .+? cards?) from (.+?)'s graveyard on (?:the )?(top|bottom) of (?:their|its owner's|that player's) library(?: in any order)?$/i, (m, ctx) => {
@@ -4597,13 +4631,14 @@ const PATTERNS: Pattern[] = [
     const g = parseGrantList(m[5]);
     if (!ref || !g) return null;
     const words = m[4].trim() ? m[4].trim().split(/\s+/) : [];
-    if (words.some((w) => !/^(white|blue|black|red|green|artifact|enchantment)$/i.test(w) && !/^[A-Z]/.test(w))) return null;
+    if (words.some((w) => !/^(white|blue|black|red|green|artifact|enchantment|legendary|snow)$/i.test(w) && !/^[A-Z]/.test(w))) return null;
     const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
     const subtypes = words.filter((w) => /^[A-Z]/.test(w));
     const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+    const supers = words.filter((w) => /^(legendary|snow)$/i.test(w)).map((w) => (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()) as 'Legendary');
     const dur: Duration = 'endOfTurn';
     const out: Effect[] = [
-      { kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, on: ref, duration: dur },
+      { kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, addSupertypes: supers.length ? supers : undefined, on: ref, duration: dur },
       { kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur },
     ];
     if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
