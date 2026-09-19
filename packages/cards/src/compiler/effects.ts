@@ -4249,6 +4249,57 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 207 ----
+  // "Until end of turn, target creature has base power 1 or base toughness 1"
+  [/^(.+?) has base power (\d+) or base toughness (\d+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'chooseMode', count: 1, options: [
+      { text: `Base power ${m[2]}`, effects: [{ kind: 'setPT', power: parseInt(m[2], 10), on: ref, duration: 'endOfTurn' }] },
+      { text: `Base toughness ${m[3]}`, effects: [{ kind: 'setPT', toughness: parseInt(m[3], 10), on: ref, duration: 'endOfTurn' }] },
+    ] }];
+  }],
+  // "~ gets +1/+1 until end of turn unless any player pays {2}"
+  [/^(.+?) (gets?|get) ([+-]\d+)\/([+-]\d+)(?: until end of turn)? unless any player pays ((?:\{[^}]+\})+)$/i, (m, ctx) => {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx) ?? (ctx.lastObj ?? null);
+    if (!ref) return null;
+    const pump: Effect = { kind: 'pump', power: parseInt(m[3], 10), toughness: parseInt(m[4], 10), on: ref, duration: 'endOfTurn' };
+    return [{ kind: 'unlessPays', who: { ref: 'eachPlayer' }, cost: m[5], effects: [pump] }];
+  }],
+  // "They get an additional +0/+2 until end of turn unless any player pays {2}"
+  [/^(?:they|those creatures) get an additional ([+-]\d+)\/([+-]\d+)(?: until end of turn)? unless any player pays ((?:\{[^}]+\})+)$/i, (m, ctx) => {
+    const ref = ctx.lastObj;
+    if (!ref) return null;
+    const pump: Effect = { kind: 'pump', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10), on: ref, duration: 'endOfTurn' };
+    return [{ kind: 'unlessPays', who: { ref: 'eachPlayer' }, cost: m[3], effects: [pump] }];
+  }],
+  // "Until end of turn, lands you control become 2/2 creatures that are still lands"
+  [/^(.+?) become ([\dX]+)\/([\dX]+) creatures that are still (lands|artifacts|enchantments)$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]) ?? parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const ref: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } };
+    return [
+      { kind: 'addTypes', types: ['Creature'], on: ref, duration: 'endOfTurn' },
+      { kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: 'endOfTurn' },
+    ];
+  }],
+  // "~ and each other creature with the same name as it get +3/+3 until end of turn"
+  [/^~ and each other (.+?) with the same name as it (?:gets?|get) ([+-]\d+)\/([+-]\d+)(?: until end of turn)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const pw = parseInt(m[2], 10);
+    const tg = parseInt(m[3], 10);
+    return [
+      { kind: 'pump', power: pw, toughness: tg, on: SELF, duration: dur },
+      { kind: 'pump', power: pw, toughness: tg, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', other: true, sameNameAs: SELF } }, duration: dur },
+    ];
+  }],
+  // "Until your next upkeep, target permanent cannot phase out"
+  [/^(?:until your next upkeep, )?(target .+?) cannot phase out$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantPhaseOut' }, on: ref, duration: 'untilYourNextTurn' }] : null;
+  }],
   // ---- Round 206 ----
   // "Target creature loses first strike or swampwalk until end of turn"
   [/^(.+?) loses ([\w' -]+?) or ([\w' -]+?)(?: until end of turn)?$/i, (m, ctx) => {
@@ -6338,6 +6389,11 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
     const p = part.trim();
     let m: RegExpMatchArray | null;
     const p2 = p.replace(/^and /i, '').replace(/^(?:the token|the copy|that token|those tokens) /i, 'it ').replace(/^(?=(?:is|has|have|are) )/i, 'it ');
+    if ((m = p2.match(/^(?:it|they) (?:is|are) (white|blue|black|red|green|colorless)$/i))) {
+      const cc = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', colorless: '' } as const;
+      ex.colors = cc[m[1].toLowerCase() as 'white'] ? [cc[m[1].toLowerCase() as 'white'] as never] : [];
+      continue;
+    }
     if (/^(?:it|they) (?:has|have) this ability$/i.test(p2)) {
       ex.thisAbility = true;
       continue;

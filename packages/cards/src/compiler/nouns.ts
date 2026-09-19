@@ -299,7 +299,7 @@ export function parseNoun(raw: string): ParsedNoun | null {
       for (const q of quals) applyQualifier(q, result);
       return result;
     }
-    if (adjWords.length) {
+    if (adjWords.length && !/^non/i.test(adjWords[adjWords.length - 1])) {
       head = adjWords[adjWords.length - 1];
       adjWords = adjWords.slice(0, -1);
     } else head = 'permanent';
