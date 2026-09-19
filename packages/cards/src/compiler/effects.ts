@@ -9325,6 +9325,18 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (inner && setAnyMana(inner)) return inner;
     ctx.targets.length = saved;
   }
+  // "Exile those tokens when ~ leaves the battlefield": the trigger trails its effect.
+  if ((m = text.match(/^(.+?) (when(?:ever)? .+)$/i)) && !/^(?:if|when|whenever|until|unless|as long as)\b/i.test(text)) {
+    const saved = ctx.targets.length;
+    const head = parseTriggerHead(`${m[2].charAt(0).toUpperCase()}${m[2].slice(1)}, do that`);
+    const inner = head && /^do that$/i.test(head.rest) ? parseSentence(m[1], ctx) : null;
+    if (head && inner) {
+      const mk = (h: { event: TriggerHead['event']; filter?: TriggerHead['filter'] }): Effect =>
+        ({ kind: 'delayedTrigger', event: h.event, filter: h.filter, effects: inner, text, once: true });
+      return [mk(head), ...(head.also ?? []).map(mk)];
+    }
+    ctx.targets.length = saved;
+  }
   // A trigger written inside an ability's body is a delayed trigger the ability sets up:
   // "{2}{B}, {T}: Put target creature card from a graveyard onto the battlefield under your
   // control. When ~ becomes untapped or you lose control of ~, exile that creature."

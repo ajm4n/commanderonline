@@ -109,7 +109,7 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   t = t.replace(/\bThey're\b/g, 'They are').replace(/\bthey're\b/g, 'they are');
   t = t.replace(/\b(?:He|She) (deals|gets|gains|has|is|becomes|cannot|can't|attacks|blocks|fights|enters)\b/g, '~ $1').replace(/\b(?:he|she) (deals|gets|gains|has|is|becomes|cannot|can't|attacks|blocks|fights|enters)\b/g, '~ $1');
   t = t.replace(/\b(counters? on) (?:her|him)\b/g, '$1 it');
-  t = t.replace(/\b(transform|untap|tap|exile|sacrifice|return|destroy) (?:her|him)\b/g, '$1 ~');
+  t = t.replace(/\b(transform|untap|tap|exile|sacrifice|return|destroy|shuffles?|puts?) (?:her|him)\b/g, '$1 ~');
   t = t.replace(/\b(to|on) (?:her|him)\b(?! (?:power|toughness|controller|owner|hand|library|graveyard))/g, '$1 ~');
   // Universes Beyond cards use gendered pronouns for the card itself.
   t = t.replace(/\b(?:He|She)'s\b/g, 'It is').replace(/\b(?:he|she)'s\b/g, 'it is');
@@ -117,7 +117,9 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
   t = t.replace(/\b(from|on|to|onto) (?:him|her)(?=$|[.,;:)])/g, '$1 ~');
   t = t.replace(/\b(put|return|exile|sacrifice|destroy|tap|untap) (?:him|her)(?= (?:on|onto|into|to|from|in)\b)/g, '$1 ~');
   // A plural card name ("Tokka & Rahzar") is written with plural verbs; the patterns want the singular.
-  t = t.replace(/\b~ deal\b(?! with)/g, '~ deals').replace(/\b~ have\b/g, '~ has').replace(/\b~ enter\b/g, '~ enters').replace(/\b~ get\b/g, '~ gets');
+  // A plural card name ("Tokka & Rahzar") takes plural verbs; the patterns want the singular.
+  // "have ~ deal 3 damage" is an infinitive, not a plural, so it stays as it is.
+  t = t.replace(/(?<!\b(?:have|has|had|named|called) )~ deal\b(?! with)/g, '~ deals').replace(/(?<!\b(?:have|has|had|named|called) )~ have\b/g, '~ has').replace(/(?<!\b(?:have|has|had|named|called) )~ enter\b/g, '~ enters').replace(/(?<!\b(?:have|has|had|named|called) )~ get\b/g, '~ gets');
   t = t.replace(/\bassign (?:his|her) combat damage\b/g, 'assign its combat damage').replace(/\bas though (?:he|she) (?:weren't|were not) blocked\b/g, "as though it were not blocked");
   t = t.replace(/\b(?:he|she) (was|is|has|isn't|is not|was not|wasn't|would|dealt|deals|attacked|blocked|entered|died|left)\b/g, 'it $1').replace(/\b(?:He|She) (was|is|has|is not|was not|would|dealt|attacked|blocked|entered|died|left)\b/g, 'It $1');
   t = t.replace(/\b(?:his|her) (power|toughness|name|owner|owner's|controller|controller's|mana value|mana cost|other types|base|colors?|abilities|activated abilities|triggered abilities|types|loyalty)\b/g, 'its $1').replace(/\b(?:His|Her) (power|toughness|name|owner|controller|mana value|base|colors?|abilities|types|loyalty)\b/g, 'Its $1');
