@@ -782,6 +782,23 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const noun = parseNoun(`a ${m[1]}`);
     if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', controllerRef: ctx.self, other: true }, op: '>=', value: 1 };
   }
+  if (/^(?:~|it) (?:is|are) not on the battlefield$/.test(t)) return { kind: 'not', c: { kind: 'inZone', ref: ctx.self, zone: 'battlefield' } };
+  if ((m = orig.trim().replace(/\.$/, '').match(/^~ is (?:a|an) ([A-Z][a-z]+)$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { subtypes: [m[1]] } };
+  if (/^you control enchanted (?:creature|permanent|artifact|land)$/.test(t)) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { controller: 'you' } };
+  if (/^another player controls enchanted (?:creature|permanent|artifact|land)$/.test(t)) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { controller: 'opponent' } };
+  if ((m = t.match(/^another (aura|equipment) is attached to enchanted creature$/)))
+    return { kind: 'count', filter: { subtypes: [m[1] === 'aura' ? 'Aura' : 'Equipment'], zone: 'battlefield', attachedToRef: { ref: 'attachedTo' }, other: true }, op: '>=', value: 1 };
+  if ((m = t.match(/^at least (\w+) (.+?) (?:is|are) blocking ~$/)))
+    { const n = wordToNumber(m[1]); const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]); if (typeof n === 'number' && noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', blockingSource: true }, op: '>=', value: n }; }
+  if ((m = t.match(/^(\w+) or more (.+?) are on the battlefield$/)))
+    { const n = wordToNumber(m[1]); const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]); if (typeof n === 'number' && noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield' }, op: '>=', value: n }; }
+  if (/^there are no cards in your library$/.test(t)) return { kind: 'amount', a: { kind: 'librarySize', ref: { ref: 'controller' } }, op: '==', b: 0 };
+  if ((m = t.match(/^(\w+) or more (.+?) died under your control this turn$/)))
+    { const n = wordToNumber(m[1]); const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]); if (typeof n === 'number' && noun) return { kind: 'amount', a: { kind: 'eventsThisTurn', event: 'dies', player: 'you', filter: { ...noun.filter, zone: undefined } }, op: '>=', b: n }; }
+  if (/^it (?:wasn't|was not) (?:a|an) (?:aura)$/.test(t)) return { kind: 'not', c: { kind: 'objectMatches', ref: ctx.lastObj ?? ctx.self, filter: { subtypes: ['Aura'] } } };
+  if (/^(?:they|that player) (?:is|are) the monarch$/.test(t)) return { kind: 'isMonarch', ref: ctx.lastPlayer ?? { ref: 'triggerPlayer' } };
+  if ((m = t.match(/^its controller has more than (\w+) cards in hand$/)))
+    { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'handSize', ref: { ref: 'controllerOf', of: ctx.lastObj ?? ctx.self }, op: '>', value: n }; }
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
   if (t === '~ is suspended' || t === 'it is suspended') return { kind: 'objectMatches', ref: ctx.self, filter: { suspended: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
