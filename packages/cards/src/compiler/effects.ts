@@ -3587,7 +3587,7 @@ const PATTERNS: Pattern[] = [
     return out;
   }],
   // "Turn target creature with a morph ability face down"
-  [/^turn (target .+?) face down$/i, (m, ctx) => {
+  [/^turn (?:any number of |up to \w+ )?(target .+?) face down$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'turnFaceDown', what: ref }] : null;
   }],
@@ -9346,9 +9346,9 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ctx.targets.length = saved;
   }
   // "… become 2/2 creatures that are still lands": becoming a creature never removes the land type.
-  if (/ that (?:are|is) still (?:a )?lands?$/i.test(text)) {
+  if (/ that (?:are|is) still (?:a )?lands?\b/i.test(text)) {
     const saved = ctx.targets.length;
-    const alt = parseSentence(text.replace(/ that (?:are|is) still (?:a )?lands?$/i, ''), ctx);
+    const alt = parseSentence(text.replace(/ that (?:are|is) still (?:a )?lands?\b/i, ''), ctx);
     if (alt) return alt;
     ctx.targets.length = saved;
   }

@@ -196,6 +196,8 @@ export type Condition =
   | { kind: 'count'; filter: ObjectFilter; op: Comparison; value: Amount }
   | { kind: 'life'; ref: Ref; op: Comparison; value: Amount }
   | { kind: 'yourTurn' }
+  /** Storied: you control(led) three or more artifacts, legendaries and/or Sagas. Latches on. */
+  | { kind: 'enduringStory' }
   | { kind: 'notYourTurn' }
   | { kind: 'handSize'; ref: Ref; op: Comparison; value: Amount }
   | { kind: 'graveyard'; ref: Ref; op: Comparison; value: Amount; filter?: ObjectFilter }

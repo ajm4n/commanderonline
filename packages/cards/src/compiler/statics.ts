@@ -2516,7 +2516,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^(.+?) cannot be blocked except by (\w+) or more creatures$/i)) && wordToNumber(m[2]) !== null) { const _q24 = objRule(m[1], { kind: 'custom', tag: 'minBlockers', data: wordToNumber(m[2]) }); if (_q24) return _q24; }
   if ((m = L.match(/^(.+?) can block only creatures with flying$/i))) { const _q25 = objRule(m[1], { kind: 'custom', tag: 'blockOnlyFlying' }); if (_q25) return _q25; }
   if ((m = L.match(/^(.+?) attacks? each combat if able$/i))) { const _q26 = objRule(m[1], { kind: 'mustAttack' }); if (_q26) return _q26; }
-  if ((m = L.match(/^(.+?) (?:does not|do not) untap during (?:your|its controller's|their controllers'|their controller's) untap steps?$/i))) { const _q27 = objRule(m[1], { kind: 'cantUntap' }); if (_q27) return _q27; }
+  if ((m = L.match(/^(.+?) (?:does not|do not) untap during (?:your|its controller's|their controllers'|their controller's) untap steps?(?: unless (.+))?$/i))) sx27u: {
+    const _q27 = objRule(m[1], { kind: 'cantUntap' });
+    if (!_q27) break sx27u;
+    if (!m[2]) return _q27;
+    const c27 = parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (!c27 || c27.kind === 'manual') break sx27u;
+    return _q27.map((a) => (a.kind === 'static' ? { ...a, condition: { kind: 'not' as const, c: c27 } } : a));
+  }
   if ((m = L.match(/^(.+?) cannot be countered$/i))) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantBeCountered' } }];
   // "~ cannot be the target of nongreen spells or abilities from nongreen sources."
   if ((m = L.match(/^(.+?) cannot be the target of (.+?) spells or abilities from \2 sources$/i))) {

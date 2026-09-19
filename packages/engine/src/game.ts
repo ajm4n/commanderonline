@@ -1355,6 +1355,18 @@ export class Game {
       }
       case 'yourTurn':
         return this.state.turn.activePlayer === ctx.controller;
+      case 'enduringStory': {
+        const pl = this.player(ctx.controller);
+        if (pl.flags['enduringStory']) return true;
+        const n = this.state.battlefield.filter((id) => {
+          const o = this.state.objects[id];
+          if (!o || o.controller !== ctx.controller) return false;
+          const ch = this.characteristics(id);
+          return ch.types.includes('Artifact') || ch.supertypes.includes('Legendary') || ch.subtypes.includes('Saga');
+        }).length;
+        if (n >= 3) pl.flags['enduringStory'] = true;
+        return n >= 3;
+      }
       case 'notYourTurn':
         return this.state.turn.activePlayer !== ctx.controller;
       case 'handSize':
