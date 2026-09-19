@@ -45,6 +45,7 @@ export interface ParsedNoun {
   /** For "target creature or player"/"any target" */
   kind: TargetSpec['kind'];
   playerFilter?: TargetSpec['playerFilter'];
+  playerCondition?: TargetSpec['playerCondition'];
   /** Whether the phrase was fully consumed by known vocabulary. */
   confident: boolean;
   /** The literal phrase for descriptions. */
@@ -131,6 +132,14 @@ export function parseNoun(raw: string): ParsedNoun | null {
   if ((m = text.match(/^any number of target (.+)$/i))) {
     const inner = parseNoun(`target ${m[1]}`);
     return inner ? { ...inner, count: 20, upTo: true } : null;
+  }
+  // "target opponent who has more life than you do" / "... at least two more cards in hand than you do"
+  if ((m = text.match(/^target (player|opponent) who (?:has|controls) (?:at least (\w+) )?(more|fewer) (life|cards in hand|creatures|creature cards in their graveyard) than (?:you|they) do$/i))) {
+    const by = m[2] ? wordToNumber(m[2]) : 1;
+    const stat = /^life$/i.test(m[4]) ? 'life' : /cards in hand/i.test(m[4]) ? 'handSize' : /^creatures$/i.test(m[4]) ? 'creatures' : 'creatureCardsInGraveyard';
+    if (typeof by === 'number') {
+      return { ...result, target: true, kind: 'player', playerFilter: /opponent/i.test(m[1]) ? 'opponent' : 'any', playerCondition: { stat: stat as 'life', op: /^more$/i.test(m[3]) ? 'more' : 'fewer', byAtLeast: by } };
+    }
   }
   if ((m = text.match(/^(?:up to (\w+) |(\w+) )?targets? (players?|opponents?)$/i))) {
     const n = wordToNumber(m[1] ?? m[2]);
@@ -796,6 +805,7 @@ export function toTargetSpec(n: ParsedNoun): TargetSpec {
   const count = n.count === 'X' ? 1 : n.count;
   const spec: TargetSpec = { description: desc, kind: n.kind, min: n.upTo ? (n.minCount ?? 0) : count, max: count };
   if (n.kind === 'player' || n.kind === 'objectOrPlayer') spec.playerFilter = n.playerFilter ?? 'any';
+  if (n.playerCondition) spec.playerCondition = n.playerCondition;
   if (n.kind === 'object' || n.kind === 'objectOrPlayer' || n.kind === 'any' || n.kind === 'spell' || n.kind === 'objectOrSpell') {
     const f: ObjectFilter = { ...n.filter };
     if (n.kind !== 'spell' && !f.zone) f.zone = 'battlefield';

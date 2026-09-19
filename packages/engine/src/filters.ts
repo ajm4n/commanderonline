@@ -496,6 +496,19 @@ export function legalTargets(g: Game, spec: TargetSpec, sourceId: ObjectId | nul
       if (pf === 'opponent' && p.id === controller) continue;
       if (pf === 'you' && p.id !== controller) continue;
       if (pf === 'notController' && p.id === controller) continue;
+      if (spec.playerCondition) {
+        const pc = spec.playerCondition;
+        const stat = (who: PlayerId): number => {
+          const pl = g.player(who);
+          if (pc.stat === 'life') return pl.life;
+          if (pc.stat === 'handSize') return pl.hand.length;
+          if (pc.stat === 'creatures') return g.state.battlefield.filter((id) => g.state.objects[id]?.controller === who && g.characteristics(id).types.includes('Creature')).length;
+          return pl.graveyard.filter((id) => g.characteristics(id).types.includes('Creature')).length;
+        };
+        const by = pc.byAtLeast ?? 1;
+        const diff = stat(p.id) - stat(controller);
+        if (pc.op === 'more' ? diff < by : -diff < by) continue;
+      }
       const t: Target = { kind: 'player', id: p.id };
       if (canTarget(g, t, sourceId, controller)) out.push(t);
     }

@@ -9523,6 +9523,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (alt) return alt;
     ctx.targets.length = saved;
   }
+  // "... as you activate this ability": says when the choice happens, which is when it happens.
+  if (/ as you (?:activate this ability|cast (?:this spell|~))$/i.test(text)) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(text.replace(/ as you (?:activate this ability|cast (?:this spell|~))$/i, ''), ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
+  }
   // "You gain control of it": "you" is the default subject, so retry without it.
   if (/^you [a-z]/i.test(text) && !/^you may /i.test(text)) {
     const saved = ctx.targets.length;

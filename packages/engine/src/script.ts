@@ -263,6 +263,8 @@ export interface TargetSpec {
   kind: 'object' | 'player' | 'any' | 'spell' | 'objectOrPlayer' | 'activatedOrTriggered' | 'spellOrAbility' | 'objectOrSpell';
   filter?: ObjectFilter;
   playerFilter?: 'any' | 'opponent' | 'you' | 'notController';
+  /** "target opponent who has more life than you do" — compared against the controller. */
+  playerCondition?: { stat: 'life' | 'creatures' | 'handSize' | 'creatureCardsInGraveyard'; op: 'more' | 'fewer'; byAtLeast?: number };
   min?: number; // default 1
   max?: number; // default 1
   /** "up to that many target cards": the cap is computed when targets are chosen. */
