@@ -9629,6 +9629,20 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // "If you cast a spell this way, you may spend mana as though it were mana of any color to
     // cast it." — a rider on the play-from-exile effect before it.
     if (/^(?:if you cast a spell this way, )?(?:you|they) may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to (?:cast|pay)\b/i.test(s) && setAnyMana(effects)) continue;
+    // "Exile it instead of putting it into a graveyard as it resolves." — a rider on the cast.
+    if (/^exile (?:it|that card|them) instead of putting (?:it|them) into (?:a|its owner's|that player's|your) graveyards? as (?:it|they) resolves?$/i.test(s)) {
+      const find = (list: Effect[]): Effect | null => {
+        for (let k = list.length - 1; k >= 0; k--) {
+          const e = list[k];
+          if (e.kind === 'castFrom' || e.kind === 'playFromExile') return e;
+          const nested = (e as { effects?: Effect[] }).effects;
+          if (Array.isArray(nested)) { const inner = find(nested); if (inner) return inner; }
+        }
+        return null;
+      };
+      const c = find(effects);
+      if (c && (c.kind === 'castFrom' || c.kind === 'playFromExile')) { c.exileAfter = true; continue; }
+    }
     // "If that spell is countered this way, put it on top of its owner's library instead of into
     // that player's graveyard." — a rider on the counter before it.
     if ((m = s.match(/^if that spell (?:is countered this way|would be put into (?:a|its owner's|that player's) graveyard), put it (?:on (?:the )?(top|bottom) of (?:its owner's|that player's) library|into (?:its owner's|that player's) hand)(?: instead.*)?$/i))) {

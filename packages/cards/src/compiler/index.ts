@@ -693,7 +693,26 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if ((m = line.match(/^((?:I|II|III|IV|V|VI)(?:, (?:I|II|III|IV|V|VI))*) — (.+)$/))) {
       const chapters = m[1].split(', ').map((r) => ROMAN[r]);
       const ctx = newCtx({ isSpell: false });
-      const { effects, unhandled } = parseEffects(m[2], ctx);
+      const chapterModal = parseModalHead(m[2]);
+      let effects: Effect[];
+      let unhandled: string[];
+      if (chapterModal && lines[li + 1]?.startsWith('\u2022')) {
+        const options: { text: string; effects: Effect[] }[] = [];
+        unhandled = [];
+        while (lines[li + 1]?.startsWith('\u2022')) {
+          li++;
+          const optText = stripModeLabel(lines[li].replace(/^\u2022\s*/, ''));
+          const r = parseEffects(optText, ctx);
+          options.push({ text: optText, effects: chapterModal.x !== undefined ? r.effects.map((e) => substituteX(e, chapterModal.x!)) : r.effects });
+          unhandled.push(...r.unhandled);
+          if (!r.unhandled.length) compiledLines.push(lines[li]);
+        }
+        effects = [{ kind: 'chooseMode', options, count: chapterModal.count, countAmount: chapterModal.xCount, min: chapterModal.min, notChosen: chapterModal.notChosen, random: chapterModal.random }];
+      } else {
+        const r = parseEffects(m[2], ctx);
+        effects = r.effects;
+        unhandled = r.unhandled;
+      }
       for (const ch of chapters) {
         abilities.push({ kind: 'triggered', text: `Chapter ${ch}: ${m[2]}`, event: 'counterAdded', filter: { self: true, counterType: 'lore' }, condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: 'lore', op: '==', value: ch }, targets: ctx.targets, effects });
       }
