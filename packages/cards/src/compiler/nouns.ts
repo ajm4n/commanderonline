@@ -84,7 +84,7 @@ const KEYWORD_QUALS = new Set(['flying', 'defender', 'trample', 'deathtouch', 'l
 export function parseNoun(raw: string): ParsedNoun | null {
   let text = raw.trim().replace(/[.,;]$/, '').replace(/ and\/or /g, ' or ').replace(/ or another /g, ' or ').replace(/ or (?:a|an) /g, ' or ').replace(/ cards? or (.+?) cards?$/i, ' or $1 card');
   // "each other attacking ~" → permanents with this card's name
-  if (/(^|\s)~$/.test(text) && text !== '~' && !/\b(?:than|named|as|with|to|by|from|of|for|only|controls?|enchanting|attached) ~$/i.test(text)) text = text.replace(/~$/, 'permanent named ~');
+  if (/(^|\s)~$/.test(text) && text !== '~' && !/\b(?:than|named|as|with|to|by|from|of|for|only|controls?|convoked|crewed|enchanting|attached) ~$/i.test(text)) text = text.replace(/~$/, 'permanent named ~');
   // "each of two other target creatures" / "each of those creatures"
   if (/^each of (?:\w+ )?(?:other )?(?:target |those |the )/i.test(text)) text = text.replace(/^each of /i, '');
   // "outlaws you control": Assassins, Mercenaries, Pirates, Rogues and Warlocks.

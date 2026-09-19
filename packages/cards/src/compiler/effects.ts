@@ -6,6 +6,7 @@ import { parseNoun, toTargetSpec, type ParsedNoun, singularize } from './nouns.j
 import { parseAmount } from './amounts.js';
 import { parseCondition } from './conditions.js';
 import { parseTriggerHead } from './triggers.js';
+import type { TriggerHead } from './triggers.js';
 import { parseCost } from './costs.js';
 import { parseStatic } from './statics.js';
 import { damageSourceFilter, damageDestFilter, damageModifier } from './damage.js';
@@ -98,6 +99,13 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (gy) return SELF;
   const noun = parseNoun(t);
   if (!noun) return null;
+  // "all Auras attached to that creature": with no target in scope the host is whatever the
+  // script last touched — a trigger's object, typically.
+  if (noun.filter.attachedToRef?.ref === 'target' && /attached to that /i.test(t)) {
+    const host: Ref | null = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : null);
+    if (!host) return null;
+    noun.filter.attachedToRef = host;
+  }
   if (noun.controllerPhrase) {
     const pr = playerRef(noun.controllerPhrase, ctx);
     if (!pr) return null;
@@ -159,6 +167,14 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'each other opponent' || l === 'each of their opponents' || l === 'each other player who is an opponent') return { ref: 'eachOtherOpponent' };
   if (l === 'its controller' || /^(?:that|the) [\w ]+'s controller$/.test(l) || l === 'the controller of that creature' || l === 'the controller of that permanent') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (l === "~'s controller") return { ref: 'controllerOf', of: SELF };
+  // "Target creature's controller reveals a card at random from their hand."
+  {
+    const tc = phrase.trim().match(/^(target [\w' -]+)'s controller$/i);
+    if (tc) {
+      const of = objRef(tc[1], ctx);
+      if (of) return { ref: 'controllerOf', of };
+    }
+  }
   if (/^(?:enchanted|equipped) \w+'s controller$/.test(l)) return { ref: 'controllerOf', of: { ref: 'attachedTo' } };
   if (l === 'its owner' || l === "that card's owner") return { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } };
   if (l === 'defending player' || l === 'the defending player') return { ref: 'defendingPlayer' };
@@ -4249,6 +4265,28 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 237 ----
+  // "If it's a land card, that player puts it into their hand." (Goblin Guide)
+  [/^(.+?) puts? (?:it|that card) into their hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const what = objRef('that card', ctx);
+    return who && what ? [{ kind: 'moveToZone', what, zone: 'hand' }] : null;
+  }],
+  // "~ deals X damage divided evenly, rounded down, among any number of targets"
+  // "~ deals X plus 1 damage divided as you choose among any number of targets"
+  [/^(~|it|that creature|.+?) deals (X|\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?: plus (\d+))? damage divided (?:evenly, rounded down,|as you choose) among (.+)$/i, (m, ctx) => {
+    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    if (!src) return null;
+    const base: Amount | null = /^X$/i.test(m[2]) ? 'X' : (wordToNumber(m[2]) as Amount | null);
+    if (base === null) return null;
+    const a: Amount = m[3] ? { kind: 'sum', parts: [base, parseInt(m[3], 10)] } : base;
+    return damageTo(`x, divided as you choose among ${m[4]}`, a, ctx, src);
+  }],
+  // "You may then have that player shuffle that library." (Visions)
+  [/^(?:you may then have|you may have) (.+?) shuffle (?:that|their|his or her) library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'may', effects: [{ kind: 'shuffle', who }] }] : null;
   }],
   // ---- Round 236 ----
   // "That player reveals the top two cards of their library"
@@ -8792,6 +8830,32 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (alt) return alt;
     ctx.targets.length = saved;
   }
+  // A trigger written inside an ability's body is a delayed trigger the ability sets up:
+  // "{2}{B}, {T}: Put target creature card from a graveyard onto the battlefield under your
+  // control. When ~ becomes untapped or you lose control of ~, exile that creature."
+  if (/^(?:When|Whenever|At the beginning)\b/i.test(text)) {
+    const saved = ctx.targets.length;
+    const head = parseTriggerHead(`${text.charAt(0).toUpperCase()}${text.slice(1)}`);
+    if (head) {
+      const sub = newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer });
+      const inner = parseSentence(head.rest, sub);
+      if (inner) {
+        const mk = (h: { event: TriggerHead['event']; filter?: TriggerHead['filter'] }): Effect =>
+          ({ kind: 'delayedTrigger', event: h.event, filter: h.filter, effects: inner, text, once: true });
+        return [mk(head), ...(head.also ?? []).map(mk)];
+      }
+    }
+    ctx.targets.length = saved;
+  }
+  // "Choose a card name, then reveal a card at random from your hand": two steps in one
+  // sentence that no pattern spells out together.
+  if ((m = text.match(/^(.+?), then (.+)$/i)) && !/^(?:if|when|whenever|until|unless)\b/i.test(text)) {
+    const saved = ctx.targets.length;
+    const a = parseSentence(m[1], ctx) ?? parseSentence(`you ${m[1]}`, ctx);
+    const b = a ? parseSentence(m[2], ctx) ?? parseSentence(`you ${m[2]}`, ctx) : null;
+    if (a && b) return [...a, ...b];
+    ctx.targets.length = saved;
+  }
   return null;
 }
 
@@ -8831,6 +8895,26 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // keep pointing at a target slot that no longer exists.
     if (ctx.lastObj?.ref === 'target' && (ctx.lastObj.slot ?? 0) >= ctx.targets.length) ctx.lastObj = null;
     if (ctx.lastPlayer?.ref === 'target' && (ctx.lastPlayer.slot ?? 0) >= ctx.targets.length) ctx.lastPlayer = null;
+    // "The tokens enter tapped and attacking." — a rider on the create-token effect before it.
+    if ((m = s.match(/^the tokens? enters? (tapped and attacking|tapped|attacking)$/i))) {
+      const find = (list: Effect[]): Extract<Effect, { kind: 'createToken' }> | null => {
+        for (let k = list.length - 1; k >= 0; k--) {
+          const e = list[k];
+          if (e.kind === 'createToken') return e;
+          if ((e.kind === 'forEach' || e.kind === 'repeat') && e.effects) {
+            const inner = find(e.effects);
+            if (inner) return inner;
+          }
+        }
+        return null;
+      };
+      const tok = find(effects);
+      if (tok) {
+        if (/tapped/i.test(m[1])) tok.tapped = true;
+        if (/attacking/i.test(m[1])) tok.attacking = true;
+        continue;
+      }
+    }
     // "Prevent all damage … this turn. You gain life equal to the damage prevented this way."
     if (/^prevent |^the next time /i.test(s) && sents[i + 1] && /damage prevented this way/i.test(sents[i + 1])) {
       const followText = sents[i + 1].replace(/^for each 1 damage prevented this way, /i, '').replace(/\bthe damage prevented this way\b/i, 'that much');
