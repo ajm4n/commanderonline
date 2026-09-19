@@ -788,7 +788,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       }
     }
     // Triggered
-    if ((/^(When|Whenever|At the beginning)/i.test(line) && !/^When you next cast /i.test(line)) || (!isSpell && /^At (?:the )?end of combat, /i.test(line))) {
+    if ((/^(When|Whenever|At the beginning)/i.test(line) && !/^When you next cast /i.test(line) && !(isSpell && /^When(?:ever)? (?:that|the|it|those|target)\b[^,]*\bthis turn, /i.test(line))) || (!isSpell && /^At (?:the )?end of combat, /i.test(line))) {
       const head = parseTriggerHead(line);
       if (!head) {
         // "When you control no Islands, sacrifice ~" is a state trigger the engine treats like a static rule.

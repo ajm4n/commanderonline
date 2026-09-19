@@ -92,6 +92,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^the chosen (?:creatures|permanents|lands|artifacts|players)$/.test(l) && ctx.lastObj) return ctx.lastObj;
   if (/^any of those cards you (?:didn't|did not) play$/.test(l)) return ctx.lastObj ?? { ref: 'lastMoved' };
   if (/^the other (?:creature|permanent)$/.test(l)) return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : null) ?? { ref: 'lastMoved' };
+  if (/^the (?:permanent|creature|artifact|land|planeswalker)(?: you (?:do not|don't) control| an opponent controls| you control)?$/.test(l) && ctx.lastObj) return ctx.lastObj;
   if (l === 'the chosen creature' || l === 'the chosen permanent') return { ref: 'chosen', key: 'chosen' };
   const gy = t.match(/^~ from your graveyard$/i);
   if (gy) return SELF;
@@ -1866,7 +1867,7 @@ const PATTERNS: Pattern[] = [
     ctx.lastObj = ref;
     return [{ kind: 'changeTargets', what: ref }];
   }],
-  [/^copy (.+?)(?:, except that the copy is (?:white|blue|black|red|green|colorless))?(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
+  [/^copy (.+?)(?:,? except (?:that )?the copy is (?:white|blue|black|red|green|colorless|not legendary|legendary))?(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
     const isCard = /\bcards?\b|^(?:the exiled card|that card|the revealed card|it)$/i.test(m[1]) && !/\bspell\b/i.test(m[1]);
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
