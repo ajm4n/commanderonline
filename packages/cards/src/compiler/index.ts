@@ -674,212 +674,215 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           abilities.push({ kind: 'static', text: kw, affects: 'self', rule: { kind: 'cantBlock' }, condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: '+1/+1', op: '>=', value: 1 } } as never);
         }
       }
-      // Cycling: an activated ability from hand.
-      if ((m = line.match(/^Cycling ((?:\{[^}]+\})+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: m[1], discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
-      if ((m = line.match(/^Cycling (\d+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: `{${m[1]}}`, discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
-      // "Gift a Treasure": an opponent promised the gift gets it before the spell's other effects.
-      if ((m = line.match(/^Gift (?:a|an) (card|Treasure|Food|Clue|tapped Fish|Octopus)$/i))) {
-        const to = { ref: 'giftRecipient' } as const;
-        const what = m[1].toLowerCase();
-        const effects: Effect[] =
-          what === 'card'
-            ? [{ kind: 'draw', amount: 1, who: to }]
-            : what === 'tapped fish'
-              ? [{ kind: 'createToken', token: { name: 'Fish', typeLine: 'Token Creature — Fish', power: '1', toughness: '1', colors: ['U'] }, count: 1, tapped: true, who: to }]
-              : what === 'octopus'
-                ? [{ kind: 'createToken', token: { name: 'Octopus', typeLine: 'Token Creature — Octopus', power: '8', toughness: '8', colors: ['U'] }, count: 1, who: to }]
-                : [{ kind: 'createToken', token: { name: m[1], typeLine: `Token Artifact — ${m[1]}`, colors: [], preset: m[1] }, count: 1, who: to }];
-        gift = { text: line.replace(/^Gift /i, ''), effects };
+      // A keyword line may list several ("Flying, bushido 1"); consider each on its own.
+      for (const kwLine of line.replace(/\.$/, '').split(/[,;]\s*/).map((s) => s.trim())) {
+        // Cycling: an activated ability from hand.
+        if ((m = kwLine.match(/^Cycling ((?:\{[^}]+\})+)$/i))) abilities.push({ kind: 'activated', text: kwLine, cost: { mana: m[1], discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
+        if ((m = kwLine.match(/^Cycling (\d+)$/i))) abilities.push({ kind: 'activated', text: kwLine, cost: { mana: `{${m[1]}}`, discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
+        // "Gift a Treasure": an opponent promised the gift gets it before the spell's other effects.
+        if ((m = kwLine.match(/^Gift (?:a|an) (card|Treasure|Food|Clue|tapped Fish|Octopus)$/i))) {
+          const to = { ref: 'giftRecipient' } as const;
+          const what = m[1].toLowerCase();
+          const effects: Effect[] =
+            what === 'card'
+              ? [{ kind: 'draw', amount: 1, who: to }]
+              : what === 'tapped fish'
+                ? [{ kind: 'createToken', token: { name: 'Fish', typeLine: 'Token Creature — Fish', power: '1', toughness: '1', colors: ['U'] }, count: 1, tapped: true, who: to }]
+                : what === 'octopus'
+                  ? [{ kind: 'createToken', token: { name: 'Octopus', typeLine: 'Token Creature — Octopus', power: '8', toughness: '8', colors: ['U'] }, count: 1, who: to }]
+                  : [{ kind: 'createToken', token: { name: m[1], typeLine: `Token Artifact — ${m[1]}`, colors: [], preset: m[1] }, count: 1, who: to }];
+          gift = { text: kwLine.replace(/^Gift /i, ''), effects };
+        }
+        // "Renown 2": the first time it connects it gets the counters and stays renowned.
+        if ((m = kwLine.match(/^Renown (\d+)$/i))) {
+          abilities.push({
+            kind: 'triggered',
+            text: kwLine,
+            event: 'dealtCombatDamageToPlayer',
+            filter: { self: true },
+            condition: { kind: 'not', c: { kind: 'memoryFlag', key: 'renowned' } },
+            effects: [
+              { kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'self' } },
+              { kind: 'setMemory', key: 'renowned', value: true },
+            ],
+          });
+        }
+        // Keyword abilities that stand for a whole ability, spelled out so the engine runs them.
+        if ((m = kwLine.match(/^Bushido (\d+)$/i))) {
+          const n = parseInt(m[1], 10);
+          for (const event of ['blocks', 'becomesBlocked'] as const)
+            abilities.push({ kind: 'triggered', text: kwLine, event, filter: { self: true }, effects: [{ kind: 'pump', power: n, toughness: n, on: { ref: 'self' } }] });
+        }
+        if ((m = kwLine.match(/^Afterlife (\d+)$/i)))
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'dies', filter: { self: true },
+            effects: [{ kind: 'createToken', token: { name: 'Spirit', typeLine: 'Token Creature — Spirit', power: '1', toughness: '1', colors: ['W', 'B'], keywords: ['Flying'] }, count: parseInt(m[1], 10) }],
+          });
+        if ((m = kwLine.match(/^Afflict (\d+)$/i)))
+          abilities.push({ kind: 'triggered', text: kwLine, event: 'becomesBlocked', filter: { self: true }, effects: [{ kind: 'loseLife', amount: parseInt(m[1], 10), who: { ref: 'defendingPlayer' } }] });
+        if ((m = kwLine.match(/^Annihilator (\d+)$/i)))
+          abilities.push({ kind: 'triggered', text: kwLine, event: 'attacks', filter: { self: true }, effects: [{ kind: 'sacrificeChoice', who: { ref: 'defendingPlayer' }, filter: { zone: 'battlefield' }, count: parseInt(m[1], 10) }] });
+        if ((m = kwLine.match(/^Rampage (\d+)$/i))) {
+          const n = parseInt(m[1], 10);
+          const beyondFirst: Amount = { kind: 'max', a: 0, b: { kind: 'minus', a: { kind: 'countRef', ref: { ref: 'blockersOf', of: { ref: 'self' } } }, b: 1 } };
+          abilities.push({ kind: 'triggered', text: kwLine, event: 'becomesBlocked', filter: { self: true }, effects: [{ kind: 'pump', power: { kind: 'times', a: n, b: beyondFirst }, toughness: { kind: 'times', a: n, b: beyondFirst }, on: { ref: 'self' } }] });
+        }
+        if ((m = kwLine.match(/^Fabricate (\d+)$/i))) {
+          const n = parseInt(m[1], 10);
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'entersBattlefield', filter: { self: true },
+            effects: [{ kind: 'chooseMode', options: [
+              { text: `Put ${n} +1/+1 counters on it`, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: n, on: { ref: 'self' } }] },
+              { text: `Create ${n} 1/1 Servo tokens`, effects: [{ kind: 'createToken', token: { name: 'Servo', typeLine: 'Token Artifact Creature — Servo', power: '1', toughness: '1', colors: [] }, count: n }] },
+            ], count: 1 }],
+          });
+        }
+        if ((m = kwLine.match(/^Bloodthirst (\d+)$/i)))
+          abilities.push({
+            kind: 'replacement', text: kwLine, event: 'entersBattlefield', self: true,
+            counters: { counter: '+1/+1', amount: parseInt(m[1], 10) },
+            condition: { kind: 'amount', a: { kind: 'playersMatching', who: 'opponent', stat: 'damageTaken' }, op: '>=', b: 1 },
+          } as never);
+        if ((m = kwLine.match(/^Modular (\d+)$/i))) {
+          abilities.push({ kind: 'replacement', text: kwLine, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: parseInt(m[1], 10) } } as never);
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'dies', filter: { self: true }, optional: true,
+            effects: [{ kind: 'moveCounters', from: { ref: 'self' }, to: { ref: 'target', slot: 0 }, counter: '+1/+1' }],
+            targets: [{ description: 'target artifact creature', kind: 'object', min: 1, max: 1, filter: { types: ['Artifact', 'Creature'], zone: 'battlefield' } }],
+          } as never);
+        }
+        // "Echo {2}{G}": pay it again at your next upkeep or lose the permanent.
+        if ((m = kwLine.match(/^Echo ((?:\{[^}]+\})+)$/i))) {
+          abilities.push({ kind: 'triggered', text: kwLine, event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'setMemory', key: 'echoDue', value: true }] });
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'beginningOfUpkeep', filter: { player: 'you' },
+            condition: { kind: 'memoryFlag', key: 'echoDue' },
+            effects: [
+              { kind: 'unlessPays', who: { ref: 'controller' }, cost: m[1], effects: [{ kind: 'sacrifice', what: { ref: 'self' } }] },
+              { kind: 'setMemory', key: 'echoDue', value: false },
+            ],
+          });
+        }
+        // "Vanishing 3" / "Fading 3": a countdown on the permanent's own upkeep.
+        if ((m = kwLine.match(/^(Vanishing|Fading) (\d+)$/i))) {
+          const counter = /^vanishing$/i.test(m[1]) ? 'time' : 'fade';
+          abilities.push({ kind: 'replacement', text: kwLine, event: 'entersBattlefield', self: true, counters: { counter, amount: parseInt(m[2], 10) } } as never);
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'beginningOfUpkeep', filter: { player: 'you' },
+            effects: counter === 'time'
+              ? [
+                  { kind: 'removeCounters', counter, amount: 1, on: { ref: 'self' } },
+                  { kind: 'conditional', if: { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '==', value: 0 }, then: [{ kind: 'sacrifice', what: { ref: 'self' } }] },
+                ]
+              : [
+                  {
+                    kind: 'conditional',
+                    if: { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '>=', value: 1 },
+                    then: [{ kind: 'removeCounters', counter, amount: 1, on: { ref: 'self' } }],
+                    else: [{ kind: 'sacrifice', what: { ref: 'self' } }],
+                  },
+                ],
+          });
+        }
+        // "Outlast {1}{W}": a sorcery-speed tap ability for a +1/+1 counter.
+        if ((m = kwLine.match(/^Outlast ((?:\{[^}]+\})+)$/i)))
+          abilities.push({ kind: 'activated', text: kwLine, cost: { mana: m[1], tap: true }, sorcerySpeed: true, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'self' } }] });
+        // "Reinforce 2—{1}{G}": discard it from hand for counters.
+        if ((m = kwLine.match(/^Reinforce (\d+)—((?:\{[^}]+\})+)$/i)))
+          abilities.push({
+            kind: 'activated', text: kwLine, zone: 'hand', cost: { mana: m[2], discardSelf: true },
+            targets: [{ description: 'target creature', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield' } }],
+            effects: [{ kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'target', slot: 0 } }],
+          } as never);
+        // "Graft 3": it arrives with counters and feeds them to arriving creatures.
+        if ((m = kwLine.match(/^Graft (\d+)$/i))) {
+          abilities.push({ kind: 'replacement', text: kwLine, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: parseInt(m[1], 10) } } as never);
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'entersBattlefield', filter: { object: { types: ['Creature'], other: true } }, optional: true,
+            condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: '+1/+1', op: '>=', value: 1 },
+            effects: [{ kind: 'moveCounters', from: { ref: 'self' }, to: { ref: 'triggerObject' }, counter: '+1/+1', amount: 1 }],
+          } as never);
+        }
+        // "Casualty 2": sacrifice a big enough creature as you cast it and the spell is copied.
+        if ((m = kwLine.match(/^Casualty (\d+|X)$/i))) {
+          const n291 = m[1].toUpperCase() === 'X' ? ('X' as const) : parseInt(m[1], 10);
+          additionalCost = { optional: true, sacrifice: { filter: { types: ['Creature'], controller: 'you', zone: 'battlefield', powerGE: n291 } } };
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'cast', filter: { self: true },
+            condition: { kind: 'memoryFlag', key: 'additionalCostPaid' },
+            effects: [{ kind: 'copySpell', what: { ref: 'self' } }],
+          } as never);
+        }
+        // "Hideaway 4": look at the top four and tuck one away face down.
+        if ((m = kwLine.match(/^Hideaway (\d+)$/i))) {
+          const key291 = 'hideawayLook';
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'entersBattlefield', filter: { self: true },
+            effects: [
+              { kind: 'lookAtTop', amount: parseInt(m[1], 10), then: 'hold', key: key291 },
+              { kind: 'chooseObjects', from: { ref: 'chosen', key: key291 }, filter: {}, count: 1, key: 'hideaway' },
+              { kind: 'exile', what: { ref: 'chosen', key: 'hideaway' }, faceDown: true, remember: 'hideaway' },
+              { kind: 'moveRest', key: key291, to: 'bottom' },
+            ],
+          } as never);
+        }
+        // "Backup 1": the counters half of the keyword (the abilities it hands over are printed below it).
+        if ((m = kwLine.match(/^Backup (\d+)$/i)))
+          abilities.push({
+            kind: 'triggered', text: kwLine, event: 'entersBattlefield', filter: { self: true },
+            targets: [{ description: 'target creature', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield' } }],
+            effects: [{ kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'target', slot: 0 } }],
+          } as never);
+        // "Suspend 3—{1}{R}": exile it with time counters instead of casting it, and it casts itself later.
+        if ((m = kwLine.match(/^Suspend (\d+|X)—((?:\{[^}]+\})+)$/i))) {
+          const n292: Amount = m[1].toUpperCase() === 'X' ? 'X' : parseInt(m[1], 10);
+          abilities.push({
+            kind: 'activated', text: kwLine, zone: 'hand', sorcerySpeed: true, cost: { mana: m[2] },
+            effects: [{ kind: 'exile', what: { ref: 'self' }, counters: { counter: 'time', amount: n292 } }],
+          } as never);
+          abilities.push({
+            kind: 'triggered', text: kwLine, zone: 'exile', event: 'beginningOfUpkeep', filter: { player: 'you' },
+            condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { suspended: true } },
+            effects: [
+              { kind: 'removeCounters', counter: 'time', amount: 1, on: { ref: 'self' } },
+              {
+                kind: 'conditional',
+                if: { kind: 'hasCounter', ref: { ref: 'self' }, counter: 'time', op: '==', value: 0 },
+                then: [
+                  { kind: 'castWithoutPaying', what: { ref: 'self' } },
+                  { kind: 'grantKeywords', keywords: ['Haste'], on: { ref: 'self' }, duration: 'permanent' },
+                ],
+              },
+            ],
+          } as never);
+        }
+        // "Dredge 3": from the graveyard, replace a draw with milling three and taking this card back.
+        if ((m = kwLine.match(/^Dredge (\d+)$/i)))
+          abilities.push({
+            kind: 'replacement', text: kwLine, event: 'drawCard', who: 'you', zone: 'graveyard', optional: true,
+            effects: [{ kind: 'mill', amount: parseInt(m[1], 10), who: { ref: 'controller' } }, { kind: 'putIntoHand', what: { ref: 'self' } }],
+          } as never);
+        // "Madness {1}{R}": discarding it exiles it instead, and you may cast it for the madness cost.
+        if ((m = kwLine.match(/^Madness ((?:\{[^}]+\})+)$/i)))
+          abilities.push({
+            kind: 'triggered', text: kwLine, zone: ['graveyard', 'hand'], event: 'discard', filter: { self: true }, optional: true,
+            effects: [
+              { kind: 'exile', what: { ref: 'self' } },
+              { kind: 'playFromExile', what: { ref: 'self' }, forCost: m[1], duration: 'thisTurn' },
+            ],
+          } as never);
+        // "Prowl {1}{B}": a cheaper cost once you have connected this turn.
+        if ((m = kwLine.match(/^Prowl ((?:\{[^}]+\})+)$/i))) {
+          alternativeCosts.push({
+            id: 'prowl', text: kwLine, cost: { mana: m[1] }, zone: 'hand',
+            condition: { kind: 'eventThisTurn', event: 'dealtCombatDamageToPlayer', player: 'you' },
+          });
+          compiledLines.push(line);
+          continue;
+        }
+        // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
+        if ((m = kwLine.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: kwLine, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       }
-      // "Renown 2": the first time it connects it gets the counters and stays renowned.
-      if ((m = line.match(/^Renown (\d+)$/i))) {
-        abilities.push({
-          kind: 'triggered',
-          text: line,
-          event: 'dealtCombatDamageToPlayer',
-          filter: { self: true },
-          condition: { kind: 'not', c: { kind: 'memoryFlag', key: 'renowned' } },
-          effects: [
-            { kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'self' } },
-            { kind: 'setMemory', key: 'renowned', value: true },
-          ],
-        });
-      }
-      // Keyword abilities that stand for a whole ability, spelled out so the engine runs them.
-      if ((m = line.match(/^Bushido (\d+)$/i))) {
-        const n = parseInt(m[1], 10);
-        for (const event of ['blocks', 'becomesBlocked'] as const)
-          abilities.push({ kind: 'triggered', text: line, event, filter: { self: true }, effects: [{ kind: 'pump', power: n, toughness: n, on: { ref: 'self' } }] });
-      }
-      if ((m = line.match(/^Afterlife (\d+)$/i)))
-        abilities.push({
-          kind: 'triggered', text: line, event: 'dies', filter: { self: true },
-          effects: [{ kind: 'createToken', token: { name: 'Spirit', typeLine: 'Token Creature — Spirit', power: '1', toughness: '1', colors: ['W', 'B'], keywords: ['Flying'] }, count: parseInt(m[1], 10) }],
-        });
-      if ((m = line.match(/^Afflict (\d+)$/i)))
-        abilities.push({ kind: 'triggered', text: line, event: 'becomesBlocked', filter: { self: true }, effects: [{ kind: 'loseLife', amount: parseInt(m[1], 10), who: { ref: 'defendingPlayer' } }] });
-      if ((m = line.match(/^Annihilator (\d+)$/i)))
-        abilities.push({ kind: 'triggered', text: line, event: 'attacks', filter: { self: true }, effects: [{ kind: 'sacrificeChoice', who: { ref: 'defendingPlayer' }, filter: { zone: 'battlefield' }, count: parseInt(m[1], 10) }] });
-      if ((m = line.match(/^Rampage (\d+)$/i))) {
-        const n = parseInt(m[1], 10);
-        const beyondFirst: Amount = { kind: 'max', a: 0, b: { kind: 'minus', a: { kind: 'countRef', ref: { ref: 'blockersOf', of: { ref: 'self' } } }, b: 1 } };
-        abilities.push({ kind: 'triggered', text: line, event: 'becomesBlocked', filter: { self: true }, effects: [{ kind: 'pump', power: { kind: 'times', a: n, b: beyondFirst }, toughness: { kind: 'times', a: n, b: beyondFirst }, on: { ref: 'self' } }] });
-      }
-      if ((m = line.match(/^Fabricate (\d+)$/i))) {
-        const n = parseInt(m[1], 10);
-        abilities.push({
-          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true },
-          effects: [{ kind: 'chooseMode', options: [
-            { text: `Put ${n} +1/+1 counters on it`, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: n, on: { ref: 'self' } }] },
-            { text: `Create ${n} 1/1 Servo tokens`, effects: [{ kind: 'createToken', token: { name: 'Servo', typeLine: 'Token Artifact Creature — Servo', power: '1', toughness: '1', colors: [] }, count: n }] },
-          ], count: 1 }],
-        });
-      }
-      if ((m = line.match(/^Bloodthirst (\d+)$/i)))
-        abilities.push({
-          kind: 'replacement', text: line, event: 'entersBattlefield', self: true,
-          counters: { counter: '+1/+1', amount: parseInt(m[1], 10) },
-          condition: { kind: 'amount', a: { kind: 'playersMatching', who: 'opponent', stat: 'damageTaken' }, op: '>=', b: 1 },
-        } as never);
-      if ((m = line.match(/^Modular (\d+)$/i))) {
-        abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: parseInt(m[1], 10) } } as never);
-        abilities.push({
-          kind: 'triggered', text: line, event: 'dies', filter: { self: true }, optional: true,
-          effects: [{ kind: 'moveCounters', from: { ref: 'self' }, to: { ref: 'target', slot: 0 }, counter: '+1/+1' }],
-          targets: [{ description: 'target artifact creature', kind: 'object', min: 1, max: 1, filter: { types: ['Artifact', 'Creature'], zone: 'battlefield' } }],
-        } as never);
-      }
-      // "Echo {2}{G}": pay it again at your next upkeep or lose the permanent.
-      if ((m = line.match(/^Echo ((?:\{[^}]+\})+)$/i))) {
-        abilities.push({ kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true }, effects: [{ kind: 'setMemory', key: 'echoDue', value: true }] });
-        abilities.push({
-          kind: 'triggered', text: line, event: 'beginningOfUpkeep', filter: { player: 'you' },
-          condition: { kind: 'memoryFlag', key: 'echoDue' },
-          effects: [
-            { kind: 'unlessPays', who: { ref: 'controller' }, cost: m[1], effects: [{ kind: 'sacrifice', what: { ref: 'self' } }] },
-            { kind: 'setMemory', key: 'echoDue', value: false },
-          ],
-        });
-      }
-      // "Vanishing 3" / "Fading 3": a countdown on the permanent's own upkeep.
-      if ((m = line.match(/^(Vanishing|Fading) (\d+)$/i))) {
-        const counter = /^vanishing$/i.test(m[1]) ? 'time' : 'fade';
-        abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter, amount: parseInt(m[2], 10) } } as never);
-        abilities.push({
-          kind: 'triggered', text: line, event: 'beginningOfUpkeep', filter: { player: 'you' },
-          effects: counter === 'time'
-            ? [
-                { kind: 'removeCounters', counter, amount: 1, on: { ref: 'self' } },
-                { kind: 'conditional', if: { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '==', value: 0 }, then: [{ kind: 'sacrifice', what: { ref: 'self' } }] },
-              ]
-            : [
-                {
-                  kind: 'conditional',
-                  if: { kind: 'hasCounter', ref: { ref: 'self' }, counter, op: '>=', value: 1 },
-                  then: [{ kind: 'removeCounters', counter, amount: 1, on: { ref: 'self' } }],
-                  else: [{ kind: 'sacrifice', what: { ref: 'self' } }],
-                },
-              ],
-        });
-      }
-      // "Outlast {1}{W}": a sorcery-speed tap ability for a +1/+1 counter.
-      if ((m = line.match(/^Outlast ((?:\{[^}]+\})+)$/i)))
-        abilities.push({ kind: 'activated', text: line, cost: { mana: m[1], tap: true }, sorcerySpeed: true, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'self' } }] });
-      // "Reinforce 2—{1}{G}": discard it from hand for counters.
-      if ((m = line.match(/^Reinforce (\d+)—((?:\{[^}]+\})+)$/i)))
-        abilities.push({
-          kind: 'activated', text: line, zone: 'hand', cost: { mana: m[2], discardSelf: true },
-          targets: [{ description: 'target creature', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield' } }],
-          effects: [{ kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'target', slot: 0 } }],
-        } as never);
-      // "Graft 3": it arrives with counters and feeds them to arriving creatures.
-      if ((m = line.match(/^Graft (\d+)$/i))) {
-        abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: parseInt(m[1], 10) } } as never);
-        abilities.push({
-          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { object: { types: ['Creature'], other: true } }, optional: true,
-          condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: '+1/+1', op: '>=', value: 1 },
-          effects: [{ kind: 'moveCounters', from: { ref: 'self' }, to: { ref: 'triggerObject' }, counter: '+1/+1', amount: 1 }],
-        } as never);
-      }
-      // "Casualty 2": sacrifice a big enough creature as you cast it and the spell is copied.
-      if ((m = line.match(/^Casualty (\d+|X)$/i))) {
-        const n291 = m[1].toUpperCase() === 'X' ? ('X' as const) : parseInt(m[1], 10);
-        additionalCost = { optional: true, sacrifice: { filter: { types: ['Creature'], controller: 'you', zone: 'battlefield', powerGE: n291 } } };
-        abilities.push({
-          kind: 'triggered', text: line, event: 'cast', filter: { self: true },
-          condition: { kind: 'memoryFlag', key: 'additionalCostPaid' },
-          effects: [{ kind: 'copySpell', what: { ref: 'self' } }],
-        } as never);
-      }
-      // "Hideaway 4": look at the top four and tuck one away face down.
-      if ((m = line.match(/^Hideaway (\d+)$/i))) {
-        const key291 = 'hideawayLook';
-        abilities.push({
-          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true },
-          effects: [
-            { kind: 'lookAtTop', amount: parseInt(m[1], 10), then: 'hold', key: key291 },
-            { kind: 'chooseObjects', from: { ref: 'chosen', key: key291 }, filter: {}, count: 1, key: 'hideaway' },
-            { kind: 'exile', what: { ref: 'chosen', key: 'hideaway' }, faceDown: true, remember: 'hideaway' },
-            { kind: 'moveRest', key: key291, to: 'bottom' },
-          ],
-        } as never);
-      }
-      // "Backup 1": the counters half of the keyword (the abilities it hands over are printed below it).
-      if ((m = line.match(/^Backup (\d+)$/i)))
-        abilities.push({
-          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true },
-          targets: [{ description: 'target creature', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield' } }],
-          effects: [{ kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'target', slot: 0 } }],
-        } as never);
-      // "Suspend 3—{1}{R}": exile it with time counters instead of casting it, and it casts itself later.
-      if ((m = line.match(/^Suspend (\d+|X)—((?:\{[^}]+\})+)$/i))) {
-        const n292: Amount = m[1].toUpperCase() === 'X' ? 'X' : parseInt(m[1], 10);
-        abilities.push({
-          kind: 'activated', text: line, zone: 'hand', sorcerySpeed: true, cost: { mana: m[2] },
-          effects: [{ kind: 'exile', what: { ref: 'self' }, counters: { counter: 'time', amount: n292 } }],
-        } as never);
-        abilities.push({
-          kind: 'triggered', text: line, zone: 'exile', event: 'beginningOfUpkeep', filter: { player: 'you' },
-          condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { suspended: true } },
-          effects: [
-            { kind: 'removeCounters', counter: 'time', amount: 1, on: { ref: 'self' } },
-            {
-              kind: 'conditional',
-              if: { kind: 'hasCounter', ref: { ref: 'self' }, counter: 'time', op: '==', value: 0 },
-              then: [
-                { kind: 'castWithoutPaying', what: { ref: 'self' } },
-                { kind: 'grantKeywords', keywords: ['Haste'], on: { ref: 'self' }, duration: 'permanent' },
-              ],
-            },
-          ],
-        } as never);
-      }
-      // "Dredge 3": from the graveyard, replace a draw with milling three and taking this card back.
-      if ((m = line.match(/^Dredge (\d+)$/i)))
-        abilities.push({
-          kind: 'replacement', text: line, event: 'drawCard', who: 'you', zone: 'graveyard', optional: true,
-          effects: [{ kind: 'mill', amount: parseInt(m[1], 10), who: { ref: 'controller' } }, { kind: 'putIntoHand', what: { ref: 'self' } }],
-        } as never);
-      // "Madness {1}{R}": discarding it exiles it instead, and you may cast it for the madness cost.
-      if ((m = line.match(/^Madness ((?:\{[^}]+\})+)$/i)))
-        abilities.push({
-          kind: 'triggered', text: line, zone: ['graveyard', 'hand'], event: 'discard', filter: { self: true }, optional: true,
-          effects: [
-            { kind: 'exile', what: { ref: 'self' } },
-            { kind: 'playFromExile', what: { ref: 'self' }, forCost: m[1], duration: 'thisTurn' },
-          ],
-        } as never);
-      // "Prowl {1}{B}": a cheaper cost once you have connected this turn.
-      if ((m = line.match(/^Prowl ((?:\{[^}]+\})+)$/i))) {
-        alternativeCosts.push({
-          id: 'prowl', text: line, cost: { mana: m[1] }, zone: 'hand',
-          condition: { kind: 'eventThisTurn', event: 'dealtCombatDamageToPlayer', player: 'you' },
-        });
-        compiledLines.push(line);
-        continue;
-      }
-      // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
-      if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
     }
     // Landcycling variants
