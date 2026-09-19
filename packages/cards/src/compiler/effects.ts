@@ -1023,8 +1023,8 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'destroy', what: ref, cantRegenerate: /regenerat/i.test(m[0]) }] : null;
   }],
-  [/^exile (.+?)(?: from (?:their|your|its owner's|that player's) graveyard)?(?: with (?:a|an|(\w+)) (\w+) counters? on (?:it|them))?(?: until ~ leaves the battlefield)?$/i, (m, ctx) => {
-    const until = / until ~ leaves the battlefield$/i.test(m[0]);
+  [/^exile (.+?)(?: from (?:their|your|its owner's|that player's) graveyard)?(?: with (?:a|an|(\w+)) (\w+) counters? on (?:it|them))?(?: until (?:~|it) leaves the battlefield)?$/i, (m, ctx) => {
+    const until = / until (?:~|it) leaves the battlefield$/i.test(m[0]);
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const e: Effect = { kind: 'exile', what: ref, untilSourceLeaves: until, remember: 'exiled' };
@@ -1046,7 +1046,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'sacrificeChoice', who, filter: { ...noun.filter, zone: 'battlefield', other: /another/i.test(m[0]) || undefined }, count: n, upTo: anyNumber || undefined }];
   }],
   // Indefinite choices: "return a land you control to its owner's hand", "tap an untapped creature you control", "exile a card from your graveyard"
-  [/^(return|tap|untap|exile|destroy) (?:a|an|another|up to (\w+)|(any number of)) (.+?)(?: to (?:its|their) owner'?s'? hands?| to your hand)?( until ~ leaves the battlefield)?$/i, (m, ctx) => {
+  [/^(return|tap|untap|exile|destroy) (?:a|an|another|up to (\w+)|(any number of)) (.+?)(?: to (?:its|their) owner'?s'? hands?| to your hand)?( until (?:~|it) leaves the battlefield)?$/i, (m, ctx) => {
     if (/target|each/i.test(m[4])) return null;
     const c = chooseRef(`a ${singularize(m[4])}`, ctx, YOU, !!m[2] || !!m[3]);
     if (!c) return null;
@@ -4268,6 +4268,31 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 248 ----
+  // "Put ~ and target creature on top of their owners' libraries, then those players shuffle."
+  [/^put ~ and (.+?) on top of their owners'? libraries(?:, then those players shuffle(?: their libraries)?)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'moveToZone', what: SELF, zone: 'library', position: 'top' },
+      { kind: 'moveToZone', what: ref, zone: 'library', position: 'top' },
+      { kind: 'shuffle', who: { ref: 'eachPlayer' } },
+    ];
+  }],
+  // "Return two creature cards at random from your graveyard to the battlefield."
+  [/^return (?:(\w+|X) )?(.+?) at random from your graveyard to the (battlefield|your hand|hand)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    const n = m[1] ? (m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1])) : 1;
+    if (!noun || !noun.confident || n === null) return null;
+    const key = `randGy${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', controller: 'you' }, count: n as Amount, key, random: true },
+      /battlefield/i.test(m[3])
+        ? { kind: 'returnToBattlefield', what: { ref: 'chosen', key } }
+        : { kind: 'returnToHand', what: { ref: 'chosen', key } },
+    ];
+  }],
   // ---- Round 247 ----
   // "Target player chooses three cards from their hand and puts them on top of their library in any order."
   [/^(.+?) chooses (?:a|an|(\w+)) cards? from their hand and puts? (?:it|them) on top of their library(?: in any order)?$/i, (m, ctx) => {
@@ -4281,10 +4306,11 @@ const PATTERNS: Pattern[] = [
     ];
   }],
   // "Enchanted creature's controller may have it assign its combat damage as though it weren't blocked."
-  [/^(.+?) may have (?:it|~|that creature) assign its combat damage(?: this turn)? as though it (?:were not|weren't) blocked$/i, (m, ctx) => {
-    const ref = /controller$/i.test(m[1]) ? { ref: 'attachedTo' as const } : objRef(m[1], ctx);
-    const on: Ref = /^(?:enchanted|equipped) \w+'s controller$/i.test(m[1]) ? { ref: 'attachedTo' } : ref ?? SELF;
-    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignAsUnblocked' }, on, duration: 'endOfTurn' }];
+  [/^(.+?) may have (.+?) assign (?:its|their) combat damage(?: this turn)? as though (?:it|they) (?:were not|weren't) blocked$/i, (m, ctx) => {
+    const on: Ref | null = /^(?:it|~|that creature)$/i.test(m[2])
+      ? (/^(?:enchanted|equipped) \w+'s controller$/i.test(m[1]) ? { ref: 'attachedTo' } : objRef(m[1].replace(/'s controller$/i, ''), ctx) ?? SELF)
+      : objRef(m[2], ctx);
+    return on ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignAsUnblocked' }, on, duration: 'endOfTurn' }] : null;
   }],
   // "Return target creature you control and all Auras you control attached to it to their owner's hand."
   [/^return (target .+?) and all (Auras|Equipment)(?: you control)? attached to (?:it|them) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
@@ -4481,10 +4507,18 @@ const PATTERNS: Pattern[] = [
     ];
   }],
   // "Put all creature cards exiled with ~ onto the battlefield face down under your control."
-  [/^put all (.+?) exiled with (?:~|it) onto the battlefield( face down)?(?: under your control)?$/i, (m) => {
+  [/^put (?:all|each) (.+?) (exiled with (?:~|it)|(?:milled|exiled|discarded) this way) onto the battlefield( face down)?(?: under your control)?(?: with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? on (?:it|them))?$/i, (m) => {
     const noun = parseNoun(`a ${singularize(m[1])}`);
     if (!noun || !noun.confident) return null;
-    return [{ kind: 'returnToBattlefield', what: { ref: 'all', filter: { ...noun.filter, zone: 'exile', exiledWithSource: true } }, faceDown: !!m[1] && !!m[2] }];
+    const thisWay = !/^exiled with/i.test(m[2]);
+    const n = m[4] ? wordToNumber(m[4]) : 1;
+    if (m[5] && n === null) return null;
+    const what: Ref = thisWay
+      ? { ref: 'all', filter: { ...noun.filter, zone: 'graveyard' } }
+      : { ref: 'all', filter: { ...noun.filter, zone: 'exile', exiledWithSource: true } };
+    const out: Effect[] = [{ kind: 'returnToBattlefield', what, faceDown: !!m[3] }];
+    if (m[5]) out.push({ kind: 'addCounters', counter: m[5], amount: n as Amount, on: { ref: 'lastMoved' } });
+    return out;
   }],
   // "Target opponent chooses a permanent they control and returns it to its owner's hand."
   [/^(.+?) chooses (?:a|an) (.+?)(?: they control| of their choice)? and (returns it to its owner's hand|sacrifices it|exiles it)$/i, (m, ctx) => {
