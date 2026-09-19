@@ -645,6 +645,50 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           ],
         });
       }
+      // Keyword abilities that stand for a whole ability, spelled out so the engine runs them.
+      if ((m = line.match(/^Bushido (\d+)$/i))) {
+        const n = parseInt(m[1], 10);
+        for (const event of ['blocks', 'becomesBlocked'] as const)
+          abilities.push({ kind: 'triggered', text: line, event, filter: { self: true }, effects: [{ kind: 'pump', power: n, toughness: n, on: { ref: 'self' } }] });
+      }
+      if ((m = line.match(/^Afterlife (\d+)$/i)))
+        abilities.push({
+          kind: 'triggered', text: line, event: 'dies', filter: { self: true },
+          effects: [{ kind: 'createToken', token: { name: 'Spirit', typeLine: 'Token Creature — Spirit', power: '1', toughness: '1', colors: ['W', 'B'], keywords: ['Flying'] }, count: parseInt(m[1], 10) }],
+        });
+      if ((m = line.match(/^Afflict (\d+)$/i)))
+        abilities.push({ kind: 'triggered', text: line, event: 'becomesBlocked', filter: { self: true }, effects: [{ kind: 'loseLife', amount: parseInt(m[1], 10), who: { ref: 'defendingPlayer' } }] });
+      if ((m = line.match(/^Annihilator (\d+)$/i)))
+        abilities.push({ kind: 'triggered', text: line, event: 'attacks', filter: { self: true }, effects: [{ kind: 'sacrificeChoice', who: { ref: 'defendingPlayer' }, filter: { zone: 'battlefield' }, count: parseInt(m[1], 10) }] });
+      if ((m = line.match(/^Rampage (\d+)$/i))) {
+        const n = parseInt(m[1], 10);
+        const beyondFirst: Amount = { kind: 'max', a: 0, b: { kind: 'minus', a: { kind: 'countRef', ref: { ref: 'blockersOf', of: { ref: 'self' } } }, b: 1 } };
+        abilities.push({ kind: 'triggered', text: line, event: 'becomesBlocked', filter: { self: true }, effects: [{ kind: 'pump', power: { kind: 'times', a: n, b: beyondFirst }, toughness: { kind: 'times', a: n, b: beyondFirst }, on: { ref: 'self' } }] });
+      }
+      if ((m = line.match(/^Fabricate (\d+)$/i))) {
+        const n = parseInt(m[1], 10);
+        abilities.push({
+          kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true },
+          effects: [{ kind: 'chooseMode', options: [
+            { text: `Put ${n} +1/+1 counters on it`, effects: [{ kind: 'addCounters', counter: '+1/+1', amount: n, on: { ref: 'self' } }] },
+            { text: `Create ${n} 1/1 Servo tokens`, effects: [{ kind: 'createToken', token: { name: 'Servo', typeLine: 'Token Artifact Creature — Servo', power: '1', toughness: '1', colors: [] }, count: n }] },
+          ], count: 1 }],
+        });
+      }
+      if ((m = line.match(/^Bloodthirst (\d+)$/i)))
+        abilities.push({
+          kind: 'replacement', text: line, event: 'entersBattlefield', self: true,
+          counters: { counter: '+1/+1', amount: parseInt(m[1], 10) },
+          condition: { kind: 'amount', a: { kind: 'playersMatching', who: 'opponent', stat: 'damageTaken' }, op: '>=', b: 1 },
+        } as never);
+      if ((m = line.match(/^Modular (\d+)$/i))) {
+        abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: parseInt(m[1], 10) } } as never);
+        abilities.push({
+          kind: 'triggered', text: line, event: 'dies', filter: { self: true }, optional: true,
+          effects: [{ kind: 'moveCounters', from: { ref: 'self' }, to: { ref: 'target', slot: 0 }, counter: '+1/+1' }],
+          targets: [{ description: 'target artifact creature', kind: 'object', min: 1, max: 1, filter: { types: ['Artifact', 'Creature'], zone: 'battlefield' } }],
+        } as never);
+      }
       // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
       if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
