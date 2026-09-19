@@ -9675,6 +9675,9 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   // "When you pay this cost one or more times, put that many valor counters on ~" — the Adversary
   // cycle's follow-up to "you may pay {1}{W} any number of times".
+  // "You may cast any number of the copies without paying their mana costs."
+  if (/^you may cast any number of the copies without paying their mana costs$/i.test(text))
+    return [{ kind: 'may', effects: [{ kind: 'castWithoutPaying', what: { ref: 'lastCreated' } }] }];
   // "When you cast ~, ... counter ~": the spell counters itself, which is the spell that triggered it.
   if (/^counter (?:~|this spell)$/i.test(text)) return [{ kind: 'counterSpell', what: { ref: 'triggerObject' } }];
   if ((m = text.match(/^any player may pay (\d+) life$/i))) return [{ kind: 'anyPlayerMay', effects: [], cost: `${m[1]} life`, prompt: `Pay ${m[1]} life?` }];
