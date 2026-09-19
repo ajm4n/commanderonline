@@ -606,6 +606,8 @@ export interface AbilityCost {
   revealFromHand?: ObjectFilter;
   /** How many cards to reveal (default 1). */
   revealFromHandCount?: number;
+  /** "Reveal X white cards from your hand": the player picks X, which becomes the ability's X. */
+  revealFromHandX?: ObjectFilter;
   /** "As an additional cost, choose a creature type" (stored as memory `creatureType`). */
   chooseCreatureType?: boolean;
   /** Blight N: put N -1/-1 counters on a creature you control. */

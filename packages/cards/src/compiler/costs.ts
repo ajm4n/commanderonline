@@ -188,6 +188,14 @@ export function parseCost(text: string): AbilityCost | null {
       cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield', other: /another/i.test(p) || undefined }, count: n };
       matched = true;
     }
+    if (!matched) kp21x: if ((m = p.match(/^Reveal X (white|blue|black|red|green|colorless|artifact|creature|land|nonland|instant|sorcery) cards from your hand$/i))) {
+      const noun = parseNoun(`a ${m[1]} card`);
+      if (!noun || !noun.confident) break kp21x;
+      const f = { ...noun.filter };
+      delete f.zone;
+      cost.revealFromHandX = f;
+      matched = true;
+    }
     if (!matched) kp22: if ((m = p.match(/^Pay (\d+) life$/i))) {
       cost.payLife = parseInt(m[1], 10);
       matched = true;

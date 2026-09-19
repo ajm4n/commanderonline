@@ -490,6 +490,15 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       }
     }
   }
+  if (cost.revealFromHandX) {
+    const cands = g.player(p).hand.filter((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHandX, zone: 'hand' }, ctx));
+    if (cands.length < x) return false;
+    if (x > 0) {
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Reveal ${x} card${x === 1 ? '' : 's'} from your hand`, candidates: cands, min: x, max: x, revealToChooser: true, sourceId: obj.id });
+      if (resp.type !== 'objects' || resp.ids.length !== x) return false;
+      g.log(`${g.player(p).name} reveals ${resp.ids.map((i) => g.nameOf(i)).join(', ')}.`);
+    }
+  }
   if (cost.revealFromHand) {
     const cands = g.player(p).hand.filter((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHand, zone: 'hand' }, ctx));
     const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Reveal a card from your hand', candidates: cands, min: 1, max: 1, revealToChooser: true, sourceId: obj.id });
@@ -1518,6 +1527,13 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
     // "Remove X / any number of counters": X is how many counters to remove.
     const mx = obj.counters[spec.cost.removeCounters.counter] ?? 0;
     const r = yield* g.ask({ type: 'chooseNumber', player: p, prompt: `Remove how many ${spec.cost.removeCounters.counter} counters?`, min: 1, max: mx, sourceId: id });
+    if (r.type !== 'number') return false;
+    x = r.value;
+  } else if (spec.cost.revealFromHandX) {
+    // "Reveal X green cards from your hand": X is how many you reveal.
+    const f = spec.cost.revealFromHandX;
+    const mx = g.player(p).hand.filter((cid) => matchesFilter(g, g.obj(cid), { ...f, zone: 'hand' }, { sourceId: id, controller: p })).length;
+    const r = yield* g.ask({ type: 'chooseNumber', player: p, prompt: `Reveal how many cards for ${spec.text}?`, min: 0, max: mx, sourceId: id });
     if (r.type !== 'number') return false;
     x = r.value;
   } else if (spec.cost.mana && parseManaCost(spec.cost.mana).xCount > 0 && resp.xValue === undefined) {
