@@ -4268,6 +4268,49 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 244 ----
+  // "Choose a nonland card exiled this way."
+  [/^choose (?:a|an) (.+?) (?:exiled|milled|discarded|revealed) this way$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    const key = `thisWay${ctx.targets.length}`;
+    const f = { ...noun.filter };
+    delete f.zone;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: f, from: { ref: 'lastMoved' }, count: 1, key }];
+  }],
+  // "You may cast a spell from among those cards without paying its mana cost."
+  // "Play one of them without paying its mana cost."
+  [/^(?:you may (?:cast|play) (?:a|an) (.+?) from among (?:those cards|them)|(?:you may )?play one of them)( without paying its mana cost)?$/i, (m, ctx) => {
+    const noun = m[1] ? parseNoun(`a ${m[1]}`) : { filter: {} as ObjectFilter, confident: true };
+    if (!noun || !noun.confident) return null;
+    const key = `amongThose${ctx.targets.length}`;
+    const f = { ...noun.filter };
+    delete f.zone;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: f, from: { ref: 'lastMoved' }, count: 1, key, upTo: true },
+      { kind: 'castFrom', what: { ref: 'chosen', key }, free: !!m[2] },
+    ];
+  }],
+  // "Put target card from a graveyard on the bottom of its owner's library."
+  // "Put target card from a graveyard on your choice of the top or bottom of its owner's library."
+  [/^put (target .+?) (?:from (?:a|an|your|their|an opponent's) graveyard )?on (?:the (top|bottom)|your choice of the top or bottom) of (?:its owner's|their|that player's|your) library$/i, (m, ctx) => {
+    const ref = objRef(`${m[1]}${/graveyard/i.test(m[0]) ? ' in a graveyard' : ''}`, ctx) ?? objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'moveToZone', what: ref, zone: 'library', position: m[2] && /^top$/i.test(m[2]) ? 'top' : 'bottom' }];
+  }],
+  // "Target player returns each commander they control from the battlefield to the command zone."
+  [/^(.+?) returns each commander they control from the battlefield to the command zone$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'moveToZone', what: { ref: 'all', filter: { isCommander: true, zone: 'battlefield', controllerRef: who } }, zone: 'command' }] : null;
+  }],
+  // "Target player mills five cards, then puts each Goblin card milled this way into their hand."
+  [/^(.+?) puts each (.+?) milled this way into their hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!who || !noun || !noun.confident) return null;
+    return [{ kind: 'moveToZone', what: { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', ownerRef: who } }, zone: 'hand' }];
+  }],
   // ---- Round 243 ----
   // "~ deals half X damage, rounded down, to any target."
   [/^(.+?) deals half X damage, rounded (up|down), to (.+)$/i, (m, ctx) => {
