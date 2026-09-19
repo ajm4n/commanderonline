@@ -89,6 +89,11 @@ export function parseNoun(raw: string): ParsedNoun | null {
   if (/(^|\s)~$/.test(text) && text !== '~' && !/\b(?:than|named|as|with|to|by|from|of|for|only|controls?|convoked|crewed|blocking|enchanting|attached) ~$/i.test(text)) text = text.replace(/~$/, 'permanent named ~');
   // "each of two other target creatures" / "each of those creatures"
   if (/^each of (?:\w+ )?(?:other )?(?:target |those |the )/i.test(text)) text = text.replace(/^each of /i, '');
+  // "one or two other target creatures": the "other" sits between the count and "target".
+  if (/\bother target\b/i.test(text)) {
+    const inner = parseNoun(text.replace(/\bother target\b/i, 'target'));
+    if (inner) return { ...inner, other: true, filter: { ...inner.filter, other: true } };
+  }
   // "outlaws you control": Assassins, Mercenaries, Pirates, Rogues and Warlocks.
   if (/(?<!non-)\boutlaws?\b/i.test(text)) {
     const inner = parseNoun(text.replace(/(?<!non-)\boutlaws?\b/gi, (w) => (/s$/i.test(w) ? 'creatures' : 'creature')));

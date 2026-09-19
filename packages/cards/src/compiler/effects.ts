@@ -3037,6 +3037,13 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[2], ctx);
     return ref ? [{ kind: 'doubleStat', on: ref, stat: m[1].toLowerCase() === 'power' ? 'power' : 'toughness', duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
+  // "Return it to the battlefield with an additional +1/+1 counter on it" (from wherever it went)
+  [/^return (.+?) to the battlefield( tapped)?(?: under (?:your|its owner's) control)? with (?:an additional |(\w+) additional |(?:a|an) )([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const n = m[3] ? wordToNumber(m[3]) : 1;
+    if (!ref || typeof n !== 'number') return null;
+    return [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, counters: { counter: m[4], amount: n } }];
+  }],
   // "Return target creature card from your graveyard to the battlefield with an additional +1/+1 counter on it"
   [/^return (.+?) from your graveyard to the battlefield with (?:an additional|(\w+) additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
