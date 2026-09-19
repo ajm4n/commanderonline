@@ -1620,7 +1620,7 @@ const PATTERNS: Pattern[] = [
     const kinds = m[2] === 'attack or block' ? ['cantAttack', 'cantBlock'] : m[2] === 'be blocked' ? ['cantBeBlocked'] : [m[2] === 'attack' ? 'cantAttack' : 'cantBlock'];
     return kinds.map((k) => ({ kind: 'applyRule', rule: { kind: k as 'cantAttack' }, on: ref, duration: dur }));
   }],
-  [/^(.+?) becomes? (?:a|an) (?:legendary |snow )?([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)s?(?: with (.+?))?(?: and loses (.+?))?(?: in addition to (?:its|their) other types)?(?: that (?:is|are) (?:still|no longer) (?:a |an )?[\w ]+)?(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(.+?) (?:each )?becomes? (?:(?:a|an) )?(?:legendary |snow )?([\dX]+)\/([\dX]+) (.+?) (?:creature|artifact creature)s?(?: with (.+?))?(?: and loses (.+?))?(?: in addition to (?:its|their) other types)?(?: that (?:is|are) (?:still|no longer) (?:a |an )?[\w ]+)?(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
