@@ -88,9 +88,15 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   // "target spell or nonland permanent": one filter covering the stack and the battlefield.
   // Nothing on the stack is a land, so excluding lands is enough to spell "nonland permanent".
   {
-    const sp = t.match(/^(target|another target) spell or nonland permanent(?: an opponent controls| you (?:do not|don't) control| you control)?$/i);
+    const sp = t.match(/^(target|another target) spell or (nonland )?permanent(?: an opponent controls| you (?:do not|don't) control| you control)?( with .+)?$/i);
     if (sp) {
-      const f: ObjectFilter = { zoneIn: ['stack', 'battlefield'], notTypes: ['Land'] };
+      const f: ObjectFilter = { zoneIn: ['stack', 'battlefield'] };
+      if (sp[2]) f.notTypes = ['Land'];
+      if (sp[3]) {
+        const q = parseNoun(`a permanent${sp[3]}`);
+        if (!q || !q.confident) return null;
+        Object.assign(f, { ...q.filter, zone: undefined, zoneIn: ['stack', 'battlefield'], types: undefined });
+      }
       if (/an opponent controls/i.test(t)) f.controller = 'opponent';
       else if (/you control/i.test(t)) f.controller = /do not|don't/i.test(t) ? 'opponent' : 'you';
       if (/^another /i.test(sp[1])) f.other = true;
@@ -4299,6 +4305,25 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 255 ----
+  // "When that creature dies this turn, return it to the battlefield under your control."
+  [/^when (that creature|it|that permanent|that card) (dies|leaves the battlefield) this turn, (.+)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : null);
+    if (!ref) return null;
+    const sub = newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: false });
+    const inner = parseSentence(m[3], sub);
+    if (!inner) return null;
+    return [{ kind: 'delayedTrigger', event: /dies/i.test(m[2]) ? 'dies' : 'leavesBattlefield', filter: { objectRef: ref }, effects: inner, text: m[0], once: true }];
+  }],
+  // "Put all commanders from the command zone onto the battlefield under your control."
+  [/^put all commanders from the command zone onto the battlefield under your control$/i, () => [
+    { kind: 'returnToBattlefield', what: { ref: 'all', filter: { isCommander: true, zone: 'command' } }, controller: 'you' },
+  ]],
+  // "Until your next turn, creatures your opponents control attack each combat if able."
+  [/^(.+?) attacks? each combat if able$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'mustAttack' }, on: ref, duration: 'untilYourNextTurn' }] : null;
   }],
   // ---- Round 252 ----
   // "Look at the top two cards of your library and exile them face down."
