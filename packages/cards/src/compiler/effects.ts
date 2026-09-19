@@ -4249,6 +4249,85 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 211 ----
+  // "Have ~'s base power and toughness become 4/2 until end of turn"
+  [/^have (.+?)'s base power and toughness become ([\dX]+)\/([\dX]+)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [{ kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur }];
+  }],
+  // "Have it assign no combat damage this turn"
+  [/^have (it|~|that creature) assign no combat damage this turn$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignsNoCombatDamage' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "Put that number of +1/+1 counters on target creature"
+  [/^put that number of ([+-]\d+\/[+-]\d+|[\w'-]+) counters on (.+?)$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    return ref ? [{ kind: 'addCounters', counter: m[1] as never, amount: { kind: 'chosenNumber' }, on: ref }] : null;
+  }],
+  // "Put a number of +1/+1 counters equal to that artifact's mana value on ~"
+  [/^put a number of ([+-]\d+\/[+-]\d+|[\w'-]+) counters equal to (.+?) on (.+?)$/i, (m, ctx) => {
+    const a = amt(m[2], ctx);
+    const ref = m[3] === '~' ? SELF : objRef(m[3], ctx);
+    return a !== null && ref ? [{ kind: 'addCounters', counter: m[1] as never, amount: a, on: ref }] : null;
+  }],
+  // "The token created this way gains haste"
+  [/^the tokens? created this way (?:gains?|has|have) (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const g = parseGrantList(m[1]);
+    if (!g) return null;
+    const ref = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const out: Effect[] = [];
+    if (g.keywords.length) out.push({ kind: 'grantKeywords', keywords: g.keywords, on: ref, duration: dur });
+    for (const a of g.abilities) out.push({ kind: 'grantAbility', text: a, on: ref, duration: dur });
+    return out.length ? out : null;
+  }],
+  // "Each player chooses two nontoken, non-Vehicle creatures they control"
+  [/^each player chooses (?:a|an|(\w+)) (.+?) they control$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    const ref: Ref = { ref: 'chosen', key: 'chosenEach' };
+    ctx.lastObj = ref;
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'iter' } }, count: n, key: 'chosenEach', upTo: true }] }];
+  }],
+  // "For each player, destroy up to one nonbasic land that player controls"
+  [/^for each player, (destroy|exile|tap) up to one (.+?) that player controls$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!noun || !noun.confident) return null;
+    const filter: ObjectFilter = { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'iter' } };
+    const pick: Effect = { kind: 'chooseObjects', who: YOU, filter, count: 1, key: 'perPlayer', upTo: true };
+    const ref: Ref = { ref: 'chosen', key: 'perPlayer' };
+    const act: Effect = /destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : /exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'tap', what: ref };
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [pick, act] }];
+  }],
+  // "You gain 1 life for each of the chosen colors it is"
+  [/^you gain (\d+) life for each of the chosen colou?rs it is$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const per: Amount = { kind: 'colorCount', ref };
+    const n = parseInt(m[1], 10);
+    return [{ kind: 'gainLife', amount: n === 1 ? per : ({ kind: 'times', a: n as Amount, b: per } as Amount), who: YOU }];
+  }],
+  // "Put a +1/+1 counter on ~ for each of that spell's colors"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on (~|it) for each of that spell's colou?rs$/i, (m, ctx) => {
+    const base = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof base !== 'number') return null;
+    const ref = /^~$/.test(m[3]) ? SELF : ctx.lastObj ?? SELF;
+    const per: Amount = { kind: 'colorCount', ref: ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'stackTarget' } };
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), on: ref }];
+  }],
+  // "The attacking player gains control of ~ and untaps it"
+  [/^(the attacking player|that attacking player|that player|target opponent) gains control of ~ and untaps it$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'gainControl', what: SELF, who, duration: 'permanent' }, { kind: 'untap', what: SELF }] : null;
+  }],
+  // "Exile ~, then return it to the battlefield under an opponent's control"
+  [/^exile ~, then return it to the battlefield under (an opponent's|its owner's|your) control$/i, (m) => [
+    { kind: 'moveToZone', what: SELF, zone: 'exile' },
+    { kind: 'returnToBattlefield', what: { ref: 'lastMoved' }, controller: /owner/i.test(m[1]) ? 'owner' : undefined },
+  ]],
   // ---- Round 210 ----
   // "Target opponent's life total becomes 10"
   [/^(.+?)'s life total becomes (\d+)$/i, (m, ctx) => {
