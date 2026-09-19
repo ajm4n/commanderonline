@@ -810,7 +810,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       let reflexivePrefix: string | null = null;
       let restForModal = split.rest;
       {
-        const rm = split.rest.match(/^(.+?)\.\s*(?:When|If) (?:you do|you remove a counter this way|that happens|you cast that spell), (choose .+)$/i);
+        const rm = split.rest.match(/^(.+?)\.\s*(?:When|If) (?:you do|you remove a counter this way|that happens|you cast that spell|you pay this cost one or more times), (choose .+)$/i);
         if (rm && parseModalHead(rm[2]) && lines[li + 1]?.startsWith('•')) {
           reflexivePrefix = rm[1];
           restForModal = rm[2];
@@ -1113,6 +1113,7 @@ function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'ga
       if (a !== null) return { count: 6, min: 0, x: undefined, xCount: a };
     }
   }
+  if (/^choose up to that many$/i.test(text)) return { count: 6, min: 0 };
   const m = text.match(/^choose (one|two|one or both|one or more|any number|up to one|up to two|up to three)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
   if (!m) return null;
   const w = m[1].toLowerCase();

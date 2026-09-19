@@ -48,6 +48,7 @@ export function parseTriggerHead(line: string): TriggerHead | null {
     .replace(/\benchanted opponent\b/gi, 'enchanted player')
     .replace(/^When (a|an|another|one or more) /, 'Whenever $1 ')
     .replace(/^When (~|you|equipped creature|enchanted creature|enchanted player|your commander) (attacks|blocks|deals|casts|enters|dies|cycles|becomes|taps|untaps)\b/i, 'Whenever $1 $2')
+    .replace(/^When (~) (enter|deal)\b/i, (_x, who: string, verb: string) => `When ${who} ${verb}s`)
     .replace(/^Whenever (~(?: and ~)?) (enter|attack|block|deal|die|become|tap|untap)\b/i, (_x, who: string, verb: string) => `Whenever ${who} ${verb}s`)
     .replace(/^Whenever ~ attack, /, 'Whenever ~ attacks, ')
     .replace(/^Whenever you attack a player with /i, 'Whenever you attack with ')

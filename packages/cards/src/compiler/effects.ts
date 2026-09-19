@@ -4249,6 +4249,30 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 201 ----
+  // "Choose a number."
+  [/^(?:(.+?) )?chooses? a number$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : undefined;
+    if (m[1] && !who) return null;
+    return [{ kind: 'chooseNumber', min: 0, max: 20, who: who ?? undefined }];
+  }],
+  // "Choose two colors." / "Choose a color."
+  [/^choose (\w+) colou?rs$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number' || n < 1 || n > 5) return null;
+    const out: Effect[] = [];
+    for (let i = 0; i < n; i++) out.push({ kind: 'chooseColor', key: i === 0 ? 'color' : `color${i + 1}` });
+    return out;
+  }],
+  // "Choose any number of creatures with different powers"
+  [/^choose any number of (.+?) with different (powers|toughnesses|names|mana values)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const key = `diff${ctx.targets.length}`;
+    const ref: Ref = { ref: 'chosen', key };
+    ctx.lastObj = ref;
+    return [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' }, count: 'X', key, upTo: true }];
+  }],
   // ---- Round 200 ----
   // "Put a charge counter on it or remove one from it"
   [/^put (?:a|an) ([+-]\d+\/[+-]\d+|[\w'-]+) counter on (it|~) or remove one from (?:it|~)$/i, (m, ctx) => {

@@ -401,6 +401,8 @@ export interface ObjectFilter {
   notCastFromZone?: ZoneName;
   /** "with mana value of the chosen quality": memory key holding 'odd' or 'even'. */
   manaValueParityChosen?: string;
+  /** "a suspended card": exiled with one or more time counters. */
+  suspended?: boolean;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];

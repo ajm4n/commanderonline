@@ -220,6 +220,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const want = src?.chosen[filter.typeIsChosen];
     if (typeof want !== 'string' || !(ch.types.includes(want) || ch.subtypes.includes(want))) return false;
   }
+  if (filter.suspended && !(obj.zone === 'exile' && (obj.counters['time'] ?? 0) > 0)) return false;
   if (filter.manaValueParityChosen) {
     const srcP = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     const pick = srcP?.chosen[filter.manaValueParityChosen] ?? srcP?.memory[filter.manaValueParityChosen];
