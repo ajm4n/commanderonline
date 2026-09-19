@@ -4250,6 +4250,81 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 231 ----
+  // "Destroy target artifact, enchantment, emblem, or gameplay tracker"
+  [/^(destroy|exile) target (.+?), (.+?), (.+?), or (.+?)$/i, (m, ctx) => {
+    const ns = [m[2], m[3], m[4], m[5]].map((x) => parseNoun(`a ${x}`));
+    if (ns.some((n) => !n || !n.confident)) return null;
+    ctx.targets.push({ description: `target ${m[2]}, ${m[3]}, ${m[4]} or ${m[5]}`, kind: 'object', filter: { anyOf: ns.map((n) => ({ ...n!.filter, zone: undefined })), zone: 'battlefield' } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [/destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : { kind: 'moveToZone', what: ref, zone: 'exile' }];
+  }],
+  // "Draw four cards, then choose X cards in your hand and discard the rest"
+  [/^choose (X|\w+) cards in your hand and discard the rest$/i, (m) => {
+    const n = m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1]);
+    if (n === null) return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { zone: 'hand', owner: 'you' }, count: n as Amount, key: 'keep231' },
+      { kind: 'discard', amount: 'hand', who: YOU, except: { ref: 'chosen', key: 'keep231' } },
+    ];
+  }],
+  // "An opponent chooses target creature they control"
+  [/^an opponent chooses (target .+?) they control$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), filter: { ...noun.filter, zone: 'battlefield', controller: 'opponent' } });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  // "Prevent all damage that black sources and red sources would deal this turn"
+  [/^prevent all damage that (.+?) sources and (.+?) sources would deal this turn$/i, (m) => {
+    const a = parseNoun(`a ${m[1]} permanent`);
+    const b = parseNoun(`a ${m[2]} permanent`);
+    if (!a || !b) return null;
+    return [{ kind: 'preventAll', to: 'all', source: { anyOf: [{ ...a.filter, zone: undefined }, { ...b.filter, zone: undefined }] } }];
+  }],
+  // "~ deals 1 damage to any target that was dealt damage this turn"
+  [/^(.+?) deals (\d+|X) damage to any target that was dealt damage this turn$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!src) return null;
+    ctx.targets.push({ description: 'any target that was dealt damage this turn', kind: 'any', filter: { damaged: true, zone: 'battlefield' }, playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const amt231: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt231, source: src, to: ref }];
+  }],
+  // "If ~ was kicked, it deals 3 damage to another target"
+  [/^(?:it|~) deals (\d+|X) damage to another target$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'another target', kind: 'any', playerFilter: 'any', distinct: true });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const amt231b: Amount = m[1].toUpperCase() === 'X' ? 'X' : parseInt(m[1], 10);
+    return [{ kind: 'damage', amount: amt231b, source: SELF, to: ref }];
+  }],
+  // "Take an extra turn after this one for each coin that comes up heads"
+  [/^take an extra turn after this one for each coin that comes up heads$/i, () => [
+    { kind: 'repeat', times: { kind: 'ctxMemory', key: 'flipsWon' }, effects: [{ kind: 'extraTurn' }] },
+  ]],
+  // "Until end of turn, you may tap lands you do not control for mana"
+  [/^(?:until end of turn, )?you may tap (.+?) you (?:do not|don't) control for mana$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'mayTapOthersForMana', data: { filter: { ...noun.filter, zone: 'battlefield' } } }, duration: 'thisTurn' }];
+  }],
+  // "For each land, destroy that land unless any player pays 1 life"
+  [/^for each (.+?), (destroy|sacrifice) that \1 unless any player pays (\d+) life$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'forEach', over: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, effects: [
+      { kind: 'unlessPays', who: { ref: 'eachPlayer' }, cost: { payLife: parseInt(m[3], 10) }, effects: [{ kind: 'destroy', what: { ref: 'iter' }, cantRegenerate: false }] },
+    ] }];
+  }],
+  // "Then ~ deals 5 damage to each opponent who discarded their hand this way"
+  [/^(.+?) deals (\d+|X) damage to each (opponent|player) who (?:discarded|sacrificed|drew|lost) .+? this way$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!src) return null;
+    const amt231c: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt231c, source: src, to: /opponent/i.test(m[3]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' } }];
+  }],
   // ---- Round 230 ----
   // "Create a token that is a copy of one of them" / "... of one of those permanents"
   [/^create (?:a|an) token that is a copy of one of (?:them|those (?:permanents|creatures|cards))$/i, (m, ctx) => {
@@ -5389,7 +5464,7 @@ const PATTERNS: Pattern[] = [
   }],
   // ---- Round 207 ----
   // "Until end of turn, target creature has base power 1 or base toughness 1"
-  [/^(.+?) has base power (\d+) or base toughness (\d+)$/i, (m, ctx) => {
+  [/^(?:until end of turn, )?(.+?) has base power (\d+) or base toughness (\d+)$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     return [{ kind: 'chooseMode', count: 1, options: [

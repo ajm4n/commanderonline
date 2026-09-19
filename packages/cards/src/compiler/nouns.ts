@@ -84,7 +84,7 @@ const KEYWORD_QUALS = new Set(['flying', 'defender', 'trample', 'deathtouch', 'l
 export function parseNoun(raw: string): ParsedNoun | null {
   let text = raw.trim().replace(/[.,;]$/, '').replace(/ and\/or /g, ' or ').replace(/ or another /g, ' or ').replace(/ or (?:a|an) /g, ' or ').replace(/ cards? or (.+?) cards?$/i, ' or $1 card');
   // "each other attacking ~" → permanents with this card's name
-  if (/(^|\s)~$/.test(text) && text !== '~' && !/\b(?:than|named|as|with|to|by|from|of|for|controls?|enchanting|attached) ~$/i.test(text)) text = text.replace(/~$/, 'permanent named ~');
+  if (/(^|\s)~$/.test(text) && text !== '~' && !/\b(?:than|named|as|with|to|by|from|of|for|only|controls?|enchanting|attached) ~$/i.test(text)) text = text.replace(/~$/, 'permanent named ~');
   // "each of two other target creatures" / "each of those creatures"
   if (/^each of (?:\w+ )?(?:other )?(?:target |those |the )/i.test(text)) text = text.replace(/^each of /i, '');
   // "outlaws you control": Assassins, Mercenaries, Pirates, Rogues and Warlocks.
@@ -164,11 +164,15 @@ export function parseNoun(raw: string): ParsedNoun | null {
     return { ...result, target: true, kind: 'spellOrAbility', filter: { types: ['Instant', 'Sorcery'] } };
   }
   if ((m = text.match(/^target loyalty ability of a planeswalker$/i))) return { ...result, target: true, kind: 'activatedOrTriggered' };
-  if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)(?: you control| an opponent controls| you do ?n[o']t control)?(?: from an? (\w+) source)?$/i))) {
+  if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)(?: you control| an opponent controls| you do ?n[o']t control)?(?: from an? (\w+) source)?( with a single target| that targets only (?:~|it|a player))?$/i))) {
     const pf = / you control$/i.test(text) ? 'you' : /opponent controls$/i.test(text) ? 'opponent' : /n[o']t control$/i.test(text) ? 'notController' : undefined;
     const src = m[1] ? SOURCE_FILTERS[m[1].toLowerCase()] : undefined;
     if (m[1] && !src) return null;
-    return { ...result, target: true, kind: 'activatedOrTriggered', playerFilter: pf, filter: src ?? {} };
+    const extra: ObjectFilter = {};
+    if (m[2] && / with a single target/i.test(m[2])) extra.custom = 'singleTarget';
+    else if (m[2] && /targets only a player/i.test(m[2])) extra.custom = 'targetsOnlyPlayer';
+    else if (m[2]) extra.custom = 'targetsSourceOnly';
+    return { ...result, target: true, kind: 'activatedOrTriggered', playerFilter: pf, filter: { ...(src ?? {}), ...extra } };
   }
 
   // Quantifiers
