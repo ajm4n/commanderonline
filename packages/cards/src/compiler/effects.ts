@@ -1784,7 +1784,7 @@ const PATTERNS: Pattern[] = [
     const pays = m[2] ? (/^\d+$/.test(m[2]) ? `{${m[2]}}` : m[2]) : undefined;
     return [{ kind: 'counterSpell', what: ref, unlessPays: pays }];
   }],
-  [/^counter (.+?)(?: unless (?:its controller|that player|they|the controller|that spell's controller) pays? (\{.+\}|\d+))?$/i, (m, ctx) => {
+  [/^counter (.+?)(?: unless (?:its controller|that player|they|the controller|that spell's controller|that ability's controller) pays? (\{.+\}|\d+))?$/i, (m, ctx) => {
     const noun = parseNoun(m[1]);
     if (!noun || !noun.target) return null;
     if (noun.kind !== 'spell' && noun.kind !== 'activatedOrTriggered' && noun.kind !== 'spellOrAbility') return null;
@@ -4531,7 +4531,7 @@ const PATTERNS: Pattern[] = [
     return on ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignAsUnblocked' }, on, duration: 'endOfTurn' }] : null;
   }],
   // "Return target creature you control and all Auras you control attached to it to their owner's hand."
-  [/^return ((?:another |up to one )?target .+?) and all (Auras|Equipment)(?: you control)? attached to (?:it|them) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
+  [/^return ((?:another |up to one )?target .+?) and all (Auras|Equipment)(?: you control)? attached to (?:it|them) to (?:their|its) owner(?:'s|s'|s)? hands?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     return [
@@ -4866,7 +4866,7 @@ const PATTERNS: Pattern[] = [
   }],
   // ---- Round 240 ----
   // "Exile any number of target creatures and all Auras attached to them."
-  [/^return all (Auras|Equipment) attached to (.+?) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
+  [/^return all (Auras|Equipment) attached to (.+?) to (?:their|its) owner(?:'s|s'|s)? hands?$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
     if (!ref) return null;
     return [{ kind: 'returnToHand', what: { ref: 'all', filter: { subtypes: [/^Auras$/i.test(m[1]) ? 'Aura' : 'Equipment'], zone: 'battlefield', attachedToRef: ref } } }];
@@ -4898,7 +4898,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'exile', exiledWithSource: true }, count: 1, key, random: true }];
   }],
   // "Return ~ and the exiled card to their owner's hand."
-  [/^return ~ and the exiled cards? to (?:their|its) owners?'? hands?$/i, () => [
+  [/^return ~ and the exiled cards? to (?:their|its) owner(?:'s|s'|s)? hands?$/i, () => [
     { kind: 'returnToHand', what: SELF },
     { kind: 'returnToHand', what: { ref: 'chosen', key: 'exiled' } },
   ]],
@@ -7773,7 +7773,7 @@ const PATTERNS: Pattern[] = [
     return eff;
   }],
   // "Return half the creatures they control to their owner's hand, rounded up."
-  [/^return (half|a third) the (.+?) (?:they|you) control to (?:their|its) owners?'? hands?(?:, rounded (up|down))?$/i, (m, ctx) => {
+  [/^return (half|a third) the (.+?) (?:they|you) control to (?:their|its) owner(?:'s|s'|s)? hands?(?:, rounded (up|down))?$/i, (m, ctx) => {
     const noun = parseNoun(`a ${singularize(m[2])}`) ?? parseNoun(`a ${m[2]}`);
     const who = ctx.lastPlayer;
     if (!noun || !who) return null;
@@ -8041,7 +8041,7 @@ const PATTERNS: Pattern[] = [
   }],
   // ---- Round 131 ----
   // "Return ~ and target creature you control to their owner's hand."
-  [/^return ~ and (.+?) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
+  [/^return ~ and (.+?) to (?:their|its) owner(?:'s|s'|s)? hands?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     if (!ref) return null;
     return [{ kind: 'returnToHand', what: SELF }, { kind: 'returnToHand', what: ref }];
@@ -8862,6 +8862,12 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^(target (?:creature|permanent|artifact|nonland permanent)[^']*?)'s owner puts it on their choice of the top or bottom of their library$/i))) {
     const ref = objRef(m[1], ctx);
     if (ref) return [{ kind: 'putOnLibrary', what: ref, position: 'ownerChoice' }];
+  }
+  if ((m = text.match(/^(.+?) becomes? a copy of (.+?) until end of turn, except (.+)$/i))) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(`${m[1]} becomes a copy of ${m[2]}, except ${m[3]}`, ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
   }
   if ((m = text.match(/^(.+?) becomes? a copy of (.+?)(?:, except (.+))?$/i)) && !/until end of turn/i.test(text)) {
     const what = objRef(m[1], ctx);

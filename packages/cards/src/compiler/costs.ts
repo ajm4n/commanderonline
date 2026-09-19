@@ -37,6 +37,18 @@ export function parseCost(text: string): AbilityCost | null {
       if (a && b && !Object.keys(a).some((k) => k in b)) return { ...a, ...b };
     }
   }
+  // "Remove a counter from an artifact, creature, land, or planeswalker you control": comma list.
+  {
+    const rm = text.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+ )?counters? from (?:a|an) ([\w -]+(?:, [\w -]+)+,? or [\w -]+)$/i);
+    if (rm) {
+      const listed = singularizeList(rm[3].replace(/,? and\/or /g, ', or '));
+      const noun = parseNoun(`an ${listed}`) ?? parseNoun(`a ${listed}`);
+      const n = rm[1] ? wordToNumber(rm[1]) : 1;
+      if (noun && noun.confident && typeof n === 'number') {
+        return { removeCountersFrom: { counter: rm[2] ? rm[2].trim() : 'any', amount: n, filter: { ...noun.filter, zone: 'battlefield' } } };
+      }
+    }
+  }
   // "Sacrifice an artifact, creature, or land": the list has commas, so it must be read whole.
   {
     const sm = text.match(/^Sacrifice (?:a|an) ([\w -]+(?:, [\w -]+)+,? or [\w -]+)$/i);
