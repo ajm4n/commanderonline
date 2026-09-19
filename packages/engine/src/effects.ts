@@ -775,6 +775,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const o = g.createObject(card, p, 'battlefield', { tapped: e.tapped, attacking });
           if (ctx.sourceId !== null) o.memory.createdBy = ctx.sourceId;
           if (e.counters) g.addCounters(o.id, e.counters.counter, g.resolveAmount(e.counters.amount, ctx));
+          // "except it enters with an additional +1/+1 counter on it"
+          const exc = e.token.exceptions?.counters;
+          if (exc) g.addCounters(o.id, exc.counter, exc.amount);
           created.push(o.id);
           if (e.attachTo) {
             const host = g.resolveObjects(e.attachTo, ctx)[0];
@@ -2521,6 +2524,8 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
           const src = g.obj(pick);
           o.copyOf = applyCopyExceptions(src.copyOf ?? src.card, ab.copyExceptions);
           o.faceIndex = 0;
+          const exc = ab.copyExceptions?.counters;
+          if (exc) o.counters[exc.counter] = (o.counters[exc.counter] ?? 0) + exc.amount;
           g.log(`${o.card.name} enters as a copy of ${g.nameOf(pick)}.`);
         }
       }

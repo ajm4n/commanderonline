@@ -8675,6 +8675,10 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
         if (!kws) return null;
         ex.keywords = [...(ex.keywords ?? []), ...kws];
       }
+    } else if ((m = p2.match(/^(?:it|they) enters? with (?:an additional|a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on (?:it|them)$/i))) {
+      const n308 = m[1] ? wordToNumber(m[1]) : 1;
+      if (typeof n308 !== 'number') return null;
+      ex.counters = { counter: m[2], amount: n308 };
     } else if (/^(?:it|they) (?:is|are) not legendary$/i.test(p2)) ex.notLegendary = true;
     else if (/^(?:it|they) (?:is|are) legendary$/i.test(p2)) ex.legendary = true;
     else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (.+?)(?: in addition to its other types)?$/i)) && /^(?:artifact|creature|enchantment|land|legendary|[A-Z]\w+)(?: \w+)*$/.test(m[1]) && !/\d\/\d/.test(m[1])) {
