@@ -68,6 +68,21 @@ function duration(text: string): { rest: string; duration: Duration | undefined 
 /** Resolve an object phrase to a Ref, registering targets. */
 export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   const t = phrase.trim().replace(/[.,]$/, '').replace(/^a second target /i, 'another target ');
+  // "target spell or nonland permanent": one filter covering the stack and the battlefield.
+  // Nothing on the stack is a land, so excluding lands is enough to spell "nonland permanent".
+  {
+    const sp = t.match(/^(target|another target) spell or nonland permanent(?: an opponent controls| you (?:do not|don't) control| you control)?$/i);
+    if (sp) {
+      const f: ObjectFilter = { zoneIn: ['stack', 'battlefield'], notTypes: ['Land'] };
+      if (/an opponent controls/i.test(t)) f.controller = 'opponent';
+      else if (/you control/i.test(t)) f.controller = /do not|don't/i.test(t) ? 'opponent' : 'you';
+      if (/^another /i.test(sp[1])) f.other = true;
+      ctx.targets.push({ description: t, kind: 'object', filter: f, min: 1, max: 1 });
+      const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+      ctx.lastObj = ref;
+      return ref;
+    }
+  }
   const l = t.toLowerCase();
   let m0: RegExpMatchArray | null;
   if (l === '~' || l === 'this') {
@@ -2024,7 +2039,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'chooseObjects', from: pool, filter: {}, count: n as Amount, key }];
   }],
   [/^choose another player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'opponent' }]],
-  [/^choose (?:a|an) (?:card|creature card|artifact card|nonland card|land card) name(?: other than .+)?$/i, () => [{ kind: 'nameCard', key: 'cardName' }]],
+  [/^choose (?:a|an) (?:[\w, -]+ )?(?:card|creature card|artifact card|nonland card|land card) name(?: other than .+)?$/i, () => [{ kind: 'nameCard', key: 'cardName' }]],
   [/^choose a permanent type$/i, () => [{ kind: 'chooseCreatureType', key: 'cardType', pool: 'cardType' }]],
   // "Choose a Dwarf you control." / "Choose a nonlegendary creature on the battlefield."
   [/^choose (?:a|an|(\w+)) ((?:(?!counter\b)[\w' -])+?)(?: on the battlefield)?$/i, (m, ctx) => {
@@ -2523,7 +2538,7 @@ const PATTERNS: Pattern[] = [
   [/^add one mana of that color$/i, () => [{ kind: 'addMana', mana: 'chosenColor' }]],
   [/^for each color among permanents you control, add one mana of that color$/i, () => [{ kind: 'addManaPerColor', filter: { controller: 'you', zone: 'battlefield' } }]],
   [/^players cannot gain life this turn$/i, () => [{ kind: 'grantPlayerRule', who: { ref: 'eachPlayer' }, rule: { kind: 'cantGainLife' } }]],
-  [/^put all cards exiled with ~ into their owners'? hands?$/i, () => [{ kind: 'putIntoHand', what: { ref: 'memory', key: 'exiled' } }]],
+  [/^put all cards exiled with ~ into their owner(?:'s|s'|s)? hands?$/i, () => [{ kind: 'putIntoHand', what: { ref: 'memory', key: 'exiled' } }]],
   [/^exile all (.+?) from (target player's|that player's|each player's|your) graveyard$/i, (m, ctx) => {
     const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(m[1]);
     if (!noun) return null;
@@ -2716,7 +2731,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfDies' }, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, duration: 'endOfTurn' }];
   }],
   // "return all permanents to their owners' hands except for Giants, Wizards, and lands"
-  [/^return all (.+?) to (?:their|its) owners'? hands? except for (.+)$/i, (m) => {
+  [/^return all (.+?) to (?:their|its) owner(?:'s|s'|s)? hands? except for (.+)$/i, (m) => {
     const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(`a ${singularize(m[1])}`);
     if (!noun) return null;
     const f: ObjectFilter = { ...noun.filter, zone: 'battlefield' };
@@ -2862,7 +2877,7 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'putIntoGraveyard', what: ref }] : null;
   }],
   // "return three creatures you control to their owner's hand"
-  [/^return (\w+) (.+?) to (?:their|its) owners'? hands?$/i, (m, ctx) => {
+  [/^return (\w+) (.+?) to (?:their|its) owner(?:'s|s'|s)? hands?$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);
     if (typeof n !== 'number') return null;
     const c = chooseRef(`a ${singularize(m[2])}`, ctx, YOU, false);
@@ -4366,9 +4381,18 @@ const PATTERNS: Pattern[] = [
     ];
   }],
   // "Return target Equipment card from your graveyard to the battlefield attached to ~."
-  [/^return (target .+? card) from your graveyard to the battlefield attached to (~|it)$/i, (m, ctx) => {
+  [/^return (target .+? card) from your graveyard to the battlefield attached to (~|it|(?:a|an) .+)$/i, (m, ctx) => {
     const ref = objRef(`${m[1]} from your graveyard`, ctx);
-    return ref ? [{ kind: 'returnToBattlefield', what: ref }, { kind: 'attach', what: { ref: 'lastMoved' }, to: SELF }] : null;
+    if (!ref) return null;
+    if (/^(?:~|it)$/i.test(m[2])) return [{ kind: 'returnToBattlefield', what: ref }, { kind: 'attach', what: { ref: 'lastMoved' }, to: SELF }];
+    const noun = parseNoun(m[2]);
+    if (!noun || !noun.confident) return null;
+    const key = `attachHost${ctx.targets.length}`;
+    return [
+      { kind: 'returnToBattlefield', what: ref },
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'battlefield' }, count: 1, key },
+      { kind: 'attach', what: { ref: 'lastMoved' }, to: { ref: 'chosen', key } },
+    ];
   }],
   // "Sacrifice it unless you return a basic land card from your graveyard to your hand."
   [/^(.+?) unless you return (?:a|an) (.+?) from your graveyard to your hand$/i, (m, ctx) => {
@@ -6909,7 +6933,7 @@ const PATTERNS: Pattern[] = [
     const who = playerRef(m[1], ctx);
     return who ? [{ kind: 'exile', what: { ref: 'all', filter: { zone: 'hand', ownerRef: who } } }] : null;
   }],
-  [/^return (\w+) (.+?) you control to (?:their|its) owners'? hands?$/i, (m, ctx) => {
+  [/^return (\w+) (.+?) you control to (?:their|its) owner(?:'s|s'|s)? hands?$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);
     const noun = parseNoun(`a ${m[2]}`);
     if (typeof n !== 'number' || !noun || !noun.confident) return null;
@@ -7060,7 +7084,7 @@ const PATTERNS: Pattern[] = [
     if (!who) return null;
     return [{ kind: 'may', who, prompt: 'Copy the spell?', effects: [{ kind: 'copySpell', what: SELF }] }];
   }],
-  [/^return ~ and (.+?) to (?:their|its) owners'? hands?$/i, (m, ctx) => {
+  [/^return ~ and (.+?) to (?:their|its) owner(?:'s|s'|s)? hands?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'returnToHand', what: SELF }, { kind: 'returnToHand', what: ref }] : null;
   }],
