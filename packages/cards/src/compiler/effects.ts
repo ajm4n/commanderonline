@@ -4250,6 +4250,70 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 233 ----
+  // "Each opponent loses life equal to the number of creatures attacking them"
+  [/^each (opponent|player) (loses|gains) life equal to the number of (.+?) attacking them$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (!noun || !noun.confident) return null;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    const amt233: Amount = { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', attacking: true, attackingRef: { ref: 'iter' } } };
+    return [{ kind: 'forEach', over, effects: [/loses/i.test(m[2]) ? { kind: 'loseLife', amount: amt233, who: { ref: 'iter' } } : { kind: 'gainLife', amount: amt233, who: { ref: 'iter' } }] }];
+  }],
+  // "Draw a card for each Aura you controlled that was attached to it"
+  [/^(?:you )?draws? (?:a card|(\w+|X) cards?) for each (Aura|Equipment) you controlled that (?:was|were) attached to it$/i, (m, ctx) => {
+    const base = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof base !== 'number') return null;
+    const host = ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF;
+    const per: Amount = { kind: 'count', filter: { subtypes: [m[2]], controller: 'you', attachedToRef: host } };
+    return [{ kind: 'draw', amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), who: YOU }];
+  }],
+  // "Copy it for each kind of counter among permanents you control"
+  [/^copy (?:it|that spell) for each kind of counter among (.+?)$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]) ?? parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const ref = ctx.lastObj ?? SELF;
+    return [{ kind: 'copySpell', what: ref, count: { kind: 'distinctCounterKinds', ref: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } } } }];
+  }],
+  // "Put one of those cards with that name into its owner's hand"
+  [/^put one of those cards with that name into (?:its owner's|your) hand$/i, (m, ctx) => {
+    const base = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { nameIsChosen: 'cardName' }, count: 1, key: 'named233', from: base },
+      { kind: 'moveToZone', what: { ref: 'chosen', key: 'named233' }, zone: 'hand' },
+    ];
+  }],
+  // "Until your next end step, you may play one of those cards"
+  [/^(?:until your next end step, )?you may play one of those cards$/i, (m, ctx) => {
+    const base = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: base, duration: 'thisTurn' }];
+  }],
+  // "When you next attack this turn, untap each creature you control"
+  [/^when you next attack this turn, (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: true }));
+    return inner ? [{ kind: 'delayedTrigger', event: 'attacks', filter: { player: 'you', firstEachTurn: true }, effects: inner, text: m[0], once: true, untilEndOfTurn: true }] : null;
+  }],
+  // "Each opponent who voted for a choice you didn't vote for loses 2 life"
+  [/^each (opponent|player) who voted for a choice you (?:didn't|did not) vote for (loses|gains) (\d+) life$/i, (m) => {
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    const n = parseInt(m[3], 10);
+    return [{ kind: 'forEach', over, effects: [/loses/i.test(m[2]) ? { kind: 'loseLife', amount: n, who: { ref: 'iter' } } : { kind: 'gainLife', amount: n, who: { ref: 'iter' } }] }];
+  }],
+  // "You and each opponent who voted for a choice you voted for may scry 2"
+  [/^you and each (?:opponent|player) who voted for a choice you voted for may (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(`you ${m[1]}`, newCtx({ ...ctx, targets: ctx.targets }));
+    if (!inner) return null;
+    return [{ kind: 'may', prompt: m[1], effects: inner }, { kind: 'forEach', over: { ref: 'eachOpponent' }, effects: [{ kind: 'may', prompt: m[1], who: { ref: 'iter' }, effects: retargetToPlayer(inner, { ref: 'iter' }) }] }];
+  }],
+  // "It deals 2 damage to you unless it came under your control this turn"
+  [/^(it|~) deals (\d+|X) damage to you unless it came under your control this turn$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? SELF;
+    const amt233b: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'conditional', if: { kind: 'not', c: { kind: 'objectMatches', ref: src, filter: { enteredThisTurn: true } } }, then: [{ kind: 'damage', amount: amt233b, source: src, to: YOU }] }];
+  }],
+  // "They put the same number and kind of counters on ~"
+  [/^(?:they|that player|its controller) puts? the same number and kind of counters on ~$/i, () => [
+    { kind: 'addCounters', counter: 'any' as never, amount: { kind: 'ctxMemory', key: 'countersAdded' }, on: SELF },
+  ]],
   // ---- Round 231 ----
   // "Destroy target artifact, enchantment, emblem, or gameplay tracker"
   [/^(destroy|exile) target (.+?), (.+?), (.+?), or (.+?)$/i, (m, ctx) => {
@@ -5589,7 +5653,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'moveToZone', what: ref, zone: 'library' }, { kind: 'shuffle', who: YOU }];
   }],
   // "Until your next turn, spells your opponents cast cost {1} more to cast"
-  [/^until your next turn, spells (your opponents|you) casts? cost \{(\d+)\} (more|less) to cast$/i, (m) => [
+  [/^(?:until your next turn, )?spells (your opponents|you) casts? cost \{(\d+)\} (more|less) to cast(?: until your next turn)?$/i, (m) => [
     { kind: 'grantPlayerRule', who: /opponents/i.test(m[1]) ? { ref: 'eachOpponent' } : YOU, rule: { kind: /more/i.test(m[3]) ? 'costIncrease' : 'costReduction', amount: parseInt(m[2], 10) } },
   ]],
   // "~ deals 2 damage to the creature with the least toughness"

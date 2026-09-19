@@ -415,6 +415,8 @@ export interface ObjectFilter {
   nthSpellThisTurn?: number;
   /** Matches only objects that do NOT match this sub-filter ("only land creatures can attack"). */
   notMatching?: ObjectFilter;
+  /** "creatures attacking them": the attack target must be the player this ref resolves to. */
+  attackingRef?: import('./script.js').Ref;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];
