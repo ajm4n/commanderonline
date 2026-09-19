@@ -265,6 +265,8 @@ export interface TargetSpec {
   playerFilter?: 'any' | 'opponent' | 'you' | 'notController';
   /** "target opponent who has more life than you do" — compared against the controller. */
   playerCondition?: { stat: 'life' | 'creatures' | 'handSize' | 'creatureCardsInGraveyard'; op: 'more' | 'fewer'; byAtLeast?: number };
+  /** "target player who lost life this turn": the player's turn stat must be at least `min` (default 1). */
+  playerTurnStat?: { key: string; min?: number };
   min?: number; // default 1
   max?: number; // default 1
   /** "up to that many target cards": the cap is computed when targets are chosen. */

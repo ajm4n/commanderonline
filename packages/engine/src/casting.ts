@@ -956,6 +956,13 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   }
   // Cost reductions / increases from static rules.
   let delta = 0;
+  // "The next spell you cast this turn costs {1} less to cast." Spent by the first matching spell.
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom' || r.tag !== 'nextSpellCostReduction') continue;
+    if (!nextSpellReductionApplies(g, obj, p, r.data)) continue;
+    delta -= (r.data as { amount?: number }).amount ?? 1;
+    break;
+  }
   for (const r of g.playerRules(p)) {
     if (r.kind === 'costReduction' && (!r.filter || matchesFilter(g, obj, { ...r.filter, zone: undefined }, { sourceId: null, controller: p }))) {
       const srcId = (r as { sourceId?: ObjectId }).sourceId ?? null;
@@ -981,6 +988,12 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   }
   if (delta !== 0) cost = adjustGeneric(cost, delta);
   return cost;
+}
+
+/** Does a pending "next spell you cast" cost reduction apply to this spell? */
+function nextSpellReductionApplies(g: Game, obj: GameObject, p: PlayerId, data: unknown): boolean {
+  const d = (data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+  return !d.filter || matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p });
 }
 
 /** Alternative costs the player could pay for this card right now. */
@@ -1489,6 +1502,11 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   {
     const cch = g.characteristics(id);
     (g.state.castThisTurn ??= []).push({ controller: p, name: cch.name, types: [...cch.types], subtypes: [...cch.subtypes], colors: [...cch.colors] });
+  }
+  {
+    const rules = g.state.turnRules ?? [];
+    const i = rules.findIndex((t) => t.player === p && t.rule.kind === 'custom' && t.rule.tag === 'nextSpellCostReduction' && nextSpellReductionApplies(g, obj, p, t.rule.data));
+    if (i >= 0) rules.splice(i, 1);
   }
   g.emit({ name: 'cast', objectId: id, playerId: p, fromZone, data: { targets } });
   return true;

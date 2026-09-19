@@ -509,6 +509,7 @@ export function legalTargets(g: Game, spec: TargetSpec, sourceId: ObjectId | nul
         const diff = stat(p.id) - stat(controller);
         if (pc.op === 'more' ? diff < by : -diff < by) continue;
       }
+      if (spec.playerTurnStat && (g.player(p.id).turnStats[spec.playerTurnStat.key] ?? 0) < (spec.playerTurnStat.min ?? 1)) continue;
       const t: Target = { kind: 'player', id: p.id };
       if (canTarget(g, t, sourceId, controller)) out.push(t);
     }

@@ -87,6 +87,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 275 ----
+  // "~ has flying and trample if it devoured a creature."
+  if ((m = L.match(/^~ (?:has|have) (.+?) if it devoured a creature$/i))) {
+    const g275 = parseGrantList(m[1]);
+    if (g275 && g275.keywords.length && !g275.abilities.length)
+      return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: g275.keywords }, condition: { kind: 'memoryFlag', key: 'devoured' } }];
+  }
   // ---- Round 272 ----
   // "If ~ is your commander, choose a color before the game begins. ~ is the chosen color."
   if (/^If ~ is your commander, choose a colou?r before the game begins\. ~ is the chosen colou?r$/i.test(L)) {

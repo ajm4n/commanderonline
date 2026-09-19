@@ -109,6 +109,12 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     if (/^(?:opponents?|players?) who (?:was|were) dealt damage this turn$/.test(t2)) return { kind: 'playersMatching', who: 'opponent', stat: 'damageTaken' };
     if (/^(?:opponents?|players?) who lost life this turn$/.test(t2)) return { kind: 'playersMatching', who: /opponent/.test(t2) ? 'opponent' : 'any', stat: 'lifeLostAmount' };
     if (/^(?:opponents?|players?) who (?:discarded a card|has discarded a card) this turn$/.test(t2)) return { kind: 'playersMatching', who: /opponent/.test(t2) ? 'opponent' : 'any', stat: 'discard' };
+    const mw = t2.match(/^(?:opponents?|players?) who (gained life|attacked(?: with a creature)?|cast (?:a|one or more) spells?|drew a card|sacrificed a permanent) this turn$/);
+    if (mw) {
+      const w = mw[1];
+      const stat = w.startsWith('gained life') ? 'lifeGainedAmount' : w.startsWith('attacked') ? 'attacks' : w.startsWith('cast') ? 'cast' : w.startsWith('drew') ? 'drawCard' : 'sacrifice';
+      return { kind: 'playersMatching', who: /opponent/.test(t2) ? 'opponent' : 'any', stat };
+    }
     if (/^graveyards? with (\w+) or more cards in it$/.test(t2)) {
       const n = wordToNumber(t2.match(/^graveyards? with (\w+) or more cards in it$/)![1]);
       if (typeof n === 'number') return { kind: 'graveyardsWithAtLeast', count: n };

@@ -1882,14 +1882,24 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: 1, destination: m[2].toLowerCase() as 'hand', reveal: true, shuffle: true }];
   }],
   // "Search your library for a card with the same name as that card, reveal it, put it into your hand, then shuffle"
-  [/^search your library for (?:a|an) (.*?)card with the same name as (.+?)(?:, reveal (?:it|that card))?,? put (?:it|that card) (into your hand|onto the battlefield( tapped)?)(?:, then shuffle| and shuffle)?$/i, (m, ctx) => {
-    const base = m[1].trim();
+  [/^search your library for (?:(?:a|an)|(up to \w+|any number of|\w+)) (.*?)cards? with the same name as (.+?)(?:, reveal (?:it|them|that card|those cards))?,? put (?:it|them|that card|those cards) (into your hand|onto the battlefield( tapped)?|into your graveyard)(?:, then shuffle| and shuffle)?$/i, (m, ctx) => {
+    const base = m[2].trim();
     const noun = base ? parseNoun(`a ${base} card`) : { filter: {} as ObjectFilter };
     if (!noun) return null;
-    const of = objRef(m[2], ctx);
+    const of = objRef(m[3], ctx);
     if (!of) return null;
+    let count = 1;
+    if (m[1]) {
+      if (/any number of/i.test(m[1])) count = 99;
+      else {
+        const n = wordToNumber(m[1].replace(/^up to /i, ''));
+        if (typeof n !== 'number') return null;
+        count = n;
+      }
+    }
     ctx.lastObj = { ref: 'lastMoved' };
-    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library', sameNameAs: of }, count: 1, destination: /battlefield/i.test(m[3]) ? 'battlefield' : 'hand', tapped: m[4] ? true : undefined, reveal: /reveal/i.test(m[0]), shuffle: true }];
+    const dest = /battlefield/i.test(m[4]) ? 'battlefield' : /graveyard/i.test(m[4]) ? 'graveyard' : 'hand';
+    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library', sameNameAs: of }, count, destination: dest, tapped: m[5] ? true : undefined, reveal: /reveal/i.test(m[0]), shuffle: true }];
   }],
   [/^(?:then )?shuffle(?: your library)?$/i, () => [{ kind: 'shuffle' }]],
   [/^(?:then )?(.+?) shuffles?(?: their library)?$/i, (m, ctx) => {
@@ -4409,6 +4419,18 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
+  // ---- Round 275 ----
+  // "Put a land card from a graveyard onto the battlefield tapped under your control."
+  [/^put (?:a|an) (.+?) from a graveyard onto the battlefield( tapped)?(?: under your control)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    const key = `gyAny${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard' }, count: 1, key },
+      { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[2], controller: 'you' },
+    ];
+  }],
   // ---- Round 269 ----
   // "Permanents you control can't be the targets of blue or black spells your opponents control this turn."
   [/^(.+?) cannot be the targets? of ((?:white|blue|black|red|green)(?: or (?:white|blue|black|red|green))*) spells (?:your opponents control|an opponent controls)(?: this turn)?$/i, (m, ctx) => {
@@ -6829,10 +6851,17 @@ const PATTERNS: Pattern[] = [
     const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
     return [{ kind: 'grantKeywords', keywords: [m[1].replace(/^\w/, (c) => c.toUpperCase())], on: ref, duration: 'permanent' }];
   }],
-  // "The next spell you cast this turn costs {1} less to cast"
-  [/^the next spell you cast this turn costs \{(\d+)\} less to cast$/i, (m) => [
-    { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'nextSpellCostReduction', data: { amount: parseInt(m[1], 10) } }, duration: 'thisTurn' },
-  ]],
+  // "The next spell you cast this turn costs {1} less to cast" / "The next Giant spell you cast this turn costs {2} less to cast"
+  [/^the next (.*?)spells? you cast this turn costs? \{(\d+)\} less to cast$/i, (m) => {
+    const pre = m[1].trim();
+    let filter: ObjectFilter | undefined;
+    if (pre) {
+      const noun = parseNoun(`a ${pre} spell`);
+      if (!noun || !noun.confident) return null;
+      filter = { ...noun.filter, zone: undefined };
+    }
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'nextSpellCostReduction', data: { amount: parseInt(m[2], 10), filter } }, duration: 'thisTurn' }];
+  }],
   // "Exile one or more creature cards from your graveyard"
   [/^(exile|return) (one or more|any number of) (.+?) from your graveyard(?: to your hand)?$/i, (m, ctx) => {
     const noun = parseNoun(`a ${singularize(m[3])}`);
