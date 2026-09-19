@@ -4249,6 +4249,84 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 220 ----
+  // "Put a +1/+1 counter on ~ for each flip you won" / "For each flip you won, create a token ..."
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on (~|it) for each flip you won$/i, (m, ctx) => {
+    const base = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof base !== 'number') return null;
+    const ref = /^~$/.test(m[3]) ? SELF : ctx.lastObj ?? SELF;
+    const per: Amount = { kind: 'ctxMemory', key: 'flipsWon' };
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), on: ref }];
+  }],
+  // "Put a random creature card from among them onto the battlefield"
+  [/^put (?:a|an) random (.+?) from among them onto the battlefield$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!base || !noun) return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: undefined }, count: 1, key: 'rand220', from: base, random: true },
+      { kind: 'returnToBattlefield', what: { ref: 'chosen', key: 'rand220' } },
+    ];
+  }],
+  // "Sacrifice it and attach ~ to a creature you control"
+  [/^sacrifice it and attach ~ to (?:a|an) (.+?)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!ref || !noun || !noun.confident) return null;
+    return [
+      { kind: 'sacrifice', what: ref },
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'battlefield' }, count: 1, key: 'host220' },
+      { kind: 'attach', what: SELF, to: { ref: 'chosen', key: 'host220' } },
+    ];
+  }],
+  // "Sacrifice it unless you exile a creature you control other than ~"
+  [/^sacrifice it unless you exile (?:a|an) (.+?) other than ~$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'unlessPays', who: YOU, cost: { exileFromGraveyard: { ...noun.filter, zone: 'battlefield', other: true }, count: 1 }, effects: [{ kind: 'sacrifice', what: ref }] }];
+  }],
+  // "That player chooses artifact, creature, land, or non-Aura enchantment"
+  [/^(.+?) chooses ((?:[\w -]+)(?:, [\w -]+)*,? or [\w -]+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const opts = m[2].split(/,? or |, /).map((x) => x.trim()).filter(Boolean);
+    if (!who || opts.length < 2 || opts.length > 6) return null;
+    if (!opts.every((o) => parseNoun(`a ${o}`)?.confident)) return null;
+    return [{ kind: 'chooseOption', key: 'cardType', options: opts }];
+  }],
+  // "Destroy target land with an activated ability that is not a mana ability"
+  [/^(destroy|exile|tap) (target .+?) with an activated ability that is not a mana ability$/i, (m, ctx) => {
+    const noun = parseNoun(m[2]);
+    if (!noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), filter: { ...noun.filter, zone: 'battlefield', custom: 'hasNonManaActivatedAbility' } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [/destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : /exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'tap', what: ref }];
+  }],
+  // "All unblocked creatures attacking you become blocked by ~"
+  [/^all unblocked creatures attacking you become blocked by ~$/i, () => [
+    { kind: 'applyRule', rule: { kind: 'custom', tag: 'blockedBySource' }, on: { ref: 'all', filter: { types: ['Creature'], attacking: true, zone: 'battlefield', custom: 'unblocked' } }, duration: 'endOfTurn' },
+  ]],
+  // "If you do, the first creature assigns no combat damage this turn"
+  [/^the (?:first|other) creature assigns no combat damage this turn$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignsNoCombatDamage' }, on: ref, duration: 'endOfTurn' }];
+  }],
+  // "Put target face-up card they own in exile on the bottom of their library"
+  [/^put (target face-up card they own in exile|target face-up exiled card) on the (bottom|top) of (?:their|its owner's) library$/i, (m, ctx) => {
+    ctx.targets.push({ description: m[1], kind: 'object', filter: { zone: 'exile', faceDown: false } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'putOnLibrary', what: ref, position: /bottom/i.test(m[2]) ? 'bottom' : 'top' }];
+  }],
+  // "Exile up to one card of each card type from defending player's graveyard"
+  [/^exile up to one card of each card type from (defending player's|target player's|that player's|your) graveyard$/i, (m, ctx) => {
+    const who = /your/i.test(m[1]) ? YOU : m[1].startsWith('defending') ? ({ ref: 'defendingPlayer' } as Ref) : ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { zone: 'graveyard', ownerRef: who }, count: 7, key: 'typeEx', upTo: true },
+      { kind: 'moveToZone', what: { ref: 'chosen', key: 'typeEx' }, zone: 'exile' },
+    ];
+  }],
   // ---- Round 217 ----
   // "Have ~'s base power and toughness become 4/1 or 1/4 until end of turn"
   [/^have (.+?)'s base power and toughness become ([\dX]+)\/([\dX]+) or ([\dX]+)\/([\dX]+)(?: until end of turn)?$/i, (m, ctx) => {
