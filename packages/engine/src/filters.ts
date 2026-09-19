@@ -225,6 +225,15 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const want = src?.chosen[filter.typeIsChosen];
     if (typeof want !== 'string' || !(ch.types.includes(want) || ch.subtypes.includes(want))) return false;
   }
+  if (filter.powerGTRef || filter.toughnessGTRef || filter.cmcEQRef) {
+    const rf = filter.powerGTRef ?? filter.toughnessGTRef ?? filter.cmcEQRef!;
+    const others = g.resolveRef(rf, { sourceId: ctx.sourceId ?? null, controller: ctx.controller, targets: [], triggerContext: {}, memory: {}, x: 0, modes: [] }).filter((t) => t.kind === 'object');
+    if (!others.length) return false;
+    const och = g.characteristics(others[0].id);
+    if (filter.powerGTRef && !((ch.power ?? 0) > (och.power ?? 0))) return false;
+    if (filter.toughnessGTRef && !((ch.toughness ?? 0) > (och.toughness ?? 0))) return false;
+    if (filter.cmcEQRef && ch.manaValue !== och.manaValue) return false;
+  }
   if (filter.convokedSource) {
     const srcC = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
     const ids = (srcC?.memory['convokedBy'] as number[] | undefined) ?? [];

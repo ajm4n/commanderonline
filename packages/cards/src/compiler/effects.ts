@@ -4249,6 +4249,84 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 213 ----
+  // "~ deals 2 damage to target player or battle"
+  [/^(.+?) deals (\d+|X) damage to target player or battle$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!src) return null;
+    ctx.targets.push({ description: 'target player or battle', kind: 'objectOrPlayer', filter: { types: ['Battle'], zone: 'battlefield' }, playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const amt2: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt2, source: src, to: ref }];
+  }],
+  // "~ deals 1 damage to target creature token, player, or planeswalker"
+  [/^(.+?) deals (\d+|X) damage to target (.+?), player, or planeswalker$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[3]}`);
+    if (!src || !noun) return null;
+    ctx.targets.push({ description: `target ${m[3]}, player, or planeswalker`, kind: 'any', filter: { anyOf: [{ ...noun.filter, zone: undefined }, { types: ['Planeswalker'] }], zone: 'battlefield' }, playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const amt3: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt3, source: src, to: ref }];
+  }],
+  // "~ deals 2 damage to any target chosen at random"
+  [/^(.+?) deals (\d+|X) damage to any target chosen at random$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!src) return null;
+    ctx.targets.push({ description: 'any target', kind: 'any', playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const amt4: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt4, source: src, to: ref }];
+  }],
+  // "Destroy all creatures with power greater than target creature's power"
+  [/^destroy all creatures with (power|toughness) greater than target creature's \1$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'target creature', kind: 'object', filter: { types: ['Creature'], zone: 'battlefield' } });
+    const tref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    const key = /power/i.test(m[1]) ? 'powerGTRef' : 'toughnessGTRef';
+    return [{ kind: 'destroy', what: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', [key]: tref } as never }, cantRegenerate: false }];
+  }],
+  // "Destroy each creature with the same mana value as the sacrificed creature"
+  [/^destroy each creature with the same mana value as the sacrificed creature$/i, () => [
+    { kind: 'destroy', what: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', cmcEQRef: { ref: 'chosen', key: 'sacrificed' } } as never }, cantRegenerate: false },
+  ]],
+  // "Return half the creatures they control to their owner's hand, rounded up"
+  [/^return half the (.+?) they control to (?:their|its) owner'?s'? hands?,? rounded (up|down)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const who = ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    const cnt: Amount = { kind: 'half', a: { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', controllerRef: who } }, round: /up/i.test(m[2]) ? 'up' : 'down' };
+    return [{ kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'battlefield', controllerRef: who }, count: cnt, key: 'halfBounce' }, { kind: 'returnToHand', what: { ref: 'chosen', key: 'halfBounce' } }];
+  }],
+  // "Target player loses 2 life plus 2 life for each Spirit sacrificed this way"
+  [/^(.+?) loses (\d+) life plus (\d+) life for each (.+?) sacrificed this way$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const per: Amount = { kind: 'countRef', ref: { ref: 'chosen', key: 'sacrificed' } };
+    const extra: Amount = parseInt(m[3], 10) === 1 ? per : { kind: 'times', a: parseInt(m[3], 10) as Amount, b: per };
+    return [{ kind: 'loseLife', amount: { kind: 'sum', parts: [parseInt(m[2], 10), extra] }, who }];
+  }],
+  // "You gain control of all Equipment that were attached to it"
+  [/^you gain control of all (Equipment|Auras) that (?:were|was) attached to (it|that creature)$/i, (m, ctx) => {
+    const host = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    if (!host) return null;
+    const sub = /^Auras$/i.test(m[1]) ? 'Aura' : 'Equipment';
+    return [{ kind: 'gainControl', what: { ref: 'all', filter: { subtypes: [sub], zone: 'battlefield', attachedToRef: host } }, who: YOU, duration: 'permanent' }];
+  }],
+  // "Exile target Spirit, creature with disturb, or enchantment"
+  [/^(exile|destroy|tap) target (.+?), (.+?), or (.+?)$/i, (m, ctx) => {
+    const ns = [m[2], m[3], m[4]].map((x) => parseNoun(`a ${x}`));
+    if (ns.some((n) => !n || !n.confident)) return null;
+    ctx.targets.push({ description: `target ${m[2]}, ${m[3]}, or ${m[4]}`, kind: 'object', filter: { anyOf: ns.map((n) => ({ ...n!.filter, zone: undefined })), zone: 'battlefield' } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [/exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : /destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : { kind: 'tap', what: ref }];
+  }],
+  // "Put each creature card milled this way onto the battlefield"
+  [/^put each (.+?) card milled this way onto the battlefield$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (!noun) return null;
+    return [{ kind: 'returnToBattlefield', what: { ref: 'lastMoved' } }];
+  }],
   // ---- Round 212 ----
   // "Target creature gets +2/+2 until end of turn for each of its colors"
   [/^(.+?) (?:gets?|get) ([+-]\d+)\/([+-]\d+)(?: until end of turn)? for each of its colou?rs$/i, (m, ctx) => {

@@ -405,6 +405,10 @@ export interface ObjectFilter {
   suspended?: boolean;
   /** "each creature that convoked it" */
   convokedSource?: boolean;
+  /** Power/toughness/mana value compared against another object. */
+  powerGTRef?: import('./script.js').Ref;
+  toughnessGTRef?: import('./script.js').Ref;
+  cmcEQRef?: import('./script.js').Ref;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];
