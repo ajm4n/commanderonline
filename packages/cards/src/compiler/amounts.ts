@@ -296,6 +296,12 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (/^(?:the number of )?cards in all graveyards with the same name as (?:that|the) spell$/.test(t))
     return { kind: 'count', filter: { zone: 'graveyard', sameNameAs: { ref: 'triggerObject' } } };
   if (/^(?:the number of )?players being attacked$/.test(t)) return { kind: 'playersBeingAttacked' };
+  // "the difference between that creature's power and its toughness"
+  if ((m = t.match(/^(?:the )?difference between (.+?) and (.+?)$/))) {
+    const a = parseAmount(m[1], ctx);
+    const b = parseAmount(m[2], ctx);
+    if (a !== null && b !== null) return { kind: 'max', a: 0, b: { kind: 'minus', a, b } };
+  }
   if ((m = t.match(/^the number of (.+?) cards in (target player's|target opponent's|an opponent's) graveyard$/))) {
     const noun = parseNoun(`${oc(m, 1)} card`);
     const r = ctx.resolvePlayer?.(m[2].replace(/'s$/, ''));
