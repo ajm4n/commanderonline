@@ -441,24 +441,24 @@ function subjectPlayer(subj: string | undefined, ctx: ParseCtx): Ref | null {
 }
 
 
-const DEST_RE = String.raw`(into (?:your|their) hand|into (?:your|their) graveyard|onto the battlefield(?: tapped)?(?: and attacking)?(?: under your control)?|on the bottom of (?:your|their) library(?: in (?:a random|any) order)?|on top of (?:your|their) library(?: in any order)?|into exile)`;
+const DEST_RE = String.raw`(into (?:your|their|that player's|its owner's) hand|into (?:your|their|that player's|its owner's) graveyard|onto the battlefield(?: tapped)?(?: and attacking)?(?: under your control)?|on the bottom of (?:your|their|that player's|that) library(?: in (?:a random|any) order)?|(?:back )?on top of (?:your|their|that player's|that) library(?: in any order)?|into exile)`;
 /** Effects that move a chosen ref to a destination phrase (see DEST_RE). */
 function moveChosen(ref: Ref, dest: string): Effect | null {
   const d = dest.toLowerCase();
-  if (/^into (?:your|their) hand$/.test(d)) return { kind: 'putIntoHand', what: ref };
-  if (/^into (?:your|their) graveyard$/.test(d)) return { kind: 'moveToZone', what: ref, zone: 'graveyard' };
+  if (/^into [\w' ]*hand$/.test(d)) return { kind: 'putIntoHand', what: ref };
+  if (/^into [\w' ]*graveyard$/.test(d)) return { kind: 'moveToZone', what: ref, zone: 'graveyard' };
   if (/^onto the battlefield/.test(d)) return { kind: 'returnToBattlefield', what: ref, tapped: /tapped/.test(d), attacking: /attacking/.test(d) || undefined };
   if (/^on the bottom/.test(d)) return { kind: 'putOnLibrary', what: ref, position: 'bottom' };
-  if (/^on top/.test(d)) return { kind: 'putOnLibrary', what: ref, position: 'top' };
+  if (/^(?:back )?on top/.test(d)) return { kind: 'putOnLibrary', what: ref, position: 'top' };
   if (/^into exile$/.test(d)) return { kind: 'exile', what: ref };
   return null;
 }
 function restDest(dest: string): Extract<Effect, { kind: 'moveRest' }>['to'] | null {
   const d = dest.toLowerCase();
-  if (/^into (?:your|their) hand$/.test(d)) return 'hand';
-  if (/^into (?:your|their) graveyard$/.test(d)) return 'graveyard';
+  if (/^into [\w' ]*hand$/.test(d)) return 'hand';
+  if (/^into [\w' ]*graveyard$/.test(d)) return 'graveyard';
   if (/^on the bottom/.test(d)) return /random/.test(d) ? 'bottomRandom' : 'bottom';
-  if (/^on top/.test(d)) return 'top';
+  if (/^(?:back )?on top/.test(d)) return 'top';
   if (/^into exile$/.test(d) || d === 'exile') return 'exile';
   return null;
 }
@@ -482,11 +482,12 @@ const POOL_PATTERNS: Pattern[] = [
     return mv ? [mv] : null;
   }],
   // "Put one of them into your hand (and the rest on the bottom of your library in a random order)"
-  [new RegExp(String.raw`^(you may )?(put|exile) (one|the other|(\w+)|up to (\w+)|any number|all|the rest)(?: of (?:them|those cards))?(?: ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
+  [new RegExp(String.raw`^(you may )?(put|exile) (one|the other|(\w+)|up to (\w+)|any number|all|the rest)(?: of (?:them|those cards))?( face down)?(?: ${DEST_RE})?(?: and (?:put )?the rest ${DEST_RE})?$`, 'i'), (m, ctx) => {
     const pool: Ref = poolRef(ctx);
     const out: Effect[] = [];
     const isRest = /^(all|the rest)$/i.test(m[3]);
-    const dest = m[2].toLowerCase() === 'exile' ? 'into exile' : m[6];
+    const faceDown = !!m[6];
+    const dest = m[2].toLowerCase() === 'exile' ? 'into exile' : m[7];
     if (!dest) return null;
     if (isRest) {
       const to = restDest(dest);
@@ -500,11 +501,11 @@ const POOL_PATTERNS: Pattern[] = [
       out.push({ kind: 'chooseObjects', from: pool, filter: {}, count: anyNumber ? 99 : n, key, upTo: !!m[1] || !!m[5] || anyNumber });
       const mv = moveChosen({ ref: 'chosen', key }, dest);
       if (!mv) return null;
-      out.push(mv);
+      out.push(faceDown && mv.kind === 'exile' ? { ...mv, faceDown: true } : mv);
       ctx.lastObj = { ref: 'chosen', key };
     }
-    if (m[7]) {
-      const to = restDest(m[7]);
+    if (m[8]) {
+      const to = restDest(m[8]);
       if (!to) return null;
       out.push({ kind: 'moveRest', key: ctx.restKey ?? 'lastMoved', to });
     }
@@ -542,21 +543,23 @@ const POOL_PATTERNS: Pattern[] = [
     return to ? [{ kind: 'moveRest', key: ctx.restKey, to }] : null;
   }],
   // "Look at the top five cards of your library, put one of them into your hand, and exile the rest" / bare "Look at the top N cards of your library"
-  [/^(look at|reveal) the top (\w+|X) cards? of your library(?:, where X is (.+?))?(?:, (.+))?$/i, (m, ctx) => {
+  [/^(look at|reveal) the top (\w+|X) cards? of (your|target opponent's|target player's|that player's|an opponent's|that opponent's|their) library(?:, where X is (.+?))?(?:, (.+))?$/i, (m, ctx) => {
     const n = m[2] === 'X' ? 'X' : wordToNumber(m[2]);
     if (n === null) return null;
     let amount: Amount = n;
-    if (m[3]) {
-      const a = amt(m[3], ctx);
+    if (m[4]) {
+      const a = amt(m[4], ctx);
       if (!a) return null;
       amount = a;
     }
+    const whose = /^your$/i.test(m[3]) ? null : playerRef(m[3].replace(/'s$/, ''), ctx);
+    if (!/^your$/i.test(m[3]) && !whose) return null;
     const key = `looked${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
     ctx.restKey = key;
     ctx.lastObj = { ref: 'chosen', key };
-    const out: Effect[] = [{ kind: 'lookAtTop', amount, then: 'hold', key, reveal: /^reveal/i.test(m[1]) }];
-    if (m[4]) {
-      for (const clause of m[4].split(/, (?:and |then )?|,? and then |,? then /i)) {
+    const out: Effect[] = [{ kind: 'lookAtTop', amount, then: 'hold', key, reveal: /^reveal/i.test(m[1]), ...(whose ? { who: whose, looker: YOU } : {}) }];
+    if (m[5]) {
+      for (const clause of m[5].split(/, (?:and |then )?|,? and then |,? then /i)) {
         const r = parseSentence(clause, ctx);
         if (!r) return null;
         out.push(...r);
