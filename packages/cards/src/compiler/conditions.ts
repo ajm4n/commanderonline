@@ -704,6 +704,14 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   if ((m = t.match(/^~ (?:is|was) (saddled|solved)$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: m[1] } };
   if ((m = t.match(/^~ (?:is|was) (renowned|foretold|suspected)$/))) return { kind: 'memoryFlag', key: m[1] };
+  if (/^(?:~|it) (?:has|had) (?:a|one or more) counters? on (?:it|them)$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { hasAnyCounter: true } };
+  // "there are two or more counters among creatures you control"
+  if ((m = t.match(/^there (?:is|are) (\w+) or more counters among (.+?)$/))) {
+    const n301 = wordToNumber(m[1]);
+    const noun301 = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
+    if (typeof n301 === 'number' && noun301)
+      return { kind: 'amount', a: { kind: 'countersOn', ref: { ref: 'all', filter: { ...noun301.filter, zone: 'battlefield' } }, counter: 'any' }, op: '>=', b: n301 };
+  }
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
   if (t === '~ is suspended' || t === 'it is suspended') return { kind: 'objectMatches', ref: ctx.self, filter: { suspended: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };

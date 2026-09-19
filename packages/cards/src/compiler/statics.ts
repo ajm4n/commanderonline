@@ -3229,6 +3229,22 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [...a, ...b];
     }
   }
+  // "As long as ~ has a counter on it, it can attack as though it didn't have defender."
+  // A leading condition applies to whatever static follows it.
+  if ((m = L.match(/^As long as (.+?), (.+)$/i))) {
+    const cond301 = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (cond301 && cond301.kind !== 'manual') {
+      const rest = m[2];
+      const tries = [rest, rest.replace(/^it /i, '~ '), rest.replace(/^they /i, '~ ')];
+      for (const t of tries) {
+        const inner = parseStatic(t.charAt(0).toUpperCase() + t.slice(1), isCreatureOrPermanent);
+        if (!inner) continue;
+        return inner.map((a) =>
+          a.kind === 'static' ? { ...a, condition: a.condition ? ({ kind: 'and', cs: [a.condition, cond301] } as Condition) : cond301 } : a,
+        );
+      }
+    }
+  }
   // Sagas & others are handled by the orchestrator.
   void isCreatureOrPermanent;
   return null;
