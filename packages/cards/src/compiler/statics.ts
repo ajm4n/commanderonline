@@ -545,6 +545,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // ---- Round 154 ----
   // "You may play lands and cast Insect spells from your graveyard."
+  // "Once during each of your turns, you may cast a permanent spell with mana value 2 or less from your graveyard."
+  if ((m = L.match(/^Once during each of your turns, you may cast (?:a|an) (.+?) from your graveyard$/i))) {
+    const n312 = parseNoun(`a ${m[1]}`);
+    if (n312 && n312.confident)
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { ...n312.filter, zone: undefined }, oncePerTurn: true } } }];
+  }
+  // "Once during each of your turns, you may cast an instant or sorcery spell from your hand without paying its mana cost."
+  if ((m = L.match(/^Once during each of your turns, you may cast (?:a|an) (.+?) from your hand without paying its mana cost$/i))) {
+    const n312b = parseNoun(`a ${m[1]}`);
+    if (n312b && n312b.confident)
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'altCostForSpells', data: { cost: '{0}', oncePerTurn: true, fromZone: 'hand', filter: { ...n312b.filter, zone: undefined } } } }];
+  }
   sxr154: {
   if ((m = L.match(/^You may (play lands and cast (.+?) spells|play lands|cast (.+?) spells|play cards|cast spells|play lands and cast spells) from your graveyard(?:, but not from anywhere else)?$/i))) {
     const what = m[1].toLowerCase();
