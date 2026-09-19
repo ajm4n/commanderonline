@@ -90,7 +90,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // ---- Round 245 ----
   // "During your turn, ~ is a Bear with base power and toughness 4/2."
   sx245: {
-  if ((m = L.match(/^(?:(During your turn), )?(.+?) is (?:a|an) ((?:white|blue|black|red|green) )?([A-Z][\w-]+) with base power and toughness (\d+)\/(\d+)$/i))) {
+  if ((m = L.match(/^(?:(During your turn), )?(.+?) is (?:a|an) ((?:white|blue|black|red|green|colorless) )?([A-Z][\w-]+) with base power and toughness (\d+)\/(\d+)$/i))) {
     const a245 = affectsOf(m[2]);
     if (!a245.ok) break sx245;
     const cond245: Condition | undefined = m[1] ? { kind: 'yourTurn' } : undefined;
@@ -100,7 +100,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     ];
     if (m[3]) {
       const c245 = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[3].trim().toLowerCase() as 'white'];
-      out245.push({ kind: 'static', text: line, affects: a245.affects, condition: cond245, modification: { layer: 5, setColors: [c245] } });
+      out245.push({ kind: 'static', text: line, affects: a245.affects, condition: cond245, modification: { layer: 5, setColors: c245 ? [c245] : [] } });
     }
     return out245 as never;
   }

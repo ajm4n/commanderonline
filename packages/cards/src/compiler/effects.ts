@@ -4268,6 +4268,33 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 247 ----
+  // "Target player chooses three cards from their hand and puts them on top of their library in any order."
+  [/^(.+?) chooses (?:a|an|(\w+)) cards? from their hand and puts? (?:it|them) on top of their library(?: in any order)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || n === null) return null;
+    const key = `fromHand${ctx.targets.length}`;
+    return [
+      { kind: 'chooseObjects', who, filter: { zone: 'hand', ownerRef: who }, count: n as Amount, key },
+      { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'library', position: 'top' },
+    ];
+  }],
+  // "Enchanted creature's controller may have it assign its combat damage as though it weren't blocked."
+  [/^(.+?) may have (?:it|~|that creature) assign its combat damage(?: this turn)? as though it (?:were not|weren't) blocked$/i, (m, ctx) => {
+    const ref = /controller$/i.test(m[1]) ? { ref: 'attachedTo' as const } : objRef(m[1], ctx);
+    const on: Ref = /^(?:enchanted|equipped) \w+'s controller$/i.test(m[1]) ? { ref: 'attachedTo' } : ref ?? SELF;
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignAsUnblocked' }, on, duration: 'endOfTurn' }];
+  }],
+  // "Return target creature you control and all Auras you control attached to it to their owner's hand."
+  [/^return (target .+?) and all (Auras|Equipment)(?: you control)? attached to (?:it|them) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [
+      { kind: 'returnToHand', what: ref },
+      { kind: 'returnToHand', what: { ref: 'all', filter: { subtypes: [/^Auras$/i.test(m[2]) ? 'Aura' : 'Equipment'], zone: 'battlefield', attachedToRef: ref } } },
+    ];
+  }],
   // ---- Round 246 ----
   // "X target blocked creatures assign their combat damage this turn as though they weren't blocked."
   [/^(.+?) assigns? (?:its|their) combat damage(?: this turn)? as though (?:it|they) (?:were not|weren't) blocked$/i, (m, ctx) => {
@@ -4511,7 +4538,7 @@ const PATTERNS: Pattern[] = [
     return out;
   }],
   // "Create Ashaya, the Awoken World, a legendary 4/4 green Elemental creature token."
-  [/^create ([A-Z][\w' ,.-]+?), (a legendary .+? token)$/i, (m) => {
+  [/^create ([A-Z~][\w' ,.~-]+?), (a legendary .+? token)$/i, (m) => {
     const tok = parseTokenPhrase(m[2]);
     if (!tok) return null;
     return [{ kind: 'createToken', token: { ...tok.token, name: m[1], legendary: true }, count: tok.count, tapped: tok.tapped, attacking: tok.attacking }];
@@ -9255,6 +9282,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (a && b) return [...a, ...b];
     ctx.targets.length = saved;
   }
+  // "White creatures get an additional +1/+1": the "additional" only relates it to another line.
+  if (/ gets? an additional [+-]\d+\/[+-]\d+/i.test(text)) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(text.replace(/ (gets?) an additional ([+-]\d+\/[+-]\d+)/i, ' $1 $2'), ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
+  }
   // "You create a Food token for each player being attacked": whatever the effect is, repeat it
   // that many times. Only as a last resort — the specific "for each" patterns come first.
   if ((m = text.match(/^(.+?) for each (.+)$/i)) && !/\bthis way\b/i.test(m[2])) {
@@ -9281,7 +9315,12 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^(.+?), then (.+)$/i)) && !/^(?:if|when|whenever|until|unless)\b/i.test(text)) {
     const saved = ctx.targets.length;
     const a = parseSentence(m[1], ctx) ?? parseSentence(`you ${m[1]}`, ctx);
-    const b = a ? parseSentence(m[2], ctx) ?? parseSentence(`you ${m[2]}`, ctx) : null;
+    let b = a ? parseSentence(m[2], ctx) ?? parseSentence(`you ${m[2]}`, ctx) : null;
+    if (a && !b) {
+      // "Each player discards their hand, then returns up to three cards ...": shared subject.
+      const sub = m[1].match(/^((?:target |each |that |the )?[\w' -]+?) (?:loses?|gains?|deals?|fights?|attacks?|blocks?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
+      if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
+    }
     if (a && b) return [...a, ...b];
     ctx.targets.length = saved;
   }
