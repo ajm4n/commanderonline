@@ -411,6 +411,8 @@ export interface ObjectFilter {
   cmcEQRef?: import('./script.js').Ref;
   /** "with {H} in its mana cost" */
   manaCostContains?: string;
+  /** "the second spell cast this turn" */
+  nthSpellThisTurn?: number;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];

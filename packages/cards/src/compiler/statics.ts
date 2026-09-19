@@ -114,12 +114,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "Enchanted creature cannot attack unless its controller pays {3}." / "~ cannot block creatures with power 3 or greater unless you pay {1}."
-  if ((m = L.match(/^(.+?) cannot (attack|block|attack or block)(?: (.+?))? unless (?:its controller|you|their controller) pays ((?:\{[^}]+\})+)$/i))) {
+  if ((m = L.match(/^(.+?) cannot (attack or block|attack|block)(?: (.+?))? unless (?:its controller|you|their controller) pays? ((?:\{[^}]+\})+)$/i))) {
     const a218b = affectsOf(m[1]);
     if (a218b.ok) {
       const f218 = m[3] ? (parseNoun(m[3]) ?? parseNoun(`a ${singularize(m[3])}`)) : null;
       if (!m[3] || f218)
-        return [{ kind: 'static', text: line, affects: a218b.affects, rule: { kind: 'custom', tag: /^block$/i.test(m[2]) ? 'blockCost' : 'attackCost', data: { cost: m[4], filter: f218 ? { ...f218.filter, zone: undefined } : undefined } } }];
+        return [{ kind: 'static', text: line, affects: a218b.affects, rule: { kind: 'custom', tag: /^block$/i.test(m[2]) ? 'blockCost' : /^attack or block$/i.test(m[2]) ? 'attackOrBlockCost' : 'attackCost', data: { cost: m[4], filter: f218 ? { ...f218.filter, zone: undefined } : undefined } } }];
     }
   }
   // "Creatures attacking the last chosen player have menace."

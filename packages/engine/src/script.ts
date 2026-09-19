@@ -449,6 +449,8 @@ export type Effect =
   | { kind: 'phaseOut'; what: Ref }
   /** "that player loses all unspent mana" */
   | { kind: 'loseUnspentMana'; who: Ref }
+  /** "double the amount of each type of unspent mana you have" */
+  | { kind: 'doubleMana'; who: Ref }
   | { kind: 'putIntoHand'; what: Ref }
   | { kind: 'putIntoGraveyard'; what: Ref }
   | { kind: 'dealsDamageEqualToPower'; source: Ref; to: Ref }

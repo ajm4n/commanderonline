@@ -368,6 +368,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'doubleMana': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const pool = g.player(p).manaPool;
+        for (const k of Object.keys(pool) as (keyof typeof pool)[]) pool[k] *= 2;
+      }
+      return;
+    }
     case 'loseUnspentMana': {
       for (const p of playersOf(g, e.who, ctx)) g.player(p).manaPool = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
       return;

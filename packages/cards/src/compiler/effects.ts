@@ -4249,6 +4249,45 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 224 ----
+  // "Counter target spell that is the second spell cast this turn"
+  [/^counter (target .+?) that is the (second|third|fourth) spell cast this turn$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun) return null;
+    const nth = m[2].toLowerCase() === 'second' ? 2 : m[2].toLowerCase() === 'third' ? 3 : 4;
+    ctx.targets.push({ ...toTargetSpec(noun), filter: { ...noun.filter, zone: 'stack', nthSpellThisTurn: nth } as never });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'counterSpell', what: ref }];
+  }],
+  // "Put a +1/+1 counter on the creature tapped to pay ~'s additional cost"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on the creature tapped to pay ~'s additional cost$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: n, on: { ref: 'chosen', key: 'tapped' } }];
+  }],
+  // "You may cast that exiled card without paying its mana cost"
+  [/^you may cast that exiled card(?: without paying its mana cost)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'permanent', free: /without paying/i.test(m[0]) || undefined }];
+  }],
+  // "Each creature gets twice -X/-X until end of turn"
+  [/^each (.+?) gets twice ([+-]X)\/([+-]X)(?: until end of turn)?$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const sign = m[2].startsWith('-') ? -2 : 2;
+    const amount: Amount = { kind: 'times', a: sign as Amount, b: 'X' };
+    return [{ kind: 'pump', power: amount, toughness: amount, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, duration: 'endOfTurn' }];
+  }],
+  // "Counter that spell instead if its controller has three or more poison counters"
+  [/^counter that spell instead if its controller has (\w+) or more (poison|rad|experience|energy) counters$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
+    return [{ kind: 'conditional', if: { kind: 'playerStat', stat: m[2].toLowerCase() as never, ref: { ref: 'controllerOf', of: ref }, op: '>=', value: n }, then: [{ kind: 'counterSpell', what: ref }] }];
+  }],
+  // "Double the amount of each type of unspent mana you have"
+  [/^double the amount of each type of unspent mana you have$/i, () => [{ kind: 'doubleMana', who: YOU } as never]],
   // ---- Round 223 ----
   // "You draw a card for each Mountain and red card in it"
   [/^(?:you )?draws? (?:a card|(\w+|X) cards?) for each ([A-Z][\w-]+) and (\w+) card in it$/i, (m, ctx) => {
