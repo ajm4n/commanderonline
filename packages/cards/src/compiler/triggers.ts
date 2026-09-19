@@ -187,6 +187,50 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 219 ----
+  // "Whenever ~ or a commander you control attacks alone, ..."
+  if ((m = L.match(/^Whenever ~ or (?:a|an) (.+?) attacks alone, (.+)$/i))) {
+    const n219 = parseNoun(`a ${m[1]}`);
+    if (n219) return { event: 'attacks', filter: { object: { anyOf: [{ self: true } as never, { ...n219.filter, zone: undefined }] }, custom: 'attacksAlone' }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever ~ and another creature attack different players, ..."
+  if ((m = L.match(/^Whenever ~ and another creature attack different players, (.+)$/i)))
+    return { event: 'attacks', filter: { self: true, custom: 'attackDifferentPlayers' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  // "Whenever all non-Wall creatures you control attack, ..."
+  if ((m = L.match(/^Whenever all (.+?) you control attack, (.+)$/i))) {
+    const n219b = parseNoun(`a ${singularize(m[1])} you control`);
+    if (n219b) return { event: 'attacks', filter: { objectController: 'you', firstEachTurn: true, custom: 'allAttack' }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever a creature you control of the chosen type enters or attacks, ..."
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) of the chosen type (enters|attacks|enters or attacks), (.+)$/i))) {
+    const n219c = parseNoun(`a ${m[1]}`);
+    if (n219c) {
+      const f: TriggerFilter = { object: { ...n219c.filter, zone: undefined, typeIsChosen: 'creatureType' } };
+      const both = /enters or attacks/i.test(m[2]);
+      const first: import('@commander/engine').GameEventName = /^attacks$/i.test(m[2]) ? 'attacks' : 'entersBattlefield';
+      return { event: first, filter: f, hasObject: true, hasPlayer: false, rest: m[3], also: both ? [{ event: 'attacks', filter: f, hasObject: true, hasPlayer: false }] : undefined };
+    }
+  }
+  // "Whenever a basic land is tapped for mana of the chosen color, ..."
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) is tapped for mana(?: of the chosen colou?r)?, (.+)$/i))) {
+    const n219d = parseNoun(`a ${m[1]}`);
+    if (n219d) return { event: 'tappedForMana', filter: { object: { ...n219d.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever you remove a time counter from ~ while it is exiled, ..."
+  if ((m = L.match(/^Whenever you remove (?:a|an) ([\w'-]+) counter from ~(?: while it is exiled)?, (.+)$/i)))
+    return { event: 'counterRemoved', filter: { self: true, counterType: m[1].toLowerCase() as never }, hasObject: true, hasPlayer: true, rest: m[2] };
+  // "Whenever the final chapter ability of a Saga you control triggers, ..."
+  if ((m = L.match(/^Whenever the final chapter ability of (?:a|an) (.+?) you control (?:triggers|resolves), (.+)$/i)))
+    return { event: 'counterAdded', filter: { object: { subtypes: ['Saga'] }, objectController: 'you', counterType: 'lore', custom: 'finalChapter' }, hasObject: true, hasPlayer: false, rest: m[2] };
+  // "Whenever you choose a creature as your Ring-bearer, ..."
+  if ((m = L.match(/^Whenever you choose (?:a|an) creature as your Ring-bearer, (.+)$/i)))
+    return { event: 'ringTempted', filter: { player: 'you' }, hasObject: true, hasPlayer: true, rest: m[1] };
+  // "Whenever a permanent entering causes a triggered ability to trigger, ..."
+  if ((m = L.match(/^Whenever (?:a|an) permanent entering causes a triggered ability (?:of a permanent )?to trigger, (.+)$/i)))
+    return { event: 'entersBattlefield', filter: {}, hasObject: true, hasPlayer: false, rest: m[1] };
+  // "Whenever damage that would be dealt to you is prevented, ..." / "When damage is prevented this way, ..."
+  if ((m = L.match(/^When(?:ever)? damage(?: that would be dealt to you)? is prevented(?: this way)?(?: this turn)?, (.+)$/i)))
+    return { event: 'dealtDamage', filter: { player: 'you', custom: 'damagePrevented' }, hasObject: false, hasPlayer: true, rest: m[1] };
   // ---- Round 214 ----
   if ((m = L.match(/^Whenever ~ evolves, (.+)$/i)))
     return { event: 'entersBattlefield', filter: { object: { types: ['Creature'], other: true, custom: 'biggerThanSource' }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
