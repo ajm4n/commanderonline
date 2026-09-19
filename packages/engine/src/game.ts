@@ -1566,6 +1566,16 @@ export class Game {
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + this.player(p).life, 0);
       case 'handSize':
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + this.player(p).hand.length, 0);
+      case 'playersBeingAttacked': {
+        const defenders = new Set<PlayerId>();
+        for (const id of this.state.turn.attackers) {
+          const o = this.state.objects[id];
+          if (!o || o.attacking === null) continue;
+          const d = typeof o.attacking === 'number' ? this.state.objects[o.attacking]?.controller : o.attacking;
+          if (d !== undefined) defenders.add(d);
+        }
+        return defenders.size;
+      }
       case 'graveyardSize':
         return this.resolvePlayers(a.ref, ctx).reduce((s, p) => s + this.player(p).graveyard.filter((id) => !a.filter || matchesFilter(this, this.obj(id), { ...a.filter, zone: 'graveyard' }, fctx)).length, 0);
       case 'triggerAmount':

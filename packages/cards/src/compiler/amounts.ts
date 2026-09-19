@@ -292,6 +292,15 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const r = ctx.resolvePlayer?.(m[1]);
     if (r) return /graveyard/.test(t) ? { kind: 'graveyardSize', ref: r } : { kind: 'handSize', ref: r };
   }
+  // The Shrine cycle: "where X is the number of cards in all graveyards with the same name as that spell"
+  if (/^(?:the number of )?cards in all graveyards with the same name as (?:that|the) spell$/.test(t))
+    return { kind: 'count', filter: { zone: 'graveyard', sameNameAs: { ref: 'triggerObject' } } };
+  if (/^(?:the number of )?players being attacked$/.test(t)) return { kind: 'playersBeingAttacked' };
+  if ((m = t.match(/^the number of (.+?) cards in (target player's|target opponent's|an opponent's) graveyard$/))) {
+    const noun = parseNoun(`${oc(m, 1)} card`);
+    const r = ctx.resolvePlayer?.(m[2].replace(/'s$/, ''));
+    if (noun && r) return { kind: 'graveyardSize', ref: r, filter: noun.filter };
+  }
   if ((m = t.match(/^the number of (.+?) cards in (?:its controller's|that player's|their) graveyard$/))) {
     const noun = parseNoun(`${oc(m, 1)} card`);
     if (noun) return { kind: 'graveyardSize', ref: thatPlayer(ctx), filter: noun.filter };
