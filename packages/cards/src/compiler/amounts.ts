@@ -193,6 +193,7 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (t === 'the life lost this way' || t === 'the total life lost this way' || t === 'the total amount of life lost this way' || t === 'the amount of life lost this way') return { kind: 'ctxMemory', key: 'lifeLostThisWay' };
   if (t === 'the number of cards milled this way' || t === 'the number of cards put into your graveyard this way') return { kind: 'ctxMemory', key: 'lastMoved' };
   if (t === 'the number of cards revealed this way') return { kind: 'ctxMemory', key: 'revealedCount' };
+  if (/^(?:the number of )?times you paid (?:this|that) cost$/.test(t)) return { kind: 'ctxMemory', key: 'timesPaid' };
   // "the number of red mana symbols in the mana cost of ~"
   if ((m = t.match(/^(?:the number of )?(white|blue|black|red|green) mana symbols in (?:the mana costs? of|its mana cost) ?(.*)$/))) {
     const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white'];

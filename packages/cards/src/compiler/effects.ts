@@ -9673,6 +9673,18 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       ctx.targets.length = saved;
     }
   }
+  // "When you pay this cost one or more times, put that many valor counters on ~" — the Adversary
+  // cycle's follow-up to "you may pay {1}{W} any number of times".
+  if ((m = text.match(/^when you pay (?:this|that) cost one or more times, put that many ([+\-\w\/]+) counters on (.+)$/i))) {
+    const on = objRef(m[2], ctx);
+    if (on) return [{ kind: 'addCounters', counter: m[1], amount: { kind: 'ctxMemory', key: 'timesPaid' }, on }];
+  }
+  if ((m = text.match(/^when you pay (?:this|that) cost one or more times, (.+)$/i))) {
+    const saved = ctx.targets.length;
+    const inner = parseSentence(m[1].replace(/\bthat many\b/gi, 'the number of times you paid this cost'), ctx);
+    if (inner) return [{ kind: 'conditional', if: { kind: 'amount', a: { kind: 'ctxMemory', key: 'timesPaid' }, op: '>=', b: 1 }, then: inner }];
+    ctx.targets.length = saved;
+  }
   if (/^starting with (?:you|the player to your left), /i.test(text)) {
     const saved = ctx.targets.length;
     const alt = parseSentence(text.replace(/^starting with (?:you|the player to your left), /i, ''), ctx);
