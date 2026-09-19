@@ -1926,7 +1926,24 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'unlessPays': {
       for (const p of g.resolvePlayers(e.who, ctx)) {
         let paid = false;
-        if (typeof e.cost === 'object' && 'removeCounters' in e.cost) {
+        if (typeof e.cost === 'object' && 'putFromGraveyardOnBottom' in e.cost) {
+          const n = e.cost.putFromGraveyardOnBottom;
+          const cands = [...g.player(p).graveyard];
+          if (cands.length >= n) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Put ${n} card${n === 1 ? '' : 's'} from your graveyard on the bottom of your library? (choose none to decline)`, candidates: cands, min: 0, max: n, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'objects' && r.ids.length === n) {
+              for (const id of r.ids) g.moveObject(id, 'library', { position: 'bottom' });
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'takeDamageFromSource' in e.cost) {
+          const n = g.resolveAmount(e.cost.takeDamageFromSource, ctx);
+          const r = yield* g.ask({ type: 'yesNo', player: p, prompt: e.text ?? `Take ${n} damage instead? Otherwise: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+          if (r.type === 'yesNo' && r.value) {
+            g.dealDamage(ctx.sourceId ?? null, { kind: 'player', id: p }, n, false);
+            paid = true;
+          }
+        } else if (typeof e.cost === 'object' && 'removeCounters' in e.cost) {
           const d = e.cost.removeCounters;
           const cands = objectsMatching(g, { ...d.filter, controller: p, zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).filter((o) => (o.counters[d.counter] ?? 0) >= d.amount).map((o) => o.id);
           if (cands.length) {

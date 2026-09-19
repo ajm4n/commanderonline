@@ -9160,6 +9160,22 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [{ kind: 'unlessPays', who, cost: m[3], effects: inner }];
     }
   }
+  // "Counter that spell unless you put two cards from your graveyard on the bottom of your library."
+  if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|an opponent) puts? (?:a|an|(\w+)) cards? from (?:their|your) graveyard on the bottom of (?:their|your) library$/i))) {
+    const inner = parseSentence(m[1], ctx);
+    const who = playerRef(m[2], ctx);
+    const n = m[3] ? wordToNumber(m[3]) : 1;
+    if (who && inner && typeof n === 'number')
+      return [{ kind: 'unlessPays', who, cost: { putFromGraveyardOnBottom: n }, effects: inner, text: m[0].slice(m[1].length + 8) }];
+  }
+  // "~ blocks that creature this turn unless its controller has ~ deal damage to them equal to its power."
+  if ((m = text.match(/^(.+?) unless (they|that player|a player|you|its controller|that creature's controller|that opponent|an opponent) has ~ deal (.+?) damage to (?:them|you|him or her)$/i))) {
+    const inner = parseSentence(m[1], ctx);
+    const who = playerRef(/^a player$/i.test(m[2]) ? 'that player' : m[2].replace(/^that creature's controller$/i, 'its controller'), ctx);
+    const dmg = amt(m[3], ctx);
+    if (who && inner && dmg !== null)
+      return [{ kind: 'unlessPays', who, cost: { takeDamageFromSource: dmg }, effects: inner, text: m[0].slice(m[1].length + 8) }];
+  }
   if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) returns? (?:a|an|another|(\w+)) (.+?)(?: (?:you|they) control)? to (?:its|their) owner'?s'? hands?$/i))) {
     const inner = parseSentence(m[1], ctx);
     const who = playerRef(m[2], ctx);
