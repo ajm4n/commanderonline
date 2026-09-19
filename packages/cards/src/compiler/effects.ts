@@ -247,9 +247,11 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
     tapped = true;
   }
   // "an 8/8 Beast creature token that is red, green, and white": the colours trail the body.
-  if ((m = t.match(/^(.+?) token that (?:is|are) ((?:white|blue|black|red|green|colorless)(?:(?:, and|, or|,| and| or) (?:white|blue|black|red|green))*)$/i))) {
+  // "a 3/3 Kavu creature token with trample that is all colors": and a keyword clause may sit between.
+  t = t.replace(/ that (?:is|are) all colors$/i, ' that is white, blue, black, red, and green');
+  if ((m = t.match(/^(.+?) token((?: with .+?)?) that (?:is|are) ((?:white|blue|black|red|green|colorless)(?:(?:, and|, or|,| and| or) (?:white|blue|black|red|green))*)$/i))) {
     const pm2 = m[1].match(/^(.*?)([\dX*]+\/[\dX*]+ )(.*)$/);
-    t = pm2 ? `${pm2[1]}${pm2[2]}${m[2]} ${pm2[3].trim()} token` : `${m[2]} ${m[1]} token`;
+    t = (pm2 ? `${pm2[1]}${pm2[2]}${m[3]} ${pm2[3].trim()} token` : `${m[3]} ${m[1]} token`) + m[2];
   }
   // "a tapped and attacking 1/1 red Devil creature token": the flags may come before the body.
   if ((m = t.match(/^((?:a|an|\w+|X)) tapped and attacking (.+)$/i)) && !/tokens? that/i.test(t)) {
@@ -4265,6 +4267,17 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 238 ----
+  // "As ~ is turned face up, you may attach it to a creature."
+  [/^attach (~|it) to (?:a|an) (.+)$/i, (m, ctx) => {
+    const what = /^~$/.test(m[1]) ? SELF : objRef('it', ctx) ?? SELF;
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!noun || !noun.confident) return null;
+    const key = `attachTo${ctx.targets.length}`;
+    const f: ObjectFilter = { ...noun.filter, zone: 'battlefield' };
+    if (!f.controller && !f.controllerRef) f.controller = 'you';
+    return [{ kind: 'chooseObjects', filter: f, count: 1, key }, { kind: 'attach', what, to: { ref: 'chosen', key } }];
   }],
   // ---- Round 237 ----
   // "If it's a land card, that player puts it into their hand." (Goblin Guide)
@@ -8896,7 +8909,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     if (ctx.lastObj?.ref === 'target' && (ctx.lastObj.slot ?? 0) >= ctx.targets.length) ctx.lastObj = null;
     if (ctx.lastPlayer?.ref === 'target' && (ctx.lastPlayer.slot ?? 0) >= ctx.targets.length) ctx.lastPlayer = null;
     // "The tokens enter tapped and attacking." — a rider on the create-token effect before it.
-    if ((m = s.match(/^the tokens? enters? (tapped and attacking|tapped|attacking)$/i))) {
+    if ((m = s.match(/^(?:the tokens?|it) enters? (tapped and attacking|tapped|attacking)$/i))) {
       const find = (list: Effect[]): Extract<Effect, { kind: 'createToken' }> | null => {
         for (let k = list.length - 1; k >= 0; k--) {
           const e = list[k];

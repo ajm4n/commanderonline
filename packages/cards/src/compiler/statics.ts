@@ -2745,7 +2745,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, counters: { counter: m[2], amount: n } }];
   }
   }
-  if ((m = L.match(/^As ~ enters, choose (a color(?: other than \w+)?|an opponent|a creature type|a planeswalker type|a card name|a nonland card name|a player|a number(?: greater than 0)?|a basic land type|a card type|a permanent type|odd or even|(?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle)(?:, (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle))*(?:,? or (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle))|[A-Z]\w+ or [A-Z]\w+)$/i))) {
+  if ((m = L.match(/^As ~ enters, (?:secretly )?choose (a color(?: other than \w+)?|an opponent|a creature type|a planeswalker type|a card name|a nonland card name|a player|a number(?: greater than 0)?|a basic land type|a card type|a permanent type|odd or even|(?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle)(?:, (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle))*(?:,? or (?:artifact|creature|enchantment|instant|sorcery|land|planeswalker|battle))|[A-Z]\w+ or [A-Z]\w+)$/i))) {
     const c = m[1].toLowerCase();
     const base = { kind: 'replacement' as const, text: line, event: 'entersBattlefield' as const, self: true as const };
     if (c.startsWith('a color')) return [{ ...base, choose: 'color' }];

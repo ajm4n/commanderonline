@@ -187,6 +187,14 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 238 ----
+  // "Whenever you cast a spell that's white, blue, black, or red, put a +1/+1 counter on ~"
+  if ((m = L.match(/^When(?:ever)? (you|an opponent) casts? (?:a|an) (.+? that is (?:white|blue|black|red|green)(?:(?:,? or | and\/or |, )(?:white|blue|black|red|green))+), (.+)$/i))) {
+    const n238 = parseNoun(m[2]);
+    if (n238 && n238.confident) {
+      return { event: 'cast', filter: { player: m[1].toLowerCase() === 'you' ? 'you' : 'opponent', object: { ...n238.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[3] };
+    }
+  }
   // ---- Round 232 ----
   // "Whenever ~ deals combat damage to a player who controls more lands than you, ..."
   if ((m = L.match(/^When(?:ever)? ~ deals combat damage to (?:a|an) (player|opponent) who controls (more|fewer) (.+?) than you, (.+)$/i))) {

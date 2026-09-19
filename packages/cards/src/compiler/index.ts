@@ -788,7 +788,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       }
     }
     // Triggered
-    if ((/^(When|Whenever|At the beginning)/i.test(line) && !/^When you next cast /i.test(line) && !(isSpell && /^When(?:ever)? (?:that|the|it|those|target)\b[^,]*\bthis turn, /i.test(line))) || (!isSpell && /^At (?:the )?end of combat, /i.test(line))) {
+    if ((/^(When|Whenever|At the beginning)/i.test(line) && !/^When you next cast /i.test(line) && !(isSpell && /^When(?:ever)? (?:that|the|it|those|target)\b[^,]*\bthis turn, /i.test(line))) || (!isSpell && /^At (?:the )?end of combat, /i.test(line)) || /^As ~ is turned face up, /i.test(line)) {
       const head = parseTriggerHead(line);
       if (!head) {
         // "When you control no Islands, sacrifice ~" is a state trigger the engine treats like a static rule.
@@ -1127,10 +1127,10 @@ function parseModalHead(text: string): { count: number; notChosen?: 'turn' | 'ga
     }
   }
   if (/^choose up to that many$/i.test(text)) return { count: 6, min: 0 };
-  const m = text.match(/^choose (one|two|one or both|one or more|any number|up to one|up to two|up to three)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
+  const m = text.match(/^choose (one|two|three|four|five|one or both|one or more|any number|up to one|up to two|up to three|up to four|up to five)(?: that (?:has not|hasn't) been chosen( this turn)?)?(?: —)?\.?(?: X is (.+?)\.?)?$/i);
   if (!m) return null;
   const w = m[1].toLowerCase();
-  const out: { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number; xCount?: Amount; random?: boolean } = { count: /two/i.test(w) ? 2 : /three/i.test(w) ? 3 : 1 };
+  const out: { count: number; notChosen?: 'turn' | 'game'; x?: Amount; min?: number; xCount?: Amount; random?: boolean } = { count: /two/i.test(w) ? 2 : /three/i.test(w) ? 3 : /four/i.test(w) ? 4 : /five/i.test(w) ? 5 : 1 };
   if (atRandom) out.random = true;
   if (/^up to /i.test(w)) out.min = 0;
   if (m[2] !== undefined || /been chosen/i.test(text)) out.notChosen = m[2] ? 'turn' : 'game';
