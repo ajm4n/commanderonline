@@ -160,6 +160,10 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (noun) return { kind: 'objectMatches', ref: ctx.self, filter: noun.filter };
   }
   if (/^you have an enduring story$/.test(t)) return { kind: 'enduringStory' };
+  if ((m = t.match(/^(white|blue|black|red|green) is the most common colou?r among all permanents(,? or is tied for most common)?$/))) {
+    const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white'];
+    return { kind: 'mostCommonColor', color: col, orTied: !!m[2] };
+  }
   // Traps: "if three or more creatures are attacking" / "if a white creature is attacking"
   if ((m = t.match(/^(?:(exactly |)(\w+)(?: or more)? |(?:a|an) )(.+?) (?:is|are) attacking$/))) {
     const noun = parseNoun(`a ${singularize(m[3])}`);

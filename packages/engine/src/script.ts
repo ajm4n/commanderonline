@@ -198,6 +198,8 @@ export type Condition =
   | { kind: 'yourTurn' }
   /** Storied: you control(led) three or more artifacts, legendaries and/or Sagas. Latches on. */
   | { kind: 'enduringStory' }
+  /** "as long as blue is the most common color among all permanents (or is tied for most common)" */
+  | { kind: 'mostCommonColor'; color: Color; orTied?: boolean }
   | { kind: 'notYourTurn' }
   | { kind: 'handSize'; ref: Ref; op: Comparison; value: Amount }
   | { kind: 'graveyard'; ref: Ref; op: Comparison; value: Amount; filter?: ObjectFilter }

@@ -1355,6 +1355,17 @@ export class Game {
       }
       case 'yourTurn':
         return this.state.turn.activePlayer === ctx.controller;
+      case 'mostCommonColor': {
+        const counts: Record<string, number> = { W: 0, U: 0, B: 0, R: 0, G: 0 };
+        for (const id of this.state.battlefield) {
+          const o = this.state.objects[id];
+          if (!o) continue;
+          for (const col of this.characteristics(id).colors) counts[col] = (counts[col] ?? 0) + 1;
+        }
+        const mine = counts[c.color] ?? 0;
+        const best = Math.max(...Object.values(counts));
+        return c.orTied ? mine === best && mine > 0 : mine === best && mine > 0 && Object.values(counts).filter((v) => v === best).length === 1;
+      }
       case 'enduringStory': {
         const pl = this.player(ctx.controller);
         if (pl.flags['enduringStory']) return true;
