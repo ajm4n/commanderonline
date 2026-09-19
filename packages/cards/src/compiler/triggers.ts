@@ -187,6 +187,29 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 214 ----
+  if ((m = L.match(/^Whenever ~ evolves, (.+)$/i)))
+    return { event: 'entersBattlefield', filter: { object: { types: ['Creature'], other: true, custom: 'biggerThanSource' }, objectController: 'you' }, hasObject: true, hasPlayer: false, rest: m[1] };
+  if ((m = L.match(/^When(?:ever)? (~|(?:a|an) .+?) becomes renowned, (.+)$/i))) {
+    if (m[1] === '~') return { event: 'dealtCombatDamageToPlayer', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[2] };
+    const n214 = parseNoun(m[1]);
+    if (n214) return { event: 'dealtCombatDamageToPlayer', filter: { object: { ...n214.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever (~|(?:a|an) .+?) fights, (.+)$/i))) {
+    if (m[1] === '~') return { event: 'fights', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[2] };
+    const n214b = parseNoun(m[1]);
+    if (n214b) return { event: 'fights', filter: { object: { ...n214b.filter, zone: undefined } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  if ((m = L.match(/^Whenever you pay life, (.+)$/i)))
+    return { event: 'lifeLost', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^At the beginning of combat on enchanted player's turn, (.+)$/i)))
+    return { event: 'beginningOfCombat', filter: { custom: 'attachedPlayersStep' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^(?:Whenever (?:~'s cumulative upkeep is paid|you pay ~'s cumulative upkeep)|When (?:a player|you) (?:does not|doesn't|do not|don't) pay ~'s cumulative upkeep), (.+)$/i)))
+    return { event: 'beginningOfUpkeep', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) deals damage to enchanted (?:planeswalker|creature|permanent), (.+)$/i))) {
+    const n214c = parseNoun(`a ${m[1]}`);
+    if (n214c) return { event: 'dealtDamage', filter: { source: { ...n214c.filter, zone: undefined }, attachedToSource: true }, hasObject: true, hasPlayer: false, rest: m[2] };
+  }
   // ---- Round 193 ----
   // "Whenever two or more creatures your opponents control attack, ..." / "Whenever three or more creatures you control with flying attack, ..."
   if ((m = L.match(/^Whenever (\w+) or more creatures (you control|your opponents control|an opponent controls)((?: with [\w ]+)?) attack(?: one or more players)?, (.+)$/i))) {

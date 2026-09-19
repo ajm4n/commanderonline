@@ -409,6 +409,8 @@ export interface ObjectFilter {
   powerGTRef?: import('./script.js').Ref;
   toughnessGTRef?: import('./script.js').Ref;
   cmcEQRef?: import('./script.js').Ref;
+  /** "with {H} in its mana cost" */
+  manaCostContains?: string;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];
@@ -635,6 +637,7 @@ export type GameEventName =
   | 'clashed'
   | 'gotEnergy'
   | 'mutates'
+  | 'fights'
   /** Not a real game event: state triggers are checked as state-based actions. */
   | 'stateTrigger'
   | 'cleanup';

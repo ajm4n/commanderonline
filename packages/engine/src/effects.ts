@@ -1265,6 +1265,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const pb = g.characteristics(b.id).power ?? 0;
       g.dealDamage(a.id, { kind: 'object', id: b.id }, pa, false);
       g.dealDamage(b.id, { kind: 'object', id: a.id }, pb, false);
+      g.emit({ name: 'fights', objectId: a.id, sourceId: b.id, playerId: a.controller });
+      g.emit({ name: 'fights', objectId: b.id, sourceId: a.id, playerId: b.controller });
       return;
     }
     case 'bite':

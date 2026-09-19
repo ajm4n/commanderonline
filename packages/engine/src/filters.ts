@@ -225,6 +225,12 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const want = src?.chosen[filter.typeIsChosen];
     if (typeof want !== 'string' || !(ch.types.includes(want) || ch.subtypes.includes(want))) return false;
   }
+  if (filter.manaCostContains !== undefined && !(obj.card.manaCost ?? '').includes(filter.manaCostContains)) return false;
+  if (filter.custom === 'biggerThanSource') {
+    if (ctx.sourceId === null || ctx.sourceId === undefined) return false;
+    const sch = g.characteristics(ctx.sourceId);
+    if (!((ch.power ?? 0) > (sch.power ?? 0) || (ch.toughness ?? 0) > (sch.toughness ?? 0))) return false;
+  }
   if (filter.powerGTRef || filter.toughnessGTRef || filter.cmcEQRef) {
     const rf = filter.powerGTRef ?? filter.toughnessGTRef ?? filter.cmcEQRef!;
     const others = g.resolveRef(rf, { sourceId: ctx.sourceId ?? null, controller: ctx.controller, targets: [], triggerContext: {}, memory: {}, x: 0, modes: [] }).filter((t) => t.kind === 'object');
