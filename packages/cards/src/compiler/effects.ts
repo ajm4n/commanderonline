@@ -6993,10 +6993,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       ctx.lastObj = saved;
     }
   }
-  if ((m = text.match(/^when (that creature|that permanent|it|that token|those creatures|target creature(?: other than ~)?|target permanent) (dies|die|leaves the battlefield|is put into a graveyard) this turn, (.+)$/i))) {
-    const ref = objRef(m[1], ctx);
-    const inner = ref ? parseSentence(m[3], ctx) : null;
-    if (ref && inner) return [{ kind: 'delayedTrigger', event: /dies|die|graveyard/i.test(m[2]) ? 'dies' : 'leavesBattlefield', filter: { objectRef: ref }, effects: inner, text, once: true }];
+  if ((m = text.match(/^when (that creature|that permanent|it|that token|those creatures|target creature(?: other than ~)?|target permanent|~|the permanent you (?:do not|don't) control|the creature an opponent controls|the creature put onto the battlefield with ~) (?:dies|die|leaves the battlefield|is put into a graveyard|is put into your graveyard|dies under your control) this turn, (.+)$/i))) {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    const inner = ref ? parseSentence(m[2], ctx) : null;
+    if (ref && inner) return [{ kind: 'delayedTrigger', event: /leaves the battlefield/i.test(m[0]) ? 'leavesBattlefield' : 'dies', filter: { objectRef: ref }, effects: inner, text, once: true }];
   }
   // "Whenever that creature is dealt damage this turn, ..." / "Whenever target creature deals damage this turn, ..."
   if ((m = text.match(/^when(?:ever)? (that creature|that permanent|it|those creatures|target creature(?: other than ~)?) (is dealt damage by an attacking creature|is dealt damage|deals combat damage|deals damage) this turn, (.+)$/i))) {
@@ -7006,6 +7006,32 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       const dealt = /is dealt damage/i.test(m[2]);
       return [{ kind: 'delayedTrigger', event: dealt ? 'dealtDamage' : 'dealsDamage', filter: { objectRef: dref, ...(/combat/i.test(m[2]) && !dealt ? { combat: true } : {}), ...(/by an attacking creature/i.test(m[2]) ? { source: { attacking: true } } : {}) }, effects: dinner, text, untilEndOfTurn: true }];
     }
+  }
+  // "Whenever it deals combat damage to a player this turn, ..." / "Whenever that creature attacks one of your opponents this turn, ..."
+  if ((m = text.match(/^when(?:ever)? (that creature|that permanent|it|those creatures|target creature) (deals combat damage to a player|attacks one of your opponents|attacks|becomes tapped) this turn, (.+)$/i))) {
+    const tref = objRef(m[1], ctx);
+    const tinner = tref ? parseSentence(m[3], newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true })) : null;
+    if (tref && tinner) {
+      const ev = /combat damage/i.test(m[2]) ? 'dealtCombatDamageToPlayer' : /attacks/i.test(m[2]) ? 'attacks' : 'tapped';
+      return [{ kind: 'delayedTrigger', event: ev, filter: { objectRef: tref }, effects: tinner, text, untilEndOfTurn: true }];
+    }
+  }
+  // "Whenever a creature dealt damage by that creature dies this turn, ..."
+  if ((m = text.match(/^when(?:ever)? (?:a|an) (.+?) dealt damage by (?:that creature|it) (?:this turn )?dies this turn, (.+)$/i))) {
+    const dn2 = parseNoun(`a ${m[1]}`);
+    const di2 = dn2 ? parseSentence(m[2], newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true })) : null;
+    if (dn2 && di2) return [{ kind: 'delayedTrigger', event: 'dies', filter: { object: { ...dn2.filter, zone: undefined, damaged: true } }, effects: di2, text, untilEndOfTurn: true }];
+  }
+  // "When you spend this mana to cast a Dragon creature spell, ..." — approximated as a delayed cast trigger.
+  if ((m = text.match(/^when (?:you spend this mana to cast|that mana is spent to cast) (?:a|an|your) (.+?), (.+)$/i))) {
+    const noun209 = /^commander$/i.test(m[1]) ? { filter: { isCommander: true } as ObjectFilter, confident: true } : parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+    const inner209 = noun209 ? parseSentence(m[2], newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: true })) : null;
+    if (noun209 && inner209) return [{ kind: 'delayedTrigger', event: 'cast', filter: { player: 'you', object: { ...noun209.filter, zone: undefined } }, effects: inner209, text, once: true, untilEndOfTurn: true }];
+  }
+  // "When you spend this mana to cast a spell or activate an ability, ..." / "When that mana is spent, ..."
+  if ((m = text.match(/^when (?:you spend this mana(?: to cast a spell or activate an ability)?|that mana is spent), (.+)$/i))) {
+    const inner209b = parseSentence(m[1], newCtx({ ...ctx, targets: ctx.targets, triggerHasObject: true, triggerHasPlayer: true }));
+    if (inner209b) return [{ kind: 'delayedTrigger', event: 'cast', filter: { player: 'you' }, effects: inner209b, text, once: true, untilEndOfTurn: true }];
   }
   // "When a creature dealt damage this way dies this turn, ..."
   if ((m = text.match(/^when(?:ever)? (?:a|an) (.+?) dealt damage this way dies this turn, (.+)$/i))) {
