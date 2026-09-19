@@ -91,6 +91,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(that|the) spell$/.test(l)) return ctx.lastObj ?? { ref: 'stackTarget' };
   if (/^the chosen (?:creatures|permanents|lands|artifacts|players)$/.test(l) && ctx.lastObj) return ctx.lastObj;
   if (/^any of those cards you (?:didn't|did not) play$/.test(l)) return ctx.lastObj ?? { ref: 'lastMoved' };
+  if (/^the other (?:creature|permanent)$/.test(l)) return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : null) ?? { ref: 'lastMoved' };
   if (l === 'the chosen creature' || l === 'the chosen permanent') return { ref: 'chosen', key: 'chosen' };
   const gy = t.match(/^~ from your graveyard$/i);
   if (gy) return SELF;
@@ -2553,7 +2554,7 @@ const PATTERNS: Pattern[] = [
     ctx.targets.push({ description: `target ${m[1]} attached to a ${m[2]}`, kind: 'object', filter: { subtypes: [m[1]], zone: 'battlefield', attachedToFilter: { ...host.filter, zone: undefined } } });
     return [{ kind: 'destroy', what: { ref: 'target', slot: ctx.targets.length - 1 } }];
   }],
-  [/^(\w+) target players exchange life totals$/i, (m, ctx) => {
+  [/^(?:have )?(\w+) target players exchange life totals$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);
     if (typeof n !== 'number') return null;
     ctx.targets.push({ description: `${m[1]} target players`, kind: 'player', playerFilter: 'any', min: n, max: n, distinct: true });
@@ -3556,7 +3557,7 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'preventAll', combat: m[1] ? true : undefined, sourceRef: ref, to: 'all' }] : null;
   }],
   // "Double target player's life total"
-  [/^double (target player|target opponent|that player|each player|each opponent)'s life totals?$/i, (m, ctx) => {
+  [/^double (target player|target opponent|that player|each player|each opponent|its controller|the controller of that creature)'s life totals?$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
     return who ? [{ kind: 'setLife', amount: { kind: 'times', a: 2, b: { kind: 'life', ref: who } }, who }] : null;
   }],
@@ -4241,6 +4242,66 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 195 ----
+  // "Mill a card for each shred counter on ~"
+  [/^(?:(.+?) )?mills? (?:a card|(\w+|X) cards?) for each (.+)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const per = amt(m[3], ctx);
+    const base = m[2] ? wordToNumber(m[2]) : 1;
+    if (!who || per === null || base === null) return null;
+    return [{ kind: 'mill', amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), who }];
+  }],
+  // "Sacrifice it when you lose control of ~"
+  [/^sacrifice (it|the creature|that creature|the permanent) when you lose control of ~$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'delayedTrigger', event: 'controlChanged', text: m[0], filter: { self: true }, effects: [{ kind: 'sacrifice', what: ref }], once: true }];
+  }],
+  // "Each opponent who doesn't control an Elf loses 1 life"
+  [/^each (opponent|player) who (?:does not|doesn't) control (?:a|an) (.+?) (loses|gains) (\d+) life$/i, (m) => {
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!noun || !noun.confident) return null;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    const inner: Effect = /loses/i.test(m[3])
+      ? { kind: 'loseLife', amount: parseInt(m[4], 10), who: { ref: 'iter' } }
+      : { kind: 'gainLife', amount: parseInt(m[4], 10), who: { ref: 'iter' } };
+    return [{ kind: 'forEach', over, effects: [{ kind: 'conditional', if: { kind: 'not', c: { kind: 'count', filter: { ...noun.filter, controllerRef: { ref: 'iter' }, zone: 'battlefield' }, op: '>=', value: 1 } }, then: [inner] }] }];
+  }],
+  // "It deals 4 damage to target opponent chosen at random"
+  [/^(.+?) deals (\d+|X) damage to (?:a|an|target) (opponent|player) chosen at random$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!src) return null;
+    const amt: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [
+      { kind: 'choosePlayer', key: 'randomPlayer', who: /opponent/i.test(m[3]) ? 'opponent' : 'any', random: true },
+      { kind: 'damage', amount: amt, source: src, to: { ref: 'chosen', key: 'randomPlayer' } },
+    ];
+  }],
+  // "It deals 7 damage to a creature an opponent controls chosen at random" / "It fights target creature an opponent controls chosen at random"
+  [/^(.+?) (deals (\d+|X) damage to|fights) (?:a|an|target) (.+?) chosen at random$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[4]}`);
+    if (!src || !noun || !noun.confident) return null;
+    const key = `rand${ctx.targets.length}`;
+    const pick: Effect = { kind: 'chooseObjects', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' }, count: 1, key, random: true };
+    const ref: Ref = { ref: 'chosen', key };
+    if (/^fights$/i.test(m[2])) return [pick, { kind: 'fight', a: src, b: ref }];
+    const amt: Amount = m[3].toUpperCase() === 'X' ? 'X' : parseInt(m[3], 10);
+    return [pick, { kind: 'damage', amount: amt, source: src, to: ref }];
+  }],
+  // "That creature enters with an additional +1/+1 counter on it"
+  [/^that (creature|permanent|artifact) enters with (?:an additional|(\w+) additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!noun || typeof n !== 'number') return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'extraEnterCounters', data: { filter: { ...noun.filter, zone: undefined }, counter: m[3], amount: n } }, duration: 'thisTurn' }];
+  }],
+  // "Search your library for an artifact card, reveal it, then shuffle"
+  [/^(?:you may )?search your library for (?:a|an) (.+?), reveal (?:it|that card), then shuffle$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'searchLibrary', filter: { ...noun.filter, zone: 'library' }, count: 1, destination: 'hold', key: 'searched', reveal: true, shuffle: true }];
+  }],
   // ---- Round 194 ----
   // "Return two lands you control to their owner's hand"
   [/^return ((?:a|an|two|three|four|five|X) .+?) to (?:its|their) owner'?s'? hands?$/i, (m, ctx) => {
@@ -4275,7 +4336,7 @@ const PATTERNS: Pattern[] = [
     return a && b ? [...a, ...b] : null;
   }],
   // "When you lose control of the creature, tap it" (a delayed trigger left behind by a gain-control spell)
-  [/^when you lose control of (?:the|that) (creature|permanent|artifact|land), (.+)$/i, (m, ctx) => {
+  [/^when you lose control of (?:the|that) (creature|permanent|artifact|land|Equipment|Aura|Vehicle), (.+)$/i, (m, ctx) => {
     const ref = ctx.lastObj;
     if (!ref) return null;
     const inner = parseSentence(m[2], ctx);
@@ -5462,7 +5523,7 @@ const PATTERNS: Pattern[] = [
   // "It also gets +3/+0 until end of turn." / "~ also deals 3 damage to X."
   [/^(.+?) also (gets?|gains?|deals?|has|have|draws?|loses?) (.+)$/i, (m, ctx) => parseSentence(`${m[1]} ${m[2]} ${m[3]}`, ctx)],
   // "They are no longer suspected."
-  [/^(?:they|it|those creatures) (?:is|are) no longer suspected$/i, (m, ctx) => {
+  [/^(?:they|it|those creatures|all suspected creatures) (?:is|are) no longer suspected$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? SELF;
     return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'clearSuspected' }, on: ref, duration: 'permanent' }];
   }],

@@ -84,6 +84,11 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     if (/^basic land types? among lands (?:they|you) controls?$/.test(t1)) {
       return { kind: 'distinctValues', stat: 'name', filter: { types: ['Land'], supertypes: ['Basic'], zone: 'battlefield', controller: /they/.test(t1) ? undefined : 'you' } };
     }
+    // "each shred counter on ~"
+    {
+      const nc = t1.match(/^([\w'-]+) counters? on (?:it|~|that permanent|that creature|that card)$/);
+      if (nc && nc[1] !== 'kinds' && nc[1] !== 'of') return { kind: 'countersOn', ref: /~/.test(text) ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : ctx.self), counter: nc[1] as never };
+    }
     // "each player who was dealt combat damage this turn"
     if (/^players? who (?:was|were) dealt combat damage this turn$/.test(t1)) return { kind: 'eventsThisTurn', event: 'dealtCombatDamageToPlayer', player: 'any' };
     // "each card returned to your hand this way"
