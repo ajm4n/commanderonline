@@ -7761,6 +7761,27 @@ const PATTERNS: Pattern[] = [
   }],
 ];
 
+/**
+ * "…and you may spend mana as though it were mana of any color to cast it": mark the
+ * play-from-exile (or cast) effect this rider belongs to. Returns false when there is none.
+ */
+function setAnyMana(list: Effect[]): boolean {
+  for (let k = list.length - 1; k >= 0; k--) {
+    const e = list[k];
+    if (e.kind === 'playFromExile') {
+      e.anyMana = true;
+      return true;
+    }
+    if (e.kind === 'castFrom') {
+      e.anyManaType = true;
+      return true;
+    }
+    const nested = (e as { effects?: Effect[] }).effects;
+    if (Array.isArray(nested) && setAnyMana(nested)) return true;
+  }
+  return false;
+}
+
 function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref): Effect[] | null {
   let t = targetText.trim();
   let divided = false;
@@ -8843,6 +8864,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (alt) return alt;
     ctx.targets.length = saved;
   }
+  // "You may play the exiled card for as long as it remains exiled, and you may spend mana as
+  // though it were mana of any color to cast it."
+  if ((m = text.match(/^(.+?),? and (?:you|they) may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to (?:cast|pay) .+$/i))) {
+    const saved = ctx.targets.length;
+    const inner = parseSentence(m[1], ctx);
+    if (inner && setAnyMana(inner)) return inner;
+    ctx.targets.length = saved;
+  }
   // A trigger written inside an ability's body is a delayed trigger the ability sets up:
   // "{2}{B}, {T}: Put target creature card from a graveyard onto the battlefield under your
   // control. When ~ becomes untapped or you lose control of ~, exile that creature."
@@ -8908,6 +8937,9 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // keep pointing at a target slot that no longer exists.
     if (ctx.lastObj?.ref === 'target' && (ctx.lastObj.slot ?? 0) >= ctx.targets.length) ctx.lastObj = null;
     if (ctx.lastPlayer?.ref === 'target' && (ctx.lastPlayer.slot ?? 0) >= ctx.targets.length) ctx.lastPlayer = null;
+    // "If you cast a spell this way, you may spend mana as though it were mana of any color to
+    // cast it." — a rider on the play-from-exile effect before it.
+    if (/^(?:if you cast a spell this way, )?(?:you|they) may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to (?:cast|pay)\b/i.test(s) && setAnyMana(effects)) continue;
     // "The tokens enter tapped and attacking." — a rider on the create-token effect before it.
     if ((m = s.match(/^(?:the tokens?|it) enters? (tapped and attacking|tapped|attacking)$/i))) {
       const find = (list: Effect[]): Extract<Effect, { kind: 'createToken' }> | null => {

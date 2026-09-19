@@ -87,6 +87,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 239 ----
+  // "You may spend mana as though it were mana of any color to cast planeswalker spells."
+  if ((m = L.match(/^You may spend mana as though it were mana of any (?:colou?r|type) to cast (.+?) spells$/i))) {
+    const n239 = parseNoun(`a ${m[1]} spell`);
+    if (n239 && n239.confident) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'manaAsAnyColor', data: { filter: { ...n239.filter, zone: undefined } } } } as never];
+  }
+  // "You may spend mana as though it were mana of any color to activate abilities of creatures you control."
+  // "... to pay the activation costs of ~'s abilities."
+  if ((m = L.match(/^You may spend mana as though it were mana of any (?:colou?r|type) to (?:pay the activation costs of (~)'s abilities|activate abilities of (.+?))$/i))) {
+    const f239 = m[1] ? { self: true } : parseNoun(`a ${singularize(m[2])}`)?.filter;
+    if (f239) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'manaAsAnyColorAbilities', data: { filter: { ...f239, zone: undefined } } } } as never];
+  }
   // ---- Round 235 ----
   // "As long as a creature card with flying is in a graveyard, ~ has flying."
   if ((m = L.match(/^As long as (?:a|an) (.+?) is in (?:a|any) graveyard, ~ has (.+?)$/i))) {

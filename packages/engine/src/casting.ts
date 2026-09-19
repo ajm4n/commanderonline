@@ -575,7 +575,16 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller: p })) continue;
       reduce += d.amount ?? 0;
     }
-    const paid = yield* payCost(g, p, reduce > 0 ? reduceGeneric(parsed, reduce) : parsed, x, obj.id);
+    let manaCost = reduce > 0 ? reduceGeneric(parsed, reduce) : parsed;
+    // "You may spend mana as though it were mana of any color to activate abilities of creatures you control."
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || r.tag !== 'manaAsAnyColorAbilities') continue;
+      const d = (r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller: p })) continue;
+      manaCost = { symbols: manaCost.symbols.map((sy) => (sy.kind === 'color' || sy.kind === 'hybrid' || sy.kind === 'phyrexian' ? { kind: 'generic' as const, amount: 1 } : sy.kind === 'monoHybrid' ? { kind: 'generic' as const, amount: 2 } : sy)), xCount: manaCost.xCount };
+      break;
+    }
+    const paid = yield* payCost(g, p, manaCost, x, obj.id);
     if (!paid) return false;
   }
   // Pay the rest
@@ -892,6 +901,15 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
     const d = (r.data as { filter?: import('./types.js').ObjectFilter; life?: number } | undefined) ?? {};
     if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
     if (obj.memory['defilerLifePaid']) cost = adjustGeneric(cost, -1);
+  }
+  // "You may spend mana as though it were mana of any color to cast <X> spells": every coloured
+  // symbol becomes generic, the same shape as a card-specific `anyManaType`.
+  for (const r of g.playerRules(p)) {
+    if (r.kind !== 'custom' || r.tag !== 'manaAsAnyColor') continue;
+    const d = (r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+    if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+    cost = { symbols: cost.symbols.map((sy) => (sy.kind === 'color' || sy.kind === 'hybrid' || sy.kind === 'phyrexian' ? { kind: 'generic' as const, amount: 1 } : sy.kind === 'monoHybrid' ? { kind: 'generic' as const, amount: 2 } : sy)), xCount: cost.xCount };
+    break;
   }
   // Cost reductions / increases from static rules.
   let delta = 0;
