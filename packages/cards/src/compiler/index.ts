@@ -989,7 +989,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     // Spell text
     if (isSpell) {
       // "Morbid — ~ deals 5 damage instead if a creature died this turn." rewrites the previous line's effects.
-      if (lastSpellLine !== null && lastSpellStart === 0 && /instead(?: if .+)?\.?$/i.test(line) && !/ would /i.test(line)) {
+      // Oracle text writes it either way round: "X instead" or "instead X".
+      if (lastSpellLine !== null && lastSpellStart === 0 && /\binstead\b/i.test(line) && !/ would /i.test(line)) {
         const fresh = newCtx({ isSpell: true });
         const r = parseEffects(`${lastSpellLine}. ${line}`, fresh);
         if (!r.unhandled.length) {

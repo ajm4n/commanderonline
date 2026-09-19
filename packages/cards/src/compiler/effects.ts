@@ -4422,6 +4422,56 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
+  // ---- Round 284 ----
+  // "That player reveals their hand, you choose a nonland card from it, then that player discards that card."
+  [/^(.+?) reveals? (?:their|your) hand, you choose (?:(?:a|an)|(\w+)) (.+?) from it, then (?:that player|they|.+?) discards? (?:that card|those cards|them)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    const noun = parseNoun(`a ${typeof n === 'number' && n > 1 ? singularize(m[3]) : m[3]}`);
+    if (!who || !noun || typeof n !== 'number') return null;
+    const key = `hand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'revealHand', who },
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'hand' }, owner: who, count: n, key },
+      { kind: 'discardObjects', what: { ref: 'chosen', key } },
+    ];
+  }],
+  // "That player reveals their hand and exiles all cards with the same name as that creature from it."
+  [/^(.+?) reveals? (?:their|your) hand and (discards?|exiles?) all cards(?: from it)? with the same name as (.+?)(?: from it| from (?:their|your) hand and graveyard)?$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const of = objRef(m[3], ctx);
+    if (!who || !of) return null;
+    return [
+      { kind: 'revealHand', who },
+      ...(/^exile/i.test(m[2])
+        ? [{ kind: 'exile', what: { ref: 'all', filter: { zone: 'hand', ownerRef: who, sameNameAs: of } } } as Effect]
+        : [{ kind: 'discard', amount: 'hand', who, filter: { sameNameAs: of } } as Effect]),
+    ];
+  }],
+  // "Target player reveals their hand and discards all cards with that spell's mana value."
+  [/^(.+?) reveals? (?:their|your) hand and discards? all cards with that spell's mana value$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    return who ? [{ kind: 'revealHand', who }, { kind: 'discard', amount: 'hand', who, filter: { cmcEQRef: { ref: 'triggerObject' } } }] : null;
+  }],
+  // "Its controller reveals cards from the top of their library until they reveal a creature card,
+  //  puts it onto the battlefield, then shuffles the rest into their library."
+  [/^(?:for each .+?, )?(.+?) reveals? cards from the top of (?:their|your) library until (?:they|you) reveals? (?:a|an) (.+?), puts? (?:it|that card) (onto the battlefield|into (?:their|your) hand|into (?:their|your) graveyard), then (?:shuffles? the rest into (?:their|your) library|puts? the rest on the bottom of (?:their|your) library in a random order)$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!who || !noun || !noun.confident) return null;
+    const dest = /battlefield/i.test(m[3]) ? 'battlefield' : /hand/i.test(m[3]) ? 'hand' : 'graveyard';
+    return [{ kind: 'revealUntil', filter: { ...noun.filter, zone: 'library' }, destination: dest, rest: /shuffle/i.test(m[0]) ? 'shuffle' : 'bottom', who }];
+  }],
+  // "Then that player reveals their hand and exiles all cards with that name from their hand and graveyard."
+  [/^(.+?) reveals? (?:their|your) hand and exiles? all cards with that name from (?:their|your) hand and graveyard$/i, (m, ctx) => {
+    const who = subjectPlayer(m[1], ctx);
+    if (!who) return null;
+    return [
+      { kind: 'revealHand', who },
+      { kind: 'exile', what: { ref: 'all', filter: { zoneIn: ['hand', 'graveyard'], ownerRef: who, nameIsChosen: 'cardName' } } },
+    ];
+  }],
   // ---- Round 275 ----
   // "Put a land card from a graveyard onto the battlefield tapped under your control."
   [/^put (?:a|an) (.+?) from a graveyard onto the battlefield( tapped)?(?: under your control)?$/i, (m, ctx) => {

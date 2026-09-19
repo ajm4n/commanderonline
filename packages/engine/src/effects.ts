@@ -1619,7 +1619,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           }
           if (hits.length) ctx.memory['lastMoved'] = hits;
         }
-        if (e.rest === 'bottom') for (const id of g.rng.shuffle(rest)) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
+        if (e.rest === 'shuffle') {
+          for (const id of rest) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
+          if (rest.length) g.shuffleLibrary(g.state.objects[rest[0]].owner);
+        } else if (e.rest === 'bottom') for (const id of g.rng.shuffle(rest)) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
         else if (e.rest === 'top') for (const id of [...rest].reverse()) g.moveObject(id, 'library', { position: 'top', skipEvents: true });
         else for (const id of rest) g.moveObject(id, e.rest, { skipEvents: e.rest === 'hand', cause: e.rest === 'exile' ? 'exile' : 'mill' });
       }
