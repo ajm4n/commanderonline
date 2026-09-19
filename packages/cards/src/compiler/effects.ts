@@ -34,7 +34,7 @@ export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
 const SELF: Ref = { ref: 'self' };
 const YOU: Ref = { ref: 'controller' };
 
-const EXTRA_KEYWORDS = ['mentor', 'exalted', 'banding', 'melee', 'flanking', 'bushido', 'decayed', 'training', 'backup', 'plainswalk', 'islandwalk', 'swampwalk', 'mountainwalk', 'forestwalk', 'landwalk', 'phasing', 'rampage', 'annihilator', 'afflict', 'battle cry', 'dethrone', 'myriad', 'extort', 'ingest', 'devoid', 'wither', 'toxic', 'riot', 'unleash', 'undying', 'persist', 'protection from the chosen color', 'protection from all colors', 'hexproof from each color', 'ward {1}', 'ward {2}', 'ward {3}', 'ward {4}', 'ward—pay 2 life', 'ward—pay 3 life', 'cumulative upkeep', 'cascade', 'storm', 'prowess', 'evolve', 'skulk', 'shadow', 'horsemanship', 'fear', 'intimidate', 'convoke', 'delve', 'improvise', 'ravenous', 'daybound', 'nightbound', 'squad', 'enlist', 'sunburst', 'modular', 'vanishing', 'fading', 'echo', 'living weapon', 'reconfigure', 'compleated', 'for mirrodin!', 'jump-start', 'afterlife', 'ascend', 'exert', 'crew', 'partner', 'changeling', 'suspend', 'flash', 'provoke', 'melee', 'umbra armor', 'totem armor'];
+const EXTRA_KEYWORDS = ['mentor', 'exalted', 'banding', 'melee', 'flanking', 'bushido', 'decayed', 'training', 'backup', 'plainswalk', 'islandwalk', 'swampwalk', 'mountainwalk', 'forestwalk', 'landwalk', 'phasing', 'rampage', 'annihilator', 'afflict', 'battle cry', 'dethrone', 'myriad', 'extort', 'ingest', 'devoid', 'wither', 'toxic', 'riot', 'unleash', 'undying', 'persist', 'protection from the chosen color', 'protection from all colors', 'hexproof from each color', 'ward {1}', 'ward {2}', 'ward {3}', 'ward {4}', 'ward—pay 2 life', 'ward—pay 3 life', 'cumulative upkeep', 'cascade', 'storm', 'prowess', 'evolve', 'skulk', 'shadow', 'horsemanship', 'fear', 'intimidate', 'convoke', 'delve', 'improvise', 'ravenous', 'daybound', 'nightbound', 'squad', 'enlist', 'sunburst', 'modular', 'vanishing', 'fading', 'echo', 'living weapon', 'reconfigure', 'compleated', 'for mirrodin!', 'jump-start', 'afterlife', 'ascend', 'exert', 'crew', 'partner', 'changeling', 'suspend', 'flash', 'provoke', 'melee', 'umbra armor', 'totem armor', 'tantrum', 'bands with other legendary creatures'];
 const KEYWORD_WORDS = ['flying', 'first strike', 'double strike', 'deathtouch', 'lifelink', 'trample', 'vigilance', 'haste', 'flash', 'defender', 'reach', 'menace', 'hexproof', 'indestructible', 'shroud', 'fear', 'intimidate', 'skulk', 'horsemanship', 'shadow', 'infect', 'wither', 'prowess', 'undying', 'persist', 'changeling', 'protection from white', 'protection from blue', 'protection from black', 'protection from red', 'protection from green', 'protection from all colors', 'protection from each color', 'protection from creatures', 'protection from artifacts', 'protection from everything', 'protection from instants', 'protection from sorceries', 'protection from planeswalkers', 'protection from colorless', 'protection from multicolored', 'protection from monocolored', 'hexproof from white', 'hexproof from blue', 'hexproof from black', 'hexproof from red', 'hexproof from green'];
 
 export function parseKeywordList(text: string): string[] | null {
@@ -4249,6 +4249,41 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 202 ----
+  // "Choose a number greater than 0 and a color"
+  [/^choose a number greater than (\d+) and a colou?r$/i, (m) => [
+    { kind: 'chooseNumber', min: parseInt(m[1], 10) + 1, max: 20 },
+    { kind: 'chooseColor', key: 'color' },
+  ]],
+  // "That player puts those cards into their hand, then shuffles"
+  [/^(.+?) puts those cards into their hand,? then shuffles$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return who ? [{ kind: 'moveToZone', what: ref, zone: 'hand' }, { kind: 'shuffle', who }] : null;
+  }],
+  // "Then put the last chosen card into your hand"
+  [/^put the last chosen card into your hand$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'chosen', key: 'chosen' } as Ref);
+    return [{ kind: 'moveToZone', what: ref, zone: 'hand' }];
+  }],
+  // "Unless target player pays {3}, that player loses 5 life and you gain 5 life"
+  [/^unless (target player|target opponent|that player|its controller) pays ((?:\{[^}]+\})+), (.+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const inner = parseSentence(m[3], newCtx({ ...ctx, targets: ctx.targets, lastPlayer: who }));
+    return inner ? [{ kind: 'unlessPays', who, cost: m[2], effects: inner }] : null;
+  }],
+  // "Put target creature on top of its owner's library, then fateseal 2"
+  [/^(put .+? on (?:top|the bottom) of (?:its|their) owner'?s'? library), then (.+)$/i, (m, ctx) => {
+    const a = parseSentence(m[1], ctx);
+    const b = a ? parseSentence(m[2], ctx) : null;
+    return a && b ? [...a, ...b] : null;
+  }],
+  // "Target creature's controller reveals a card at random from their hand"
+  [/^(target creature's controller|its controller|that creature's controller) reveals? (?:a|an) card at random from their hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'revealHand', who, count: 1, random: true }] : null;
+  }],
   // ---- Round 201 ----
   // "Choose a number."
   [/^(?:(.+?) )?chooses? a number$/i, (m, ctx) => {
@@ -4275,7 +4310,7 @@ const PATTERNS: Pattern[] = [
   }],
   // ---- Round 200 ----
   // "Put a charge counter on it or remove one from it"
-  [/^put (?:a|an) ([+-]\d+\/[+-]\d+|[\w'-]+) counter on (it|~) or remove one from (?:it|~)$/i, (m, ctx) => {
+  [/^put (?:a|an) ([+-]\d+\/[+-]\d+|[\w'-]+) counter on (it|~) or remove (?:one|a \1 counter) from (?:it|~)$/i, (m, ctx) => {
     const ref = /^~$/.test(m[2]) ? SELF : objRef(m[2], ctx) ?? SELF;
     return [{ kind: 'chooseMode', count: 1, options: [
       { text: `Put a ${m[1]} counter on it`, effects: [{ kind: 'addCounters', counter: m[1] as never, amount: 1, on: ref }] },
@@ -4330,7 +4365,7 @@ const PATTERNS: Pattern[] = [
     ] }];
   }],
   // "They are 2/2 Cyberman artifact creatures"
-  [/^(?:they are|it is|those tokens are) ([\dX]+)\/([\dX]+)((?: [\w-]+)*)$/i, (m, ctx) => {
+  [/^(?:they are|it is|those tokens are|each of them is) (?:(?:a|an) )?([\dX]+)\/([\dX]+)((?: [\w-]+)*?)(?: with ([\w ,]+?))?(?: in addition to (?:its|their) other types)?$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
     const words = m[3].trim().split(/\s+/).filter(Boolean);
     const types = words.filter((w) => /^(artifact|creature|enchantment|land)s?$/i.test(w)).map((w) => w.replace(/s$/i, '').replace(/^\w/, (c) => c.toUpperCase()));
@@ -4391,7 +4426,7 @@ const PATTERNS: Pattern[] = [
   }],
   // ---- Round 197 ----
   // "You and another target player each draw a card"
-  [/^you and (another target player|target player|target opponent|the attacking player|that player) each (.+)$/i, (m, ctx) => {
+  [/^you and (another target player|target player|target opponent|the attacking player|that player|its controller|that creature's controller|each opponent) each (.+)$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
     if (!who) return null;
     const mine = parseSentence(`you ${m[2]}`, newCtx({ ...ctx, targets: ctx.targets }));
