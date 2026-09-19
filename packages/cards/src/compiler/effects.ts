@@ -4409,6 +4409,17 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
+  // ---- Round 264 ----
+  // Processors: "You may put a card an opponent owns from exile into that player's graveyard."
+  [/^(you may )?put (?:a|an) card an opponent owns from exile into that player's graveyard$/i, (m, ctx) => {
+    const key = `processed${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    const steps: Effect[] = [
+      { kind: 'chooseObjects', who: YOU, filter: { zone: 'exile', owner: 'opponent' }, count: 1, key, upTo: !!m[1] },
+      { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'graveyard' },
+    ];
+    return m[1] ? [{ kind: 'may', effects: steps }] : steps;
+  }],
   // ---- Round 255 ----
   // "When that creature dies this turn, return it to the battlefield under your control."
   [/^when (that creature|it|that permanent|that card) (dies|leaves the battlefield) this turn, (.+)$/i, (m, ctx) => {

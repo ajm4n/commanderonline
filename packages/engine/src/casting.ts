@@ -456,6 +456,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     if (!inHand && !onField) return false;
   }
   if (cost.revealFromHand && !g.player(p).hand.some((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHand, zone: 'hand' }, ctx))) return false;
+  if (cost.processFromExile && !objectsMatching(g, { ...cost.processFromExile, zone: 'exile', owner: 'opponent' }, ctx).length) return false;
   if (cost.blight !== undefined && !cost.blightOptional && !objectsMatching(g, { types: ['Creature'], controller: 'you', zone: 'battlefield' }, ctx).length) return false;
   if (cost.collectEvidence) {
     const cands = [...g.player(p).graveyard];
@@ -489,6 +490,14 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
         if (moved) obj.memory['exiled'] = [moved.id];
       }
     }
+  }
+  if (cost.processFromExile) {
+    const cands = objectsMatching(g, { ...cost.processFromExile, zone: 'exile', owner: 'opponent' }, ctx).map((o) => o.id);
+    if (!cands.length) return false;
+    const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: "Put a card an opponent owns from exile into that player's graveyard", candidates: cands, min: 1, max: 1, sourceId: obj.id });
+    if (resp.type !== 'objects' || !resp.ids.length) return false;
+    g.moveObject(resp.ids[0], 'graveyard');
+    obj.memory['processed'] = resp.ids[0];
   }
   if (cost.revealFromHandX) {
     const cands = g.player(p).hand.filter((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHandX, zone: 'hand' }, ctx));

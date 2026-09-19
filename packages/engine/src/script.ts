@@ -608,6 +608,8 @@ export interface AbilityCost {
   revealFromHandCount?: number;
   /** "Reveal X white cards from your hand": the player picks X, which becomes the ability's X. */
   revealFromHandX?: ObjectFilter;
+  /** Processors: "Put a card an opponent owns from exile into that player's graveyard." */
+  processFromExile?: ObjectFilter;
   /** "As an additional cost, choose a creature type" (stored as memory `creatureType`). */
   chooseCreatureType?: boolean;
   /** Blight N: put N -1/-1 counters on a creature you control. */
