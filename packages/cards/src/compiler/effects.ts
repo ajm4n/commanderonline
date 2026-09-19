@@ -965,7 +965,7 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'applyRule', rule: { kind: 'mustAttack' }, on: ref, duration: 'endOfTurn' }] : null;
   }],
   [/^you may play an additional land this turn$/i, () => [{ kind: 'extraLandThisTurn' }]],
-  [/^(.+?) (?:does|do) not untap during (?:its|their) controller'?s'? next untap step$/i, (m, ctx) => {
+  [/^(.+?) (?:does|do) not untap during (?:(?:its|their) controller'?s'?|the player's|that player's|your) next untap step$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilNextUntap' }] : null;
   }],
@@ -4313,7 +4313,18 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
-  // ---- Round 258 ----
+  // ---- Round 259 ----
+  // "You get half X rad counters, rounded up."
+  [/^(?:(.+?) )?gets? (half X, rounded (?:up|down)|half X|X|\d+|[a-z]+) ([\w'-]+) counters?$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : YOU;
+    if (!who) return null;
+    const raw = m[2].toLowerCase();
+    const a: Amount | null = /^half x/.test(raw)
+      ? { kind: 'half', a: 'X', round: /rounded down/.test(raw) ? 'down' : 'up' }
+      : raw === 'x' ? 'X' : (wordToNumber(m[2]) as Amount | null);
+    if (a === null) return null;
+    return [{ kind: 'addCounters', counter: m[3], amount: a, on: who }];
+  }],
   // "That player looks at the top three cards of your library, then puts them back in any order."
   [/^(.+?) looks? at the top (\w+|X) cards? of (your|their|that player's) library, then puts? them back in any order$/i, (m, ctx) => {
     const looker = playerRef(m[1], ctx);
@@ -9519,6 +9530,20 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
     }
     if (a && b) return [...a, ...b];
+    ctx.targets.length = saved;
+  }
+  // "... and an additional 1 damage to each green creature": "additional" only relates the clauses.
+  if (/ and (?:an )?additional \d+ damage to /i.test(text)) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(text.replace(/ and (?:an )?additional (\d+) damage to /i, ' and $1 damage to '), ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
+  }
+  // "~ deals damage equal to its power divided as you choose among any number of target creatures"
+  if ((m = text.match(/^(.+?) deals damage equal to (.+?) divided (as you choose|evenly, rounded down,) among (.+)$/i))) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(`${m[1]} deals X damage divided ${m[3]} among ${m[4]}, where X is ${m[2]}`, ctx);
+    if (alt) return alt;
     ctx.targets.length = saved;
   }
   // "White creatures get an additional +1/+1": the "additional" only relates it to another line.
