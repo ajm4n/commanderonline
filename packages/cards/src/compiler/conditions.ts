@@ -332,7 +332,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^(defending player|target player|that player|an opponent) is the monarch$/))) return { kind: 'isMonarch', ref: m[1] === 'defending player' ? { ref: 'defendingPlayer' } : thatPlayer };
   if ((m = t.match(/^(defending player|target player|that player|an opponent) is poisoned$/))) return { kind: 'playerStat', stat: 'poison', ref: m[1] === 'defending player' ? { ref: 'defendingPlayer' } : thatPlayer, op: '>=', value: 1 };
   // "it escaped"
-  if (/^(?:it|~|that spell) escaped$/.test(t)) return { kind: 'memoryFlag', key: 'escaped' };
+  if (/^(?:it|~|that spell) escaped$/.test(t)) return { kind: 'castFrom', zone: 'graveyard' };
   if ((m = t.match(/^there are (\w+) or more (.+?) (?:total )?in all graveyards$/))) {
     const noun = parseNoun(oc(m, 2).replace(/ cards$/i, ' card'));
     const n = wordToNumber(m[1]);

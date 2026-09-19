@@ -1603,7 +1603,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^~ escapes with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w' -]+?) counters? on it$/i))) {
     const n = m[1] ? wordToNumber(m[1]) : 1;
     if (n === null) break sx4;
-    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, condition: { kind: 'memoryFlag', key: 'escaped' }, counters: { counter: m[2], amount: n } }];
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, condition: { kind: 'castFrom', zone: 'graveyard' }, counters: { counter: m[2], amount: n } }];
   }
   }
   // "~ can't attack a player it has already attacked this turn."

@@ -10029,7 +10029,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       if (kick && prev && prev.kind === 'createToken') {
         const n = wordToNumber(kick[1]);
         if (typeof n === 'number') {
-          effects[effects.length - 1] = { kind: 'conditional', if: { kind: 'memoryFlag', key: 'kicked' }, then: [{ ...prev, count: n }], else: [prev] };
+          effects[effects.length - 1] = { kind: 'conditional', if: { kind: 'wasKicked' }, then: [{ ...prev, count: n }], else: [prev] };
           continue;
         }
       }

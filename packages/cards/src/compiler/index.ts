@@ -625,6 +625,20 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
                 : [{ kind: 'createToken', token: { name: m[1], typeLine: `Token Artifact — ${m[1]}`, colors: [], preset: m[1] }, count: 1, who: to }];
         gift = { text: line.replace(/^Gift /i, ''), effects };
       }
+      // "Renown 2": the first time it connects it gets the counters and stays renowned.
+      if ((m = line.match(/^Renown (\d+)$/i))) {
+        abilities.push({
+          kind: 'triggered',
+          text: line,
+          event: 'dealtCombatDamageToPlayer',
+          filter: { self: true },
+          condition: { kind: 'not', c: { kind: 'memoryFlag', key: 'renowned' } },
+          effects: [
+            { kind: 'addCounters', counter: '+1/+1', amount: parseInt(m[1], 10), on: { ref: 'self' } },
+            { kind: 'setMemory', key: 'renowned', value: true },
+          ],
+        });
+      }
       // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
       if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
