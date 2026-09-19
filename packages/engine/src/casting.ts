@@ -1457,6 +1457,19 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
 
   // X
   let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), kickerCosts, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
+  // "If you cast a spell this way, pay life equal to its mana value rather than paying its mana cost."
+  let lifeInsteadOfMana = 0;
+  if (!opts.free && fromZone === 'library') {
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || r.tag !== 'playFromTop') continue;
+      const d = (r.data as { payLifeEqualToManaValue?: boolean; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+      if (!d.payLifeEqualToManaValue) continue;
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+      lifeInsteadOfMana = g.characteristics(obj.id).manaValue;
+      cost = { symbols: [], xCount: cost.xCount };
+      break;
+    }
+  }
   // Spree: each chosen mode carries an additional cost.
   if (!opts.free && spell && spell.kind === 'spell' && spell.modeCosts) {
     for (const mi of modes) {
@@ -1550,6 +1563,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     triggerContext: targetSlots ? { targetSlots } : undefined,
   };
   g.state.stack.push(item);
+  if (lifeInsteadOfMana > 0) g.loseLife(p, lifeInsteadOfMana, id);
   obj.wasCast = true;
   player.spellsCastThisTurn++;
   if (obj.isCommander && fromZone === 'command') obj.commanderCasts++;

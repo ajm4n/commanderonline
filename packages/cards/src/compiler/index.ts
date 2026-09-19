@@ -368,6 +368,31 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    // Bolas's Citadel writes both sentences on one line.
+    if ((m = line.match(/^(.+?)\. If you cast a spell this way, pay life equal to its mana value rather than pay(?:ing)? its mana cost\.?$/i))) {
+      const base = parseStatic(m[1], !isSpell);
+      const first = base?.[0] as { kind: string; rule?: { kind: string; tag?: string; data?: Record<string, unknown> } } | undefined;
+      if (base && first?.kind === 'static' && first.rule?.kind === 'custom' && first.rule.tag === 'playFromTop') {
+        first.rule.data = { ...(first.rule.data ?? {}), payLifeEqualToManaValue: true };
+        abilities.push(...base);
+        compiledLines.push(line);
+        continue;
+      }
+    }
+    // "If you cast a spell this way, pay life equal to its mana value rather than paying its mana cost."
+    if (/^If you cast a spell this way, pay life equal to its mana value rather than pay(?:ing)? its mana cost\.?$/i.test(line)) {
+      let attached = false;
+      for (let k = abilities.length - 1; k >= 0 && !attached; k--) {
+        const ab = abilities[k] as { kind: string; rule?: { kind: string; tag?: string; data?: Record<string, unknown> } };
+        if (ab.kind !== 'static' || ab.rule?.kind !== 'custom' || ab.rule.tag !== 'playFromTop') continue;
+        ab.rule.data = { ...(ab.rule.data ?? {}), payLifeEqualToManaValue: true };
+        attached = true;
+      }
+      if (attached) {
+        compiledLines.push(line);
+        continue;
+      }
+    }
     // Cases: "To solve — <condition>." marks the Case solved once the condition holds.
     if ((m = line.match(/^To solve — (.+?)\.?$/i))) {
       const cond = parseCondition(m[1].replace(/\.$/, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
