@@ -259,6 +259,8 @@ export interface TargetSpec {
   playerFilter?: 'any' | 'opponent' | 'you' | 'notController';
   min?: number; // default 1
   max?: number; // default 1
+  /** "up to that many target cards": the cap is computed when targets are chosen. */
+  maxAmount?: Amount;
   /** Different targets from other slots. */
   distinct?: boolean;
   /** All chosen targets must share a controller ("two target creatures controlled by the same player"). */

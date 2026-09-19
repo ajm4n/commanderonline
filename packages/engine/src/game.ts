@@ -1284,7 +1284,8 @@ export class Game {
       const legal = legalTargets(this, spec, sourceId, player, x);
       const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
       const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
-      return { description: spec.description, legal, min, max: xn ?? spec.max ?? 1 };
+      const cap = spec.maxAmount !== undefined ? this.resolveAmount(spec.maxAmount, { sourceId, controller: player, targets: [], triggerContext: ctx, memory: {}, x: x ?? 0, modes: [] }) : null;
+      return { description: spec.description, legal, min, max: cap ?? xn ?? spec.max ?? 1 };
     });
     if (slots.some((s) => s.legal.length < s.min)) return null;
     // Auto-choose when there's exactly one legal option for every required slot.

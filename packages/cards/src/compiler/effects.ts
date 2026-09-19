@@ -4250,6 +4250,81 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 228 ----
+  // "Exile up to that many target cards from their graveyard" / "Choose up to that many target creatures you control"
+  [/^(choose|exile|destroy|tap|return) up to that many (target .+?)$/i, (m, ctx) => {
+    const noun = parseNoun(m[2]);
+    if (!noun) return null;
+    const gy = /graveyard/i.test(m[2]);
+    ctx.targets.push({ ...toTargetSpec(noun), min: 0, max: 1, maxAmount: { kind: 'triggerAmount' } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    const k = m[1].toLowerCase();
+    if (k === 'choose') return [];
+    if (k === 'exile') return [{ kind: 'moveToZone', what: ref, zone: 'exile' }];
+    if (k === 'destroy') return [{ kind: 'destroy', what: ref, cantRegenerate: false }];
+    if (k === 'return') return [{ kind: 'returnToHand', what: ref }];
+    void gy;
+    return [{ kind: 'tap', what: ref }];
+  }],
+  // "~ and up to one other target creature cannot be blocked this turn"
+  [/^~ and (up to one other target .+?|another target .+?) cannot be blocked this turn$/i, (m, ctx) => {
+    const other = objRef(m[1], ctx);
+    if (!other) return null;
+    return [
+      { kind: 'applyRule', rule: { kind: 'cantBeBlocked' }, on: SELF, duration: 'endOfTurn' },
+      { kind: 'applyRule', rule: { kind: 'cantBeBlocked' }, on: other, duration: 'endOfTurn' },
+    ];
+  }],
+  // "Each of your teammates creates a token that is a copy of ~"
+  [/^each of your teammates creates (?:a|an) token that is a copy of ~$/i, () => [
+    { kind: 'createToken', token: { name: 'Copy', typeLine: '', colors: [], copyOf: SELF }, count: 1, who: { ref: 'eachOpponent' } },
+  ]],
+  // "Choose target nontoken creature that is attacking that player"
+  [/^choose (target .+?) that is attacking (that player|you|that opponent)$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), filter: { ...noun.filter, zone: 'battlefield', attacking: true } });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  // "Choose a land of each basic land type, then destroy those lands"
+  [/^choose (?:a|an) (.+?) of each basic land type, then (destroy|exile) those (?:lands|permanents)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    const key = 'basics228';
+    const ref: Ref = { ref: 'chosen', key };
+    ctx.lastObj = ref;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'battlefield', subtypes: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] }, count: 5, key, upTo: true },
+      /destroy/i.test(m[2]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : { kind: 'moveToZone', what: ref, zone: 'exile' },
+    ];
+  }],
+  // "You may pay any amount of life. If you do, draw that many cards"
+  [/^you may pay any amount of life\. if you do, draw that many cards$/i, () => [
+    { kind: 'chooseNumber', min: 0, max: 20, key: 'lifePaid' },
+    { kind: 'loseLife', amount: { kind: 'ctxMemory', key: 'lifePaid' }, who: YOU },
+    { kind: 'draw', amount: { kind: 'ctxMemory', key: 'lifePaid' }, who: YOU },
+  ]],
+  // "Only land creatures can attack during that combat phase" / "Only creatures in the pile of their choice can attack this turn"
+  [/^only (.+?) can attack (?:during that combat phase|this turn|this combat)$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantAttack' }, on: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', notMatching: { ...noun.filter, zone: undefined } } as never }, duration: 'endOfTurn' }];
+  }],
+  // "If you do, it is goaded for as long as they control it"
+  [/^(?:it|that creature) is goaded for as long as they control it$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'goad', what: ref }];
+  }],
+  // "Destroy enchanted land unless that player pays {1} or 1 life"
+  [/^(destroy|sacrifice) (enchanted \w+|~) unless (?:that player|its controller|you) pays ((?:\{[^}]+\})+) or (\d+) life$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[2]) ? SELF : objRef(m[2], ctx);
+    if (!ref) return null;
+    const who: Ref = /^~$/.test(m[2]) ? YOU : { ref: 'controllerOf', of: ref };
+    const inner: Effect = /destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : { kind: 'sacrifice', what: ref };
+    return [{ kind: 'unlessPays', who, cost: { mana: m[3], payLife: 0 }, effects: [{ kind: 'unlessPays', who, cost: { payLife: parseInt(m[4], 10) }, effects: [inner] }] }];
+  }],
   // ---- Round 227 ----
   [/^each of them enters with (?:an additional|(\w+) additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m) => {
     const n = m[1] ? wordToNumber(m[1]) : 1;

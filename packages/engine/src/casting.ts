@@ -1439,7 +1439,8 @@ export function* chooseTargetsGrouped(g: Game, p: PlayerId, sourceId: ObjectId |
   const slots = specs.map((spec) => {
     const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
     const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
-    return { description: spec.description, legal: legalTargets(g, spec, sourceId, p, x), min, max: xn ?? spec.max ?? 1 };
+    const cap = spec.maxAmount !== undefined ? g.resolveAmount(spec.maxAmount, { sourceId, controller: p, targets: [], triggerContext: {}, memory: {}, x: x ?? 0, modes: [] }) : null;
+    return { description: spec.description, legal: legalTargets(g, spec, sourceId, p, x), min, max: cap ?? xn ?? spec.max ?? 1 };
   });
   if (slots.some((s) => s.legal.length < s.min)) return null;
   let chosen: Target[][];

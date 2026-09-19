@@ -413,6 +413,8 @@ export interface ObjectFilter {
   manaCostContains?: string;
   /** "the second spell cast this turn" */
   nthSpellThisTurn?: number;
+  /** Matches only objects that do NOT match this sub-filter ("only land creatures can attack"). */
+  notMatching?: ObjectFilter;
   /** Not in this zone / in one of these zones (cost reductions for spells cast from unusual zones). */
   notZone?: ZoneName;
   zoneIn?: ZoneName[];

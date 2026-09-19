@@ -237,6 +237,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
       if (!(item.targets.length === 1 && item.targets[0].kind === 'object' && item.targets[0].id === ctx.sourceId)) return false;
     }
   }
+  if (filter.notMatching && matchesFilter(g, obj, { ...filter.notMatching, zone: undefined }, ctx)) return false;
   if (filter.nthSpellThisTurn !== undefined) {
     const total = g.state.playerOrder.reduce((n, p) => n + (g.player(p).spellsCastThisTurn ?? 0), 0);
     if (total !== filter.nthSpellThisTurn) return false;
