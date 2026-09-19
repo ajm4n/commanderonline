@@ -800,6 +800,24 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           kind: 'replacement', text: line, event: 'drawCard', who: 'you', zone: 'graveyard', optional: true,
           effects: [{ kind: 'mill', amount: parseInt(m[1], 10), who: { ref: 'controller' } }, { kind: 'putIntoHand', what: { ref: 'self' } }],
         } as never);
+      // "Madness {1}{R}": discarding it exiles it instead, and you may cast it for the madness cost.
+      if ((m = line.match(/^Madness ((?:\{[^}]+\})+)$/i)))
+        abilities.push({
+          kind: 'triggered', text: line, zone: ['graveyard', 'hand'], event: 'discard', filter: { self: true }, optional: true,
+          effects: [
+            { kind: 'exile', what: { ref: 'self' } },
+            { kind: 'playFromExile', what: { ref: 'self' }, forCost: m[1], duration: 'thisTurn' },
+          ],
+        } as never);
+      // "Prowl {1}{B}": a cheaper cost once you have connected this turn.
+      if ((m = line.match(/^Prowl ((?:\{[^}]+\})+)$/i))) {
+        alternativeCosts.push({
+          id: 'prowl', text: line, cost: { mana: m[1] }, zone: 'hand',
+          condition: { kind: 'eventThisTurn', event: 'dealtCombatDamageToPlayer', player: 'you' },
+        });
+        compiledLines.push(line);
+        continue;
+      }
       // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
       if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
