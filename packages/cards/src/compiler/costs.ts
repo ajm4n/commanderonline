@@ -37,9 +37,18 @@ export function parseCost(text: string): AbilityCost | null {
       if (a && b && !Object.keys(a).some((k) => k in b)) return { ...a, ...b };
     }
   }
+  // "Sacrifice an artifact, creature, or land": the list has commas, so it must be read whole.
+  {
+    const sm = text.match(/^Sacrifice (?:a|an) ([\w -]+(?:, [\w -]+)+,? or [\w -]+)$/i);
+    if (sm) {
+      const listed = singularizeList(sm[1].replace(/,? and\/or /g, ', or '));
+      const noun = parseNoun(`an ${listed}`) ?? parseNoun(`a ${listed}`);
+      if (noun && noun.confident) return { sacrifice: { filter: { ...noun.filter, zone: 'battlefield' }, count: 1 } };
+    }
+  }
   // Costs whose own text contains commas ("Tap four untapped artifacts, creatures, and/or lands you control").
   {
-    const tm = text.match(/^Tap (\w+) untapped (.+?) you control$/i);
+    const tm = text.match(/^Tap (\w+) (?:other )?untapped (.+?) you control$/i);
     if (tm && /,/.test(tm[2])) {
       const n = wordToNumber(tm[1]);
       const listed = singularizeList(tm[2].replace(/,? and\/or /g, ', or '));
@@ -162,7 +171,7 @@ export function parseCost(text: string): AbilityCost | null {
       cost.exileObjects = { filter: { ...noun.filter, zone: 'hand', owner: 'you' }, count: n };
       matched = true;
     }
-    if (!matched) kp20: if ((m = p.match(/^Tap (\w+) untapped (.+?) you control$/i)) && typeof wordToNumber(m[1]) === 'number') {
+    if (!matched) kp20: if ((m = p.match(/^Tap (\w+) (?:other )?untapped (.+?) you control(?: that share a creature type)?$/i)) && typeof wordToNumber(m[1]) === 'number') {
       const n = wordToNumber(m[1]);
       // "artifacts, creatures, and/or lands" → "an artifact, creature, or land"
       const listed = singularizeList(m[2].replace(/,? and\/or /g, ', or '));
@@ -348,9 +357,9 @@ export function parseCost(text: string): AbilityCost | null {
       cost.exileTop = { count: n, from: 'graveyard' };
       matched = true;
     }
-    if (!matched) kp52: if ((m = p.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from (?:a|an|another) (.+)$/i))) {
-      const noun = parseNoun(`a ${m[3]}`);
-      const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (!matched) kp52: if ((m = p.match(/^Remove (?:a|an|one or more|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? from (?:(?:a|an|another) |among )(.+)$/i))) {
+      const noun = parseNoun(`a ${singularize(m[3])}`) ?? parseNoun(`a ${m[3]}`);
+      const n = /one or more/i.test(p) ? 1 : m[1] ? wordToNumber(m[1]) : 1;
       if (!noun || typeof n !== 'number') break kp52;
       cost.removeCountersFrom = { counter: m[2], amount: n, filter: { ...noun.filter, zone: 'battlefield', other: /from another /i.test(p) || undefined } };
       matched = true;
