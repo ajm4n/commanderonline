@@ -140,7 +140,8 @@ const DASH_KEYWORDS = /^(Choose|Companion|Boast|Escape|Suspend|Awaken|Reinforce|
 
 /** Custom ability words ("Mystic Arcanum — At the beginning of ...") are flavor labels: drop them. */
 export function stripAbilityWord(line: string): string {
-  const m = line.match(/^([A-Z][A-Za-z']*(?: [A-Za-z']+){0,3}) — (?=[A-Z{~•])/);
+  const m = line.match(/^([A-Z0-9][A-Za-z0-9,']*(?: [A-Za-z0-9,']+){0,3}) — (?=[A-Z{~•])/);
+  if (m && !/[A-Za-z]/.test(m[1])) return line;
   if (!m) return line;
   // "Warp Blast — When ~ enters, …" starts with a keyword word but is a flavour label.
   if (DASH_KEYWORDS.test(m[1]) && !(/ /.test(m[1]) && /^(?:When|Whenever|At |You |Each |Target |Sacrifice|Exile|Destroy|Draw|Create|Put|Return|Add|Choose|~)/.test(line.slice(m[0].length)))) return line;

@@ -42,6 +42,81 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   };
   // ---- Round 157 ----
   // "You and Humans you control have hexproof."
+  // ---- Round 199b ----
+  // "Equipped creature has deathtouch during your turn. Otherwise, it has reach."
+  if ((m = L.match(/^(.+?) during your turn\. Otherwise, (.+)$/i))) {
+    const subj = m[1].match(/^(~|Enchanted \w+|Equipped \w+|Creatures you control|Each creature you control)\b/i)?.[1];
+    const a199 = parseStatic(`${m[1]} during your turn`, isCreatureOrPermanent);
+    const other = subj ? m[2].replace(/^(?:it|they) /i, `${subj} `) : m[2];
+    const c199 = parseCondition('it is your turn', { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    const b199 = c199 && c199.kind !== 'manual' ? parseStatic(other, isCreatureOrPermanent) : null;
+    if (a199 && b199 && c199) return [...a199, ...b199.map((x) => (x.kind === 'static' ? { ...x, condition: { kind: 'not' as const, c: c199 } } : x))];
+  }
+  // "Equipped creature gets +1/+1. If it is a Warrior, it gets +2/+1 instead."
+  if ((m = L.match(/^(.+?)\. If it is (?:a|an) (.+?), it gets ([+-]\d+)\/([+-]\d+) instead$/i))) {
+    const subj = m[1].match(/^(~|Enchanted \w+|Equipped \w+)\b/i)?.[1];
+    if (subj) {
+      const c = parseCondition(`${subj} is a ${m[2]}`, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      const base = parseStatic(m[1], isCreatureOrPermanent);
+      const boost = parseStatic(`${subj} gets ${m[3]}/${m[4]}`, isCreatureOrPermanent);
+      if (c && c.kind !== 'manual' && base && boost)
+        return [
+          ...base.map((x) => (x.kind === 'static' ? { ...x, condition: { kind: 'not' as const, c } } : x)),
+          ...boost.map((x) => (x.kind === 'static' ? { ...x, condition: c } : x)),
+        ];
+    }
+  }
+  // "You may cast spells from your hand without paying their mana costs." / "You may cast Dragon spells without ..."
+  sx199: {
+  if ((m = L.match(/^You may cast (.+?)(?: from your hand)? without paying their mana costs$/i))) {
+    let f199: ObjectFilter | undefined;
+    if (!/^spells$/i.test(m[1])) {
+      const n199 = parseNoun(m[1].replace(/ spells?$/i, ' spell'));
+      if (!n199) break sx199;
+      f199 = { ...n199.filter };
+      delete f199.zone;
+    }
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castForFree', data: { filter: f199, fromHand: / from your hand /i.test(` ${m[0]} `) || undefined } } }];
+  }
+  }
+  // "Your maximum hand size is equal to the number of hour counters on ~."
+  if ((m = L.match(/^(Your|Each player's|Each opponent's) maximum hand size is equal to (.+)$/i))) {
+    const amt199 = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (amt199 !== null) {
+      const who199 = /^your$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
+      return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
+    }
+  }
+  // ---- Round 199 ----
+  // "Creatures with flying cannot attack you or block creatures you control."
+  if ((m = L.match(/^(.+?) cannot attack you(?: or planeswalkers you control)? or block creatures you control$/i))) {
+    const aff199 = affectsOf(m[1]);
+    if (aff199.ok)
+      return [
+        { kind: 'static', text: line, affects: aff199.affects, rule: { kind: 'custom', tag: 'cantAttackYou' } },
+        { kind: 'static', text: line, affects: aff199.affects, rule: { kind: 'custom', tag: 'cantBlockYours' } },
+      ];
+  }
+  // "~ gets +1/+1 for each noncreature token you control."
+  if ((m = L.match(/^(.+?) gets? ([+-]\d+)\/([+-]\d+) for each ([\w' -]+?)$/i)) && !/mana symbol|creature type|counter|card type/i.test(m[4])) {
+    const aff199b = affectsOf(m[1]);
+    const noun199 = parseNoun(m[4]) ?? parseNoun(`a ${singularize(m[4])}`);
+    if (aff199b.ok && noun199 && noun199.confident)
+      return [{ kind: 'static', text: line, affects: aff199b.affects, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10), perCount: { ...noun199.filter, zone: noun199.filter.zone ?? 'battlefield' } } }];
+  }
+  // "Players can't cast noncreature spells from graveyards or exile."
+  if ((m = L.match(/^Players cannot cast (.+?) spells from (graveyards or exile|graveyards|exile)$/i))) {
+    const noun199c = parseNoun(`a ${m[1]} spell`);
+    if (noun199c) {
+      const zones = /graveyards or exile/i.test(m[2]) ? ['graveyard', 'exile'] : /graveyards/i.test(m[2]) ? ['graveyard'] : ['exile'];
+      return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantCastFromZones', data: { filter: { ...noun199c.filter, zone: undefined }, zones } } }];
+    }
+  }
+  // "Permanents your opponents control can't be turned face up during your turn."
+  if ((m = L.match(/^(.+?) cannot be turned face up(?: during your turn)?$/i))) {
+    const aff199d = affectsOf(m[1]);
+    if (aff199d.ok) return [{ kind: 'static', text: line, affects: aff199d.affects, rule: { kind: 'custom', tag: 'cantTurnFaceUp', data: / during your turn$/i.test(m[0]) ? 'yourTurn' : 'always' } }];
+  }
   if ((m = L.match(/^You and (.+?) (?:has|have) (.+)$/i))) {
     const a = affectsOf(m[1]);
     const kws = parseKeywordList(m[2]);
@@ -1533,7 +1608,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   }
 
-  if ((m = L.match(/^All (combat )?damage that would be dealt to (you|you and other permanents you control|you and creatures you control|enchanted creature's controller|you and permanents you control) is dealt to (~|enchanted creature) instead$/i))) {
+  if ((m = L.match(/^All (combat )?damage that would be dealt to (you|you and other permanents you control|you and creatures you control|enchanted creature's controller|you and permanents you control) is dealt to (~|enchanted creature|equipped creature) instead$/i))) {
     const permanents = /permanents|creatures/i.test(m[2]);
     return [{ kind: 'static', text: line, affects: /^~$/i.test(m[3]) ? 'self' : 'attachedTo', rule: { kind: 'custom', tag: 'redirectDamage', data: { player: true, permanents, combatOnly: !!m[1] || undefined } } }];
   }

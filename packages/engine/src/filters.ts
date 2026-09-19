@@ -110,6 +110,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   }
   if (filter.custom === 'blockedRelated' && obj.blocking.length === 0 && obj.blockedBy.length === 0 && !obj.wasBlocked) return false;
   if (filter.notCastFromZone !== undefined && obj.castFromZone === filter.notCastFromZone) return false;
+  if (filter.custom === 'noName' && ch.name !== '') return false;
+  if (filter.custom === 'attackedLastTurn' && !obj.memory['attackedLastTurn']) return false;
   if (filter.custom === 'blockedRelatedSource' && (ctx.sourceId === null || ctx.sourceId === undefined || (!obj.blocking.includes(ctx.sourceId) && !obj.blockedBy.includes(ctx.sourceId)))) return false;
   if (filter.custom === 'highestToughness') {
     const all = g.state.battlefield.map((x) => g.characteristics(x).toughness ?? 0);

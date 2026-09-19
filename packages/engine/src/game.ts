@@ -2850,7 +2850,7 @@ export class Game {
       const rules = this.playerRules(pid);
       const noMax = rules.some((r) => r.kind === 'noMaxHandSize');
       let maxHand = 7;
-      for (const r of rules) if (r.kind === 'maxHandSize') maxHand = r.value !== undefined ? r.value : maxHand + (r.delta ?? 0);
+      for (const r of rules) if (r.kind === 'maxHandSize') maxHand = r.amount !== undefined ? this.resolveAmount(r.amount, { sourceId: null, controller: pid, targets: [], triggerContext: {}, memory: {}, x: 0, modes: [] }) : r.value !== undefined ? r.value : maxHand + (r.delta ?? 0);
       maxHand = Math.max(0, maxHand);
       if (!noMax && p.hand.length > maxHand) {
         const n = p.hand.length - maxHand;
