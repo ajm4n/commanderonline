@@ -296,6 +296,11 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (/^(?:the number of )?cards in all graveyards with the same name as (?:that|the) spell$/.test(t))
     return { kind: 'count', filter: { zone: 'graveyard', sameNameAs: { ref: 'triggerObject' } } };
   if (/^(?:the number of )?players being attacked$/.test(t)) return { kind: 'playersBeingAttacked' };
+  // "the number of creature types among creatures you control"
+  if ((m = t.match(/^(?:the number of )?creature types among (.+?)$/))) {
+    const noun = withCtrl(parseNoun(`all ${oc(m, 1)}`) ?? parseNoun(oc(m, 1)), ctx);
+    if (noun) return { kind: 'distinctValues', stat: 'creatureType', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } };
+  }
   // "the difference between that creature's power and its toughness"
   if ((m = t.match(/^(?:the )?difference between (.+?) and (.+?)$/))) {
     const a = parseAmount(m[1], ctx);
@@ -434,6 +439,15 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (/^the total number of /i.test(text.trim())) {
     const r = parseAmount(text.trim().replace(/^the total number of /i, 'the number of '), ctx);
     if (r !== null) return r;
+  }
+  // "for each permanent sacrificed this turn" hands us a bare singular noun phrase.
+  {
+    const bare = text.trim().replace(/[.,;]$/, '');
+    if (!/^(?:the |a |an |each |all |that |those |twice |half |x\b)/i.test(bare) && /^[a-z]/.test(bare) && !/\b(?:number|amount)\b/i.test(bare)) {
+      const plural = bare.replace(/^([a-z][\w'-]*)/i, (w) => (/(?:s|x|ch|sh)$/i.test(w) ? `${w}es` : `${w}s`));
+      const r = parseAmount(`the number of ${plural}`, ctx);
+      if (r !== null) return r;
+    }
   }
   return null;
 }

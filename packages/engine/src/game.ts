@@ -1746,6 +1746,10 @@ export class Game {
         const vals = new Set<string | number>();
         for (const o of objectsMatching(this, a.filter, fctx)) {
           const ch = this.characteristics(o.id);
+          if (a.stat === 'creatureType') {
+            if (ch.types.includes('Creature')) for (const st of ch.subtypes) vals.add(st);
+            continue;
+          }
           vals.add(a.stat === 'name' ? ch.name : a.stat === 'manaValue' ? ch.manaValue : (ch[a.stat] ?? 0));
         }
         return vals.size;

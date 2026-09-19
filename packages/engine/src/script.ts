@@ -99,7 +99,7 @@ export type Amount =
   /** Number of graveyards with at least this many cards. */
   | { kind: 'graveyardsWithAtLeast'; count: number }
   /** Number of distinct values of a stat among matching objects ("creatures with different powers"). */
-  | { kind: 'distinctValues'; stat: 'power' | 'toughness' | 'manaValue' | 'name'; filter: ObjectFilter }
+  | { kind: 'distinctValues'; stat: 'power' | 'toughness' | 'manaValue' | 'name' | 'creatureType'; filter: ObjectFilter }
   /** Domain: basic land types among lands you control. */
   | { kind: 'domain' }
   /** Number of card types among matching objects. */
