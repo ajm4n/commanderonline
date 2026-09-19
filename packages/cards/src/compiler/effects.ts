@@ -4249,6 +4249,64 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 210 ----
+  // "Target opponent's life total becomes 10"
+  [/^(.+?)'s life total becomes (\d+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'setLife', amount: parseInt(m[2], 10), who }] : null;
+  }],
+  // "Draw a card for each spell countered this way"
+  [/^(?:you )?draws? (?:a card|(\w+|X) cards?) for each spell countered this way$/i, (m) => {
+    const base = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof base !== 'number') return null;
+    const per: Amount = { kind: 'ctxMemory', key: 'countered' };
+    return [{ kind: 'draw', amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), who: YOU }];
+  }],
+  // "Choose two target creatures that share no creature types"
+  [/^choose (\w+) target (.+?) that share no creature types$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (typeof n !== 'number' || !noun) return null;
+    ctx.targets.push({ description: `target ${m[2]}`, kind: 'object', filter: { ...noun.filter, zone: 'battlefield' }, min: n, max: n, distinct: true });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  // "Target player dealt damage by ~ this turn loses 1 life"
+  [/^target player dealt damage by ~ this turn (loses|gains) (\d+) life$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'target player dealt damage by ~ this turn', kind: 'player', playerFilter: 'any' });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastPlayer = ref;
+    return [/loses/i.test(m[1]) ? { kind: 'loseLife', amount: parseInt(m[2], 10), who: ref } : { kind: 'gainLife', amount: parseInt(m[2], 10), who: ref }];
+  }],
+  // "Choose target creature that is blocking equipped creature"
+  [/^choose (target .+?) that is blocking (equipped creature|enchanted creature|~)$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun) return null;
+    const spec = toTargetSpec(noun);
+    ctx.targets.push({ ...spec, filter: { ...(spec.filter ?? {}), blockingSource: /~/.test(m[2]) ? true : undefined, custom: /equipped|enchanted/i.test(m[2]) ? 'blockingAttached' : undefined } });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  // "During your next turn, you may play that card"
+  [/^during your next turn, you may play (that card|it|those cards)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'thisTurn' }];
+  }],
+  // "Each player chooses a land they control of each basic land type"
+  [/^each player chooses (?:a|an) (.+?) they control of each basic land type$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'iter' }, subtypes: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] }, count: 5, key: 'chosenLands', upTo: true }] }];
+  }],
+  // "Counter all spells with those names"
+  [/^counter all spells with (?:that name|those names)$/i, () => [
+    { kind: 'counterSpell', what: { ref: 'all', filter: { zone: 'stack', nameIsChosen: 'cardName' } } },
+  ]],
+  // "It blocks each attacking creature this turn if able"
+  [/^(it|~|that creature) blocks each attacking creature this turn if able$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBlockAll' }, on: ref, duration: 'endOfTurn' }];
+  }],
   // ---- Round 208 ----
   // "That attacking player may discard a card" / "defending player may have you draw a card"
   [/^(that attacking player|the attacking player|defending player|that player|any opponent|target opponent) may (.+)$/i, (m, ctx) => {
