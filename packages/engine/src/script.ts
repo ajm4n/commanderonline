@@ -209,6 +209,10 @@ export type Condition =
   | { kind: 'graveyard'; ref: Ref; op: Comparison; value: Amount; filter?: ObjectFilter }
   | { kind: 'objectMatches'; ref: Ref; filter: ObjectFilter }
   | { kind: 'hasCounter'; ref: Ref; counter: CounterType; op?: Comparison; value?: Amount }
+  /** Undying / persist: the counters it had as it last left the battlefield. */
+  | { kind: 'hadCounter'; ref: Ref; counter: CounterType; op?: Comparison; value?: number }
+  /** Evolve: "if that creature has greater power or toughness than this creature". */
+  | { kind: 'statGreater'; a: Ref; b: Ref; stat: 'power' | 'toughness' | 'either' }
   | { kind: 'isTapped'; ref: Ref }
   | { kind: 'isAttacking'; ref: Ref }
   | { kind: 'isMonarch'; ref: Ref }

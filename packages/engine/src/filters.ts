@@ -310,6 +310,11 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   }
   if (filter.counterAtLeast && (obj.counters[filter.counterAtLeast.counter] ?? 0) < filter.counterAtLeast.n) return false;
   if (filter.withoutCounter && (obj.counters[filter.withoutCounter] ?? 0) > 0) return false;
+  if (filter.powerLTSource) {
+    const src = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
+    if (!src) return false;
+    if ((ch.power ?? 0) >= (g.characteristics(src.id).power ?? 0)) return false;
+  }
   if (filter.sameNameAs) {
     const others = g.resolveRef(filter.sameNameAs, { sourceId: ctx.sourceId ?? null, controller: ctx.controller, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
     const names = new Set(others.map((t) => (t.kind === 'object' ? g.characteristics(t.id).name : t.kind === 'stackItem' ? g.state.stack.find((si) => si.id === t.id)?.text ?? '' : '')).filter(Boolean));

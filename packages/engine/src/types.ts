@@ -375,6 +375,8 @@ export interface ObjectFilter {
   keywords?: string[]; // has any of these keywords
   withoutKeywords?: string[];
   powerLE?: number | 'X';
+  /** Mentor: power strictly less than the ability's source. */
+  powerLTSource?: boolean;
   powerEQ?: number | 'X';
   toughnessEQ?: number | 'X';
   powerGE?: number | 'X';

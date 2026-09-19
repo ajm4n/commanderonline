@@ -644,6 +644,30 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
             targets: [{ description: `target Spirit card with mana value ${km[1]} or less in your graveyard`, kind: 'object', min: 1, max: 1, filter: { subtypes: ['Spirit'], zone: 'graveyard', owner: 'you', cmcLE: parseInt(km[1], 10) } }],
             effects: [{ kind: 'putIntoHand', what: { ref: 'target', slot: 0 } }],
           } as never);
+        else if (/^(undying|persist)$/i.test(kw)) {
+          const counter = /^undying$/i.test(kw) ? '+1/+1' : '-1/-1';
+          abilities.push({
+            kind: 'triggered', text: kw, event: 'dies', filter: { self: true },
+            condition: { kind: 'not', c: { kind: 'hadCounter', ref: { ref: 'self' }, counter, op: '>=', value: 1 } },
+            effects: [{ kind: 'returnToBattlefield', what: { ref: 'self' }, controller: 'owner', counters: { counter, amount: 1 } }],
+          } as never);
+        } else if (/^evolve$/i.test(kw))
+          abilities.push({
+            kind: 'triggered', text: kw, event: 'entersBattlefield', filter: { object: { types: ['Creature'], controller: 'you', other: true } },
+            condition: { kind: 'statGreater', a: { ref: 'triggerObject' }, b: { ref: 'self' }, stat: 'either' },
+            effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'self' } }],
+          } as never);
+        else if (/^mentor$/i.test(kw))
+          abilities.push({
+            kind: 'triggered', text: kw, event: 'attacks', filter: { self: true },
+            targets: [{ description: 'target attacking creature with lesser power', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'battlefield', attacking: true, powerLTSource: true } }],
+            effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'target', slot: 0 } }],
+          } as never);
+        else if (/^sunburst$/i.test(kw))
+          abilities.push({
+            kind: 'replacement', text: kw, event: 'entersBattlefield', self: true,
+            counters: { counter: /\bCreature\b/.test(typeLine) ? '+1/+1' : 'charge', amount: { kind: 'manaSpent', of: 'colors' } },
+          } as never);
         else if (/^extort$/i.test(kw))
           abilities.push({
             kind: 'triggered', text: kw, event: 'cast', filter: { player: 'you' },

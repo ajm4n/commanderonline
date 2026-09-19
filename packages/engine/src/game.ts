@@ -835,6 +835,9 @@ export class Game {
     const willCease = obj.card.isToken && toZone !== 'battlefield' && toZone !== 'stack';
 
     // Reset object state (it's a new object per rule 400.7).
+    // Undying and persist ask what it had on it, so keep a copy before clearing.
+    if (Object.keys(obj.counters).length) obj.memory['__countersOnLeave'] = { ...obj.counters };
+    else delete obj.memory['__countersOnLeave'];
     obj.tapped = opts.tapped ?? false;
     obj.damage = 0;
     obj.deathtouchDamage = false;
@@ -1393,6 +1396,21 @@ export class Game {
       }
       case 'hasCounter':
         return this.resolveObjects(c.ref, ectx).every((o) => cmp(o.counters[c.counter] ?? 0, c.op ?? '>=', c.value !== undefined ? this.resolveAmount(c.value, ectx) : 1));
+      case 'hadCounter':
+        return this.resolveObjects(c.ref, ectx).every((o) => {
+          const had = (o.memory['__countersOnLeave'] as Record<string, number> | undefined) ?? {};
+          return cmp(had[c.counter] ?? 0, c.op ?? '>=', c.value ?? 1);
+        });
+      case 'statGreater': {
+        const [a] = this.resolveObjects(c.a, ectx);
+        const [b] = this.resolveObjects(c.b, ectx);
+        if (!a || !b) return false;
+        const ca = this.characteristics(a.id);
+        const cb = this.characteristics(b.id);
+        const p = (ca.power ?? 0) > (cb.power ?? 0);
+        const t = (ca.toughness ?? 0) > (cb.toughness ?? 0);
+        return c.stat === 'power' ? p : c.stat === 'toughness' ? t : p || t;
+      }
       case 'isTapped':
         return this.resolveObjects(c.ref, ectx).every((o) => o.tapped);
       case 'isAttacking':
