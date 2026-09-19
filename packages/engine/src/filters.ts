@@ -71,6 +71,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     if (!ok) return false;
   }
   if (filter.custom === 'blockedOrWasBlockedThisTurn' && obj.blocking.length === 0 && obj.blockedBy.length === 0) return false;
+  if (filter.custom === 'powerNotEqualToughness' && !(ch.power !== null && ch.toughness !== null && ch.power !== ch.toughness)) return false;
   if (filter.custom === 'powerEqualsToughness' && !(ch.power !== null && ch.toughness !== null && ch.power === ch.toughness)) return false;
   if (filter.custom === 'attackingYou' && obj.attacking !== ctx.controller) return false;
   // "other creatures you control attacking that player": the same player the source is attacking.

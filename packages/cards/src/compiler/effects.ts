@@ -4249,6 +4249,70 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 222 ----
+  // "Destroy target non-Elf creature whose power and toughness aren't equal"
+  [/^(destroy|exile|tap) (target .+?) whose power and toughness (?:aren't|are not) equal$/i, (m, ctx) => {
+    const noun = parseNoun(m[2]);
+    if (!noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), filter: { ...noun.filter, zone: 'battlefield', custom: 'powerNotEqualToughness' } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [/destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : /exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'tap', what: ref }];
+  }],
+  // "Destroy all permanents with that spell's mana value"
+  [/^(destroy|exile) all (.+?) with that spell's mana value$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (!noun || !noun.confident) return null;
+    const cmp = ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : ({ ref: 'stackTarget' } as Ref);
+    const ref: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', cmcEQRef: cmp } };
+    return [/destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : { kind: 'moveToZone', what: ref, zone: 'exile' }];
+  }],
+  // "That planeswalker enters with an additional loyalty counter on it"
+  [/^that (planeswalker|creature|artifact|permanent) enters with (?:an additional|(\w+) additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const n = m[2] ? wordToNumber(m[2]) : 1;
+    if (!noun || typeof n !== 'number') return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'extraEnterCounters', data: { filter: { ...noun.filter, zone: undefined }, counter: m[3], amount: n } }, duration: 'thisTurn' }];
+  }],
+  // "Any opponent may tap an untapped creature they control"
+  [/^any opponent may tap (?:a|an) (.+?) they control$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'forEach', over: { ref: 'eachOpponent' }, effects: [{ kind: 'may', prompt: `Tap a ${m[1]}?`, who: { ref: 'iter' }, effects: [{ kind: 'chooseObjects', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'iter' } }, count: 1, key: 'tap222' }, { kind: 'tap', what: { ref: 'chosen', key: 'tap222' } }] }] }];
+  }],
+  // "At end of combat, destroy it and all creatures it blocked this turn"
+  [/^at end of combat, destroy (?:it|~) and all creatures it blocked this turn$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? SELF;
+    return [{ kind: 'delayedTrigger', event: 'endOfCombat', text: m[0], once: true, effects: [
+      { kind: 'destroy', what: ref, cantRegenerate: false },
+      { kind: 'destroy', what: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', blockedBySource: true } }, cantRegenerate: false },
+    ] }];
+  }],
+  // "Each player gains control of each land they own that you control"
+  [/^each player gains control of each (.+?) they own that you control$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'gainControl', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', ownerRef: { ref: 'iter' }, controller: 'you' } }, who: { ref: 'iter' }, duration: 'permanent' }] }];
+  }],
+  // "Exchange control of ~ and target permanent you neither own nor control"
+  [/^exchange control of ~ and (target .+?)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'exchangeControl', a: SELF, b: ref } as never] : null;
+  }],
+  // "Have target land become a Plains until ~ leaves the battlefield"
+  [/^have (target .+?) become (?:a|an) ([A-Z][\w-]+)(?: until ~ leaves the battlefield)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'addTypes', types: [], setSubtypes: [m[2]], on: ref, duration: / until ~ leaves the battlefield$/i.test(m[0]) ? 'untilSourceLeaves' : 'permanent' }];
+  }],
+  // "Put a +1/+1 counter on ~ for each 1 damage dealt to you this turn"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on (~|it) for each 1 damage dealt to you this turn$/i, (m, ctx) => {
+    const base = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof base !== 'number') return null;
+    const ref = /^~$/.test(m[3]) ? SELF : ctx.lastObj ?? SELF;
+    const per: Amount = { kind: 'playerTurnStat', key: 'damageTaken' };
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: base === 1 ? per : ({ kind: 'times', a: base as Amount, b: per } as Amount), on: ref }];
+  }],
   // ---- Round 221 ----
   [/^(.+?) deals (\d+|X) damage to each of those (.+?)$/i, (m, ctx) => {
     const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
