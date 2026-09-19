@@ -27,6 +27,16 @@ export function parseCost(text: string): AbilityCost | null {
       if (a && b) return { choice: [a, b] };
     }
   }
+  // "Discard a card and sacrifice a creature": two costs joined by "and".
+  {
+    const am = text.match(/^(.+?) and (pay .+|sacrifice .+|discard .+|exile .+|tap .+)$/i);
+    if (am && !/,/.test(text)) {
+      const norm = (x: string) => x.replace(/^pay ((?:\{[^}]+\})+)$/i, '$1');
+      const a = parseCost(norm(am[1]).replace(/^[a-z]/, (c) => c.toUpperCase()));
+      const b = parseCost(norm(am[2]).replace(/^[a-z]/, (c) => c.toUpperCase()));
+      if (a && b && !Object.keys(a).some((k) => k in b)) return { ...a, ...b };
+    }
+  }
   // Costs whose own text contains commas ("Tap four untapped artifacts, creatures, and/or lands you control").
   {
     const tm = text.match(/^Tap (\w+) untapped (.+?) you control$/i);

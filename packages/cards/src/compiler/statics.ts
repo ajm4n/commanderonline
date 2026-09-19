@@ -499,13 +499,17 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // "You may play lands and cast spells with mana value 4 or greater from the top of your library."
   sxr154b: {
-  if ((m = L.match(/^You may (play lands and cast|cast) (.+?) from the top of your library$/i))) {
-    const label = m[2].trim();
+  if ((m = L.match(/^You may (play (?:(\w+) )?lands and cast|cast) (.+?) from the top of your library$/i))) {
+    const label = m[3].trim();
+    const landNoun = m[2] ? parseNoun(`a ${m[2]} land`) : null;
+    if (m[2] && (!landNoun || !landNoun.confident)) break sxr154b;
     const noun = /^spells$/i.test(label) ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label.replace(/spells\b/i, 'spell')}`) : parseNoun(`a ${label} spell`);
     if (!noun || !noun.confident) break sxr154b;
     const f = { ...noun.filter };
     delete f.zone;
-    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data: { lands: /play lands/i.test(m[1]), spells: true, filter: Object.keys(f).length ? f : undefined } } }];
+    const lf = landNoun ? { ...landNoun.filter } : null;
+    if (lf) delete lf.zone;
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data: { lands: /play (?:\w+ )?lands/i.test(m[1]), spells: true, filter: Object.keys(f).length ? f : undefined, landFilter: lf ?? undefined } } }];
   }
   }
   // "You may cast ~ from your graveyard by paying {2}{W} rather than paying its mana cost."

@@ -4268,8 +4268,99 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 241 ----
+  // "~ becomes a 4/3 creature with vigilance and all creature types until end of turn"
+  [/^(.+?) becomes? (?:a|an) ([\dX]+)\/([\dX]+)((?: [A-Za-z]+)*?) creature with (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const g = parseGrantList(m[5]);
+    if (!ref || !g) return null;
+    const words = m[4].trim() ? m[4].trim().split(/\s+/) : [];
+    if (words.some((w) => !/^(white|blue|black|red|green|artifact|enchantment)$/i.test(w) && !/^[A-Z]/.test(w))) return null;
+    const colors = words.filter((w) => /^(white|blue|black|red|green)$/i.test(w)).map((w) => ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[w.toLowerCase() as 'white']);
+    const subtypes = words.filter((w) => /^[A-Z]/.test(w));
+    const types = ['Creature', ...words.filter((w) => /^(artifact|enchantment)$/i.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())];
+    const dur: Duration = 'endOfTurn';
+    const out: Effect[] = [
+      { kind: 'addTypes', types, subtypes: subtypes.length ? subtypes : undefined, on: ref, duration: dur },
+      { kind: 'setPT', power: m[2] === 'X' ? 'X' : parseInt(m[2], 10), toughness: m[3] === 'X' ? 'X' : parseInt(m[3], 10), on: ref, duration: dur },
+    ];
+    if (colors.length) out.push({ kind: 'setColors', colors, on: ref, duration: dur });
+    if (g.keywords.length) out.push({ kind: 'grantKeywords', keywords: g.keywords, on: ref, duration: dur });
+    for (const a of g.abilities) out.push({ kind: 'grantAbility', text: a, on: ref, duration: dur });
+    return out;
+  }],
+  // "Create Ashaya, the Awoken World, a legendary 4/4 green Elemental creature token."
+  [/^create ([A-Z][\w' ,.-]+?), (a legendary .+? token)$/i, (m) => {
+    const tok = parseTokenPhrase(m[2]);
+    if (!tok) return null;
+    return [{ kind: 'createToken', token: { ...tok.token, name: m[1], legendary: true }, count: tok.count, tapped: tok.tapped, attacking: tok.attacking }];
+  }],
+  // "Create a 0/0 green and blue Fractal creature token and put X +1/+1 counters on it."
+  [/^create (.+? token) and put (X|\d+|\w+) ([+-]\d\/[+-]\d|[\w'-]+) counters? on it$/i, (m) => {
+    const tok = parseTokenPhrase(m[1]);
+    const n: Amount | null = m[2].toUpperCase() === 'X' ? 'X' : (wordToNumber(m[2]) as Amount | null);
+    if (!tok || n === null) return null;
+    return [{ kind: 'createToken', token: tok.token, count: tok.count, tapped: tok.tapped, attacking: tok.attacking, counters: { counter: m[3], amount: n } }];
+  }],
+  // "You may play it without paying its mana cost for as long as it remains exiled."
+  [/^(?:you|its owner) may (?:play|cast) (?:it|that card) without paying its mana cost for as long as it remains exiled$/i, (m, ctx) => {
+    const ref = objRef('that card', ctx);
+    return ref ? [{ kind: 'playFromExile', what: ref, duration: 'permanent', forCost: '{0}' }] : null;
+  }],
+  // "You may cast a spell from among cards exiled with ~ without paying its mana cost."
+  [/^you may cast (?:a|an) (.+?) from among (?:the )?cards exiled with (?:~|it) without paying its mana cost$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const key = `castEx${ctx.targets.length}`;
+    const f = { ...noun.filter };
+    delete f.zone;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...f, zone: 'exile', exiledWithSource: true }, count: 1, key, upTo: true },
+      { kind: 'castFrom', what: { ref: 'chosen', key }, free: true },
+    ];
+  }],
+  // "Each of them is a 1/1 Spirit with flying in addition to its other types."
+  [/^each of them is (?:a|an) (\d+)\/(\d+) ([A-Z][\w-]+)(?: with (.+?))? in addition to (?:its|their) other types$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? { ref: 'lastMoved' as const };
+    const out: Effect[] = [
+      { kind: 'setPT', on: ref, power: parseInt(m[1], 10), toughness: parseInt(m[2], 10), duration: 'permanent' },
+      { kind: 'addTypes', types: ['Creature'], subtypes: [m[3]], on: ref, duration: 'permanent' },
+    ];
+    if (m[4]) {
+      const g = parseGrantList(m[4]);
+      if (!g || g.abilities.length) return null;
+      out.push({ kind: 'grantKeywords', on: ref, keywords: g.keywords, duration: 'permanent' });
+    }
+    return out;
+  }],
+  // "Mill five cards, then return a creature card milled this way to your hand."
+  [/^return (?:a|an|one) (.+?) milled this way to your hand$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const key = `milled${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard' }, from: { ref: 'lastMoved' }, count: 1, key },
+      { kind: 'returnToHand', what: { ref: 'chosen', key } },
+    ];
+  }],
+  // "Return ~ and target land card from your graveyard to the battlefield tapped."
+  [/^return ~ and (target .+? card) from your graveyard to the battlefield( tapped)?$/i, (m, ctx) => {
+    const ref = objRef(`${m[1]} from your graveyard`, ctx);
+    if (!ref) return null;
+    const tapped = !!m[2];
+    return [
+      { kind: 'returnToBattlefield', what: SELF, tapped },
+      { kind: 'returnToBattlefield', what: ref, tapped },
+    ];
+  }],
   // ---- Round 240 ----
   // "Exile any number of target creatures and all Auras attached to them."
+  [/^return all (Auras|Equipment) attached to (.+?) to (?:their|its) owners?'? hands?$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    if (!ref) return null;
+    return [{ kind: 'returnToHand', what: { ref: 'all', filter: { subtypes: [/^Auras$/i.test(m[1]) ? 'Aura' : 'Equipment'], zone: 'battlefield', attachedToRef: ref } } }];
+  }],
   [/^(exile|destroy) (.+?) and all (Auras|Equipment) attached to (?:them|it)$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
     if (!ref) return null;
@@ -8894,6 +8985,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if (/ until end of turn$/i.test(text)) {
     const saved = ctx.targets.length;
     const alt = parseSentence(text.replace(/ until end of turn$/i, ' this turn'), ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
+  }
+  // "… become 2/2 creatures that are still lands": becoming a creature never removes the land type.
+  if (/ that (?:are|is) still (?:a )?lands?$/i.test(text)) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(text.replace(/ that (?:are|is) still (?:a )?lands?$/i, ''), ctx);
     if (alt) return alt;
     ctx.targets.length = saved;
   }

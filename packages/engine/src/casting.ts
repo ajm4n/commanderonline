@@ -777,10 +777,11 @@ export function playableFromTop(g: Game, p: PlayerId, obj: GameObject): boolean 
   const land = /\bLand\b/.test(faceOf(obj, 0).typeLine);
   for (const r of g.playerRules(p)) {
     if (r.kind !== 'custom' || r.tag !== 'playFromTop') continue;
-    const d = (r.data as { lands?: boolean; spells?: boolean; oncePerTurn?: boolean; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+    const d = (r.data as { lands?: boolean; spells?: boolean; oncePerTurn?: boolean; filter?: import('./types.js').ObjectFilter; landFilter?: import('./types.js').ObjectFilter } | undefined) ?? {};
     if (land) {
-      if (d.lands) return true;
-      continue;
+      if (!d.lands) continue;
+      if (d.landFilter && !matchesFilter(g, obj, { ...d.landFilter, zone: undefined }, { sourceId: null, controller: p })) continue;
+      return true;
     }
     if (!d.spells) continue;
     if (d.oncePerTurn && g.state.turnStats[`castFromTop:${p}`]) continue;
