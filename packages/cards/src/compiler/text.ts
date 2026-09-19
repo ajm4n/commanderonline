@@ -12,7 +12,7 @@ export function wordToNumber(w: string | undefined): number | 'X' | null {
   return null;
 }
 
-const ABILITY_WORDS = /^(Landfall|Constellation|Battalion|Heroic|Raid|Ferocious|Morbid|Metalcraft|Threshold|Delirium|Revolt|Adamant|Hellbent|Magecraft|Pack tactics|Coven|Alliance|Celebration|Descend \d+|Fathomless descent|Valiant|Eerie|Survival|Council's dilemma|Will of the council|Parley|Tempting offer|Join forces|Secret council|Lieutenant|Inspired|Enrage|Domain|Kinship|Sweep|Grandeur|Chroma|Addendum|Undergrowth|Formidable|Bloodrush|Channel|Converge|Spell mastery|Rally|Cohort|Corrupted|Paradox|Flurry|Renew|Max speed|Void|Job select|Cosmic|Mayhem|Eminence|Legacy|Strive|Fateful hour|Imprint|Radiance|Hellbent|Join forces|Tempting offer|Parley|Enlist|Exhaust|Mobilize|Harmonize|Behold|Station|Warp|Freerunning|Plot|Saddle|Spree|Suspect|Cloak|Collect evidence|Solved|Explore|Ravenous|Backup|Read ahead|Unlock|Lock|Prowess|Choose one|Choose two|Choose one or both|Choose any number|Choose one or more|Choose two or more|Choose up to two|Choose three|Threshold|Vehicle|Alliance|Descend)\s*—\s*/i;
+const ABILITY_WORDS = /^(Landfall|Constellation|Battalion|Heroic|Raid|Ferocious|Morbid|Metalcraft|Threshold|Delirium|Revolt|Adamant|Hellbent|Magecraft|Pack tactics|Coven|Alliance|Celebration|Descend \d+|Fathomless descent|Valiant|Eerie|Survival|Council's dilemma|Will of the council|Parley|Tempting offer|Join forces|Secret council|Lieutenant|Inspired|Enrage|Domain|Kinship|Sweep|Grandeur|Chroma|Addendum|Undergrowth|Formidable|Bloodrush|Channel|Converge|Spell mastery|Rally|Cohort|Corrupted|Paradox|Flurry|Renew|Max speed|Void|Job select|Cosmic|Mayhem|Eminence|Legacy|Strive|Fateful hour|Imprint|Radiance|Hellbent|Join forces|Tempting offer|Parley|Enlist|Exhaust|Mobilize|Harmonize|Behold|Station|Warp|Freerunning|Plot|Saddle|Spree|Suspect|Cloak|Collect evidence|Explore|Ravenous|Backup|Read ahead|Unlock|Lock|Prowess|Choose one|Choose two|Choose one or both|Choose any number|Choose one or more|Choose two or more|Choose up to two|Choose three|Threshold|Vehicle|Alliance|Descend)\s*—\s*/i;
 
 /** Short name: "Krenko, Mob Boss" → "Krenko"; also the first word for names like "Sun Titan"? No — only comma-split. */
 export function shortName(name: string): string | null {
@@ -137,7 +137,7 @@ export function normalizeOracle(card: CardData, faceName = card.name, text = car
     .map((l) => l.replace(ABILITY_WORDS, (m) => (/^Choose/i.test(m) ? m : '')).trim())
     .map(stripAbilityWord)
     // Flavor words ("Nitro-9 — Whenever ~ attacks", "Power-up — {5}: ...") are decorative: strip anything dash-prefixed that isn't a real keyword or Saga chapter.
-    .map((l) => l.replace(/^([A-Z][\w' !,.-]{1,40}?) — (?=[A-Z{~•+−-])/, (m0, w: string) => (DASH_KEYWORDS.test(w) || /^(I|II|III|IV|V|VI)(, (I|II|III|IV|V|VI))*$/.test(w) || /^Choose/i.test(w) || /^To solve$/i.test(w) ? m0 : '')))
+    .map((l) => l.replace(/^([A-Z][\w' !,.-]{1,40}?) — (?=[A-Z{~•+−-])/, (m0, w: string) => (DASH_KEYWORDS.test(w) || /^(I|II|III|IV|V|VI)(, (I|II|III|IV|V|VI))*$/.test(w) || /^Choose/i.test(w) || /^To solve$/i.test(w) || /^Solved$/i.test(w) ? m0 : '')))
     .filter(Boolean);
 }
 
@@ -152,6 +152,7 @@ export function stripAbilityWord(line: string): string {
   // "Warp Blast — When ~ enters, …" starts with a keyword word but is a flavour label.
   if (DASH_KEYWORDS.test(m[1]) && !(/ /.test(m[1]) && /^(?:When|Whenever|At |You |Each |Target |Sacrifice|Exile|Destroy|Draw|Create|Put|Return|Add|Choose|~)/.test(line.slice(m[0].length)))) return line;
   if (/^To solve$/i.test(m[1])) return line; // Cases: the condition after it is the solve condition
+  if (/^Solved$/i.test(m[1])) return line; // Cases: the ability after it only works once solved
   if (/^(?:I|II|III|IV|V|VI)(?:, (?:I|II|III|IV|V|VI))*$/.test(m[1])) return line; // Saga chapters
   return line.slice(m[0].length);
 }

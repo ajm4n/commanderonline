@@ -701,7 +701,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const sym = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' }[m[2]] as string;
     if (typeof n === 'number') return { kind: 'amount', a: { kind: 'manaSpent', of: 'total', symbols: sym }, op: '>=', b: n };
   }
-  if ((m = t.match(/^~ (?:is|was) (renowned|foretold|suspected|saddled|solved)$/))) return { kind: 'memoryFlag', key: m[1] };
+  if ((m = t.match(/^~ (?:is|was) (saddled|solved)$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: m[1] } };
+  if ((m = t.match(/^~ (?:is|was) (renowned|foretold|suspected)$/))) return { kind: 'memoryFlag', key: m[1] };
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
   if ((m = t.match(/^(?:~|it) (?:is|was) (?:a|an) (.+?) card$/))) {

@@ -108,8 +108,24 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     return null;
   };
+  let solvedFrom: number | null = null;
+  const closeSolved = () => {
+    if (solvedFrom === null) return;
+    for (let k = solvedFrom; k < abilities.length; k++) {
+      const ab = abilities[k] as AbilitySpec & { condition?: Condition };
+      const gate: Condition = { kind: 'objectMatches', ref: { ref: 'self' }, filter: { customRule: 'solved' } };
+      ab.condition = ab.condition ? { kind: 'and', cs: [ab.condition, gate] } : gate;
+    }
+    solvedFrom = null;
+  };
   for (let li = 0; li < lines.length; li++) {
+    closeSolved();
     let line = lines[li];
+    // Cases: "Solved — <ability>" only works once the Case is solved.
+    if (/^Solved — /i.test(line)) {
+      line = line.replace(/^Solved — /i, '');
+      solvedFrom = abilities.length;
+    }
     // Drop purely informational trailing sentences ("The same is true for …").
     {
       const ss = sentences(line);
@@ -1015,6 +1031,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     unhandledLines.push(line);
   }
+  closeSolved();
   // Dice result rows ("1—9 | effect") attach to the preceding roll.
   void 0;
   if (isSpell || modal || spellEffects.length) {
