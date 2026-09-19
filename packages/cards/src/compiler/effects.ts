@@ -9636,6 +9636,22 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ctx.targets.length = saved;
   }
   // "Starting with you, each player ...": the engine already asks players in turn order.
+  // "If your life total is less than your starting life total, ~ costs {X} less, where X is the
+  // difference." A bare "the difference" is the gap the sentence's own condition just described.
+  if (/\bthe difference\b/i.test(text) && !/difference between/i.test(text)) {
+    let spelled: string | null = null;
+    let md: RegExpMatchArray | null;
+    if ((md = text.match(/^if (.+?) (?:is|are) (?:less|fewer) than (.+?), (.+)$/i))) spelled = `If ${md[1]} is less than ${md[2]}, ${md[3].replace(/\bthe difference\b/i, `the difference between ${md[2]} and ${md[1]}`)}`;
+    else if ((md = text.match(/^if (.+?) (?:is|are) (?:greater|more) than (.+?), (.+)$/i))) spelled = `If ${md[1]} is greater than ${md[2]}, ${md[3].replace(/\bthe difference\b/i, `the difference between ${md[1]} and ${md[2]}`)}`;
+    else if ((md = text.match(/^if (?:it|that creature) had power greater than (.+?), (.+)$/i))) spelled = md[2].replace(/\bthe difference\b/i, `the difference between its power and ${md[1]}`);
+    else if ((md = text.match(/^if (.+?) (?:has|have) more than (\w+) cards in hand, (.+)$/i))) spelled = md[3].replace(/\bthe difference\b/i, `the difference between the number of cards in ${md[1]}'s hand and ${md[2]}`);
+    if (spelled && spelled !== text) {
+      const saved = ctx.targets.length;
+      const alt = parseSentence(spelled, ctx);
+      if (alt) return alt;
+      ctx.targets.length = saved;
+    }
+  }
   if (/^starting with (?:you|the player to your left), /i.test(text)) {
     const saved = ctx.targets.length;
     const alt = parseSentence(text.replace(/^starting with (?:you|the player to your left), /i, ''), ctx);
