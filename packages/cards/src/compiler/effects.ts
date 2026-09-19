@@ -4249,6 +4249,85 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 208 ----
+  // "That attacking player may discard a card" / "defending player may have you draw a card"
+  [/^(that attacking player|the attacking player|defending player|that player|any opponent|target opponent) may (.+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const body = m[2].replace(/^have you /i, 'you ');
+    const inner = parseSentence(/^have you /i.test(m[2]) ? body : `${m[1]} ${body}`, newCtx({ ...ctx, targets: ctx.targets, lastPlayer: who }));
+    if (!inner || !inner.length) return null;
+    return [{ kind: 'may', prompt: m[2], who, effects: inner }];
+  }],
+  // "That Mount or Vehicle gains flying until end of turn"
+  [/^that (Mount or Vehicle|Vehicle|Mount|Equipment|Aura) (gains?|has) (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    const g = parseGrantList(m[3]);
+    if (!ref || !g) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const out: Effect[] = [];
+    if (g.keywords.length) out.push({ kind: 'grantKeywords', keywords: g.keywords, on: ref, duration: dur });
+    for (const a of g.abilities) out.push({ kind: 'grantAbility', text: a, on: ref, duration: dur });
+    return out.length ? out : null;
+  }],
+  // "Destroy all Auras attached to that creature"
+  [/^destroy all (Auras|Equipment) attached to (that creature|it|that permanent)$/i, (m, ctx) => {
+    const host = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    if (!host) return null;
+    const sub = /^Auras$/i.test(m[1]) ? 'Aura' : 'Equipment';
+    return [{ kind: 'destroy', what: { ref: 'all', filter: { subtypes: [sub], zone: 'battlefield', attachedToRef: host } }, cantRegenerate: false }];
+  }],
+  // "It deals 2 damage to another creature you control"
+  [/^(it|~) deals (\d+|X) damage to another (.+?)$/i, (m, ctx) => {
+    const src = /^~$/.test(m[1]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const c = chooseRef(`a ${m[3]}`, ctx);
+    if (!c) return null;
+    const amt: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [...c.pre, { kind: 'damage', amount: amt, source: src, to: c.ref }];
+  }],
+  // "Remove all counters from up to one target permanent or opponent"
+  [/^remove all counters from (up to one target permanent or opponent|target permanent|up to one target permanent)$/i, (m, ctx) => {
+    const spec: TargetSpec = /opponent/i.test(m[1])
+      ? { description: m[1], kind: 'objectOrPlayer', filter: { zone: 'battlefield' }, playerFilter: 'opponent', min: 0, max: 1 }
+      : { description: m[1], kind: 'object', filter: { zone: 'battlefield' }, min: /up to/i.test(m[1]) ? 0 : 1, max: 1 };
+    ctx.targets.push(spec);
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'removeCounters', counter: 'any', amount: 'all', on: ref }];
+  }],
+  // "Remove any number of +1/+1 counters from among creatures you control"
+  [/^remove any number of ([+-]\d+\/[+-]\d+|[\w'-]+) counters from among (.+?)$/i, (m, ctx) => {
+    const noun = parseNoun(m[2]) ?? parseNoun(`a ${singularize(m[2])}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'removeCounters', counter: m[1] as never, amount: 'X', on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } } }];
+  }],
+  // "Choose a card at random in your graveyard"
+  [/^choose (?:a|an) card at random in your graveyard$/i, (m, ctx) => {
+    const key = `gyRand${ctx.targets.length}`;
+    const ref: Ref = { ref: 'chosen', key };
+    ctx.lastObj = ref;
+    return [{ kind: 'chooseObjects', who: YOU, filter: { zone: 'graveyard', owner: 'you' }, count: 1, key, random: true }];
+  }],
+  // "Otherwise, you may return ~ to its owner's hand"
+  [/^you may return ~ to its owner'?s'? hand$/i, () => [{ kind: 'may', prompt: "Return ~ to its owner's hand?", effects: [{ kind: 'returnToHand', what: SELF }] }]],
+  // "Put a stun counter on each of those creatures you don't control"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on each of those (.+?) you (?:do not|don't) control$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${singularize(m[3])} you do not control`);
+    if (typeof n !== 'number' || !noun) return null;
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: n, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } } }];
+  }],
+  // "Counter all abilities your opponents control"
+  [/^counter all (abilities|spells) your opponents control$/i, (m) => [
+    { kind: 'counterSpell', what: { ref: 'all', filter: { zone: 'stack', controller: 'opponent' } } },
+  ]],
+  // "Any player may sacrifice two creatures of their choice"
+  [/^any player may sacrifice (?:a|an|(\w+)) (.+?)(?: of their choice)?$/i, (m, ctx) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'may', prompt: `Sacrifice ${n}?`, who: { ref: 'iter' }, effects: [{ kind: 'sacrificeChoice', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'iter' } }, count: n }] }] }];
+  }],
   // ---- Round 207 ----
   // "Until end of turn, target creature has base power 1 or base toughness 1"
   [/^(.+?) has base power (\d+) or base toughness (\d+)$/i, (m, ctx) => {
