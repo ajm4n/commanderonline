@@ -644,7 +644,32 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
             targets: [{ description: `target Spirit card with mana value ${km[1]} or less in your graveyard`, kind: 'object', min: 1, max: 1, filter: { subtypes: ['Spirit'], zone: 'graveyard', owner: 'you', cmcLE: parseInt(km[1], 10) } }],
             effects: [{ kind: 'putIntoHand', what: { ref: 'target', slot: 0 } }],
           } as never);
-        else if (/^unleash$/i.test(kw)) {
+        else if (/^extort$/i.test(kw))
+          abilities.push({
+            kind: 'triggered', text: kw, event: 'cast', filter: { player: 'you' },
+            effects: [{ kind: 'ifPays', cost: '{W/B}', effects: [{ kind: 'loseLife', amount: 1, who: { ref: 'eachOpponent' } }, { kind: 'gainLife', amount: { kind: 'opponents' }, who: { ref: 'controller' } }] }],
+          } as never);
+        else if (/^riot$/i.test(kw))
+          abilities.push({
+            kind: 'replacement', text: kw, event: 'entersBattlefield', self: true,
+            effects: [{ kind: 'chooseMode', options: [
+              { text: 'A +1/+1 counter', effects: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: { ref: 'self' } }] },
+              { text: 'Haste', effects: [{ kind: 'grantKeywords', keywords: ['Haste'], on: { ref: 'self' }, duration: 'permanent' }] },
+            ], count: 1 }],
+          } as never);
+        else if (/^decayed$/i.test(kw)) {
+          abilities.push({ kind: 'static', text: kw, affects: 'self', rule: { kind: 'cantBlock' } } as never);
+          abilities.push({ kind: 'triggered', text: kw, event: 'attacks', filter: { self: true }, effects: [{ kind: 'delayedTrigger', event: 'endOfCombat', effects: [{ kind: 'sacrifice', what: { ref: 'self' } }], text: kw, once: true }] } as never);
+        } else if ((km = kw.match(/^mobilize (\d+)$/i))) {
+          const n295 = parseInt(km[1], 10);
+          abilities.push({
+            kind: 'triggered', text: kw, event: 'attacks', filter: { self: true },
+            effects: [
+              { kind: 'createToken', token: { name: 'Warrior', typeLine: 'Token Creature — Warrior', power: '1', toughness: '1', colors: ['R'] }, count: n295, tapped: true, attacking: true },
+              { kind: 'delayedTrigger', event: 'endOfCombat', effects: [{ kind: 'sacrifice', what: { ref: 'lastCreated' } }], text: kw, once: true },
+            ],
+          } as never);
+        } else if (/^unleash$/i.test(kw)) {
           abilities.push({ kind: 'replacement', text: kw, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: 1 }, optional: true } as never);
           abilities.push({ kind: 'static', text: kw, affects: 'self', rule: { kind: 'cantBlock' }, condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: '+1/+1', op: '>=', value: 1 } } as never);
         }
