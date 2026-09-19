@@ -302,8 +302,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       compiledLines.push(line);
       continue;
     }
-    // "You may cast ~ as though it had flash. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step."
-    if (/^You may cast ~ as though it had flash\. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step\.?$/i.test(line)) {
+    // "You may cast ~ as though it had flash. If you cast it any time a sorcery (?:could not|couldn't) have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step."
+    if (/^You may cast ~ as though it had flash\. If you cast it any time a sorcery (?:could not|couldn't) have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step\.?$/i.test(line)) {
       abilities.push({ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: ['Flash'] }, zone: 'hand' });
       abilities.push({ kind: 'triggered', text: line, event: 'entersBattlefield', filter: { self: true }, condition: { kind: 'memoryFlag', key: 'castAtInstantSpeed' }, effects: [{ kind: 'delayedTrigger', event: 'cleanup', effects: [{ kind: 'sacrifice', what: { ref: 'self' } }], text: 'Sacrifice this at the beginning of the next cleanup step.', once: true }] });
       compiledLines.push(line);

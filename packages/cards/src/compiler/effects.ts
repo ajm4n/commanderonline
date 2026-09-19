@@ -4268,6 +4268,46 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 246 ----
+  // "X target blocked creatures assign their combat damage this turn as though they weren't blocked."
+  [/^(.+?) assigns? (?:its|their) combat damage(?: this turn)? as though (?:it|they) (?:were not|weren't) blocked$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'assignAsUnblocked' }, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  // "Destroy target nonland permanent and all other permanents with the same name as that permanent."
+  [/^(destroy|exile) (target .+?) and all other (.+?) with the same name as that (?:permanent|creature|card)$/i, (m, ctx) => {
+    const ref = objRef(m[2], ctx);
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (!ref || !noun || !noun.confident) return null;
+    const all: Ref = { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', sameNameAs: ref, other: true } };
+    return /^destroy$/i.test(m[1])
+      ? [{ kind: 'destroy', what: ref }, { kind: 'destroy', what: all }]
+      : [{ kind: 'moveToZone', what: ref, zone: 'exile' }, { kind: 'moveToZone', what: all, zone: 'exile' }];
+  }],
+  // "You may cast any number of spells from among those nonland cards without paying their mana costs."
+  [/^you may cast any number of (.+?) from among (?:those .+? cards|them|the exiled cards) without paying (?:their|its) mana costs?$/i, (m, ctx) => {
+    const noun = /^spells$/i.test(m[1]) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    const key = `anyNum${ctx.targets.length}`;
+    const f = { ...noun.filter };
+    delete f.zone;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: f, from: { ref: 'lastMoved' }, count: 99, key, upTo: true },
+      { kind: 'castFrom', what: { ref: 'chosen', key }, free: true },
+    ];
+  }],
+  // "Return target Equipment card from your graveyard to the battlefield attached to ~."
+  [/^return (target .+? card) from your graveyard to the battlefield attached to (~|it)$/i, (m, ctx) => {
+    const ref = objRef(`${m[1]} from your graveyard`, ctx);
+    return ref ? [{ kind: 'returnToBattlefield', what: ref }, { kind: 'attach', what: { ref: 'lastMoved' }, to: SELF }] : null;
+  }],
+  // "Sacrifice it unless you return a basic land card from your graveyard to your hand."
+  [/^(.+?) unless you return (?:a|an) (.+?) from your graveyard to your hand$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], ctx);
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!inner || !noun || !noun.confident) return null;
+    return [{ kind: 'unlessPays', who: YOU, cost: { returnToHand: { ...noun.filter, zone: 'graveyard' }, count: 1 }, effects: inner, text: m[0].slice(m[1].length + 8) }];
+  }],
   // ---- Round 245 ----
   // "Target creature can't be the target of spells or abilities your opponents control this turn."
   [/^(.+?) cannot be the target of spells or abilities your opponents control(?: this turn)?$/i, (m, ctx) => {
@@ -9213,6 +9253,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
     }
     if (a && b) return [...a, ...b];
+    ctx.targets.length = saved;
+  }
+  // "You create a Food token for each player being attacked": whatever the effect is, repeat it
+  // that many times. Only as a last resort — the specific "for each" patterns come first.
+  if ((m = text.match(/^(.+?) for each (.+)$/i)) && !/\bthis way\b/i.test(m[2])) {
+    const saved = ctx.targets.length;
+    const n = amt(`the number of ${m[2]}`, ctx) ?? amt(m[2], ctx);
+    const inner = n !== null ? parseSentence(m[1], ctx) : null;
+    if (n !== null && inner) return [{ kind: 'repeat', times: n, effects: inner }];
     ctx.targets.length = saved;
   }
   // "~ deals 2 damage to each attacking creature or ~ deals 2 damage to each blocking creature":
