@@ -4409,7 +4409,25 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
-  // ---- Round 267 ----
+  // ---- Round 268 ----
+  // A permissive fallback for searches the main pattern's fixed word order misses:
+  // "Search your library for a land card of each basic land type, put those cards onto the
+  // battlefield, then shuffle." / "..., reveal it, put it into your hand, then shuffle."
+  [/^search (your|target player's|that player's|their) library for (?:(any number of|up to \w+|\w+) )?(.+?),(?: reveal (?:it|them|those cards|that card),?)?(?: and)?(?: then)? put (?:it|them|that card|those cards) (into your hand|onto the battlefield tapped|onto the battlefield|into your graveyard|on top of your library)(?:,? (?:and )?(?:then )?shuffle(?: your library)?)?$/i, (m, ctx) => {
+    const raw = m[3].replace(/ cards$/i, ' card');
+    const noun = /^cards?$/i.test(m[3]) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(/\bcards?\b/i.test(raw) ? raw : `${raw} card`);
+    if (!noun || !noun.confident) return null;
+    const n: Amount | null = m[2] ? (/any number of/i.test(m[2]) ? 20 : (wordToNumber(m[2].replace(/^up to /i, '')) as Amount | null)) : 1;
+    if (n === null) return null;
+    let who: Ref | undefined;
+    if (!/^your$/i.test(m[1])) {
+      who = playerRef(m[1].replace(/'s$/, ''), ctx) ?? undefined;
+      if (!who) return null;
+    }
+    const dest = /hand/.test(m[4]) ? 'hand' : /battlefield/.test(m[4]) ? 'battlefield' : /top/.test(m[4]) ? 'top' : 'graveyard';
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'searchLibrary', who, filter: { ...noun.filter, zone: 'library' }, count: n, destination: dest, tapped: /tapped/i.test(m[4]), reveal: /reveal/i.test(m[0]), shuffle: /shuffle/i.test(m[0]) }];
+  }],
   // "Add an amount of mana of that color equal to the number of creatures you control of the chosen type."
   [/^add an amount of mana of (?:that|the chosen) colou?r equal to (.+)$/i, (m, ctx) => {
     const a = amt(m[1], ctx);
