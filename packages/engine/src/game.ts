@@ -1607,6 +1607,8 @@ export class Game {
         const pid = a.who ? this.resolvePlayers(a.who, ctx)[0] : ctx.controller;
         return pid !== undefined ? (this.player(pid).manaPool[a.color] ?? 0) : 0;
       }
+      case 'playersLost':
+        return this.state.playerOrder.filter((p) => this.player(p).lost).length;
       case 'lowestLife':
         return Math.min(...this.state.playerOrder.map((pl) => this.player(pl).life));
       case 'highestLife':

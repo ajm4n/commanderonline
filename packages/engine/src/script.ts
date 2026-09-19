@@ -84,6 +84,8 @@ export type Amount =
   | { kind: 'playerStatAmount'; stat: 'poison' | 'experience' | 'energy'; ref: Ref }
   /** Total power of the objects a ref resolves to. */
   | { kind: 'totalPowerRef'; ref: Ref }
+  /** Number of players who have lost the game. */
+  | { kind: 'playersLost' }
   | { kind: 'lowestLife' }
   | { kind: 'highestLife' }
   | { kind: 'totalToughnessRef'; ref: Ref }

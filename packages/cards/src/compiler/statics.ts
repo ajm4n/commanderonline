@@ -87,6 +87,34 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 234 ----
+  // "You can't choose an untapped permanent as ~'s target as you cast it."
+  if ((m = L.match(/^You cannot choose an? (untapped|tapped) (permanent|creature|artifact|land) as ~'s target as you cast it$/i)))
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'targetMustBe', data: { filter: /untapped/i.test(m[1]) ? { tapped: true } : { untapped: true } } } }];
+  // "~ costs {1} less to cast for each opponent you attacked this turn."
+  if ((m = L.match(/^~ costs \{(\d+)\} less to cast for each (.+?)$/i))) {
+    const a234 = parseAmount(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (a234 !== null) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'costReduction', amount: parseInt(m[1], 10), perAmount: a234, filter: { self: true } } as never }];
+  }
+  // "~ costs 3 life more to cast for each target."
+  if ((m = L.match(/^~ costs (\d+) life more to cast for each target$/i)))
+    return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'lifeCostPerTarget', data: parseInt(m[1], 10) } }];
+  // "~ gets +10/+10 for each player who has lost the game."
+  if ((m = L.match(/^~ gets ([+-]\d+)\/([+-]\d+) for each player who has lost the game$/i)))
+    return [{ kind: 'static', text: line, affects: 'self', modification: { layer: '7c', power: parseInt(m[1], 10), toughness: parseInt(m[2], 10), perAmount: { kind: 'playersLost' } } as never }];
+  // "Equipment named Sword of Kaldra, ~, and Helm of Kaldra have indestructible."
+  if ((m = L.match(/^(Equipment|Artifacts|Creatures) named ([A-Z][\w' ,-]*?), ~, and ([A-Z][\w' ,-]*?) have (.+?)$/i))) {
+    const g234 = parseGrantList(m[4]);
+    const n234 = parseNoun(`a ${singularize(m[1])}`);
+    if (g234 && g234.keywords.length && !g234.abilities.length && n234)
+      return [{ kind: 'static', text: line, affects: { ...n234.filter, zone: 'battlefield', anyOf: [{ nameIs: m[2] }, { nameIs: '~' }, { nameIs: m[3] }] }, modification: { layer: 6, addKeywords: g234.keywords } }];
+  }
+  // "Each creature without flanking blocking ~ gets -1/-1 until end of turn" (a static on the battlefield)
+  if ((m = L.match(/^Each (.+?) gets ([+-]\d+)\/([+-]\d+) until end of turn$/i))) {
+    const n234b = parseNoun(`a ${singularize(m[1])}`);
+    if (n234b && n234b.confident)
+      return [{ kind: 'static', text: line, affects: { ...n234b.filter, zone: 'battlefield' }, modification: { layer: '7c', power: parseInt(m[2], 10), toughness: parseInt(m[3], 10) } }];
+  }
   // ---- Round 229 ----
   // "~'s power is equal to the number of tapped lands the chosen player controls."
   if ((m = L.match(/^~'s (power|toughness) is equal to (.+?)$/i))) {
