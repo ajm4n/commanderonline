@@ -4249,6 +4249,79 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 217 ----
+  // "Have ~'s base power and toughness become 4/1 or 1/4 until end of turn"
+  [/^have (.+?)'s base power and toughness become ([\dX]+)\/([\dX]+) or ([\dX]+)\/([\dX]+)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    const mk = (p: string, t: string): Effect => ({ kind: 'setPT', power: p === 'X' ? 'X' : parseInt(p, 10), toughness: t === 'X' ? 'X' : parseInt(t, 10), on: ref, duration: 'endOfTurn' });
+    return [{ kind: 'chooseMode', count: 1, options: [
+      { text: `${m[2]}/${m[3]}`, effects: [mk(m[2], m[3])] },
+      { text: `${m[4]}/${m[5]}`, effects: [mk(m[4], m[5])] },
+    ] }];
+  }],
+  // "Sacrifice up to three Zombies"
+  [/^sacrifice up to (\w+) (.+?)$/i, (m) => {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    return [{ kind: 'sacrificeChoice', who: YOU, filter: { ...noun.filter, zone: 'battlefield', controller: 'you' }, count: n, upTo: true }];
+  }],
+  // "That player untaps ~ and gains control of it"
+  [/^(that player|target opponent|target player|the attacking player) untaps ~ and gains control of it$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'untap', what: SELF }, { kind: 'gainControl', what: SELF, who, duration: 'permanent' }] : null;
+  }],
+  // "Return ~ to its owner's hand unless you remove two oil counters from it"
+  [/^return ~ to its owner's hand unless you remove (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? from it$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'unlessPays', who: YOU, cost: { removeCounters: { counter: m[2] as never, amount: n } } as never, effects: [{ kind: 'returnToHand', what: SELF }] }];
+  }],
+  // "Put two level counters on each creature you control with level up"
+  [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on each (.+?)$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    return [{ kind: 'addCounters', counter: m[2] as never, amount: n, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } } }];
+  }],
+  // "Unlock a locked door of up to one target Room you control"
+  [/^unlock a locked door of (?:up to one )?(target .+?)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'unlockDoor', door: 1 }] : null;
+  }],
+  // "You may return one of those Dragons to its owner's hand"
+  [/^you may return one of (?:those|them) ?(.*?) to (?:its|their) owner'?s'? hands?$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    if (!base) return null;
+    return [{ kind: 'may', prompt: 'Return one to its owner’s hand?', effects: [{ kind: 'chooseObjects', who: YOU, filter: { zone: 'battlefield' }, count: 1, key: 'oneOf217', from: base }, { kind: 'returnToHand', what: { ref: 'chosen', key: 'oneOf217' } }] }];
+  }],
+  // "Create a token that is a copy of one of them" / "Play one of them without paying its mana cost"
+  [/^(?:create a token that is a copy of|play|cast) one of them(?: without paying its mana cost)?$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    if (!base) return null;
+    const pick: Effect = { kind: 'chooseObjects', who: YOU, filter: {}, count: 1, key: 'oneOf217b', from: base };
+    const ref: Ref = { ref: 'chosen', key: 'oneOf217b' };
+    if (/^create/i.test(m[0])) return [pick, { kind: 'createToken', token: { name: 'Copy', typeLine: '', colors: [], copyOf: ref }, count: 1 }];
+    return [pick, { kind: 'playFromExile', what: ref, duration: 'thisTurn', free: /without paying/i.test(m[0]) || undefined }];
+  }],
+  // "Exile cards equal to its power from the top of its owner's library"
+  [/^exile cards equal to its power from the top of (?:its owner's|their|that player's) library$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    const who: Ref = ctx.lastPlayer ?? { ref: 'ownerOf', of: ref };
+    return [{ kind: 'exileTop', amount: { kind: 'power', ref }, who }];
+  }],
+  // "You create a Food token for each player being attacked"
+  [/^you create (?:a|an) ([\w' -]+?) token for each player being attacked$/i, (m) => {
+    const t = parseTokenPhrase(`a ${m[1]} token`);
+    if (!t) return null;
+    return [{ kind: 'createToken', token: t.token, count: { kind: 'count', filter: { types: ['Creature'], attacking: true, zone: 'battlefield' } } }];
+  }],
+  // "You manifest the top card of that player's library"
+  [/^you manifest the top card of (that player's|target player's|your) library$/i, (m, ctx) => {
+    const who = /your/i.test(m[1]) ? YOU : ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    return [{ kind: 'manifest', amount: 1, who }];
+  }],
   // ---- Round 216 ----
   // "Exile all other spells and counter all abilities"
   [/^exile all other spells and counter all abilities$/i, () => [
