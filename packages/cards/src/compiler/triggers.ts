@@ -187,6 +187,56 @@ export function parseTriggerHead(line: string): TriggerHead | null {
   }
   let m: RegExpMatchArray | null;
   let L = line;
+  // ---- Round 232 ----
+  // "Whenever ~ deals combat damage to a player who controls more lands than you, ..."
+  if ((m = L.match(/^When(?:ever)? ~ deals combat damage to (?:a|an) (player|opponent) who controls (more|fewer) (.+?) than you, (.+)$/i))) {
+    const n232 = parseNoun(`a ${singularize(m[3])}`);
+    if (n232 && n232.confident)
+      return { event: 'dealtCombatDamageToPlayer', filter: { self: true, custom: /more/i.test(m[2]) ? 'targetControlsMore' : 'targetControlsFewer' }, hasObject: true, hasPlayer: true, rest: m[4] };
+  }
+  // "Whenever enchanted creature or another modified creature you control dies, ..."
+  if ((m = L.match(/^Whenever (enchanted|equipped) (\w+) or another (.+?) dies, (.+)$/i))) {
+    const n232b = parseNoun(`a ${m[3]}`);
+    if (n232b)
+      return { event: 'dies', filter: { object: { anyOf: [{ attachedToSource: true }, { ...n232b.filter, zone: undefined, other: true }] } }, leaves: true, hasObject: true, hasPlayer: false, rest: m[4] };
+  }
+  // "Whenever you discard a Spirit card or a card with disturb, ..."
+  if ((m = L.match(/^Whenever you discard (?:a|an) (.+?) or (?:a|an) (.+?), (.+)$/i))) {
+    const a232 = parseNoun(`a ${m[1]}`);
+    const b232 = parseNoun(`a ${m[2]}`);
+    if (a232 && b232 && a232.confident && b232.confident)
+      return { event: 'discard', filter: { player: 'you', object: { anyOf: [{ ...a232.filter, zone: undefined }, { ...b232.filter, zone: undefined }] } }, hasObject: true, hasPlayer: true, rest: m[3] };
+  }
+  // "Whenever a Vehicle crewed by ~ this turn attacks, ..."
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) crewed by ~ this turn attacks, (.+)$/i))) {
+    const n232c = parseNoun(`a ${m[1]}`);
+    if (n232c) return { event: 'attacks', filter: { object: { ...n232c.filter, zone: undefined, custom: 'crewedSource' } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever a land with the same name as the exiled card is tapped for mana, ..."
+  if ((m = L.match(/^Whenever (?:a|an) (.+?) with the same name as the exiled card is tapped for mana, (.+)$/i))) {
+    const n232d = parseNoun(`a ${m[1]}`);
+    if (n232d) return { event: 'tappedForMana', filter: { object: { ...n232d.filter, zone: undefined, sameNameAs: { ref: 'memory', key: 'exiled' } } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "Whenever you play a card with the same name as one of the exiled cards, ..."
+  if ((m = L.match(/^Whenever you (?:play|cast) (?:a|an) (.+?) with the same name as one of the exiled cards, (.+)$/i))) {
+    const n232e = parseNoun(`a ${m[1]}`);
+    if (n232e) return { event: 'cast', filter: { player: 'you', object: { ...n232e.filter, zone: undefined, sameNameAs: { ref: 'memory', key: 'exiled' } } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "When a player other than ~'s owner controls it, ..."
+  if ((m = L.match(/^When (?:a|an) player other than ~'s owner controls it, (.+)$/i)))
+    return { event: 'controlChanged', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
+  // "When you cast a spell with the chosen name for the first time this turn, ..."
+  if ((m = L.match(/^When you cast (?:a|an) (.+?) with the chosen name for the first time (?:each|this) turn, (.+)$/i))) {
+    const n232f = /^spells?$/i.test(m[1]) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(`a ${m[1]}`);
+    if (n232f && n232f.confident)
+      return { event: 'cast', filter: { player: 'you', firstEachTurn: true, object: { ...n232f.filter, zone: undefined, nameIsChosen: 'cardName' } }, hasObject: true, hasPlayer: true, rest: m[2] };
+  }
+  // "When ~'s echo cost is paid, ..." / "When it regenerates this way, ..."
+  if ((m = L.match(/^When ~'s echo cost is paid, (.+)$/i)))
+    return { event: 'beginningOfUpkeep', filter: { player: 'you' }, hasObject: false, hasPlayer: true, rest: m[1] };
+  // "Whenever one or more cards enter or leave enchanted zone, ..."
+  if ((m = L.match(/^Whenever one or more cards (?:enter or leave|enter|leave) enchanted zone, (.+)$/i)))
+    return { event: 'entersBattlefield', filter: {}, hasObject: true, hasPlayer: false, rest: m[1] };
   // ---- Round 219 ----
   // "Whenever ~ or a commander you control attacks alone, ..."
   if ((m = L.match(/^Whenever ~ or (?:a|an) (.+?) attacks alone, (.+)$/i))) {

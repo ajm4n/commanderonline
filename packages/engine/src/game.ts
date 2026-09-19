@@ -1169,6 +1169,13 @@ export class Game {
       const at = (e.data as { abilityText?: string } | undefined)?.abilityText;
       if (typeof at !== 'string' || !new RegExp(`^${f.abilityTextPrefix}`, 'i').test(at)) return false;
     }
+    if (f.custom === 'targetControlsMore' || f.custom === 'targetControlsFewer') {
+      const other = e.playerId;
+      if (other === undefined) return false;
+      const landsOf = (p: PlayerId): number => this.state.battlefield.filter((id) => this.obj(id).controller === p && this.characteristics(id).types.includes('Land')).length;
+      const mine = landsOf(controller);
+      if (f.custom === 'targetControlsMore' ? !(landsOf(other) > mine) : !(landsOf(other) < mine)) return false;
+    }
     if (f.custom === 'blocksTwoOrMore' && (this.state.objects[e.objectId ?? -1]?.blocking.length ?? 0) < 2) return false;
     if (f.custom === 'attacksInitiativeHolder') {
       const atk = e.objectId !== undefined ? this.state.objects[e.objectId] : undefined;
