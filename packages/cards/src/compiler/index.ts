@@ -614,6 +614,41 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if (/^Tiered\.?$/i.test(line) && lines[li + 1]?.startsWith('•')) line = 'Choose one';
     if (isKeywordLine(line)) {
       compiledLines.push(line);
+      // Keywords that stand for an ability and can share a line ("Flying, prowess").
+      for (const part of line.replace(/\.$/, '').split(/[,;]\s*/)) {
+        const kw = part.trim();
+        let km: RegExpMatchArray | null;
+        if (/^prowess$/i.test(kw))
+          abilities.push({ kind: 'triggered', text: kw, event: 'cast', filter: { player: 'you', object: { notTypes: ['Creature'] } }, effects: [{ kind: 'pump', power: 1, toughness: 1, on: { ref: 'self' } }] } as never);
+        else if (/^exploit$/i.test(kw))
+          abilities.push({ kind: 'triggered', text: kw, event: 'entersBattlefield', filter: { self: true }, optional: true, effects: [{ kind: 'sacrificeChoice', who: { ref: 'controller' }, filter: { types: ['Creature'], controller: 'you', zone: 'battlefield' }, count: 1 }] } as never);
+        else if (/^living weapon$/i.test(kw))
+          abilities.push({
+            kind: 'triggered', text: kw, event: 'entersBattlefield', filter: { self: true },
+            effects: [
+              { kind: 'createToken', token: { name: 'Germ', typeLine: 'Token Creature — Phyrexian Germ', power: '0', toughness: '0', colors: ['B'] }, count: 1 },
+              { kind: 'attach', what: { ref: 'self' }, to: { ref: 'lastCreated' } },
+            ],
+          } as never);
+        else if (/^melee$/i.test(kw))
+          abilities.push({ kind: 'triggered', text: kw, event: 'attacks', filter: { self: true }, effects: [{ kind: 'pump', power: { kind: 'playersBeingAttacked' }, toughness: { kind: 'playersBeingAttacked' }, on: { ref: 'self' } }] } as never);
+        else if (/^ingest$/i.test(kw))
+          abilities.push({ kind: 'triggered', text: kw, event: 'dealtCombatDamageToPlayer', filter: { self: true }, effects: [{ kind: 'exileTop', amount: 1, who: { ref: 'triggerPlayer' } }] } as never);
+        else if ((km = kw.match(/^poisonous (\d+)$/i)))
+          abilities.push({ kind: 'triggered', text: kw, event: 'dealtCombatDamageToPlayer', filter: { self: true }, effects: [{ kind: 'addCounters', counter: 'poison', amount: parseInt(km[1], 10), on: { ref: 'triggerPlayer' } }] } as never);
+        else if ((km = kw.match(/^frenzy (\d+)$/i)))
+          abilities.push({ kind: 'triggered', text: kw, event: 'attacksUnblocked', filter: { self: true }, effects: [{ kind: 'pump', power: parseInt(km[1], 10), toughness: 0, on: { ref: 'self' } }] } as never);
+        else if ((km = kw.match(/^soulshift (\d+)$/i)))
+          abilities.push({
+            kind: 'triggered', text: kw, event: 'dies', filter: { self: true }, optional: true,
+            targets: [{ description: `target Spirit card with mana value ${km[1]} or less in your graveyard`, kind: 'object', min: 1, max: 1, filter: { subtypes: ['Spirit'], zone: 'graveyard', owner: 'you', cmcLE: parseInt(km[1], 10) } }],
+            effects: [{ kind: 'putIntoHand', what: { ref: 'target', slot: 0 } }],
+          } as never);
+        else if (/^unleash$/i.test(kw)) {
+          abilities.push({ kind: 'replacement', text: kw, event: 'entersBattlefield', self: true, counters: { counter: '+1/+1', amount: 1 }, optional: true } as never);
+          abilities.push({ kind: 'static', text: kw, affects: 'self', rule: { kind: 'cantBlock' }, condition: { kind: 'hasCounter', ref: { ref: 'self' }, counter: '+1/+1', op: '>=', value: 1 } } as never);
+        }
+      }
       // Cycling: an activated ability from hand.
       if ((m = line.match(/^Cycling ((?:\{[^}]+\})+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: m[1], discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
       if ((m = line.match(/^Cycling (\d+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: `{${m[1]}}`, discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
