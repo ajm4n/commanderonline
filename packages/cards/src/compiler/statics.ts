@@ -2223,6 +2223,62 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [spec];
     }
   }
+  // "If a creature you control attacking causes a triggered ability of a permanent you control to trigger,
+  //  that ability triggers an additional time." The whole Panharmonicon family, one verb at a time.
+  sx277: {
+  if (/^If turning a face-down permanent face up causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time$/i.test(L))
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: { controller: 'you' }, event: 'turnedFaceUp' } } }];
+  if ((m = L.match(/^If (.+?) ((?:entering the battlefield|entering|leaving the battlefield|attacking|blocking|dying|being dealt damage|dealing combat damage to a player|drawing a card|gaining life|casting a spell|copying a spell|casting an instant or sorcery spell|copying an instant or sorcery spell|casting|copying|being turned face up|turning face up)(?: or (?:entering the battlefield|entering|leaving the battlefield|attacking|blocking|dying|being dealt damage|dealing combat damage to a player|drawing a card|gaining life|casting a spell|copying a spell|casting an instant or sorcery spell|copying an instant or sorcery spell|casting|copying|being turned face up|turning face up))?) causes a triggered ability of (.+?) to trigger, that ability triggers an additional time$/i))) {
+    const EVENTS: Record<string, string> = {
+      'entering the battlefield': 'entersBattlefield',
+      entering: 'entersBattlefield',
+      'leaving the battlefield': 'leavesBattlefield',
+      attacking: 'attacks',
+      blocking: 'blocks',
+      dying: 'dies',
+      'being dealt damage': 'dealtDamage',
+      'dealing combat damage to a player': 'dealtCombatDamageToPlayer',
+      'drawing a card': 'drawCard',
+      'gaining life': 'lifeGained',
+      'casting a spell': 'cast',
+      'casting an instant or sorcery spell': 'cast',
+      'copying a spell': 'spellCopied',
+      casting: 'cast',
+      copying: 'spellCopied',
+      'copying an instant or sorcery spell': 'spellCopied',
+      'being turned face up': 'turnedFaceUp',
+      'turning face up': 'turnedFaceUp',
+    };
+    // " or " also occurs inside "an instant or sorcery spell", so split only where both halves are verbs.
+    const whole = m[2].trim().toLowerCase();
+    let events: (string | undefined)[] = EVENTS[whole] ? [EVENTS[whole]] : [];
+    if (!events.length) {
+      for (let i = whole.indexOf(' or '); i >= 0; i = whole.indexOf(' or ', i + 1)) {
+        const a = EVENTS[whole.slice(0, i)];
+        const b = EVENTS[whole.slice(i + 4)];
+        if (a && b) {
+          events = [a, b];
+          break;
+        }
+      }
+    }
+    if (!events.length) break sx277;
+    const who277 = parseNoun(m[3]);
+    if (!who277 || !who277.confident || events.some((e) => !e)) break sx277;
+    const subj = m[1].trim();
+    // A player doing something has no object to filter on.
+    const isPlayer = /^(?:a player|each player|you|an opponent|players|a player you control)$/i.test(subj);
+    let eo277: ObjectFilter | undefined;
+    if (!isPlayer) {
+      const n277 = parseNoun(/^(?:a|an|each|another) /i.test(subj) ? subj : `a ${subj}`);
+      if (!n277 || !n277.confident) break sx277;
+      eo277 = n277.filter;
+    }
+    // "casting an instant or sorcery spell" also says what kind of spell.
+    if (/instant or sorcery spell$/i.test(m[2]) && !eo277) eo277 = { anyOf: [{ types: ['Instant'] }, { types: ['Sorcery'] }] };
+    return events.map((event) => ({ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'doubleTriggers', data: { filter: who277.filter, event, ...(eo277 ? { eventObject: eo277 } : {}) } } }) as AbilitySpec);
+  }
+  }
   // Compound: "Equipped creature cannot be blocked and has shroud."
   if ((m = L.match(/^(.+?) (cannot be blocked|cannot block|cannot attack|cannot attack or block) and (?:has|have) (.+)$/i))) {
     const a = parseStatic(`${m[1]} ${m[2]}`, isCreatureOrPermanent);
