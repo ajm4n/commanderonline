@@ -4249,6 +4249,90 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 215 ----
+  // "That land's controller may attach ~ to a land of their choice" / "That player attaches ~ to a land of their choice"
+  [/^(.+?) (?:may attach|attaches) ~ to (?:a|an) (.+?)(?: of their choice)?$/i, (m, ctx) => {
+    const who = playerRef(m[1].replace(/'s controller$/i, "'s controller"), ctx);
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!who || !noun || !noun.confident) return null;
+    const key = `host215_${ctx.targets.length}`;
+    const pick: Effect = { kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'battlefield' }, count: 1, key };
+    const body: Effect[] = [pick, { kind: 'attach', what: SELF, to: { ref: 'chosen', key } }];
+    return /may attach/i.test(m[0]) ? [{ kind: 'may', prompt: `Attach ~ to a ${m[2]}?`, who, effects: body }] : body;
+  }],
+  // "Each opponent gets a number of rad counters equal to its power"
+  [/^each (opponent|player) gets a number of (rad|poison|energy|experience) counters equal to (.+?)$/i, (m, ctx) => {
+    const a215 = amt(m[3], ctx);
+    if (a215 === null) return null;
+    const stat = m[2].toLowerCase();
+    return [{ kind: 'addCounters', counter: stat as never, amount: a215, on: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' } }];
+  }],
+  // "Destroy all Equipment attached to that creature at end of combat"
+  [/^(destroy|exile) all (Equipment|Auras) attached to (that creature|it) at end of combat$/i, (m, ctx) => {
+    const host = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    if (!host) return null;
+    const sub = /^Auras$/i.test(m[2]) ? 'Aura' : 'Equipment';
+    const inner: Effect = /destroy/i.test(m[1])
+      ? { kind: 'destroy', what: { ref: 'all', filter: { subtypes: [sub], zone: 'battlefield', attachedToRef: host } }, cantRegenerate: false }
+      : { kind: 'moveToZone', what: { ref: 'all', filter: { subtypes: [sub], zone: 'battlefield', attachedToRef: host } }, zone: 'exile' };
+    return [{ kind: 'delayedTrigger', event: 'endOfCombat', effects: [inner], text: m[0], once: true }];
+  }],
+  // "Sacrifice a permanent other than that creature or ~"
+  [/^sacrifice (?:a|an) (.+?) other than (?:that creature|it) or ~$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'sacrificeChoice', who: YOU, filter: { ...noun.filter, zone: 'battlefield', controller: 'you', other: true }, count: 1 }];
+  }],
+  // "Choose a creature you control and an opponent"
+  [/^choose (?:a|an) (.+?) you control and an opponent$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]} you control`);
+    if (!noun || !noun.confident) return null;
+    const key = `c215_${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'battlefield' }, count: 1, key },
+      { kind: 'choosePlayer', key: 'opponent', who: 'opponent' },
+    ];
+  }],
+  // "Choose new targets for any number of other spells and/or abilities"
+  [/^choose new targets for any number of other spells(?: and\/or abilities)?$/i, () => [
+    { kind: 'changeTargets', what: { ref: 'all', filter: { zone: 'stack', other: true } } },
+  ]],
+  // "Reselect its target at random"
+  [/^reselect its target at random$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'stackTarget' } as Ref);
+    return [{ kind: 'changeTargets', what: ref }];
+  }],
+  // "Target opponent chosen at random gains control of ~"
+  [/^target (opponent|player) chosen at random gains control of ~$/i, (m) => [
+    { kind: 'choosePlayer', key: 'randomPlayer', who: /opponent/i.test(m[1]) ? 'opponent' : 'any', random: true },
+    { kind: 'gainControl', what: SELF, who: { ref: 'chosen', key: 'randomPlayer' }, duration: 'permanent' },
+  ]],
+  // "Then attach ~ to another one of your opponents chosen at random"
+  [/^attach ~ to another one of your opponents chosen at random$/i, () => [
+    { kind: 'choosePlayer', key: 'randomPlayer', who: 'opponent', random: true },
+    { kind: 'attach', what: SELF, to: { ref: 'chosen', key: 'randomPlayer' } },
+  ]],
+  // "Any opponent may have you put that card into your graveyard"
+  [/^any opponent may have you put that card into your (graveyard|hand)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'forEach', over: { ref: 'eachOpponent' }, effects: [{ kind: 'may', prompt: `Put that card into its owner's ${m[1]}?`, who: { ref: 'iter' }, effects: [{ kind: 'moveToZone', what: ref, zone: /graveyard/i.test(m[1]) ? 'graveyard' : 'hand' }] }] }];
+  }],
+  // "An opponent chooses a permanent you control other than ~ and exiles it"
+  [/^an opponent chooses (?:a|an) (.+?) you control other than ~ and exiles it$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]} you control`);
+    if (!noun || !noun.confident) return null;
+    return [
+      { kind: 'choosePlayer', key: 'opponent', who: 'opponent' },
+      { kind: 'chooseObjects', who: { ref: 'chosen', key: 'opponent' }, filter: { ...noun.filter, zone: 'battlefield', other: true }, count: 1, key: 'oppPick' },
+      { kind: 'moveToZone', what: { ref: 'chosen', key: 'oppPick' }, zone: 'exile' },
+    ];
+  }],
+  // "The exiled card's owner may cast that card without paying its mana cost"
+  [/^the exiled card's owner may cast that card(?: without paying its mana cost)?$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'permanent', owner: true, free: /without paying/i.test(m[0]) || undefined }];
+  }],
   // ---- Round 213 ----
   // "~ deals 2 damage to target player or battle"
   [/^(.+?) deals (\d+|X) damage to target player or battle$/i, (m, ctx) => {
