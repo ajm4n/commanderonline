@@ -4306,6 +4306,47 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 256 ----
+  // "Each of them searches their library for a card, then shuffles and puts that card on top."
+  [/^(.+?) searches? their library for (?:a|an) (.+?)(, reveals? it)?, then shuffles? and puts? (?:the|that) card on top$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = /^cards?$/i.test(m[2]) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(`a ${m[2]}`);
+    if (!who || !noun || !noun.confident) return null;
+    return [{ kind: 'searchLibrary', who, filter: noun.filter, count: 1, destination: 'top', reveal: !!m[3], shuffle: true }];
+  }],
+  // "Look at the top two cards of target opponent's library and exile those cards face down."
+  [/^look at the top (\w+|X) cards? of (.+?)'s library and exile (?:them|it|those cards|that card) face down$/i, (m, ctx) => {
+    const who = playerRef(m[2], ctx);
+    const n = m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1]);
+    return who && n !== null ? [{ kind: 'exileTop', who, amount: n as Amount, faceDown: true }] : null;
+  }],
+  // "Put all commanders you own from the command zone and from your graveyard into your hand."
+  [/^put all commanders you own from the command zone and from your graveyard into your hand$/i, () => [
+    { kind: 'moveToZone', what: { ref: 'all', filter: { isCommander: true, zoneIn: ['command', 'graveyard'], owner: 'you' } }, zone: 'hand' },
+  ]],
+  // "During target player's next turn, each creature that player controls attacks if able."
+  [/^during (target player|target opponent|that player)'s next turn, (?:each )?creatures? that player controls attacks? if able$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    return [{ kind: 'applyRule', rule: { kind: 'mustAttack' }, on: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', controllerRef: who } }, duration: 'untilYourNextTurn' }];
+  }],
+  // "Target player discards two cards, then draws as many cards as they discarded this way."
+  [/^(.+?) draws? as many cards as (?:they|you) discarded this way$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'draw', amount: { kind: 'discardedThisWay', ref: who }, who }] : null;
+  }],
+  // "Put a land card from their graveyard onto the battlefield tapped under your control."
+  [/^put (?:a|an) (.+?) from (their|that player's|target player's|an opponent's) graveyard onto the battlefield( tapped)?(?: under your control)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const who = playerRef(/^their$|^that player's$/i.test(m[2]) ? 'that player' : m[2].replace(/'s$/, ''), ctx);
+    if (!noun || !noun.confident || !who) return null;
+    const key = `gyPut${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: 'graveyard', ownerRef: who }, count: 1, key },
+      { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
+    ];
+  }],
   // ---- Round 255 ----
   // "When that creature dies this turn, return it to the battlefield under your control."
   [/^when (that creature|it|that permanent|that card) (dies|leaves the battlefield) this turn, (.+)$/i, (m, ctx) => {

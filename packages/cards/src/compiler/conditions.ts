@@ -1,5 +1,5 @@
 import type { Condition, Amount } from '@commander/engine';
-import { parseNoun } from './nouns.js';
+import { parseNoun, singularize } from './nouns.js';
 import { parseAmount, type RefCtx } from './amounts.js';
 import { wordToNumber } from './text.js';
 
@@ -160,6 +160,21 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (noun) return { kind: 'objectMatches', ref: ctx.self, filter: noun.filter };
   }
   if (/^you have an enduring story$/.test(t)) return { kind: 'enduringStory' };
+  // Traps: "if three or more creatures are attacking" / "if a white creature is attacking"
+  if ((m = t.match(/^(?:(exactly |)(\w+)(?: or more)? |(?:a|an) )(.+?) (?:is|are) attacking$/))) {
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (noun && noun.confident) {
+      const n = m[2] ? wordToNumber(m[2]) : 1;
+      if (typeof n === 'number') {
+        return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', attacking: true }, op: m[1] ? '==' : '>=', value: n };
+      }
+    }
+  }
+  // "~ is enchanted or equipped"
+  if ((m = t.match(/^(~|it|that creature) is (not )?enchanted or equipped$/))) {
+    const c = { kind: 'objectMatches' as const, ref: ctx.self, filter: { hasAttachment: 'any' as const } };
+    return m[2] ? { kind: 'not', c } : c;
+  }
   if ((m = t.match(/^(?:equipped|enchanted) (?:creature|permanent) is legendary$/))) return { kind: 'objectMatches', ref: { ref: 'attachedTo' }, filter: { supertypes: ['Legendary'] } };
   // "Activate only if ~ is not enchanted." / "... is enchanted" / "... is equipped"
   if ((m = t.match(/^(~|it|that creature|enchanted creature|equipped creature) is (not )?(enchanted|equipped|tapped|untapped|attacking|blocking|monstrous)$/))) {
