@@ -8630,7 +8630,11 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
   for (const part of parts) {
     const p = part.trim();
     let m: RegExpMatchArray | null;
-    const p2 = p.replace(/^and /i, '').replace(/^(?:the token|the copy|that token|those tokens) /i, 'it ').replace(/^(?=(?:is|has|have|are) )/i, 'it ');
+    const p2 = p
+      .replace(/^and /i, '')
+      .replace(/^(?:the token|the copy|that token|those tokens|the tokens|the copies|those creatures|that creature) /i, 'it ')
+      .replace(/^(?=(?:is|has|have|are) )/i, 'it ')
+      .replace(/\b(?:aren't|are not|isn't)\b/gi, 'is not');
     if ((m = p2.match(/^(?:it|they) (?:is|are) (white|blue|black|red|green|colorless)$/i))) {
       const cc = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', colorless: '' } as const;
       ex.colors = cc[m[1].toLowerCase() as 'white'] ? [cc[m[1].toLowerCase() as 'white'] as never] : [];
@@ -8663,6 +8667,10 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
           ex.abilities = [...(ex.abilities ?? []), q[1]];
           continue;
         }
+        if (/^this ability$/i.test(piece.trim())) {
+          ex.thisAbility = true;
+          continue;
+        }
         const kws = parseKeywordList(piece.trim());
         if (!kws) return null;
         ex.keywords = [...(ex.keywords ?? []), ...kws];
@@ -8676,7 +8684,9 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
     } else if ((m = p2.match(/^(?:it|they) (?:is|are) (\d+)\/(\d+)$/i))) {
       ex.power = m[1];
       ex.toughness = m[2];
-    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (\d+)\/(\d+) (.+?)(?: creatures?)?(?: with ([\w, ]+))?(?: in addition to its other (?:types|colors|colors and types))?$/i))) {
+    } else if ((m = p2.match(/^(?:it|they) (?:is|are) (?:a|an) (?:(legendary) )?(\d+)\/(\d+) (.+?)(?: creatures?)?(?: with ([\w, ]+))?(?: in addition to (?:its|their) other (?:types|colors|colors and types))?$/i))) {
+      if (m[1]) ex.legendary = true;
+      m = [m[0], m[2], m[3], m[4], m[5]] as unknown as RegExpMatchArray;
       ex.power = m[1];
       ex.toughness = m[2];
       if (m[4]) {
