@@ -4250,6 +4250,61 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 227 ----
+  [/^each of them enters with (?:an additional|(\w+) additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m) => {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n !== 'number') return null;
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'extraEnterCounters', data: { filter: {}, counter: m[2], amount: n } }, duration: 'thisTurn' }];
+  }],
+  [/^if the ((?:\{[^}]+\})+) cost was paid, (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(m[2], newCtx({ ...ctx, targets: ctx.targets }));
+    return inner ? [{ kind: 'conditional', if: { kind: 'memoryFlag', key: 'additionalCostPaid' }, then: inner }] : null;
+  }],
+  [/^choose one of your opponents$/i, () => [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }]],
+  [/^(.+?) loses all "([^"]+)" abilities(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'loseKeywords', keywords: [m[2].replace(/^\w/, (c) => c.toUpperCase())], on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
+  [/^(destroy|exile|tap) (target .+?) that entered since your last turn ended$/i, (m, ctx) => {
+    const noun = parseNoun(m[2]);
+    if (!noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), filter: { ...noun.filter, zone: 'battlefield', enteredThisTurn: true } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [/destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : /exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'tap', what: ref }];
+  }],
+  [/^choose any number of target (.+?), (.+?),? and\/or players$/i, (m, ctx) => {
+    const a = parseNoun(`a ${singularize(m[1])}`);
+    const b = parseNoun(`a ${singularize(m[2])}`);
+    if (!a || !b) return null;
+    ctx.targets.push({ description: `any number of target ${m[1]}, ${m[2]} and/or players`, kind: 'any', filter: { anyOf: [{ ...a.filter, zone: undefined }, { ...b.filter, zone: undefined }], zone: 'battlefield' }, playerFilter: 'any', min: 0, max: 6 });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  [/^the controller of (target .+?) copies it$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'copySpell', what: ref }] : null;
+  }],
+  [/^during that player's next untap step, (.+?) they control (?:do not|don't) untap$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    const who = ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'doesNotUntap' }, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', controllerRef: who } }, duration: 'untilYourNextTurn' }];
+  }],
+  [/^choose (\w+) cards in each graveyard$/i, (m, ctx) => {
+    const n = wordToNumber(m[1]);
+    if (typeof n !== 'number') return null;
+    const key = 'gyEach227';
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'chooseObjects', who: YOU, filter: { zone: 'graveyard', ownerRef: { ref: 'iter' } }, count: n, key, upTo: true }] }];
+  }],
+  [/^if you control (?:a|an) (.+?), (.+?) also (.+)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    const inner = noun ? parseSentence(`${m[2]} ${m[3]}`, newCtx({ ...ctx, targets: ctx.targets })) : null;
+    if (!noun || !noun.confident || !inner) return null;
+    return [{ kind: 'conditional', if: { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', controller: 'you' }, op: '>=', value: 1 }, then: inner }];
+  }],
   // ---- Round 225 ----
   // "If you do, you may choose new targets for the spell"
   [/^(?:you may )?choose new targets for (?:the|that) (spell|ability|copy)$/i, (m, ctx) => {
