@@ -799,6 +799,18 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (/^(?:they|that player) (?:is|are) the monarch$/.test(t)) return { kind: 'isMonarch', ref: ctx.lastPlayer ?? { ref: 'triggerPlayer' } };
   if ((m = t.match(/^its controller has more than (\w+) cards in hand$/)))
     { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'handSize', ref: { ref: 'controllerOf', of: ctx.lastObj ?? ctx.self }, op: '>', value: n }; }
+  // The Trap cycle: "if an opponent had two or more creatures enter the battlefield under their control this turn"
+  if ((m = t.match(/^an opponent had (?:(?:a|an)|(\w+) or more) (.+?) enter the battlefield under their control this turn$/))) {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${m[2]}`) ?? parseNoun(`all ${m[2]}`);
+    if (typeof n === 'number' && noun)
+      return { kind: 'amount', a: { kind: 'eventsThisTurn', event: 'entersBattlefield', player: 'opponent', filter: { ...noun.filter, zone: undefined } }, op: '>=', b: n };
+  }
+  if (/^an opponent searched their library this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'searchedLibrary', player: 'opponent' };
+  if ((m = t.match(/^an opponent had (?:(?:a|an)|(\w+) or more) cards? put into their graveyard from anywhere this turn$/))) {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (typeof n === 'number') return { kind: 'amount', a: { kind: 'eventsThisTurn', event: 'putIntoGraveyard', player: 'opponent' }, op: '>=', b: n };
+  }
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
   if (t === '~ is suspended' || t === 'it is suspended') return { kind: 'objectMatches', ref: ctx.self, filter: { suspended: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
