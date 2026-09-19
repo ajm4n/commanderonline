@@ -4250,6 +4250,84 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 230 ----
+  // "Create a token that is a copy of one of them" / "... of one of those permanents"
+  [/^create (?:a|an) token that is a copy of one of (?:them|those (?:permanents|creatures|cards))$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    if (!base) return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: {}, count: 1, key: 'copy230', from: base },
+      { kind: 'createToken', token: { name: 'Copy', typeLine: '', colors: [], copyOf: { ref: 'chosen', key: 'copy230' } }, count: 1 },
+    ];
+  }],
+  // "Otherwise, exile the top card of each opponent's library"
+  [/^exile the top card of each (opponent's|player's) library$/i, (m) => [
+    { kind: 'exileTop', amount: 1, who: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' } },
+  ]],
+  // "Put a card you own exiled with ~ into your hand"
+  [/^put (?:a|an) card you own exiled with ~ into your hand$/i, () => [
+    { kind: 'chooseObjects', who: YOU, filter: { zone: 'exile', exiledWithSource: true, owner: 'you' }, count: 1, key: 'ex230' },
+    { kind: 'moveToZone', what: { ref: 'chosen', key: 'ex230' }, zone: 'hand' },
+  ]],
+  // "Return ~ from your graveyard to the battlefield face up or face down"
+  [/^return ~ from your graveyard to the battlefield face up or face down$/i, () => [
+    { kind: 'chooseMode', count: 1, options: [
+      { text: 'Face up', effects: [{ kind: 'returnToBattlefield', what: SELF }] },
+      { text: 'Face down', effects: [{ kind: 'returnToBattlefield', what: SELF, faceDown: true }] },
+    ] },
+  ]],
+  // "That attacking player may tap or untap target permanent of their choice"
+  [/^(that attacking player|the attacking player|that player|target opponent) may tap or untap (target .+?)(?: of their choice)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const ref = who ? objRef(m[2], ctx) : null;
+    if (!who || !ref) return null;
+    return [{ kind: 'may', prompt: 'Tap or untap it?', who, effects: [{ kind: 'chooseMode', count: 1, options: [
+      { text: 'Tap', effects: [{ kind: 'tap', what: ref }] },
+      { text: 'Untap', effects: [{ kind: 'untap', what: ref }] },
+    ] }] }];
+  }],
+  // "That player may pay {R}{R} or 2 life"
+  [/^(.+?) may pay ((?:\{[^}]+\})+) or (\d+) life$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    return [{ kind: 'chooseMode', count: 1, options: [
+      { text: `Pay ${m[2]}`, effects: [{ kind: 'ifPays', who, cost: m[2], effects: [] }] },
+      { text: `Pay ${m[3]} life`, effects: [{ kind: 'loseLife', amount: parseInt(m[3], 10), who }] },
+    ] }];
+  }],
+  // "You may cast a spell from among those cards without paying its mana cost"
+  [/^you may cast (?:a|an) (.+?) from among (?:those cards|them)(?: without paying its mana cost)?$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!base || !noun) return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...noun.filter, zone: undefined }, count: 1, key: 'cast230', from: base, upTo: true },
+      { kind: 'playFromExile', what: { ref: 'chosen', key: 'cast230' }, duration: 'thisTurn', free: /without paying/i.test(m[0]) || undefined },
+    ];
+  }],
+  // "Cast target card with the same name as that spell from your graveyard"
+  [/^cast target card with the same name as that spell from your graveyard$/i, (m, ctx) => {
+    const cmp = ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : ({ ref: 'stackTarget' } as Ref);
+    ctx.targets.push({ description: 'target card with the same name as that spell', kind: 'object', filter: { zone: 'graveyard', owner: 'you', sameNameAs: cmp } });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'castFrom', what: ref }];
+  }],
+  // "Investigate once for each opponent who has more cards in hand than you"
+  [/^investigate once for each (opponent|player) who has more cards in hand than you$/i, (m) => [
+    { kind: 'investigate', count: { kind: 'playersComparingCount', who: /opponent/i.test(m[1]) ? 'opponent' : 'any', filter: { zone: 'hand' }, cmp: 'more' } },
+  ]],
+  // "You may look at and play that card this turn"
+  [/^you may look at and play that card this turn$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'playFromExile', what: ref, duration: 'thisTurn' }];
+  }],
+  // "All creatures banded with it gain first strike until end of turn"
+  [/^all creatures banded with (?:it|~) (?:gain|gains) (.+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const g = parseGrantList(m[1]);
+    if (!g || !g.keywords.length || g.abilities.length) return null;
+    return [{ kind: 'grantKeywords', keywords: g.keywords, on: { ref: 'all', filter: { types: ['Creature'], zone: 'battlefield', attacking: true } }, duration: 'endOfTurn' }];
+  }],
   // ---- Round 228 ----
   // "Exile up to that many target cards from their graveyard" / "Choose up to that many target creatures you control"
   [/^(choose|exile|destroy|tap|return) up to that many (target .+?)$/i, (m, ctx) => {
