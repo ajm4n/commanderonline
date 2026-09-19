@@ -94,6 +94,11 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
   const isPermanent = /\b(Creature|Artifact|Enchantment|Planeswalker|Land|Battle)\b/.test(face.typeLine) && !/\b(Instant|Sorcery)\b/.test(face.typeLine);
   g.log(`Resolving: ${item.text}`, { kind: 'resolve', data: { stackId: item.id } });
 
+  // Gift: the promised opponent gets it before the spell's other effects.
+  if (obj && script.gift && typeof obj.memory['giftPromised'] === 'string') {
+    yield* executeEffects(g, script.gift.effects, ctx);
+  }
+
   if (isPermanent && obj && !isCopy && obj.additionalCostsPaid.includes('mutate')) {
     // Mutate: merge with a non-Human creature you control instead of entering on its own.
     const cands = g.state.battlefield

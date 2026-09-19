@@ -79,6 +79,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   let modalRepeatable = false;
   let castCondition: Condition | undefined;
   let additionalCost: CardScript['additionalCost'];
+  let gift: CardScript['gift'];
   let modalX: Amount | null = null;
   let modeCosts: (string | undefined)[] | null = null;
   let modalNotChosen: 'turn' | 'game' | null = null;
@@ -593,6 +594,20 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       // Cycling: an activated ability from hand.
       if ((m = line.match(/^Cycling ((?:\{[^}]+\})+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: m[1], discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
       if ((m = line.match(/^Cycling (\d+)$/i))) abilities.push({ kind: 'activated', text: line, cost: { mana: `{${m[1]}}`, discardSelf: true }, effects: [{ kind: 'draw', amount: 1 }], zone: 'hand' });
+      // "Gift a Treasure": an opponent promised the gift gets it before the spell's other effects.
+      if ((m = line.match(/^Gift (?:a|an) (card|Treasure|Food|Clue|tapped Fish|Octopus)$/i))) {
+        const to = { ref: 'giftRecipient' } as const;
+        const what = m[1].toLowerCase();
+        const effects: Effect[] =
+          what === 'card'
+            ? [{ kind: 'draw', amount: 1, who: to }]
+            : what === 'tapped fish'
+              ? [{ kind: 'createToken', token: { name: 'Fish', typeLine: 'Token Creature — Fish', power: '1', toughness: '1', colors: ['U'] }, count: 1, tapped: true, who: to }]
+              : what === 'octopus'
+                ? [{ kind: 'createToken', token: { name: 'Octopus', typeLine: 'Token Creature — Octopus', power: '8', toughness: '8', colors: ['U'] }, count: 1, who: to }]
+                : [{ kind: 'createToken', token: { name: m[1], typeLine: `Token Artifact — ${m[1]}`, colors: [], preset: m[1] }, count: 1, who: to }];
+        gift = { text: line.replace(/^Gift /i, ''), effects };
+      }
       // Devour N: as it enters, sacrifice any number of creatures for N +1/+1 counters each.
       if ((m = line.match(/^Devour (?:\w+ )?(\d+)$/i))) abilities.push({ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, devour: parseInt(m[1], 10) } as never);
       continue;
@@ -1049,7 +1064,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     return true;
   });
   const coverage: CardScript['coverage'] = meaningful.length === 0 || unhandledLines.length === 0 ? 'full' : automatedAbilities.length === 0 ? 'none' : 'partial';
-  return { script: { name: faceName, abilities, additionalCost, castCondition, alternativeCosts: alternativeCosts.length ? alternativeCosts : undefined, costModifiers: costModifiers.length ? costModifiers : undefined, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined }, compiledLines, unhandledLines };
+  return { script: { name: faceName, abilities, additionalCost, castCondition, gift, alternativeCosts: alternativeCosts.length ? alternativeCosts : undefined, costModifiers: costModifiers.length ? costModifiers : undefined, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined }, compiledLines, unhandledLines };
 }
 
 /** "Cast ~ only during combat [before blockers are declared] [and only if ...]" → a condition checked when casting. */

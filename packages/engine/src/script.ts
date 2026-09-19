@@ -138,6 +138,8 @@ export type Ref =
   | { ref: 'ownerOf'; of: Ref }
   | { ref: 'blockersOf'; of: Ref }
   | { ref: 'ringBearer' }
+  /** The opponent a gift was promised to as this spell was cast. */
+  | { ref: 'giftRecipient' }
   | { ref: 'player'; id: PlayerId }
   /** Opponents of the controller other than the trigger's player ("each other opponent"). */
   | { ref: 'eachOtherOpponent' }
@@ -212,6 +214,8 @@ export type Condition =
   | { kind: 'isMonarch'; ref: Ref }
   | { kind: 'castFrom'; zone: ZoneName }
   | { kind: 'wasKicked' }
+  /** Gift: an opponent was promised a gift as this spell was cast. */
+  | { kind: 'giftPromised' }
   | { kind: 'modeChosen'; mode: number }
   | { kind: 'amount'; a: Amount; op: Comparison; b: Amount }
   | { kind: 'memoryFlag'; key: string }
@@ -794,6 +798,8 @@ export interface CardScript {
   castCondition?: Condition;
   /** Alternative costs (e.g. warp, "You may pay {W} rather than pay this spell's mana cost if ..."). */
   alternativeCosts?: { id: string; text: string; cost: AbilityCost; condition?: Condition; zone?: ZoneName; /** Paying this cost lets the spell be cast as though it had flash. */ instantSpeed?: boolean; /** Morph / disguise: the spell resolves as a face-down 2/2 creature. */ faceDown?: boolean; /** Disguise: the face-down creature has ward {2}. */ ward?: string }[];
+  /** Gift: what the promised opponent gets, before the spell's other effects. */
+  gift?: { text: string; effects: Effect[] };
   /** Cost changes the spell applies to itself ("costs {1} less to cast for each artifact you control", affinity). */
   costModifiers?: CostModifier[];
   /** How much of the card's text is automated. */

@@ -1411,6 +1411,10 @@ export class Game {
         return (ctx.modes ?? []).includes(c.mode);
       case 'amount':
         return cmp(this.resolveAmount(c.a, ectx), c.op, this.resolveAmount(c.b, ectx));
+      case 'giftPromised': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+        return typeof src?.memory['giftPromised'] === 'string';
+      }
       case 'memoryFlag': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         return !!src?.memory[c.key];
@@ -1953,6 +1957,11 @@ export class Game {
         return objT(this.resolveObjects(ref.of, ctx).flatMap((o) => o.blockedBy));
       case 'ringBearer':
         return objT(this.state.battlefield.filter((id) => this.obj(id).controller === ctx.controller && this.characteristics(id).rules.some((r) => r.kind === 'custom' && r.tag === 'ringBearer')));
+      case 'giftRecipient': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+        const to = src?.memory['giftPromised'];
+        return typeof to === 'string' ? plT([to]) : [];
+      }
     }
   }
   resolveObjects(ref: Ref, ctx: EffectContext): GameObject[] {

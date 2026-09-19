@@ -1402,6 +1402,21 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     }
   }
   if (kicker) obj.additionalCostsPaid.push('kicker');
+  // Gift: "You may promise an opponent a gift as you cast this spell."
+  if (script.gift) {
+    const opps = g.opponentsOf(p);
+    if (opps.length) {
+      const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Promise an opponent ${script.gift.text}?`, sourceId: id });
+      if (r.type === 'yesNo' && r.value) {
+        let to = opps[0];
+        if (opps.length > 1) {
+          const pick = yield* g.ask({ type: 'chooseOption', player: p, prompt: `Promise ${script.gift.text} to which opponent?`, options: opps.map((o) => ({ id: o, label: g.player(o).name })), min: 1, max: 1, sourceId: id });
+          if (pick.type === 'options' && pick.ids[0] !== undefined) to = pick.ids[0];
+        }
+        obj.memory['giftPromised'] = to;
+      }
+    }
+  }
   obj.memory['kicks'] = kicks;
   obj.memory['castAtInstantSpeed'] = !canCastSorcerySpeed(g, p);
   if (altId === 'overload') obj.memory['overloaded'] = true;

@@ -208,6 +208,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
   if (t === "you have the city's blessing") return { kind: 'cityBlessing' };
   if (t === 'it was kicked' || t === 'this spell was kicked') return { kind: 'wasKicked' };
+  if (t === 'the gift was promised') return { kind: 'giftPromised' };
   if (t === 'evidence was collected' || t === 'you collected evidence') return { kind: 'memoryFlag', key: 'evidenceCollected' };
   if (t === "tribute wasn't paid" || t === 'tribute was not paid') return { kind: 'not', c: { kind: 'memoryFlag', key: 'tributePaid' } };
   if (t === 'tribute was paid') return { kind: 'memoryFlag', key: 'tributePaid' };
