@@ -9523,6 +9523,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (alt) return alt;
     ctx.targets.length = saved;
   }
+  // "Starting with you, each player ...": the engine already asks players in turn order.
+  if (/^starting with (?:you|the player to your left), /i.test(text)) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(text.replace(/^starting with (?:you|the player to your left), /i, ''), ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
+  }
   // "... as you activate this ability": says when the choice happens, which is when it happens.
   if (/ as you (?:activate this ability|cast (?:this spell|~))$/i.test(text)) {
     const saved = ctx.targets.length;
