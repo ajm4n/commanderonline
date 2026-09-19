@@ -164,9 +164,14 @@ export function parseNoun(raw: string): ParsedNoun | null {
     return { ...result, target: true, kind: 'spellOrAbility', filter: { types: ['Instant', 'Sorcery'] } };
   }
   if ((m = text.match(/^target loyalty ability of a planeswalker$/i))) return { ...result, target: true, kind: 'activatedOrTriggered' };
-  if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)(?: you control| an opponent controls| you do ?n[o']t control)?(?: from an? (\w+) source)?( with a single target| that targets only (?:~|it|a player))?$/i))) {
+  if ((m = text.match(/^target (?:activated or triggered ability|triggered ability|activated ability)(?: you control| an opponent controls| you do ?n[o']t control)?(?: from an? (\w+(?: or \w+)*) source)?( with a single target| that targets only (?:~|it|a player))?$/i))) {
     const pf = / you control$/i.test(text) ? 'you' : /opponent controls$/i.test(text) ? 'opponent' : /n[o']t control$/i.test(text) ? 'notController' : undefined;
-    const src = m[1] ? SOURCE_FILTERS[m[1].toLowerCase()] : undefined;
+    let src = m[1] ? SOURCE_FILTERS[m[1].toLowerCase()] : undefined;
+    if (m[1] && !src && / or /i.test(m[1])) {
+      // "from an artifact or enchantment source": one filter listing both types.
+      const parts = m[1].split(/ or /i).map((w) => SOURCE_FILTERS[w.trim().toLowerCase()]);
+      if (parts.every((f) => f && f.types && Object.keys(f).length === 1)) src = { types: parts.flatMap((f) => f!.types!) };
+    }
     if (m[1] && !src) return null;
     const extra: ObjectFilter = {};
     if (m[2] && / with a single target/i.test(m[2])) extra.custom = 'singleTarget';

@@ -4409,6 +4409,21 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
+  // ---- Round 267 ----
+  // "Add an amount of mana of that color equal to the number of creatures you control of the chosen type."
+  [/^add an amount of mana of (?:that|the chosen) colou?r equal to (.+)$/i, (m, ctx) => {
+    const a = amt(m[1], ctx);
+    return a === null ? null : [{ kind: 'addMana', mana: 'chosenColor', amount: a }];
+  }],
+  // "Target player exiles all cards from their hand face down, then draws that many cards."
+  [/^(.+?) exiles? all cards from their hand(?: face down)?, then draws? that many cards$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    return [
+      { kind: 'moveAll', who, from: 'hand', to: 'exile' },
+      { kind: 'draw', amount: { kind: 'countRef', ref: { ref: 'lastMoved' } }, who },
+    ];
+  }],
   // ---- Round 265 ----
   // "Return to your hand the creature card in your graveyard with the greatest power."
   [/^(return|put) to your (hand|graveyard) (?:the|a|an) (.+)$/i, (m, ctx) => {
