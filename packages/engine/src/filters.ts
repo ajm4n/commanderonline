@@ -225,6 +225,16 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const want = src?.chosen[filter.typeIsChosen];
     if (typeof want !== 'string' || !(ch.types.includes(want) || ch.subtypes.includes(want))) return false;
   }
+  if (filter.custom === 'singleTarget' || filter.custom === 'targetsOnlyPlayer' || filter.custom === 'targetsSourceOnly') {
+    const item = g.state.stack.find((s) => s.sourceId === obj.id);
+    if (!item) return false;
+    if (filter.custom === 'singleTarget' && item.targets.length !== 1) return false;
+    if (filter.custom === 'targetsOnlyPlayer' && !(item.targets.length === 1 && item.targets[0].kind === 'player')) return false;
+    if (filter.custom === 'targetsSourceOnly') {
+      if (ctx.sourceId === null || ctx.sourceId === undefined) return false;
+      if (!(item.targets.length === 1 && item.targets[0].kind === 'object' && item.targets[0].id === ctx.sourceId)) return false;
+    }
+  }
   if (filter.manaCostContains !== undefined && !(obj.card.manaCost ?? '').includes(filter.manaCostContains)) return false;
   if (filter.custom === 'biggerThanSource') {
     if (ctx.sourceId === null || ctx.sourceId === undefined) return false;

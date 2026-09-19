@@ -87,6 +87,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 221 ----
+  if ((m = L.match(/^~ can be attached only to (?:a|an) (.+?)$/i))) {
+    const n221 = parseNoun(`a ${m[1]}`);
+    if (n221 && n221.confident) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'attachOnlyTo', data: { filter: { ...n221.filter, zone: undefined } } } }];
+  }
+  if (/^All creatures attack enchanted creature's controller each combat if able$/i.test(L))
+    return [{ kind: 'static', text: line, affects: { types: ['Creature'], zone: 'battlefield' }, rule: { kind: 'custom', tag: 'mustAttackAttachedController' } }];
+  if ((m = L.match(/^All creatures able to block (?:~|enchanted creature)(?: or (?:~|enchanted creature))? do so$/i)))
+    return [{ kind: 'static', text: line, affects: { types: ['Creature'], zone: 'battlefield' }, rule: { kind: 'custom', tag: 'mustBlockSource' } }];
   // ---- Round 218 ----
   // "Activated abilities of white enchantments cost {3} more to activate."
   if ((m = L.match(/^(?:Activated )?abilities of (.+?) cost \{(\d+)\} more to activate$/i))) {

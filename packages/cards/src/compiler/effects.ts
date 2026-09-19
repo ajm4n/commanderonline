@@ -4249,6 +4249,52 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 221 ----
+  [/^(.+?) deals (\d+|X) damage to each of those (.+?)$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (!src || !noun || !noun.confident) return null;
+    const amt221: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt221, source: src, to: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } } }];
+  }],
+  [/^(.+?) deals (\d+|X) damage to each (.+?) not chosen this way$/i, (m, ctx) => {
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    const noun = parseNoun(`a ${singularize(m[3])}`);
+    if (!src || !noun || !noun.confident) return null;
+    const amt221b: Amount = m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'damage', amount: amt221b, source: src, to: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } } }];
+  }],
+  [/^exile one of those (.+?) and put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on the other$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    if (!base || typeof n !== 'number') return null;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: {}, count: 1, key: 'oneOf221', from: base },
+      { kind: 'moveToZone', what: { ref: 'chosen', key: 'oneOf221' }, zone: 'exile' },
+      { kind: 'addCounters', counter: m[2] as never, amount: n, on: base },
+    ];
+  }],
+  [/^put one back and the rest into (?:that player's|its owner's|their) graveyard$/i, (m, ctx) => {
+    const base = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: {}, count: 1, key: 'keep221', from: base },
+      { kind: 'moveToZone', what: base, zone: 'graveyard' },
+    ];
+  }],
+  [/^choose (target spell or permanent) that is (.+?)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2]} permanent`);
+    if (!noun || !noun.confident) return null;
+    ctx.targets.push({ description: m[1], kind: 'objectOrSpell', filter: { ...noun.filter, zone: undefined } });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    return [];
+  }],
+  [/^(.+?) discards another card at random unless they pay ((?:\{[^}]+\})+)$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'unlessPays', who, cost: m[2], effects: [{ kind: 'discard', amount: 1, who, random: true }] }] : null;
+  }],
+  [/^add one mana of that colou?r unless any player pays ((?:\{[^}]+\})+)$/i, (m) => [
+    { kind: 'unlessPays', who: { ref: 'eachPlayer' }, cost: m[1], effects: [{ kind: 'addMana', mana: 'chosenColor', amount: 1 }] },
+  ]],
   // ---- Round 220 ----
   // "Put a +1/+1 counter on ~ for each flip you won" / "For each flip you won, create a token ..."
   [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on (~|it) for each flip you won$/i, (m, ctx) => {
