@@ -87,6 +87,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 272 ----
+  // "If ~ is your commander, choose a color before the game begins. ~ is the chosen color."
+  if (/^If ~ is your commander, choose a colou?r before the game begins\. ~ is the chosen colou?r$/i.test(L)) {
+    return [
+      { kind: 'replacement', text: line, event: 'entersBattlefield', self: true, choose: 'color' },
+      { kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColorsFromMemory: 'color' } },
+    ] as never;
+  }
   // ---- Round 270 ----
   // "As long as you control exactly one creature, that creature gets +2/+0 and has lifelink."
   if ((m = L.match(/^As long as you control exactly one creature, that creature (.+)$/i))) {

@@ -37,6 +37,19 @@ export function parseCost(text: string): AbilityCost | null {
       if (a && b && !Object.keys(a).some((k) => k in b)) return { ...a, ...b };
     }
   }
+  // "{2}{W}, {T}, Sacrifice a green creature, a white creature, and a blue creature": one of each,
+  // read whole because the list's commas would otherwise split it into separate costs.
+  {
+    const se = text.match(/^(?:(.+?),\s*)?Sacrifice ((?:a|an) [\w -]+(?:, (?:a|an) [\w -]+)+,? and (?:a|an) [\w -]+)$/i);
+    if (se) {
+      const parts = se[2].split(/,? and |, /i).map((x) => x.trim()).filter(Boolean);
+      const nouns = parts.map((x) => parseNoun(x));
+      const pre = se[1] ? parseCost(se[1]) : {};
+      if (pre && nouns.every((n) => n && n.confident)) {
+        return { ...pre, sacrificeEach: nouns.map((n) => ({ ...n!.filter, zone: 'battlefield' as const })) };
+      }
+    }
+  }
   // "Remove a counter from an artifact, creature, land, or planeswalker you control": comma list.
   {
     const rm = text.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+ )?counters? from (?:a|an) ([\w -]+(?:, [\w -]+)+,? or [\w -]+)$/i);

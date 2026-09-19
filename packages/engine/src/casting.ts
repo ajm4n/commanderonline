@@ -413,6 +413,9 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = objectsMatching(g, { ...cost.sacrifice.filter, controller: 'you' }, ctx);
     if (cost.sacrifice.count !== 'any' && cands.length < cnt(cost.sacrifice.count, cands.length)) return false;
   }
+  if (cost.sacrificeEach) {
+    for (const f of cost.sacrificeEach) if (!objectsMatching(g, { ...f, controller: 'you' }, ctx).length) return false;
+  }
   if (cost.discard) {
     const hand = g.player(p).hand;
     if (cost.discard === 'hand') {
@@ -637,6 +640,21 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       ids = resp.ids;
     }
     for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
+  }
+  if (cost.sacrificeEach) {
+    const used: ObjectId[] = [];
+    for (const f of cost.sacrificeEach) {
+      const cands = objectsMatching(g, { ...f, controller: 'you' }, ctx).map((o) => o.id).filter((id) => !used.includes(id));
+      if (!cands.length) return false;
+      let pick = cands[0];
+      if (cands.length > 1) {
+        const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Sacrifice a creature for this cost', candidates: cands, min: 1, max: 1, sourceId: obj.id });
+        if (resp.type !== 'objects' || !resp.ids.length) return false;
+        pick = resp.ids[0];
+      }
+      used.push(pick);
+    }
+    for (const id of used) g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
   }
   if (cost.tapAttached && obj.attachedTo !== null) g.tap(obj.attachedTo);
   if (cost.sacrificeAttached && obj.attachedTo !== null) g.moveObject(obj.attachedTo, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });

@@ -583,6 +583,8 @@ export interface AbilityCost {
   untap?: boolean;
   sacrificeSelf?: boolean;
   sacrifice?: { filter: ObjectFilter; count?: number | 'any' | 'X' };
+  /** "Sacrifice a green creature, a white creature, and a blue creature": one per filter. */
+  sacrificeEach?: ObjectFilter[];
   payLife?: number | 'X' | 'halfUp' | 'halfDown';
   discard?: { count: number | 'X'; filter?: ObjectFilter; random?: boolean } | 'hand';
   /** amount 'X' = the chosen X ("Remove X counters", "Remove any number of counters"). */
