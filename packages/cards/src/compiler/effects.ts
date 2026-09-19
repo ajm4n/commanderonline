@@ -4422,6 +4422,20 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
+  // ---- Round 297 ----
+  // "You may behold a Dragon": reveal one from your hand or choose one you control.
+  [/^(?:you may )?behold (?:a|an) ([A-Z][\w-]*)$/i, (m) => {
+    const type = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+    return [{
+      kind: 'may',
+      effects: [
+        { kind: 'chooseObjects', who: YOU, filter: { subtypes: [type], anyOf: [{ zone: 'hand', owner: 'you' }, { zone: 'battlefield', controller: 'you' }] }, count: 1, key: 'beheld' },
+        { kind: 'setMemory', key: 'beheld', value: true },
+      ],
+    }];
+  }],
+  // "Shuffle and put that card on top." — the tail of a search that held the card.
+  [/^shuffle and put (?:that card|it) on top(?: of your library)?$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'shuffle' }, { kind: 'putOnLibrary', what: ctx.lastObj, position: 'top' }] : null)],
   // ---- Round 284 ----
   // "That player reveals their hand, you choose a nonland card from it, then that player discards that card."
   [/^(.+?) reveals? (?:their|your) hand, you choose (?:(?:a|an)|(\w+)) (.+?) from it, then (?:that player|they|.+?) discards? (?:that card|those cards|them)$/i, (m, ctx) => {

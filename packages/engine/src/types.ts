@@ -641,6 +641,7 @@ export type GameEventName =
   | 'crewed'
   | 'plotted'
   | 'foretold'
+  | 'giftGiven'
   | 'clashed'
   | 'gotEnergy'
   | 'mutates'

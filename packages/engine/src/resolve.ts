@@ -97,6 +97,7 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
   // Gift: the promised opponent gets it before the spell's other effects.
   if (obj && script.gift && typeof obj.memory['giftPromised'] === 'string') {
     yield* executeEffects(g, script.gift.effects, ctx);
+    g.emit({ name: 'giftGiven', objectId: obj.id, playerId: item.controller });
   }
 
   if (isPermanent && obj && !isCopy && obj.additionalCostsPaid.includes('mutate')) {
