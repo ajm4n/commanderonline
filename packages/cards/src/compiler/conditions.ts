@@ -730,6 +730,38 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   if (/^your life total is greater than or equal to your starting life total$/.test(t))
     return { kind: 'amount', a: { kind: 'life', ref: { ref: 'controller' } }, op: '>=', b: { kind: 'startingLife' } };
+  if ((m = t.match(/^you(?:'re| are) attacking (\w+) or more opponents$/)))
+    { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'amount', a: { kind: 'playersBeingAttacked' }, op: '>=', b: n }; }
+  if ((m = t.match(/^there (?:is|are) at least (\w+) (.+?) in your graveyard$/))) {
+    const n = wordToNumber(m[1]);
+    const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
+    if (typeof n === 'number' && noun) return { kind: 'count', filter: { ...noun.filter, zone: 'graveyard', owner: 'you' }, op: '>=', value: n };
+  }
+  if ((m = t.match(/^you have exactly (\w+) or (\w+) cards in hand$/))) {
+    const a = wordToNumber(m[1]);
+    const b = wordToNumber(m[2]);
+    if (typeof a === 'number' && typeof b === 'number')
+      return { kind: 'or', cs: [{ kind: 'handSize', ref: { ref: 'controller' }, op: '==', value: a }, { kind: 'handSize', ref: { ref: 'controller' }, op: '==', value: b }] };
+  }
+  if (/^your life total is greater than your starting life total$/.test(t))
+    return { kind: 'amount', a: { kind: 'life', ref: { ref: 'controller' } }, op: '>', b: { kind: 'startingLife' } };
+  if ((m = t.match(/^(?:it|~) has (\w+) or fewer ([+\-\w\/]+) counters on it$/))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number') return { kind: 'hasCounter', ref: ctx.self, counter: m[2], op: '<=', value: n };
+  }
+  if ((m = t.match(/^(defending player|that player|an opponent|you) controls? no (.+?)$/))) {
+    const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
+    const who = /^you$/.test(m[1]) ? 'you' : 'opponent';
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', controller: who }, op: '==', value: 0 };
+  }
+  if (/^(?:a|one or more) cards? left your graveyard this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'leftGraveyard', player: 'you' };
+  if (/^an instant card and a sorcery card are in your graveyard$/.test(t))
+    return { kind: 'and', cs: [
+      { kind: 'count', filter: { types: ['Instant'], zone: 'graveyard', owner: 'you' }, op: '>=', value: 1 },
+      { kind: 'count', filter: { types: ['Sorcery'], zone: 'graveyard', owner: 'you' }, op: '>=', value: 1 },
+    ] };
+  if ((m = t.match(/^there (?:is|are) exactly (\w+) permanents? named ~ on the battlefield$/)))
+    { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'count', filter: { nameIs: '~', zone: 'battlefield' }, op: '==', value: n }; }
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
   if (t === '~ is suspended' || t === 'it is suspended') return { kind: 'objectMatches', ref: ctx.self, filter: { suspended: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
