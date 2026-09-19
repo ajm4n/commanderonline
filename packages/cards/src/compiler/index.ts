@@ -1101,6 +1101,32 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    // "When you cast ~, if a player does, counter ~" on its own line: the offer is the line before.
+    if ((m = line.match(/^(?:When|Whenever)[^,]*, ?[Ii]f (?:a|any) player does, (.+?)\.?$/)) && abilities.length) {
+      const findHost = (list: Effect[]): (Effect & { then?: Effect[] }) | undefined => {
+        for (let k = list.length - 1; k >= 0; k--) {
+          const e = list[k];
+          if (e.kind === 'anyPlayerMay' || e.kind === 'anyPlayerMaySacrifice') return e as Effect & { then?: Effect[] };
+          const nested = (e as { effects?: Effect[] }).effects;
+          if (Array.isArray(nested)) {
+            const inner = findHost(nested);
+            if (inner) return inner;
+          }
+        }
+        return undefined;
+      };
+      const prev = abilities[abilities.length - 1] as AbilitySpec & { effects?: Effect[] };
+      const host = prev.effects ? findHost(prev.effects) : undefined;
+      if (host) {
+        const ctx = newCtx({ triggerHasObject: false, triggerHasPlayer: true, isSpell });
+        const r = parseEffects(m[1], ctx);
+        if (!r.unhandled.length) {
+          host.then = [...(host.then ?? []), ...r.effects];
+          compiledLines.push(line);
+          continue;
+        }
+      }
+    }
     // "When you discard a nonland card this way, X" on its own line: runs after the previous ability when a matching card moved.
     if ((m = line.match(/^When (?:you )?(?:discard|exile|sacrifice|reveal|mill|destroy|return) (?:a|an|one or more) (.+?) this way, (.+?)\.?$/i)) && (abilities.length || (isSpell && spellEffects.length))) {
       const prev = abilities[abilities.length - 1] as AbilitySpec | undefined;

@@ -9675,6 +9675,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   // "When you pay this cost one or more times, put that many valor counters on ~" — the Adversary
   // cycle's follow-up to "you may pay {1}{W} any number of times".
+  // "When you cast ~, ... counter ~": the spell counters itself, which is the spell that triggered it.
+  if (/^counter (?:~|this spell)$/i.test(text)) return [{ kind: 'counterSpell', what: { ref: 'triggerObject' } }];
+  if ((m = text.match(/^any player may pay (\d+) life$/i))) return [{ kind: 'anyPlayerMay', effects: [], cost: `${m[1]} life`, prompt: `Pay ${m[1]} life?` }];
+  if ((m = text.match(/^any player may pay ((?:\{[^}]+\})+)$/i))) return [{ kind: 'anyPlayerMay', effects: [], cost: m[1], prompt: `Pay ${m[1]}?` }];
   if ((m = text.match(/^when you pay (?:this|that) cost one or more times, put that many ([+\-\w\/]+) counters on (.+)$/i))) {
     const on = objRef(m[2], ctx);
     if (on) return [{ kind: 'addCounters', counter: m[1], amount: { kind: 'ctxMemory', key: 'timesPaid' }, on }];
@@ -9883,6 +9887,19 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // "If you cast a spell this way, you may spend mana as though it were mana of any color to
     // cast it." — a rider on the play-from-exile effect before it.
     if (/^(?:if you cast a spell this way, )?(?:you|they) may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to (?:cast|pay)\b/i.test(s) && setAnyMana(effects)) continue;
+    // "Any player may pay 5 life. If a player does, counter ~." — the follow-up hangs off the offer.
+    if ((m = s.match(/^if (?:a|any) player does, (.+?)\.?$/i))) {
+      const host = [...effects].reverse().find((e) => e.kind === 'anyPlayerMay' || e.kind === 'anyPlayerMaySacrifice') as
+        | (Effect & { then?: Effect[] })
+        | undefined;
+      if (host) {
+        const inner = parseSentence(m[1], ctx);
+        if (inner) {
+          host.then = [...(host.then ?? []), ...inner];
+          continue;
+        }
+      }
+    }
     // "Exile it instead of putting it into a graveyard as it resolves." — a rider on the cast.
     if (/^exile (?:it|that card|them) instead of putting (?:it|them) into (?:a|its owner's|that player's|your) graveyards? as (?:it|they) resolves?$/i.test(s)) {
       const find = (list: Effect[]): Effect | null => {

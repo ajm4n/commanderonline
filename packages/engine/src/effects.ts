@@ -573,10 +573,20 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'anyPlayerMay': {
+      let anyPaid = false;
       for (const p of g.activePlayers()) {
+        if (e.cost) {
+          const paid = yield* offerToPay(g, p, e.cost, e.prompt ?? `Pay ${e.cost}?`);
+          if (paid) anyPaid = true;
+          continue;
+        }
         const resp = yield* g.ask({ type: 'yesNo', player: p, prompt: e.prompt ?? describe(e.effects), sourceId: ctx.sourceId ?? undefined });
-        if (resp.type === 'yesNo' && resp.value) yield* executeEffects(g, e.effects, { ...ctx, controller: p });
+        if (resp.type === 'yesNo' && resp.value) {
+          anyPaid = true;
+          yield* executeEffects(g, e.effects, { ...ctx, controller: p });
+        }
       }
+      if (anyPaid && e.then) yield* executeEffects(g, e.then, ctx);
       return;
     }
     case 'anyPlayerMaySacrifice': {

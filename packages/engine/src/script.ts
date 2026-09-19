@@ -448,7 +448,7 @@ export type Effect =
   /** "Any player may sacrifice a creature of their choice." */
   | { kind: 'anyPlayerMaySacrifice'; filter: ObjectFilter; then?: Effect[] }
   /** "Any player may have ~ deal 6 damage to them": each player in turn order chooses; the effects run with that player as the controller. */
-  | { kind: 'anyPlayerMay'; effects: Effect[]; prompt?: string }
+  | { kind: 'anyPlayerMay'; effects: Effect[]; prompt?: string; /** A cost each player may pay instead of running `effects`. */ cost?: string; /** Runs once if any player paid. */ then?: Effect[] }
   /** Endure N: put N +1/+1 counters on it, or create an N/N white Spirit creature token. */
   | { kind: 'endure'; on: Ref; amount: Amount }
   /** "puts it on their choice of the top or bottom of their library" */
