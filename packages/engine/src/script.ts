@@ -447,6 +447,8 @@ export type Effect =
   | { kind: 'treasure'; count?: Amount; who?: Ref }
   | { kind: 'rollDie'; sides: number; results: { min: number; max: number; effects: Effect[] }[] }
   | { kind: 'phaseOut'; what: Ref }
+  /** "that player loses all unspent mana" */
+  | { kind: 'loseUnspentMana'; who: Ref }
   | { kind: 'putIntoHand'; what: Ref }
   | { kind: 'putIntoGraveyard'; what: Ref }
   | { kind: 'dealsDamageEqualToPower'; source: Ref; to: Ref }

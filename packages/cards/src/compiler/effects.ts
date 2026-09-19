@@ -4249,7 +4249,70 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
-  // ---- Round 204 ----
+  // ---- Round 206 ----
+  // "Target creature loses first strike or swampwalk until end of turn"
+  [/^(.+?) loses ([\w' -]+?) or ([\w' -]+?)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const g1 = parseGrantList(m[2]);
+    const g2 = parseGrantList(m[3]);
+    if (!g1 || !g2 || g1.keywords.length !== 1 || g2.keywords.length !== 1 || g1.abilities.length || g2.abilities.length) return null;
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    return [{ kind: 'chooseMode', count: 1, options: [g1, g2].map((g) => ({ text: `Lose ${g.keywords[0]}`, effects: [{ kind: 'loseKeywords' as const, keywords: g.keywords, on: ref, duration: dur }] })) }];
+  }],
+  // "Change the target of target activated ability with a single target" / "... target spell that targets only ~"
+  [/^(?:you may )?change the target of (target .+?)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'changeTargets', what: ref }] : null;
+  }],
+  // "You may change any targets of target Arcane spell"
+  [/^(?:you may )?change any targets of (target .+?)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'changeTargets', what: ref }] : null;
+  }],
+  // "Look at target player's hand and choose up to two cards from it"
+  [/^look at (.+?)'s hand and choose (?:a|an|up to (\w+)|(\w+)) cards? from it$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const n = m[1] && (m[2] ?? m[3]) ? wordToNumber((m[2] ?? m[3])!) : 1;
+    if (!who || typeof n !== 'number') return null;
+    const key = `look${ctx.targets.length}`;
+    const ref: Ref = { ref: 'chosen', key };
+    ctx.lastObj = ref;
+    return [
+      { kind: 'revealHand', who },
+      { kind: 'chooseObjects', who: YOU, filter: { zone: 'hand', ownerRef: who }, count: n, key, upTo: m[2] ? true : undefined },
+    ];
+  }],
+  // "That player discards a card with that name"
+  [/^(.+?) discards (?:a|an) card with that name$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'discard', amount: 'hand', who, filter: { nameIsChosen: 'cardName' } }] : null;
+  }],
+  // "It phases out until ~ leaves the battlefield"
+  [/^(?:it|that creature|that permanent|~) phases out(?: until ~ leaves the battlefield)?$/i, (m, ctx) => {
+    const ref = /^~/.test(m[0]) ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : SELF);
+    return [{ kind: 'phaseOut', what: ref }];
+  }],
+  // "Tap all lands target player controls and that player loses all unspent mana"
+  [/^tap all (.+?) (target player|target opponent|that player) controls and that player loses all unspent mana$/i, (m, ctx) => {
+    const who = playerRef(m[2], ctx);
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!who || !noun || !noun.confident) return null;
+    return [
+      { kind: 'tap', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', controllerRef: who } } },
+      { kind: 'loseUnspentMana', who },
+    ];
+  }],
+  // "Starting with you, each player may pay any amount of mana"
+  [/^starting with you, each player may pay any amount of mana$/i, () => [
+    { kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'payRepeatedly', who: { ref: 'iter' }, cost: '{1}', effects: [] }] },
+  ]],
+  // "You control target player during that player's next turn"
+  [/^you control (target player|target opponent|that player) during that player's next turn$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'grantPlayerRule', who, rule: { kind: 'custom', tag: 'controlledByOpponent', data: 'nextTurn' } }] : null;
+  }],
+  // ---- Round 205 ----
   // "Then each creature you control is no longer goaded"
   [/^(each|all) (.+?) (?:is|are) no longer goaded$/i, (m, ctx) => {
     const noun = parseNoun(`a ${singularize(m[2])}`);

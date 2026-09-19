@@ -368,6 +368,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
+    case 'loseUnspentMana': {
+      for (const p of playersOf(g, e.who, ctx)) g.player(p).manaPool = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+      return;
+    }
     case 'chooseNumber': {
       const who = e.who ? playersOf(g, e.who, ctx)[0] ?? ctx.controller : ctx.controller;
       const opts: string[] = [];
