@@ -89,6 +89,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^each (?:\w+ )?(?:permanent|card|creature|player)s? with the most votes(?: or tied for most votes)?$/.test(l)) return { ref: 'chosen', key: 'votes' };
   if (/^(that|those) tokens?$/.test(l) || l === 'the tokens' || l === 'the token') return { ref: 'lastCreated' };
   if (/^(that|the) spell$/.test(l)) return ctx.lastObj ?? { ref: 'stackTarget' };
+  if (/^the chosen (?:creatures|permanents|lands|artifacts|players)$/.test(l) && ctx.lastObj) return ctx.lastObj;
   if (l === 'the chosen creature' || l === 'the chosen permanent') return { ref: 'chosen', key: 'chosen' };
   const gy = t.match(/^~ from your graveyard$/i);
   if (gy) return SELF;
@@ -2077,7 +2078,7 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'grantAbility', text: m[2], on: ref, duration: 'permanent' }] : null;
   }],
-  [/^discard any number of cards$/i, () => [{ kind: 'discard', amount: 'hand', who: YOU }]],
+  [/^discard any number of cards( at random)?$/i, (m) => [{ kind: 'discard', amount: 'hand', who: YOU, random: m[1] ? true : undefined }]],
   [/^(?:you )?discard up to (\w+) cards?, then draw that many cards$/i, (m) => {
     const n = wordToNumber(m[1]);
     if (n === null) return null;
@@ -3366,7 +3367,11 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'playFromExile', what: ref, duration: 'permanent', controller: 'owner', free: /without paying/i.test(m[0]) || undefined }];
   }],
   // "Prevent all damage that would be dealt to ~ by creatures it is blocking"
-  [/^prevent all (combat )?damage that would be dealt to (~|it) by (.+)$/i, (m) => {
+  [/^prevent all (combat )?damage that would be dealt to (~|it) by (.+?)( this turn)?$/i, (m, ctx) => {
+    if (/^target /i.test(m[3])) {
+      const tref = objRef(m[3], ctx);
+      return tref ? [{ kind: 'preventAll', combat: m[1] ? true : undefined, toRef: SELF, to: 'all', sourceRef: tref }] : null;
+    }
     const noun = parseNoun(m[3]) ?? parseNoun(`a ${m[3]}`);
     if (!noun) return null;
     return [{ kind: 'preventAll', combat: m[1] ? true : undefined, toRef: SELF, to: 'all', source: { ...noun.filter, zone: 'battlefield' } }];
@@ -3413,7 +3418,7 @@ const PATTERNS: Pattern[] = [
   // "there is an additional combat phase after this phase followed by an additional main phase"
   [/^there is an additional combat phase after this phase(?: followed by an additional main phase)?$/i, () => [{ kind: 'extraCombat' }]],
   // "~ and another target creature each get +1/+0 until end of turn"
-  [/^(?:~|it) and (another target .+?|target .+?) each (?:gets?|get) ([+-]\d+|[+-]X)\/([+-]\d+|[+-]X)(?: until end of turn)?$/i, (m, ctx) => {
+  [/^(?:~|it) and (another target .+?|up to one other target .+?|up to \w+ other target .+?|target .+?) each (?:gets?|get) ([+-]\d+|[+-]X)\/([+-]\d+|[+-]X)(?: until end of turn)?$/i, (m, ctx) => {
     const other = objRef(m[1], ctx);
     if (!other) return null;
     const pw: Amount = m[2] === '+X' ? 'X' : parseInt(m[2], 10);
@@ -4234,6 +4239,23 @@ const PATTERNS: Pattern[] = [
       return [e2];
     }
     return null;
+  }],
+  // ---- Round 191 ----
+  // "Target player sacrifices an artifact and a land of their choice."
+  [/^(target player|target opponent|that player|that opponent|each opponent|each player|you) (?:sacrifices?|sacrifice) ((?:a|an) [\w -]+(?:, (?:a|an) [\w -]+)*,? and (?:a|an) [\w -]+)(?: of (?:their|its) choice)?$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    const items = splitItemList(m[2]);
+    const nouns = items.map((x) => parseNoun(x));
+    if (nouns.length < 2 || nouns.some((n) => !n || !n.confident)) return null;
+    return nouns.map((n) => ({ kind: 'sacrificeChoice' as const, who, filter: { ...n!.filter, controllerRef: who, zone: 'battlefield' as const }, count: 1 }));
+  }],
+  // "Create your choice of a Blood token, a Clue token, or a Food token."
+  [/^create your choice of ((?:a|an) [\w' -]+ token(?:, (?:a|an) [\w' -]+ token)*,? or (?:a|an) [\w' -]+ token)$/i, (m) => {
+    const items = m[1].split(/,? or |, /i).map((x) => x.trim()).filter(Boolean);
+    const specs = items.map((x) => parseTokenPhrase(x));
+    if (specs.length < 2 || specs.some((s) => !s)) return null;
+    return [{ kind: 'chooseMode', count: 1, options: specs.map((s, i) => ({ text: `Create ${items[i]}`, effects: [{ kind: 'createToken' as const, token: s!.token, count: s!.count }] })) }];
   }],
   // ---- Round 190 ----
   [/^counter target (spell|spell or ability) that targets you or (?:a|an) (?:permanent|creature) you control$/i, (m, ctx) => {

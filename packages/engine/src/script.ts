@@ -102,6 +102,8 @@ export type Amount =
 export type Ref =
   | { ref: 'target'; slot?: number }
   | { ref: 'self' }
+  /** The current monarch, if any. */
+  | { ref: 'monarch' }
   | { ref: 'controller' }
   | { ref: 'owner' }
   | { ref: 'eachOpponent' }

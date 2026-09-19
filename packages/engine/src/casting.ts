@@ -565,7 +565,8 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     let reduce = 0;
     for (const r of g.playerRules(p)) {
       if (r.kind !== 'custom' || r.tag !== 'abilityCostReduction') continue;
-      const d = (r.data as { amount?: number; filter?: import('./types.js').ObjectFilter; textPrefix?: string } | undefined) ?? {};
+      const d = (r.data as { amount?: number; filter?: import('./types.js').ObjectFilter; textPrefix?: string; notMana?: boolean } | undefined) ?? {};
+      if (d.notMana && /(?::|^)\s*add \{/i.test(abilityText ?? '')) continue;
       if (d.textPrefix && !new RegExp(`^${d.textPrefix}`, 'i').test(abilityText ?? '')) continue;
       if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller: p })) continue;
       reduce += d.amount ?? 0;

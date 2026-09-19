@@ -1853,6 +1853,8 @@ export class Game {
       }
       case 'activePlayer':
         return plT([this.state.turn.activePlayer]);
+      case 'monarch':
+        return this.state.monarch ? plT([this.state.monarch]) : plT([]);
       case 'chosen': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         const v = (ctx.memory[ref.key] ?? src?.memory[ref.key] ?? ctx.triggerContext[ref.key]) as ObjectId[] | PlayerId | undefined;
@@ -2839,6 +2841,7 @@ export class Game {
       }
       // Damage wears off, "until end of turn" ends.
       for (const o of Object.values(this.state.objects)) {
+        if (o.zone === 'battlefield' && this.characteristics(o.id).rules.some((r) => r.kind === 'custom' && r.tag === 'damagePersists')) continue;
         o.damage = 0;
         o.deathtouchDamage = false;
       }

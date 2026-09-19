@@ -2231,9 +2231,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   if ((m = L.match(/^(.+?) cannot be the target of spells or abilities your opponents control$/i))) { const _q29 = objRule(m[1], { kind: 'cantBeTargeted', by: 'opponents' }); if (_q29) return _q29; }
-  if ((m = L.match(/^(.+?) cannot be the target of (.+?) spells(?: or abilities)?$/i))) {
+  if ((m = L.match(/^(.+?) cannot be the target of (.+?) spells(?: or abilities)?( your opponents control)?$/i))) {
     const noun = parseNoun(`a ${m[2]} spell`);
-    if (noun) { const _q30 = objRule(m[1], { kind: 'cantBeTargeted', by: 'spells', filter: { ...noun.filter, zone: undefined } }); if (_q30) return _q30; }
+    if (noun) { const _q30 = objRule(m[1], { kind: 'cantBeTargeted', by: 'spells', filter: { ...noun.filter, zone: undefined, controller: m[3] ? 'opponent' : undefined } }); if (_q30) return _q30; }
+  }
+  // "Damage is not removed from ~ during cleanup steps."
+  if ((m = L.match(/^Damage is not removed from (.+?) during cleanup steps$/i))) { const _q191a = objRule(m[1], { kind: 'custom', tag: 'damagePersists' }); if (_q191a) return _q191a; }
+  // "Abilities you activate that aren't mana abilities cost {2} less to activate."
+  if ((m = L.match(/^Abilities you activate that (?:aren't|are not) mana abilities cost \{(\d+)\} less to activate$/i))) {
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'abilityCostReduction', data: { amount: parseInt(m[1], 10), notMana: true } } }];
   }
   if ((m = L.match(/^(.+?) cannot (attack|block|attack or block) unless (.+)$/i))) {
     const cond = parseCondition(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
