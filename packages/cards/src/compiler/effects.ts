@@ -34,7 +34,7 @@ export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
 const SELF: Ref = { ref: 'self' };
 const YOU: Ref = { ref: 'controller' };
 
-const EXTRA_KEYWORDS = ['mentor', 'exalted', 'banding', 'melee', 'flanking', 'bushido', 'decayed', 'training', 'backup', 'plainswalk', 'islandwalk', 'swampwalk', 'mountainwalk', 'forestwalk', 'landwalk', 'phasing', 'rampage', 'annihilator', 'afflict', 'battle cry', 'dethrone', 'myriad', 'extort', 'ingest', 'devoid', 'wither', 'toxic', 'riot', 'unleash', 'undying', 'persist', 'protection from the chosen color', 'protection from all colors', 'hexproof from each color', 'ward {1}', 'ward {2}', 'ward {3}', 'ward {4}', 'ward—pay 2 life', 'ward—pay 3 life', 'cumulative upkeep', 'cascade', 'storm', 'prowess', 'evolve', 'skulk', 'shadow', 'horsemanship', 'fear', 'intimidate', 'convoke', 'delve', 'improvise', 'ravenous', 'daybound', 'nightbound', 'squad', 'enlist', 'sunburst', 'modular', 'vanishing', 'fading', 'echo', 'living weapon', 'reconfigure', 'compleated', 'for mirrodin!', 'jump-start', 'afterlife', 'ascend', 'exert', 'crew', 'partner', 'changeling'];
+const EXTRA_KEYWORDS = ['mentor', 'exalted', 'banding', 'melee', 'flanking', 'bushido', 'decayed', 'training', 'backup', 'plainswalk', 'islandwalk', 'swampwalk', 'mountainwalk', 'forestwalk', 'landwalk', 'phasing', 'rampage', 'annihilator', 'afflict', 'battle cry', 'dethrone', 'myriad', 'extort', 'ingest', 'devoid', 'wither', 'toxic', 'riot', 'unleash', 'undying', 'persist', 'protection from the chosen color', 'protection from all colors', 'hexproof from each color', 'ward {1}', 'ward {2}', 'ward {3}', 'ward {4}', 'ward—pay 2 life', 'ward—pay 3 life', 'cumulative upkeep', 'cascade', 'storm', 'prowess', 'evolve', 'skulk', 'shadow', 'horsemanship', 'fear', 'intimidate', 'convoke', 'delve', 'improvise', 'ravenous', 'daybound', 'nightbound', 'squad', 'enlist', 'sunburst', 'modular', 'vanishing', 'fading', 'echo', 'living weapon', 'reconfigure', 'compleated', 'for mirrodin!', 'jump-start', 'afterlife', 'ascend', 'exert', 'crew', 'partner', 'changeling', 'suspend', 'flash', 'provoke', 'melee'];
 const KEYWORD_WORDS = ['flying', 'first strike', 'double strike', 'deathtouch', 'lifelink', 'trample', 'vigilance', 'haste', 'flash', 'defender', 'reach', 'menace', 'hexproof', 'indestructible', 'shroud', 'fear', 'intimidate', 'skulk', 'horsemanship', 'shadow', 'infect', 'wither', 'prowess', 'undying', 'persist', 'changeling', 'protection from white', 'protection from blue', 'protection from black', 'protection from red', 'protection from green', 'protection from all colors', 'protection from each color', 'protection from creatures', 'protection from artifacts', 'protection from everything', 'protection from instants', 'protection from sorceries', 'protection from planeswalkers', 'protection from colorless', 'protection from multicolored', 'protection from monocolored', 'hexproof from white', 'hexproof from blue', 'hexproof from black', 'hexproof from red', 'hexproof from green'];
 
 export function parseKeywordList(text: string): string[] | null {
@@ -295,10 +295,10 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
     body = pt[3];
   }
   // colors
-  const colorRe = /^((?:white|blue|black|red|green|colorless)(?:(?:,| and| or) (?:white|blue|black|red|green))*) (.+)$/i;
+  const colorRe = /^((?:white|blue|black|red|green|colorless)(?:(?:, and|, or|,| and| or) (?:white|blue|black|red|green))*) (.+)$/i;
   const cm = body.match(colorRe);
   if (cm) {
-    for (const w of cm[1].toLowerCase().split(/,? and |, | or /)) if (COLOR_MAP[w]) spec.colors.push(COLOR_MAP[w]);
+    for (const w of cm[1].toLowerCase().split(/,? and |,? or |, /)) if (COLOR_MAP[w]) spec.colors.push(COLOR_MAP[w]);
     body = cm[2];
   }
   // remaining: subtype words + card types
@@ -1596,7 +1596,7 @@ const PATTERNS: Pattern[] = [
     return who && a !== null ? [{ kind: 'mill', amount: a, who }] : null;
   }],
   // "choose target X." → just registers the target for the following sentences
-  [/^choose (target .+|up to \w+ target .+)$/i, (m, ctx) => {
+  [/^choose (target .+|up to \w+ (?:other )?target .+)$/i, (m, ctx) => {
     const parts = m[1].split(/ and (?=target |up to \w+ target )/i);
     for (const p of parts) if (!(objRef(p, ctx) ?? playerRef(p, ctx))) return null;
     return [];
@@ -2927,7 +2927,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'exile', what: ref }, { kind: 'exile', what: { ref: 'all', filter: f } }];
   }],
   // "Destroy one of them at random" / "destroy one of those permanents at random"
-  [/^(destroy|exile|sacrifice|tap) (?:one|(\w+)) of (?:them|those (?:creatures|permanents|cards|lands|tokens)) at random$/i, (m, ctx) => {
+  [/^(destroy|exile|sacrifice|tap) (?:one|(\w+)) of (?:them|those (?:creatures|permanents|cards|lands|tokens))(?: chosen)? at random$/i, (m, ctx) => {
     const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
     const n = m[2] ? wordToNumber(m[2]) : 1;
     if (n === null) return null;
@@ -4241,6 +4241,27 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 194 ----
+  // "Return two lands you control to their owner's hand"
+  [/^return ((?:a|an|two|three|four|five|X) .+?) to (?:its|their) owner'?s'? hands?$/i, (m, ctx) => {
+    const c = chooseRef(m[1], ctx);
+    return c ? [...c.pre, { kind: 'returnToHand', what: c.ref }] : null;
+  }],
+  // "Return the exiled cards to their owner's graveyard"
+  [/^return (.+?) to (?:its|their) owner'?s'? graveyards?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] : null;
+  }],
+  // "~ becomes the chosen color"
+  [/^(.+?) becomes the (?:last )?chosen colou?r(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    return ref ? [{ kind: 'setColors', colors: [], chosenKey: 'color', on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
+  }],
+  // "That creature cannot attack during its controller's next turn" (approximated as "until your next turn")
+  [/^(.+?) cannot attack during (?:its controller's|your) next turn$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantAttack' }, on: ref, duration: 'untilYourNextTurn' }] : null;
+  }],
   // ---- Round 192 ----
   // "Put any of those cards you didn't play into your graveyard"
   [/^put (.+?) into (?:your|their|his or her) graveyards?$/i, (m, ctx) => {
@@ -4494,7 +4515,10 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[2] },
     ];
   }],
-  [/^~ and that creature phase out$/i, (m, ctx) => (ctx.lastObj ? [{ kind: 'phaseOut', what: SELF }, { kind: 'phaseOut', what: ctx.lastObj }] : null)],
+  [/^~ and that creature phase out$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? ({ ref: 'triggerObject' } as Ref) : null);
+    return ref ? [{ kind: 'phaseOut', what: SELF }, { kind: 'phaseOut', what: ref }] : null;
+  }],
   [/^reveal your hand and put all land cards from it onto the battlefield$/i, () => [
     { kind: 'revealHand', who: YOU },
     { kind: 'returnToBattlefield', what: { ref: 'all', filter: { zone: 'hand', owner: 'you', types: ['Land'] } } },
@@ -5425,7 +5449,7 @@ const PATTERNS: Pattern[] = [
   ]],
   // ---- Round 130 ----
   // "Unattach it." / "Unattach ~."
-  [/^unattach (it|~|that Equipment|equipped \w+)$/i, (m, ctx) => {
+  [/^unattach (it|~|that Equipment|equipped \w+|enchanted \w+)$/i, (m, ctx) => {
     const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx) ?? SELF;
     return [{ kind: 'unattach', what: ref }];
   }],
