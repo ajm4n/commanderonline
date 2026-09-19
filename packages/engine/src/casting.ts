@@ -932,7 +932,7 @@ function faceOf(obj: GameObject, faceIndex: number) {
 }
 
 /** Compute the total mana cost to cast, including commander tax and reductions. */
-export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex: number, opts: { kicker?: boolean; kicks?: number; alternative?: string } = {}): ManaCost {
+export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex: number, opts: { kicker?: boolean; kicks?: number; alternative?: string; kickerCosts?: string[] } = {}): ManaCost {
   const face = faceOf(obj, faceIndex);
   let cost: ManaCost;
   const script = g.scriptFor({ ...obj, faceIndex });
@@ -951,7 +951,11 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
     cost = parseManaCost(obj.memory['foretellCost'] as string);
   } else cost = parseManaCost(face.manaCost);
   if (obj.isCommander && obj.zone === 'command') cost = adjustGeneric(cost, obj.commanderCasts * 2);
-  if (opts.kicker) {
+  if (opts.kickerCosts?.length) {
+    // "Kicker {2}{B} and/or {2}{R}": only the kickers actually chosen are added.
+    const extra = opts.kickerCosts.flatMap((c) => parseManaCost(c).symbols);
+    cost = { symbols: [...cost.symbols, ...extra], xCount: cost.xCount };
+  } else if (opts.kicker) {
     const k = obj.card.oracleText.match(/(?:Multik|K)icker (\{[^\n]+?\})(?:\s|$)/) ?? obj.card.oracleText.match(/Replicate (\{[^\n]+?\})(?:\s|$)/);
     const times = opts.kicks ?? 1;
     if (k) {
@@ -1382,7 +1386,23 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   // Kicker / multikicker
   let kicker = false;
   let kicks = 0;
-  if (!opts.free && /^Kicker /m.test(face.oracleText)) {
+  let kickerCosts: string[] | undefined;
+  const multi = !opts.free ? face.oracleText.match(/^Kicker ((?:\{[^}]+\})+) and\/or ((?:\{[^}]+\})+)/m) : null;
+  if (multi) {
+    const chosen: string[] = [];
+    for (const kc of [multi[1], multi[2]]) {
+      const total = computeCastCost(g, p, obj, faceIndex, { kickerCosts: [...chosen, kc] });
+      if (!solvePayment(total, 0, player.manaPool, manaSourcesFor(g, p))) continue;
+      const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay the kicker cost ${kc} for ${face.name}?`, sourceId: id });
+      if (r.type === 'yesNo' && r.value) chosen.push(kc);
+    }
+    if (chosen.length) {
+      kicker = true;
+      kicks = chosen.length;
+      kickerCosts = chosen;
+      obj.memory['kickersPaid'] = chosen;
+    }
+  } else if (!opts.free && /^Kicker /m.test(face.oracleText)) {
     const kcost = face.oracleText.match(/Kicker (\{[^\n]+?\})(?:\s|$)/)?.[1];
     if (kcost) {
       const total = computeCastCost(g, p, obj, faceIndex, { kicker: true });
@@ -1436,7 +1456,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   }
 
   // X
-  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
+  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), kickerCosts, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
   // Spree: each chosen mode carries an additional cost.
   if (!opts.free && spell && spell.kind === 'spell' && spell.modeCosts) {
     for (const mi of modes) {

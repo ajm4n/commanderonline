@@ -1429,6 +1429,11 @@ export class Game {
         return (ctx.modes ?? []).includes(c.mode);
       case 'amount':
         return cmp(this.resolveAmount(c.a, ectx), c.op, this.resolveAmount(c.b, ectx));
+      case 'wasKickedWith': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+        const paid = (src?.memory['kickersPaid'] as string[] | undefined) ?? [];
+        return paid.includes(c.cost);
+      }
       case 'giftPromised': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         return typeof src?.memory['giftPromised'] === 'string';

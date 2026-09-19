@@ -2570,12 +2570,14 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   }
   sx25: {
-  if ((m = L.match(/^If ~ was kicked, it enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it and with (.+)$/i))) {
-    const kws = parseKeywordList(m[3]);
-    if (!kws) break sx25;
+  if ((m = L.match(/^If ~ was kicked(?: with its ((?:\{[^}]+\})+) kicker)?, it enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it and with (.+)$/i))) {
+    const quoted = m[4].match(/^"(.+)"\.?$/);
+    const kws = quoted ? null : parseKeywordList(m[4]);
+    if (!kws && !quoted) break sx25;
+    const kc: Condition = m[1] ? { kind: 'wasKickedWith', cost: m[1].toUpperCase() } : { kind: 'wasKicked' };
     return [
-      { kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: m[1] ? (wordToNumber(m[1]) as number) : 1 }, condition: { kind: 'wasKicked' } },
-      { kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: kws }, condition: { kind: 'wasKicked' } },
+      { kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) as number) : 1 }, condition: kc },
+      { kind: 'static', text: line, affects: 'self', modification: quoted ? { layer: 6, addAbilityText: [quoted[1]] } : { layer: 6, addKeywords: kws as string[] }, condition: kc },
     ];
   }
   }
@@ -2597,7 +2599,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (amt) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: '7b', powerAmount: amt, toughnessAmount: amt } }];
   }
   if ((m = L.match(/^If you would gain life, you gain that much life plus (\w+) instead$/i))) return [{ kind: 'replacement', text: line, event: 'lifeGain', add: wordToNumber(m[1]) as number, who: 'you' }];
-  if ((m = L.match(/^If ~ was kicked, it enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[2], amount: m[1] ? (wordToNumber(m[1]) as number) : 1 }, condition: { kind: 'wasKicked' } }];
+  if ((m = L.match(/^If ~ was kicked(?: with its ((?:\{[^}]+\})+) kicker)?, it enters with (?:a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on it$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, counters: { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) as number) : 1 }, condition: m[1] ? { kind: 'wasKickedWith', cost: m[1].toUpperCase() } : { kind: 'wasKicked' } }];
   if ((m = L.match(/^(.+?) cannot be blocked by more than one creature$/i))) { const _q23 = objRule(m[1], { kind: 'maxBlockers', count: 1 }); if (_q23) return _q23; }
   if ((m = L.match(/^(?:During your turn, )?you may (?:play|cast) cards( you do not own)? with (\w+) counters on them from exile(?:, and mana of any type can be spent to cast (?:those spells|them))?$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playExiledWithCounter', data: { counter: m[2], notOwned: !!m[1], yourTurn: /^During your turn/i.test(L), anyMana: /mana of any type/i.test(L) } } }];
   if ((m = L.match(/^(.+?) cannot be blocked except by (\w+) or more creatures$/i)) && wordToNumber(m[2]) !== null) { const _q24 = objRule(m[1], { kind: 'custom', tag: 'minBlockers', data: wordToNumber(m[2]) }); if (_q24) return _q24; }

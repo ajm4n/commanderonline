@@ -218,6 +218,8 @@ export type Condition =
   | { kind: 'isMonarch'; ref: Ref }
   | { kind: 'castFrom'; zone: ZoneName }
   | { kind: 'wasKicked' }
+  /** "if ~ was kicked with its {2}{B} kicker" on a card offering two. */
+  | { kind: 'wasKickedWith'; cost: string }
   /** Gift: an opponent was promised a gift as this spell was cast. */
   | { kind: 'giftPromised' }
   | { kind: 'modeChosen'; mode: number }

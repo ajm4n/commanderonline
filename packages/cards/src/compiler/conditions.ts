@@ -208,6 +208,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === 'you win' || t === 'you win the clash' || t === 'you won the clash') return { kind: 'memoryFlag', key: 'clashWon' };
   if (t === "you have the city's blessing") return { kind: 'cityBlessing' };
   if (t === 'it was kicked' || t === 'this spell was kicked') return { kind: 'wasKicked' };
+  if ((m = orig.trim().replace(/\.$/, '').match(/^(?:~|it|this spell) was kicked with its ((?:\{[^}]+\})+) kicker$/i))) return { kind: 'wasKickedWith', cost: m[1] };
   if (t === 'the gift was promised') return { kind: 'giftPromised' };
   if (/^(?:a|an) [\w-]+ was beheld$/.test(t)) return { kind: 'memoryFlag', key: 'beheld' };
   // "If you control artifacts named Crown of Empires and Throne of Empires, ..." (names keep their case)
