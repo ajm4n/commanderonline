@@ -4249,6 +4249,84 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 216 ----
+  // "Exile all other spells and counter all abilities"
+  [/^exile all other spells and counter all abilities$/i, () => [
+    { kind: 'moveToZone', what: { ref: 'all', filter: { zone: 'stack', other: true } }, zone: 'exile' },
+  ]],
+  // "Each player who sacrificed a creature this way draws two cards"
+  [/^each player who (sacrificed|discarded|drew|lost) (?:a|an|(\w+)) (.+?) this way (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(`each player ${m[4]}`, newCtx({ ...ctx, targets: ctx.targets }));
+    return inner && inner.length ? inner : null;
+  }],
+  // "Each player sacrifices that many creatures of their choice"
+  [/^each (player|opponent) sacrifices that many (.+?)(?: of their choice)?$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[2])}`);
+    if (!noun || !noun.confident) return null;
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    return [{ kind: 'forEach', over, effects: [{ kind: 'sacrificeChoice', who: { ref: 'iter' }, filter: { ...noun.filter, zone: 'battlefield', controllerRef: { ref: 'iter' } }, count: { kind: 'chosenNumber' } }] }];
+  }],
+  // "Target Mount you control becomes saddled until end of turn"
+  [/^(target .+?) becomes (saddled|crewed|monstrous)(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    const tag = m[2].toLowerCase() === 'saddled' ? 'saddled' : m[2].toLowerCase() === 'crewed' ? 'crewed' : 'monstrous';
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag }, on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
+  // "Return the other to the battlefield under your control"
+  [/^return the other to the battlefield under your control$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'returnToBattlefield', what: ref }];
+  }],
+  // "You may put that card into that player's graveyard"
+  [/^you may put that card into (that player's|its owner's|your) graveyard$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'may', prompt: 'Put that card into its graveyard?', effects: [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] }];
+  }],
+  // "~ becomes that color until end of turn"
+  [/^(.+?) becomes that colou?r(?: until end of turn)?$/i, (m, ctx) => {
+    const ref = m[1] === '~' ? SELF : objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'setColors', colors: [], chosenKey: 'color', on: ref, duration: / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }];
+  }],
+  // "Leave the chosen cards in your graveyard and put the rest into your hand"
+  [/^leave the chosen cards in your graveyard and put the rest into your hand$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return [{ kind: 'moveToZone', what: ref, zone: 'hand' }];
+  }],
+  // "Target opponent may choose to put those cards into your hand"
+  [/^(target opponent|that player|an opponent) may choose to put those cards into your hand$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return who ? [{ kind: 'may', prompt: 'Put those cards into their hand?', who, effects: [{ kind: 'moveToZone', what: ref, zone: 'hand' }] }] : null;
+  }],
+  // "Target opponent exiles a creature they control and their graveyard"
+  [/^(target opponent|target player|that player) exiles (?:a|an) (.+?) they control and their graveyard$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2]}`);
+    if (!who || !noun || !noun.confident) return null;
+    return [
+      { kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'battlefield', controllerRef: who }, count: 1, key: 'oppExile' },
+      { kind: 'moveToZone', what: { ref: 'chosen', key: 'oppExile' }, zone: 'exile' },
+      { kind: 'moveAll', who, from: 'graveyard', to: 'exile' },
+    ];
+  }],
+  // "Incubate 2, then transform an Incubator token you control"
+  [/^incubate (\w+|X), then transform an Incubator token you control$/i, (m) => {
+    const n = wordToNumber(m[1]) ?? (m[1].toUpperCase() === 'X' ? 'X' : null);
+    if (n === null) return null;
+    return [
+      { kind: 'createToken', token: { name: 'Incubator', typeLine: 'Artifact — Incubator', colors: [], preset: 'Incubator' }, count: 1 },
+      { kind: 'addCounters', counter: '+1/+1', amount: n as Amount, on: { ref: 'lastCreated' } },
+      { kind: 'transform', what: { ref: 'lastCreated' } },
+    ];
+  }],
+  // "The controller of each of those artifacts gains life equal to its mana value"
+  [/^the controller of each of those (.+?) gains life equal to its mana value$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    if (!base) return null;
+    return [{ kind: 'forEach', over: base, effects: [{ kind: 'gainLife', amount: { kind: 'manaValue', ref: { ref: 'iter' } }, who: { ref: 'controllerOf', of: { ref: 'iter' } } }] }];
+  }],
   // ---- Round 215 ----
   // "That land's controller may attach ~ to a land of their choice" / "That player attaches ~ to a land of their choice"
   [/^(.+?) (?:may attach|attaches) ~ to (?:a|an) (.+?)(?: of their choice)?$/i, (m, ctx) => {
