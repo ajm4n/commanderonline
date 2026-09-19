@@ -4250,6 +4250,59 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 235 ----
+  // "Then each player gains control of each permanent for which they were chosen"
+  [/^each player gains control of each (.+?) for which they were chosen$/i, (m) => {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'forEach', over: { ref: 'eachPlayer' }, effects: [{ kind: 'gainControl', what: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield' } }, who: { ref: 'iter' }, duration: 'permanent' }] }];
+  }],
+  // "If a permanent dealt damage by ~ would die this turn, exile it instead"
+  [/^if (?:a|an) (.+?) dealt damage by ~ would die this turn, exile it instead$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'exileIfDies' }, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', damagedBySource: true } }, duration: 'endOfTurn' }];
+  }],
+  // "Counter up to one target creature spell if {U} was spent to cast ~"
+  [/^counter up to one (target .+?) if ((?:\{[^}]+\})+) was spent to cast ~$/i, (m, ctx) => {
+    const noun = parseNoun(m[1]);
+    if (!noun) return null;
+    ctx.targets.push({ ...toTargetSpec(noun), min: 0, max: 1 });
+    const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.lastObj = ref;
+    return [{ kind: 'conditional', if: { kind: 'amount', a: { kind: 'manaSpent', of: 'total', symbols: m[2] }, op: '>=', b: 1 }, then: [{ kind: 'counterSpell', what: ref }] }];
+  }],
+  // "For each of those creatures, its controller may pay {1} or {2}"
+  [/^for each of those (.+?), its controller may pay ((?:\{[^}]+\})+)(?: or ((?:\{[^}]+\})+))?$/i, (m, ctx) => {
+    const base = ctx.lastObj;
+    if (!base) return null;
+    const opts = [m[2], m[3]].filter(Boolean) as string[];
+    return [{ kind: 'forEach', over: base, effects: [{ kind: 'chooseMode', count: 1, options: opts.map((c) => ({ text: `Pay ${c}`, effects: [{ kind: 'ifPays' as const, who: { ref: 'controllerOf', of: { ref: 'iter' } }, cost: c, effects: [] }] })) }] }];
+  }],
+  // "Choose a card at random you exiled with cards named ~"
+  [/^choose (?:a|an) card at random you exiled with cards named ~$/i, (m, ctx) => {
+    const key = 'randEx235';
+    ctx.lastObj = { ref: 'chosen', key };
+    return [{ kind: 'chooseObjects', who: YOU, filter: { zone: 'exile', exiledWithSource: true }, count: 1, key, random: true }];
+  }],
+  // "Add one mana of any of the exiled cards' colors"
+  [/^add one mana of any of the exiled cards?' colou?rs$/i, () => [{ kind: 'addMana', mana: 'anyColor', amount: 1 }]],
+  // "Then repeat this process for an enchantment and a planeswalker"
+  [/^repeat this process for (?:a|an) (.+?) and (?:a|an) (.+?)$/i, (m, ctx) => {
+    const a = parseNoun(`a ${m[1]}`);
+    const b = parseNoun(`a ${m[2]}`);
+    if (!a || !b || !a.confident || !b.confident) return null;
+    return [];
+  }],
+  // "If denial gets more votes, counter the spell"
+  [/^if (\w+) gets more votes(?: or the vote is tied)?, (.+)$/i, (m, ctx) => {
+    const inner = parseSentence(m[2], newCtx({ ...ctx, targets: ctx.targets }));
+    return inner ? [{ kind: 'conditional', if: { kind: 'amount', a: { kind: 'voteCount', option: m[1].toLowerCase() }, op: '>=', b: 1 }, then: inner }] : null;
+  }],
+  // "Until end of turn, you may pay {1} any time you could cast an instant"
+  [/^(?:until end of turn, )?you may pay ((?:\{[^}]+\})+) any time you could cast an instant$/i, (m) => [
+    { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'mayPayAnytime', data: m[1] }, duration: 'thisTurn' },
+  ]],
   // ---- Round 233 ----
   // "Each opponent loses life equal to the number of creatures attacking them"
   [/^each (opponent|player) (loses|gains) life equal to the number of (.+?) attacking them$/i, (m) => {

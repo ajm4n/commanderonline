@@ -87,6 +87,37 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 235 ----
+  // "As long as a creature card with flying is in a graveyard, ~ has flying."
+  if ((m = L.match(/^As long as (?:a|an) (.+?) is in (?:a|any) graveyard, ~ has (.+?)$/i))) {
+    const n235 = parseNoun(`a ${m[1]}`);
+    const g235 = parseGrantList(m[2]);
+    if (n235 && g235 && g235.keywords.length && !g235.abilities.length)
+      return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 6, addKeywords: g235.keywords }, condition: { kind: 'count', filter: { ...n235.filter, zone: 'graveyard' }, op: '>=', value: 1 } }];
+  }
+  // "As long as ~ is attacking, defending player cannot cast spells."
+  if (/^As long as ~ is attacking, defending player cannot cast spells$/i.test(L))
+    return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'cantCast', data: { filter: {} } }, condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { attacking: true } } }];
+  // "As long as ~ is on the stack, spells that target it cost {2} more to cast."
+  if ((m = L.match(/^As long as ~ is on the stack, spells that target it cost \{(\d+)\} (more|less) to cast$/i)))
+    return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: /more/i.test(m[2]) ? 'costIncrease' : 'costReduction', amount: parseInt(m[1], 10), filter: { spellTargets: { nameIs: '~' } } } }];
+  // "As long as ~ attacked this turn, you may play the top card of your library."
+  if (/^As long as ~ attacked this turn, you may play the top card of your library$/i.test(L))
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playTopCard' }, condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { attackedThisTurn: true } } }];
+  // "~ attacks each combat if able unless you control another Ally."
+  if ((m = L.match(/^~ attacks each combat if able unless you control another (.+?)$/i))) {
+    const n235b = parseNoun(`a ${m[1]}`);
+    if (n235b && n235b.confident)
+      return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'mustAttack' }, condition: { kind: 'not', c: { kind: 'count', filter: { ...n235b.filter, zone: 'battlefield', controller: 'you', other: true }, op: '>=', value: 1 } } }];
+  }
+  // "~ enters tapped if it was played from your hand."
+  if (/^~ enters tapped if it was played from your hand$/i.test(L))
+    return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: true, condition: { kind: 'objectMatches', ref: { ref: 'self' }, filter: { castFromZone: 'hand' } } }];
+  // "Activate no more times each turn than the number of snow Swamps you control"
+  if ((m = L.match(/^Activate no more times each turn than the number of (.+?)$/i))) {
+    const a235 = parseAmount(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (a235 !== null) return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'activationLimitAmount', data: a235 } }];
+  }
   // ---- Round 234 ----
   // "You can't choose an untapped permanent as ~'s target as you cast it."
   if ((m = L.match(/^You cannot choose an? (untapped|tapped) (permanent|creature|artifact|land) as ~'s target as you cast it$/i)))
