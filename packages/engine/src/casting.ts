@@ -596,7 +596,25 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller: p })) continue;
       reduce += d.amount ?? 0;
     }
+    // "Activated abilities cost {2} more to activate." / "This ability costs {1} more for each card in your hand."
+    let extra = 0;
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || (r.tag !== 'abilityCostIncrease' && r.tag !== 'thisAbilityCostIncrease')) continue;
+      if (r.tag === 'thisAbilityCostIncrease' && (r as { sourceId?: ObjectId }).sourceId !== obj.id) continue;
+      const d = (r.data as { amount?: number; filter?: import('./types.js').ObjectFilter; notMana?: boolean } | undefined) ?? {};
+      if (d.notMana && /(?::|^)\s*add \{/i.test(abilityText ?? '')) continue;
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: obj.id, controller: p })) continue;
+      extra += d.amount ?? 0;
+    }
+    // "Equipped creature's activated abilities cost {1} less to activate": written on the permanent itself.
+    for (const r of g.characteristics(obj.id).rules) {
+      if (r.kind !== 'custom' || r.tag !== 'abilityCostChange') continue;
+      const d = (r.data as { amount?: number } | undefined) ?? {};
+      if ((d.amount ?? 0) >= 0) extra += d.amount ?? 0;
+      else reduce += -(d.amount ?? 0);
+    }
     let manaCost = reduce > 0 ? reduceGeneric(parsed, reduce) : parsed;
+    if (extra > 0) manaCost = { symbols: [...manaCost.symbols, { kind: 'generic', amount: extra }], xCount: manaCost.xCount };
     // "You may spend mana as though it were mana of any color to activate abilities of creatures you control."
     for (const r of g.playerRules(p)) {
       if (r.kind !== 'custom' || r.tag !== 'manaAsAnyColorAbilities') continue;

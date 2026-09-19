@@ -96,7 +96,14 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
       if (ab.modification) effects.push({ mod: ab.modification, ts: src.timestamp, sourceId: src.id, applies });
       if (ab.rule) {
         // "is goaded" from a static: goaded by the source's controller.
-        const rule = ab.rule.kind === 'custom' && ab.rule.tag === 'goaded' && ab.rule.data === '__controller__' ? { ...ab.rule, data: src.controller } : ab.rule;
+        const rule =
+          ab.rule.kind === 'custom' && ab.rule.tag === 'goaded' && ab.rule.data === '__controller__'
+            ? { ...ab.rule, data: src.controller }
+            : ab.rule.kind === 'custom' && ab.rule.tag === 'cantAttackYou' && ab.rule.data === undefined
+              ? { ...ab.rule, data: src.controller }
+              : ab.rule.kind === 'custom' && ab.rule.tag === 'mustBlockSource'
+                ? { ...ab.rule, data: ab.rule.data === '__attached__' ? src.attachedTo ?? -1 : src.id }
+                : ab.rule;
         effects.push({ mod: { layer: 'rule', rule }, ts: src.timestamp, sourceId: src.id, applies });
       }
     }

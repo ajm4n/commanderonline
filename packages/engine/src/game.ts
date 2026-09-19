@@ -2007,6 +2007,17 @@ export class Game {
       this.log(`${p.name} cannot draw cards.`);
       return drawn;
     }
+    // "Each opponent can't draw more than one card each turn."
+    for (const r of this.playerRules(pid)) {
+      if (r.kind !== 'custom' || r.tag !== 'maxDrawsPerTurn' || typeof r.data !== 'number') continue;
+      const already = p.turnStats['drawCard'] ?? 0;
+      const room = Math.max(0, r.data - already);
+      if (n > room) {
+        this.log(`${p.name} cannot draw more than ${r.data} card(s) this turn.`);
+        n = room;
+      }
+    }
+    if (n <= 0) return drawn;
     for (let i = 0; i < n; i++) {
       // Draw replacements ("If you would draw a card, draw two cards instead").
       const repl = this.drawReplacementFor(pid);

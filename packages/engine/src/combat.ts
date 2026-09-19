@@ -50,6 +50,8 @@ function attackTargets(g: Game, o: GameObject): (PlayerId | ObjectId)[] {
       return !f || matchesFilterFor(g, o.id, f, p);
     });
     if (shielded) continue;
+    // "Creatures can't attack you": written on the attacker, naming the protected player.
+    if (g.characteristics(o.id).rules.some((r) => r.kind === 'custom' && r.tag === 'cantAttackYou' && r.data === p)) continue;
     out.push(p);
     for (const id of g.state.battlefield) {
       const t = g.obj(id);
@@ -325,6 +327,8 @@ function* declareBlockers(g: Game): Gen {
         // "Target creature blocks this turn if able": any such blocker able to block something must block.
         if (able.some((c) => g.characteristics(c.id).rules.some((r) => r.kind === 'custom' && r.tag === 'mustBlockAny') && !blocks.some((b) => b.blocker === c.id))) return false;
         if (rules.some((r) => r.kind === 'custom' && r.tag === 'lure') && able.some((c) => !blockedBy.includes(c.id) && !blocks.some((b) => b.blocker === c.id))) return false;
+        // "All creatures able to block ~ do so": the requirement is written on each would-be blocker.
+        if (able.some((c) => g.characteristics(c.id).rules.some((r) => r.kind === 'custom' && r.tag === 'mustBlockSource' && r.data === a.id) && !blockedBy.includes(c.id))) return false;
         return able.every((c) => !g.characteristics(c.id).rules.some((r) => r.kind === 'custom' && r.tag === 'mustBlock' && r.data === a.id) || blockedBy.includes(c.id) || blocks.some((b) => b.blocker === c.id));
       });
       // Menace: needs 2+ blockers

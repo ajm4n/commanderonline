@@ -1128,6 +1128,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const item = g.state.stack.find((s) => s.id === t.id);
         if (!item) continue;
         const spellObj = g.state.objects[item.sourceId];
+        if (item.kind === 'spell' && g.playerRules(item.controller).some((r) => r.kind === 'custom' && r.tag === 'spellsCantBeCountered')) {
+          g.log(`${item.text} can't be countered.`);
+          continue;
+        }
         if (item.kind === 'spell' && spellObj && g.scriptFor(spellObj).abilities.some((a) => a.kind === 'static' && a.rule?.kind === 'custom' && a.rule.tag === 'cantBeCountered')) {
           g.log(`${item.text} can't be countered.`);
           continue;
@@ -2388,6 +2392,7 @@ export function destroyObject(g: Game, id: ObjectId, sourceId: ObjectId | null, 
     g.log(`${g.nameOf(id)} is indestructible.`);
     return;
   }
+  if (ch.rules.some((r) => r.kind === 'custom' && (r.tag === 'cantRegenerate' || r.tag === 'cantBeRegenerated'))) cantRegenerate = true;
   if (!cantRegenerate) {
     const shieldIdx = g.state.continuousEffects.findIndex((ce) => ce.modification.layer === 'rule' && ce.modification.rule.kind === 'custom' && ce.modification.rule.tag === 'regenerationShield' && ce.affected.kind === 'fixed' && ce.affected.ids.includes(id));
     if (shieldIdx >= 0) {

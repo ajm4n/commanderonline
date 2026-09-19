@@ -5452,7 +5452,7 @@ const PATTERNS: Pattern[] = [
     const noun = parseNoun(`a ${singularize(m[1])}`);
     const who = ctx.lastPlayer ?? ({ ref: 'triggerPlayer' } as Ref);
     if (!noun || !noun.confident) return null;
-    return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'doesNotUntap' }, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', controllerRef: who } }, duration: 'untilYourNextTurn' }];
+    return [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: { ref: 'all', filter: { ...noun.filter, zone: 'battlefield', controllerRef: who } }, duration: 'untilYourNextTurn' }];
   }],
   [/^choose (\w+) cards in each graveyard$/i, (m, ctx) => {
     const n = wordToNumber(m[1]);

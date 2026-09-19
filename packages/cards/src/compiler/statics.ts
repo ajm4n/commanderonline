@@ -279,7 +279,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^All creatures attack enchanted creature's controller each combat if able$/i.test(L))
     return [{ kind: 'static', text: line, affects: { types: ['Creature'], zone: 'battlefield' }, rule: { kind: 'custom', tag: 'mustAttackAttachedController' } }];
   if ((m = L.match(/^All creatures able to block (?:~|enchanted creature)(?: or (?:~|enchanted creature))? do so$/i)))
-    return [{ kind: 'static', text: line, affects: { types: ['Creature'], zone: 'battlefield' }, rule: { kind: 'custom', tag: 'mustBlockSource' } }];
+    return [{ kind: 'static', text: line, affects: { types: ['Creature'], zone: 'battlefield' }, rule: { kind: 'custom', tag: 'mustBlockSource', ...(/enchanted creature/i.test(m[0]) ? { data: '__attached__' } : {}) } }];
   // ---- Round 218 ----
   // "Activated abilities of white enchantments cost {3} more to activate."
   if ((m = L.match(/^(?:Activated )?abilities of (.+?) cost \{(\d+)\} more to activate$/i))) {
@@ -1712,7 +1712,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   if (/^Players cannot pay life or sacrifice creatures to cast spells or activate abilities$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noLifeOrSacrificeCosts' } }];
-  if (/^Spells and abilities your opponents control cannot cause their controller to search their library$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
+  if (/^Spells and abilities your opponents control cannot cause their controller to search their library$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'noSearch' } }];
   sfall3: {
   if ((m = L.match(/^(.+?) cannot be the target of (spells|abilities)(?: from (.+?) sources)?$/i))) {
     const f = m[3] ? parseNoun(`a ${m[3]}`)?.filter : undefined;
@@ -1798,7 +1798,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If ~ is your commander, choose a (color|creature type) before the game begins$/i)))
     return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'preGameChoice', data: m[1].toLowerCase() } }];
   if (/^~ is the chosen color$/i.test(L)) return [{ kind: 'static', text: line, affects: 'self', modification: { layer: 5, setColorsFromMemory: 'color' } }];
-  if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantSearchLibraries' } }];
+  if (/^Players cannot search libraries$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'noSearch' } }];
   if (/^Players cannot play lands$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'custom', tag: 'cantPlayLands' } }];
   if (/^Spells and abilities your opponents control cannot cause you to sacrifice permanents$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBeMadeToSacrifice' } }];
   if ((m = L.match(/^(Each opponent|Each player|You) cannot draw more than (\w+) cards? each turn$/i))) {
@@ -3025,7 +3025,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^You cannot play lands or cast spells from your hand$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'noPlayFromHand' } }];
   if ((m = L.match(/^You cannot untap more than (\w+) (.+?) during your untap step$/i))) {
     const n = wordToNumber(m[1]);
-    if (typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'maxUntap', data: n } }];
+    if (typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'untapLimit', data: { count: n } } }];
   }
   if (/^You cannot become the monarch(?: this turn)?$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'cantBecomeMonarch' } }];
   if ((m = L.match(/^You can spend mana of any (?:type|color) to cast (.+)$/i))) {
