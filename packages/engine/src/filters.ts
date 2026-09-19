@@ -220,6 +220,12 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const want = src?.chosen[filter.typeIsChosen];
     if (typeof want !== 'string' || !(ch.types.includes(want) || ch.subtypes.includes(want))) return false;
   }
+  if (filter.manaValueParityChosen) {
+    const srcP = ctx.sourceId !== null && ctx.sourceId !== undefined ? g.state.objects[ctx.sourceId] : undefined;
+    const pick = srcP?.chosen[filter.manaValueParityChosen] ?? srcP?.memory[filter.manaValueParityChosen];
+    if (typeof pick !== 'string') return false;
+    if ((ch.manaValue % 2 === 1) !== (pick.toLowerCase() === 'odd')) return false;
+  }
   if (filter.nameIsChosen) {
     const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
     const want = src?.chosen[filter.nameIsChosen];

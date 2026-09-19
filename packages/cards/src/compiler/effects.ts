@@ -4249,7 +4249,75 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
-  // ---- Round 198b ----
+  // ---- Round 200 ----
+  // "Put a charge counter on it or remove one from it"
+  [/^put (?:a|an) ([+-]\d+\/[+-]\d+|[\w'-]+) counter on (it|~) or remove one from (?:it|~)$/i, (m, ctx) => {
+    const ref = /^~$/.test(m[2]) ? SELF : objRef(m[2], ctx) ?? SELF;
+    return [{ kind: 'chooseMode', count: 1, options: [
+      { text: `Put a ${m[1]} counter on it`, effects: [{ kind: 'addCounters', counter: m[1] as never, amount: 1, on: ref }] },
+      { text: `Remove a ${m[1]} counter from it`, effects: [{ kind: 'removeCounters', counter: m[1] as never, amount: 1, on: ref }] },
+    ] }];
+  }],
+  // "Choose a number between 0 and 13"
+  [/^(?:(.+?) )?chooses? a number between (\d+) and (\d+)$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : undefined;
+    if (m[1] && !who) return null;
+    return [{ kind: 'chooseNumber', min: parseInt(m[2], 10), max: parseInt(m[3], 10), who: who ?? undefined }];
+  }],
+  // "Choose left or right" / "choose friend or foe"
+  [/^(?:(.+?) )?chooses? (left or right|friend or foe|odd or even|heads or tails)$/i, (m, ctx) => {
+    const opts = m[2].toLowerCase().split(' or ');
+    const key = opts[0] === 'left' ? 'direction' : opts[0] === 'friend' ? 'allegiance' : 'choice';
+    if (!m[1] || /^you$/i.test(m[1])) return [{ kind: 'chooseOption', key, options: opts }];
+    const who = playerRef(m[1], ctx);
+    return who ? [{ kind: 'forEach', over: who, effects: [{ kind: 'chooseOption', key, options: opts }] }] : null;
+  }],
+  // "For each player, choose friend or foe"
+  [/^for each (player|opponent), choose (friend or foe|left or right)$/i, (m) => {
+    const opts = m[2].toLowerCase().split(' or ');
+    const over: Ref = /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' };
+    return [{ kind: 'forEach', over, effects: [{ kind: 'chooseOption', key: opts[0] === 'friend' ? 'allegiance' : 'direction', options: opts }] }];
+  }],
+  // "You may pay {2}{R} any number of times." / "you may pay {1} up to three times."
+  [/^(?:you may|(.+?) may) pay ((?:\{[^}]+\})+) (?:any number of times|up to (\w+) times)$/i, (m, ctx) => {
+    const who = m[1] ? playerRef(m[1], ctx) : YOU;
+    if (!who) return null;
+    const cap = m[3] ? wordToNumber(m[3]) : undefined;
+    if (m[3] && typeof cap !== 'number') return null;
+    return [{ kind: 'payRepeatedly', who, cost: m[2], effects: [], max: typeof cap === 'number' ? cap : undefined }];
+  }],
+  // "That player discards those cards"
+  [/^(.+?) discards those cards$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
+    return who ? [{ kind: 'moveToZone', what: ref, zone: 'graveyard' }] : null;
+  }],
+  // "Return those cards from your graveyard to your hand"
+  [/^return those cards from your graveyard to your hand$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'returnToHand', what: ref }];
+  }],
+  // "Its owner puts it on their choice of the top or bottom of their library"
+  [/^(?:its owner|that player|they) puts? (?:it|that card) on their choice of the top or bottom of (?:their|its owner's) library$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [{ kind: 'chooseMode', count: 1, options: [
+      { text: 'Top of library', effects: [{ kind: 'putOnLibrary', what: ref, position: 'top' }] },
+      { text: 'Bottom of library', effects: [{ kind: 'putOnLibrary', what: ref, position: 'bottom' }] },
+    ] }];
+  }],
+  // "They are 2/2 Cyberman artifact creatures"
+  [/^(?:they are|it is|those tokens are) ([\dX]+)\/([\dX]+)((?: [\w-]+)*)$/i, (m, ctx) => {
+    const ref = ctx.lastObj ?? ({ ref: 'lastCreated' } as Ref);
+    const words = m[3].trim().split(/\s+/).filter(Boolean);
+    const types = words.filter((w) => /^(artifact|creature|enchantment|land)s?$/i.test(w)).map((w) => w.replace(/s$/i, '').replace(/^\w/, (c) => c.toUpperCase()));
+    const subs = words.filter((w) => /^[A-Z]/.test(w)).map((w) => singularize(w));
+    if (!types.length) return null;
+    return [
+      { kind: 'addTypes', types, subtypes: subs.length ? subs : undefined, on: ref, duration: 'permanent' },
+      { kind: 'setPT', power: m[1] === 'X' ? 'X' : parseInt(m[1], 10), toughness: m[2] === 'X' ? 'X' : parseInt(m[2], 10), on: ref, duration: 'permanent' },
+    ];
+  }],
+  // ---- Round 199 ----
   // "Turn all other nontoken creatures face down."
   [/^turn (all|each) (.+?) face (down|up)$/i, (m, ctx) => {
     const noun = parseNoun(`a ${singularize(m[2])}`);

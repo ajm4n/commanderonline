@@ -619,9 +619,9 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     } else if ((m = line.match(/^Choose (one|two)\. If (.+?) as you cast (?:this spell|~), you may choose (both|two|three) instead\.?$/i)) && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })?.kind !== 'manual' && parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })) {
       maxModesIf = { condition: parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false })!, max: m[3].toLowerCase() === 'three' ? 3 : 2 };
       line = `Choose ${m[1]}`;
-    } else if ((m = line.match(/^Choose (one|two)\. If (.+?),? (?:you may )?choose (both|two|three|any number|an additional mode) instead\.?$/i))) {
+    } else if ((m = line.match(/^Choose (one|two)\. If (.+?),? (?:you may )?choose (both|two|three|one or more|any number|an additional mode) instead\.?$/i))) {
       const c = parseCondition(m[2].replace(/ as you cast (?:this spell|~)$/i, ''), { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
-      if (c && c.kind !== 'manual') maxModesIf = { condition: c, max: /any number/i.test(m[3]) ? 6 : /three/i.test(m[3]) ? 3 : 2 };
+      if (c && c.kind !== 'manual') maxModesIf = { condition: c, max: /any number|one or more/i.test(m[3]) ? 6 : /three/i.test(m[3]) ? 3 : 2 };
       line = `Choose ${m[1]}`;
     } else if ((m = line.match(/^Choose (\w+)\. You may choose the same mode more than once\.?$/i))) {
       repeatable = true;
@@ -635,6 +635,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         line = `Choose ${mh.count === 2 ? 'two' : 'one'}`;
       }
     }
+    if ((m = line.match(/^(?:An opponent|Target opponent|An opponent of your choice) chooses (one|two|one or both|one or more)(?: —)?$/i))) line = `Choose ${m[1]}`;
     if ((m = line.match(/^Choose (one|two|three|one or both|one or more|any number|up to two|up to three)(?: —)?$/i))) {
       modal = [];
       if (maxModesIf) modalMaxIf = maxModesIf;
@@ -809,7 +810,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       let reflexivePrefix: string | null = null;
       let restForModal = split.rest;
       {
-        const rm = split.rest.match(/^(.+?)\.\s*(?:When|If) you do, (choose .+)$/i);
+        const rm = split.rest.match(/^(.+?)\.\s*(?:When|If) (?:you do|you remove a counter this way|that happens|you cast that spell), (choose .+)$/i);
         if (rm && parseModalHead(rm[2]) && lines[li + 1]?.startsWith('•')) {
           reflexivePrefix = rm[1];
           restForModal = rm[2];

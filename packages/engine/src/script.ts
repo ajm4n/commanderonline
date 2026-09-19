@@ -365,6 +365,8 @@ export type Effect =
   | { kind: 'conditional'; if: Condition; then: Effect[]; else?: Effect[] }
   | { kind: 'forEach'; over: Ref; effects: Effect[]; /** Only iterate objects matching this filter ("for each creature card exiled this way"). */ filter?: ObjectFilter }
   | { kind: 'repeat'; times: Amount; effects: Effect[] }
+  /** "You may pay {2}{R} any number of times": each payment runs `effects` once; `max` caps the repeats. */
+  | { kind: 'payRepeatedly'; who?: Ref; cost: string; effects: Effect[]; max?: number; text?: string }
   /** "Repeat this process": run the effects again while the condition holds (bounded). */
   | { kind: 'repeatWhile'; condition?: Condition; effects: Effect[]; max?: number; /** "You may repeat this process any number of times": ask before each extra iteration. */ optional?: boolean }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
@@ -381,6 +383,8 @@ export type Effect =
   | { kind: 'flipUntilLose' }
   /** "Choose odd or even." */
   | { kind: 'chooseOption'; key: string; options: string[] }
+  /** "Choose a number between 0 and 13": stored under `key` (default 'chosenNumber'). */
+  | { kind: 'chooseNumber'; key?: string; min: number; max: number; who?: Ref }
   /** "Each player shuffles the cards from their hand into their library, then draws that many cards." */
   | { kind: 'shuffleHandIntoLibraryAndDraw'; who: Ref; /** Put the cards on the bottom of the library in any order instead of shuffling. */ bottom?: boolean }
   /** "Shuffle a card from your hand into your library." */

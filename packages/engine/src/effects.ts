@@ -354,6 +354,29 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.touch();
       return;
     }
+    case 'payRepeatedly': {
+      for (const p of playersOf(g, e.who, ctx)) {
+        const cap = e.max ?? 20;
+        let times = 0;
+        for (let i = 0; i < cap; i++) {
+          const ok = yield* offerToPay(g, p, e.cost, e.text ?? `Pay ${e.cost}? (${times} so far)`);
+          if (!ok) break;
+          times++;
+          yield* executeEffects(g, e.effects, { ...ctx, iter: { kind: 'player', id: p } });
+        }
+        setMemory(g, ctx, 'timesPaid', times);
+      }
+      return;
+    }
+    case 'chooseNumber': {
+      const who = e.who ? playersOf(g, e.who, ctx)[0] ?? ctx.controller : ctx.controller;
+      const opts: string[] = [];
+      for (let i = e.min; i <= e.max; i++) opts.push(String(i));
+      const r = yield* g.ask({ type: 'chooseOption', player: who, prompt: `Choose a number between ${e.min} and ${e.max}`, options: opts.map((o) => ({ id: o, label: o })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+      const picked = r.type === 'options' && r.ids[0] !== undefined ? Number(r.ids[0]) : e.min;
+      setMemory(g, ctx, e.key ?? 'chosenNumber', picked);
+      return;
+    }
     case 'chooseOption': {
       const r = yield* g.ask({ type: 'chooseOption', player: ctx.controller, prompt: `Choose ${e.options.join(' or ')}`, options: e.options.map((o) => ({ id: o, label: o })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
       setMemory(g, ctx, e.key, r.type === 'options' ? r.ids[0] : e.options[0]);
