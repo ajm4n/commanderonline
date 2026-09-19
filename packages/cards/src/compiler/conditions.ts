@@ -763,6 +763,25 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     ] };
   if ((m = t.match(/^there (?:is|are) exactly (\w+) permanents? named ~ on the battlefield$/)))
     { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'count', filter: { nameIs: '~', zone: 'battlefield' }, op: '==', value: n }; }
+  // "As long as ~ remains attached to it" / "if that Aura is attached to it"
+  if (/^(?:~|that aura|that equipment|it) (?:remains|is|are) attached to (?:it|that creature|that permanent)$/.test(t))
+    return { kind: 'objectMatches', ref: ctx.self, filter: { attached: true } };
+  if (/^(?:they|those cards|any of those cards|it) (?:remain|remains|are|is) exiled$/.test(t))
+    return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'exile' };
+  if (/^(?:~|it|that spell) (?:is|are) on the stack$/.test(t)) return { kind: 'inZone', ref: ctx.self, zone: 'stack' };
+  if ((m = t.match(/^(?:a|an|one or more) cards? exiled with ~ (?:is|are) (?:a|an) (.+?) cards?$/))) {
+    const noun = parseNoun(`a ${m[1]} card`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, exiledWithSource: true }, op: '>=', value: 1 };
+  }
+  if (/^there (?:is|are) an instant card and a sorcery card in your graveyard$/.test(t))
+    return { kind: 'and', cs: [
+      { kind: 'count', filter: { types: ['Instant'], zone: 'graveyard', owner: 'you' }, op: '>=', value: 1 },
+      { kind: 'count', filter: { types: ['Sorcery'], zone: 'graveyard', owner: 'you' }, op: '>=', value: 1 },
+    ] };
+  if ((m = t.match(/^its controller controls another (.+?)$/))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'battlefield', controllerRef: ctx.self, other: true }, op: '>=', value: 1 };
+  }
   if (t === '~ is monstrous') return { kind: 'objectMatches', ref: ctx.self, filter: { monstrous: true } };
   if (t === '~ is suspended' || t === 'it is suspended') return { kind: 'objectMatches', ref: ctx.self, filter: { suspended: true } };
   if (t === '~ is goaded') return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: 'goaded' } };
