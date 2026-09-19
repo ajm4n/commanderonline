@@ -4268,6 +4268,45 @@ const PATTERNS: Pattern[] = [
     }
     return null;
   }],
+  // ---- Round 245 ----
+  // "Target creature can't be the target of spells or abilities your opponents control this turn."
+  [/^(.+?) cannot be the target of spells or abilities your opponents control(?: this turn)?$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'applyRule', rule: { kind: 'cantBeTargeted', by: 'opponents' }, on: ref, duration: 'endOfTurn' }] : null;
+  }],
+  // "Mill four cards, then return a creature card and a land card from your graveyard to your hand."
+  [/^return (?:(up to one|a|an) )?(.+?) card and (?:(?:up to one|a|an) )?(.+?) card from your graveyard to your hand$/i, (m, ctx) => {
+    const n1 = parseNoun(`a ${m[2]} card`);
+    const n2 = parseNoun(`a ${m[3]} card`);
+    if (!n1 || !n1.confident || !n2 || !n2.confident) return null;
+    const upTo = /^up to one$/i.test(m[1] ?? '');
+    const k1 = `gy${ctx.targets.length}a`;
+    const k2 = `gy${ctx.targets.length}b`;
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { ...n1.filter, zone: 'graveyard', controller: 'you' }, count: 1, key: k1, upTo },
+      { kind: 'returnToHand', what: { ref: 'chosen', key: k1 } },
+      { kind: 'chooseObjects', who: YOU, filter: { ...n2.filter, zone: 'graveyard', controller: 'you' }, count: 1, key: k2, upTo },
+      { kind: 'returnToHand', what: { ref: 'chosen', key: k2 } },
+    ];
+  }],
+  // "Change the target of target instant or sorcery spell with a single target to ~."
+  [/^change the targets? of (target .+?spell(?: with a single target)?) to (~|it)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    return ref ? [{ kind: 'changeTargets', what: ref, to: SELF }] : null;
+  }],
+  // "Target player chooses a creature they control and puts two +1/+1 counters on it."
+  [/^(.+?) chooses (?:a|an) (.+?)(?: they control| of their choice)? and puts (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? on it$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    const noun = parseNoun(`a ${m[2]}`);
+    const n = m[3] ? wordToNumber(m[3]) : 1;
+    if (!who || !noun || !noun.confident || n === null) return null;
+    const key = `oppPut${ctx.targets.length}`;
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who, filter: { ...noun.filter, zone: 'battlefield', controllerRef: who }, count: 1, key },
+      { kind: 'addCounters', counter: m[4], amount: n as Amount, on: { ref: 'chosen', key } },
+    ];
+  }],
   // ---- Round 244 ----
   // "Choose a nonland card exiled this way."
   [/^choose (?:a|an) (.+?) (?:exiled|milled|discarded|revealed) this way$/i, (m, ctx) => {

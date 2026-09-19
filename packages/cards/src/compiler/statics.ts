@@ -87,6 +87,24 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: who199, rule: { kind: 'maxHandSize', amount: amt199 } }];
     }
   }
+  // ---- Round 245 ----
+  // "During your turn, ~ is a Bear with base power and toughness 4/2."
+  sx245: {
+  if ((m = L.match(/^(?:(During your turn), )?(.+?) is (?:a|an) ((?:white|blue|black|red|green) )?([A-Z][\w-]+) with base power and toughness (\d+)\/(\d+)$/i))) {
+    const a245 = affectsOf(m[2]);
+    if (!a245.ok) break sx245;
+    const cond245: Condition | undefined = m[1] ? { kind: 'yourTurn' } : undefined;
+    const out245: unknown[] = [
+      { kind: 'static', text: line, affects: a245.affects, condition: cond245, modification: { layer: 4, setSubtypes: [m[4]] } },
+      { kind: 'static', text: line, affects: a245.affects, condition: cond245, modification: { layer: '7b', power: parseInt(m[5], 10), toughness: parseInt(m[6], 10) } },
+    ];
+    if (m[3]) {
+      const c245 = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[3].trim().toLowerCase() as 'white'];
+      out245.push({ kind: 'static', text: line, affects: a245.affects, condition: cond245, modification: { layer: 5, setColors: [c245] } });
+    }
+    return out245 as never;
+  }
+  }
   // ---- Round 242 ----
   // "Creature spells you cast that share a creature type with ~ cost {1} less to cast."
   sx242: {
@@ -1760,7 +1778,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if ((m = L.match(/^If (?:a|an) (.+?) would deal (combat )?damage to you or (?:a|an) (.+?) you control, prevent (\d+|all) of that damage$/i))) {
     return [{ kind: 'replacement', text: line, event: 'damage', prevent: m[4] === 'all' ? 'all' : parseInt(m[4], 10), to: 'controller', combatOnly: m[2] ? true : undefined }];
   }
-  if (/^You may have ~ assign its combat damage as though it weren't blocked$/i.test(L)) { const _q3 = objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' }); if (_q3) return _q3; }
+  if (/^You may have ~ assign its combat damage as though it (?:were not|weren't) blocked$/i.test(L)) { const _q3 = objRule('~', { kind: 'custom', tag: 'assignAsUnblocked' }); if (_q3) return _q3; }
   // "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead."
   if ((m = L.match(/^If (?:another )?(?:a )?(\w+) sources? you control would deal (noncombat |combat )?damage to (?:an opponent or a permanent an opponent controls|a permanent or player|an opponent|a player or permanent), it deals that much damage plus (\d+) (?:to (?:that permanent or player|that player|them) )?instead$/i)) && !/^a$/i.test(m[1])) {
     const cn = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as Record<string, string>)[m[1].toLowerCase()];
