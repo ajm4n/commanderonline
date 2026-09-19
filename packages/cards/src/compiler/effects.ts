@@ -4409,6 +4409,20 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, tapped: !!m[3], controller: 'you' },
     ];
   }],
+  // ---- Round 265 ----
+  // "Return to your hand the creature card in your graveyard with the greatest power."
+  [/^(return|put) to your (hand|graveyard) (?:the|a|an) (.+)$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[3]}`);
+    if (!noun || !noun.confident) return null;
+    const key = `theOne${ctx.targets.length}`;
+    const f = { ...noun.filter };
+    if (!f.zone && !f.zoneIn) f.zone = 'graveyard';
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: f, count: 1, key },
+      /hand/i.test(m[2]) ? { kind: 'returnToHand', what: { ref: 'chosen', key } } : { kind: 'moveToZone', what: { ref: 'chosen', key }, zone: 'graveyard' },
+    ];
+  }],
   // ---- Round 264 ----
   // Processors: "You may put a card an opponent owns from exile into that player's graveyard."
   [/^(you may )?put (?:a|an) card an opponent owns from exile into that player's graveyard$/i, (m, ctx) => {
@@ -9454,6 +9468,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
         ctx.lastPlayer = savedPlayer;
       }
     }
+  }
+  // "Return to your hand the creature card in your graveyard with the greatest power."
+  if ((m = text.match(/^(return|put|move) (to your hand|into your hand|onto the battlefield|into your graveyard) (the .+)$/i))) {
+    const saved = ctx.targets.length;
+    const alt = parseSentence(`${m[1]} ${m[3]} ${m[2]}`, ctx);
+    if (alt) return alt;
+    ctx.targets.length = saved;
   }
   // "You gain control of it": "you" is the default subject, so retry without it.
   if (/^you [a-z]/i.test(text) && !/^you may /i.test(text)) {
