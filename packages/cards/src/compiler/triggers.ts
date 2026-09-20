@@ -42,6 +42,15 @@ function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
 }
 
 export function parseTriggerHead(line: string): TriggerHead | null {
+  const direct = parseTriggerHeadCore(line);
+  if (direct) return direct;
+  // "... for the first time each turn" restricts how often the trigger fires, not what it matches,
+  // so retry without it — but only after the wordings that are recognised whole have had their turn.
+  const stripped = line.replace(/ for the first time (?:each|this) turn,/i, ',');
+  return stripped === line ? null : parseTriggerHeadCore(stripped);
+}
+
+function parseTriggerHeadCore(line: string): TriggerHead | null {
   // "When a Dragon you control enters" behaves like "Whenever ..."; "attacks while saddled" is an attack trigger with a condition.
   line = line
     .replace(/ is put into graveyards from anywhere\b/i, ' is put into a graveyard from anywhere')

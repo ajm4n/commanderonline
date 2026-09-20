@@ -3093,6 +3093,17 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'copySpell', what: ref, count: n }];
   }],
   // "Proliferate X times" / "Populate X times"
+  // "It's a Treasure artifact with "{T}, Sacrifice ~: Add one mana of any color," and it loses all
+  // other card types." — a permanent type change on the object the sentence before just moved.
+  [/^(?:it(?:'s| is)|(?:the chosen permanents|those permanents|they) becomes?) (?:a|an)? ?(.+?) with "(.+?),?"(?:,? and (?:it|they) loses? all other (?:card types|types|abilities))?$/i, (m, ctx) => {
+    const probe = parseNoun(`a ${m[1]}`);
+    if (!probe || !probe.confident || !probe.filter.types?.length) return null;
+    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    return [
+      { kind: 'addTypes', types: [], on: ref, duration: 'permanent', setTypes: probe.filter.types, setSubtypes: probe.filter.subtypes ?? [] },
+      { kind: 'grantAbility', text: m[2], on: ref, duration: 'permanent' },
+    ];
+  }],
   // "proliferate a number of times equal to the difference"
   [/^(proliferate|populate|investigate) a number of times equal to (.+)$/i, (m, ctx) => {
     const n = amt(m[2], ctx);
