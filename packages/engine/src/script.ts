@@ -305,6 +305,8 @@ export interface TargetSpec {
   optional?: boolean;
   /** Target count is X, or a multiple of it ("X target cards", "up to twice X target cards"). */
   countX?: { times?: number; upTo?: boolean };
+  /** Exactly this many targets, computed when targets are chosen ("another target for each time this spell was kicked"). */
+  countAmount?: Amount;
 }
 
 // ---------------------------------------------------------------------------

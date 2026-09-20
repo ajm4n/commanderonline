@@ -17,6 +17,10 @@ export interface ParseCtx {
   lastPlayer: Ref | null;
   /** The target registered by a bare "Choose any target." sentence, for a later "that target". */
   anyTarget?: Ref;
+  /** ~ named as a damage source with no antecedent in scope: becomes "it" for later sentences once the recipient is resolved. */
+  pendingSubject?: Ref;
+  /** Every "any target" slot a "Choose any target, then choose another …" sentence registered ("each of them"). */
+  anyTargets?: Ref[];
   /** Inside a trigger whose event carries an object / player. */
   triggerHasObject: boolean;
   triggerHasPlayer: boolean;
@@ -422,6 +426,9 @@ export function parseTokenPhrase(text: string): { count: Amount; token: TokenSpe
 type Pattern = [RegExp, (m: RegExpMatchArray, ctx: ParseCtx) => Effect[] | null];
 
 function amt(text: string, ctx: ParseCtx) {
+  // "enchanted creature's power": the permanent this Aura/Equipment is attached to (was read as ~'s own power).
+  const em = text.trim().match(/^(?:the )?(?:enchanted|equipped|fortified) [\w' -]+?'s (power|toughness|mana value)$/i);
+  if (em) return { kind: em[1].toLowerCase() === 'power' ? 'power' : em[1].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref: { ref: 'attachedTo' } } as Amount;
   // "target creature's power": register the target here, since the amount parser cannot.
   const tm = text.trim().match(/^(?:the )?(target [\w' -]+?)'s (power|toughness|mana value)$/i);
   if (tm) {
@@ -690,10 +697,13 @@ const REVEAL_UNTIL_PATTERNS: Pattern[] = [
 
 const PATTERNS: Pattern[] = [
   // Scion of the Ur-Dragon: "~ becomes a copy of that card until end of turn"
-  [/^(~|it|that creature) becomes a copy of (that card|that creature|it|the exiled card|the chosen card) until end of turn$/i, (m, ctx) => {
+  [/^(~|it|that creature) becomes a copy of (that card|that creature|it|the exiled card|the chosen card|the revealed card) until end of turn(?:, except (.+))?$/i, (m, ctx) => {
     const what = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx);
     const of = ctx.lastObj ?? { ref: 'lastMoved' as const };
-    return what ? [{ kind: 'becomeCopy', what, of, duration: 'endOfTurn' }] : null;
+    // Vesuvan Drifter: "…, except it has flying"
+    const ex = m[3] ? parseCopyExceptions(m[3]) : undefined;
+    if (m[3] && !ex) return null;
+    return what ? [{ kind: 'becomeCopy', what, of, exceptions: ex ?? undefined, duration: 'endOfTurn' }] : null;
   }],
   [/^each (.+?) deals (?:(\d+|X) damage|damage equal to its (power|toughness)) to (?:its|their) controller$/i, (m) => {
     const noun = parseNoun(`a ${m[1]}`);
@@ -1113,7 +1123,7 @@ const PATTERNS: Pattern[] = [
   }],
   // Damage
   [/^(~|it|that creature|enchanted creature|equipped creature|.+?) deals (\w+|X) damage to (.+?)(?: for each (.+))?$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     if (!src) return null;
     const n = wordToNumber(m[2]);
     if (n === null) return null;
@@ -1126,11 +1136,11 @@ const PATTERNS: Pattern[] = [
     return damageTo(m[3], amount, ctx, src);
   }],
   [/^(~|it|that creature|enchanted creature|equipped creature|.+?) deals that much damage to (.+)$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     return src ? damageTo(m[2], { kind: 'triggerAmount' }, ctx, src) : null;
   }],
   [/^(~|it|that creature|enchanted creature|equipped creature|.+?) deals (\w+|X) damage to (.+?) and (\w+|X) damage to (.+)$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     const n1 = wordToNumber(m[2]);
     const n2 = wordToNumber(m[4]);
     if (!src || n1 === null || n2 === null) return null;
@@ -1139,14 +1149,14 @@ const PATTERNS: Pattern[] = [
     return a && b ? [...a, ...b] : null;
   }],
   [/^(~|it|that creature|.+?) deals damage equal to (.+?) to (.+)$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     if (!src) return null;
     const a = amt(m[2], ctx);
     if (a === null) return null;
     return damageTo(m[3], a, ctx, src);
   }],
   [/^(~|it|that creature|.+?) deals (\w+|X) damage divided as you choose among (.+)$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     const n = wordToNumber(m[2]);
     if (!src || n === null) return null;
     return damageTo(`${m[2]} damage, divided as you choose among ${m[3]}`.replace(/^.*?, divided/, 'x, divided'), n, ctx, src);
@@ -1156,7 +1166,7 @@ const PATTERNS: Pattern[] = [
     return n === null ? null : [{ kind: 'moveAll', who: { ref: 'eachPlayer' }, from: 'hand', to: 'library' }, { kind: 'moveAll', who: { ref: 'eachPlayer' }, from: 'graveyard', to: 'library' }, { kind: 'shuffle', who: { ref: 'eachPlayer' } }, { kind: 'draw', amount: n, who: { ref: 'eachPlayer' } }];
   }],
   [/^(~|it|that creature|.+?) deals damage to (.+?) equal to (.+)$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     if (!src) return null;
     const a = amt(m[3], ctx);
     if (a === null) return null;
@@ -2492,7 +2502,7 @@ const PATTERNS: Pattern[] = [
   // "~ deals five times X damage to each of up to X targets." (Crackle with Power)
   [/^(.+?) deals (\w+) times X damage to (.+)$/i, (m, ctx) => {
     const k = wordToNumber(m[2]);
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     if (typeof k !== 'number' || !src) return null;
     return damageTo(m[3], { kind: 'times', a: 'X', b: k }, ctx, src);
   }],
@@ -5075,7 +5085,7 @@ const PATTERNS: Pattern[] = [
   // ---- Round 243 ----
   // "~ deals half X damage, rounded down, to any target."
   [/^(.+?) deals half X damage, rounded (up|down), to (.+)$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     if (!src) return null;
     return damageTo(m[3], { kind: 'half', a: 'X', round: m[2].toLowerCase() as 'up' | 'down' }, ctx, src);
   }],
@@ -5327,7 +5337,7 @@ const PATTERNS: Pattern[] = [
   // "~ deals X damage divided evenly, rounded down, among any number of targets"
   // "~ deals X plus 1 damage divided as you choose among any number of targets"
   [/^(~|it|that creature|.+?) deals (X|\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?: plus (\d+))? damage divided (?:evenly, rounded down,|as you choose) among (.+)$/i, (m, ctx) => {
-    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    const src = damageSource(m[1], ctx);
     if (!src) return null;
     const base: Amount | null = /^X$/i.test(m[2]) ? 'X' : (wordToNumber(m[2]) as Amount | null);
     if (base === null) return null;
@@ -8873,7 +8883,33 @@ function playUntil(text: string): 'thisTurn' | 'permanent' | 'untilYourNextTurn'
   return 'permanent';
 }
 
+/**
+ * The source of a damage sentence ("~ deals 2 damage to it"). Resolving "~" would otherwise point "it"/"them"/
+ * "that creature" at ~ itself (Aether Flash, Caltrops, Lightning Dart, Comet Storm all hit their own source), so the
+ * antecedent in scope is kept for the recipient.
+ */
+function damageSource(phrase: string, ctx: ParseCtx): Ref | null {
+  const savedLast = ctx.lastObj;
+  const src = objRef(phrase, ctx) ?? (/^(it|that creature)$/i.test(phrase) ? SELF : null);
+  if (/^(?:~|this)$/i.test(phrase.trim())) {
+    ctx.lastObj = savedLast;
+    // With nothing else in scope, ~ becomes the antecedent for the *next* sentence ("If …, it deals 3 damage instead"),
+    // once damageTo has resolved this sentence's recipient (see the end of damageTo).
+    if (!savedLast) ctx.pendingSubject = SELF;
+  }
+  return src;
+}
+
 function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref): Effect[] | null {
+  const r = damageToInner(targetText, amount, ctx, source);
+  if (ctx.pendingSubject) {
+    if (r && !ctx.lastObj) ctx.lastObj = ctx.pendingSubject;
+    ctx.pendingSubject = undefined;
+  }
+  return r;
+}
+
+function damageToInner(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref): Effect[] | null {
   let t = targetText.trim();
   let divided = false;
   const dm = t.match(/^(.+?),? divided as you choose among (.+)$/i);
@@ -8930,6 +8966,10 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
     ctx.lastObj = ref;
     return [mk(ref)];
   }
+  // "~ deals X damage to each of them" after "Choose any target, then choose another target …": every slot.
+  if (/^(?:each of them|them|each of those targets)$/i.test(t) && ctx.anyTargets?.length) return ctx.anyTargets.map((r) => mk(r));
+  // "~ deals 1 damage to them" with only a player in scope: that player (Roiling Vortex's "each player's upkeep").
+  if (l === 'them' && !ctx.lastObj && (ctx.lastPlayer || (ctx.triggerHasPlayer && !ctx.triggerHasObject))) return [mk(ctx.lastPlayer ?? { ref: 'triggerPlayer' })];
   const ref = anyRef(t, ctx);
   if (ref) return [mk(ref)];
   return null;
@@ -9133,6 +9173,20 @@ function retargetToPlayer<T>(value: T, who: Ref): T {
 }
 
 /** Parse one sentence; returns null if not understood. */
+/** Does this effect list (looking inside conditionals, may, forEach) contain a becomeCopy? */
+function hasCopy(effects: Effect[]): boolean {
+  return effects.some((e) => e.kind === 'becomeCopy' || (e.kind === 'conditional' && (hasCopy(e.then) || hasCopy(e.else ?? []))) || ((e.kind === 'may' || e.kind === 'forEach') && hasCopy(e.effects)));
+}
+/** "… becomes a copy of X until end of turn": stamp the duration on every copy effect, wherever it ended up. */
+function retimeCopies(effects: Effect[]): Effect[] {
+  return effects.map((e) => {
+    if (e.kind === 'becomeCopy') return e.duration ? e : { ...e, duration: 'endOfTurn' as const };
+    if (e.kind === 'conditional') return { ...e, then: retimeCopies(e.then), ...(e.else ? { else: retimeCopies(e.else) } : {}) };
+    if (e.kind === 'may' || e.kind === 'forEach') return { ...e, effects: retimeCopies(e.effects) };
+    return e;
+  });
+}
+
 export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if (/^you may shuffle(?: your library)?\.?$/i.test(s.trim())) return [{ kind: 'may', effects: [{ kind: 'shuffle' }] }];
   // Tiamat: "Dragon cards … that each have different names" is the usual "with different names".
@@ -9145,6 +9199,27 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   text = text.replace(/^(for each (?:opponent|player)), you (create|draw|gain|lose|put|exile|destroy|sacrifice|mill|scry|return)\b/i, '$1, $2');
   text = rephraseFirstPerson(text);
   let m: RegExpMatchArray | null;
+  // Temporary copies with a leading duration or with the duration after the exceptions:
+  // "Until end of turn, ~ becomes a copy of X, except …" (Mindlink Mech, Mirror of the Forebears, Dermotaxi) and
+  // "~ becomes a copy of X, except … until end of turn". Handled before the comma/and splitter takes the last
+  // exception apart, and retimed here since the copy handlers below know nothing about durations.
+  if (((m = text.match(/^until end of turn, (.+?) becomes? a copy of (.+?)(?:, except (.+))?$/i)) || (m = text.match(/^(.+?) becomes? a copy of (.+?), except (.+?) until end of turn$/i))) && !/^if /i.test(m[1])) {
+    const saved = ctx.targets.length;
+    const inner = parseSentence(`${m[1]} becomes a copy of ${m[2]}${m[3] ? `, except ${m[3]}` : ''}`, ctx);
+    if (inner && hasCopy(inner)) return retimeCopies(inner);
+    ctx.targets.length = saved;
+  }
+  // Comet Storm: "Choose any target, then choose another target for each time this spell was kicked."
+  if (/^choose any target, then choose another target for each time (?:~|this spell|it) was kicked$/i.test(text)) {
+    ctx.targets.push({ description: 'any target', kind: 'any', playerFilter: 'any' });
+    const first: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.targets.push({ description: 'another target for each time ~ was kicked', kind: 'any', playerFilter: 'any', min: 0, max: 20, countAmount: { kind: 'kickCount' }, distinct: true });
+    const rest: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.anyTargets = [first, rest];
+    ctx.anyTarget = first;
+    ctx.lastObj = first;
+    return [];
+  }
   // "~ gets +3/-1 until end of turn and can attack this turn as though it didn't have defender"
   if ((m = text.match(/^(.+? (?:gets?|get) [+-]\d+\/[+-]\d+(?: until end of turn)?) and can attack(?: this turn)? as though it (?:didn't|did not) have defender$/i))) {
     const inner = parseSentence(m[1], ctx);
@@ -9421,17 +9496,28 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const ref = objRef(m[1], ctx);
     if (ref) return [{ kind: 'putOnLibrary', what: ref, position: 'ownerChoice' }];
   }
-  if ((m = text.match(/^(.+?) becomes? a copy of (.+?) until end of turn, except (.+)$/i))) {
+  // "~ becomes a copy of X until end of turn(, except ...)": a temporary copy. Re-parse without the duration and
+  // retime the copy effect (Impossible Man, Mirror of the Forebears, Saheeli, Shuri, Mindlink Mech were permanent copies).
+  if ((m = text.match(/^(.+?) becomes? a copy of (.+?) until end of turn(?:, except (.+))?$/i)) && !/^if /i.test(m[1])) {
     const saved = ctx.targets.length;
-    const alt = parseSentence(`${m[1]} becomes a copy of ${m[2]}, except ${m[3]}`, ctx);
-    if (alt) return alt;
+    const alt = parseSentence(`${m[1]} becomes a copy of ${m[2]}${m[3] ? `, except ${m[3]}` : ''}`, ctx);
+    if (alt && hasCopy(alt)) return retimeCopies(alt);
     ctx.targets.length = saved;
   }
-  if ((m = text.match(/^(.+?) becomes? a copy of (.+?)(?:, except (.+))?$/i)) && !/until end of turn/i.test(text)) {
-    const what = objRef(m[1], ctx);
-    const of = what ? objRef(m[2], ctx) : null;
+  if ((m = text.match(/^(.+?) becomes? a copy of (.+?)(?:, except (.+))?$/i)) && !/until end of turn/i.test(text) && !/^(?:until|if) /i.test(m[1])) {
+    // Resolve the source first: naming "~" as the subject points "it"/"that card" at ~, and Vesuvan Drifter's
+    // "~ becomes a copy of that card" must still copy the revealed card.
+    const savedLast = ctx.lastObj;
+    const savedT = ctx.targets.length;
+    const of = objRef(m[2], ctx);
+    ctx.lastObj = savedLast;
+    const what = of ? objRef(m[1], ctx) : null;
     const ex = m[3] ? parseCopyExceptions(m[3]) : undefined;
     if (what && of && (!m[3] || ex)) return [{ kind: 'becomeCopy', what, of, exceptions: ex ?? undefined }];
+    // A rejected parse must not leave the copy source registered as a target (Volrath, The Animus, Aurora Shifter
+    // ended up asking for the same target twice).
+    ctx.targets.length = savedT;
+    ctx.lastObj = savedLast;
   }
   if ((m = text.match(/^put (it|that card|them|those cards|~) into (?:your|its owner's|their owner's|their owners') graveyards?$/i))) {
     const ref = objRef(m[1], ctx);
@@ -9505,7 +9591,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // "Gain control of target creature for as long as ~ remains tapped" / "... for as long as you control ~"
-  if ((m = text.match(/^(.+?) for as long as (~ remains tapped|you control ~|~ remains on the battlefield|~ remains untapped|you control ~ and ~ remains tapped|~ remains tapped and you control ~)$/i))) {
+  if ((m = text.match(/^(.+?) for as long as (~ remains tapped|you control ~|~ remains on the battlefield|~ remains untapped|you control ~ and ~ remains tapped|~ remains tapped and you control ~|~ remains tapped and that creature's power remains less than or equal to ~'s power)$/i))) {
     const savedT = ctx.targets.length; // a rejected inner parse must not leave its target behind (Hedge Whisperer registered its land twice)
     const inner = parseSentence(m[1], ctx);
     const dur: Duration = /remains tapped/i.test(m[2]) ? 'whileSourceTapped' : /you control/i.test(m[2]) ? 'whileYouControlSource' : 'untilSourceLeaves';

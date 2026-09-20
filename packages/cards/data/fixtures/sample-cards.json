@@ -9260,5 +9260,249 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/7/1/713160be-bcfd-4ef5-9457-c02b926ba06e.jpg?1783938511"
     }
+  },
+  {
+    "object": "card",
+    "id": "780f9197-e910-4c7a-bb4b-2c4a94903c39",
+    "oracle_id": "a3c35742-e306-49b6-b042-db4f685c6f86",
+    "name": "Aether Flash",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}{R}",
+    "cmc": 4,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature enters, this enchantment deals 2 damage to it.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/7/8/780f9197-e910-4c7a-bb4b-2c4a94903c39.jpg?1783945476"
+    }
+  },
+  {
+    "object": "card",
+    "id": "54d05157-d154-4203-bf3e-add110cb1cee",
+    "oracle_id": "7bc53740-86e7-4e9d-aab6-b5ae62a42133",
+    "name": "Lightning Dart",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}",
+    "cmc": 2,
+    "type_line": "Instant",
+    "oracle_text": "Lightning Dart deals 1 damage to target creature. If that creature is white or blue, Lightning Dart deals 4 damage to it instead.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/5/4/54d05157-d154-4203-bf3e-add110cb1cee.jpg?1783945684"
+    }
+  },
+  {
+    "object": "card",
+    "id": "655c489f-bffb-45a4-8e7c-2d1a35220197",
+    "oracle_id": "e0583f29-c344-4b56-b0dc-bef1089a95c7",
+    "name": "Smash to Smithereens",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}",
+    "cmc": 2,
+    "type_line": "Instant",
+    "oracle_text": "Destroy target artifact. Smash to Smithereens deals 3 damage to that artifact's controller.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/6/5/655c489f-bffb-45a4-8e7c-2d1a35220197.jpg?1783938326"
+    }
+  },
+  {
+    "object": "card",
+    "id": "fa305441-3fb7-4f59-8b39-984e931f9bcc",
+    "oracle_id": "9be1d4b1-064d-4051-aafc-ca48def28e3b",
+    "name": "Impossible Man",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{U}",
+    "cmc": 3,
+    "type_line": "Legendary Creature — Alien Shapeshifter",
+    "oracle_text": "Flying\n{2}{U}: Impossible Man becomes a copy of another target permanent until end of turn, except his name is Impossible Man.",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [
+      "Flying"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "1",
+    "toughness": "4",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/a/fa305441-3fb7-4f59-8b39-984e931f9bcc.jpg?1783903073"
+    }
+  },
+  {
+    "object": "card",
+    "id": "f2785902-2757-406b-bc75-6f05e0edc98d",
+    "oracle_id": "727ef984-1643-4a09-8283-a665508e85dd",
+    "name": "Vesuvan Drifter",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{U}",
+    "cmc": 3,
+    "type_line": "Creature — Shapeshifter",
+    "oracle_text": "Flying\nYou may look at the top card of your library any time.\nAt the beginning of each combat, you may reveal the top card of your library. If you reveal a creature card this way, this creature becomes a copy of that card until end of turn, except it has flying.",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [
+      "Flying"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "4",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/2/f2785902-2757-406b-bc75-6f05e0edc98d.jpg?1783916526"
+    }
+  },
+  {
+    "object": "card",
+    "id": "bb5f586d-6bf0-4590-ad73-2d46b2a45b1a",
+    "oracle_id": "9c2b262b-53c0-41a1-8f1a-0c336453d4bf",
+    "name": "Comet Storm",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{X}{R}{R}",
+    "cmc": 2,
+    "type_line": "Instant",
+    "oracle_text": "Multikicker {1} (You may pay an additional {1} any number of times as you cast this spell.)\nChoose any target, then choose another target for each time this spell was kicked. Comet Storm deals X damage to each of them.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [
+      "Multikicker"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/b/b/bb5f586d-6bf0-4590-ad73-2d46b2a45b1a.jpg?1783928714"
+    }
+  },
+  {
+    "object": "card",
+    "id": "d4b4767b-edd1-4e36-b363-52114a9afe5e",
+    "oracle_id": "a32795a2-a965-4a85-9944-fd9eed464e65",
+    "name": "Carbonize",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}",
+    "cmc": 3,
+    "type_line": "Instant",
+    "oracle_text": "Carbonize deals 3 damage to any target. If it's a creature, it can't be regenerated this turn, and if it would die this turn, exile it instead.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/4/d4b4767b-edd1-4e36-b363-52114a9afe5e.jpg?1783937585"
+    }
+  },
+  {
+    "object": "card",
+    "id": "9029ff19-753d-4031-a192-d36b165ebfe5",
+    "oracle_id": "cce84cf1-5574-43b0-9d75-72e6451403a7",
+    "name": "Old Man of the Sea",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{U}{U}",
+    "cmc": 3,
+    "type_line": "Creature — Djinn",
+    "oracle_text": "You may choose not to untap this creature during your untap step.\n{T}: Gain control of target creature with power less than or equal to this creature's power for as long as this creature remains tapped and that creature's power remains less than or equal to this creature's power.",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "3",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/9/0/9029ff19-753d-4031-a192-d36b165ebfe5.jpg?1783942232"
+    }
   }
 ]

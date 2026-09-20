@@ -134,7 +134,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage', 'Bite Down', 'Warstorm Surge', 'Fecundity', 'Heartless Hidetsugu', 'Yawgmoth Demon', 'Glimpse the Sun God', 'Cataclysm'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage', 'Bite Down', 'Warstorm Surge', 'Fecundity', 'Heartless Hidetsugu', 'Yawgmoth Demon', 'Glimpse the Sun God', 'Cataclysm', 'Aether Flash', 'Lightning Dart', 'Smash to Smithereens', 'Impossible Man', 'Vesuvan Drifter', 'Comet Storm', 'Carbonize', 'Old Man of the Sea'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -998,6 +998,50 @@ describe('combos and staples played through the engine', () => {
     expect(asked).toBe(p2);
     expect(d.g.player(p2).hand.length).toBe(h2 + 1);
     expect(d.g.player(p1).hand.length).toBe(h1); // Murder left the hand, nothing drawn
+  });
+  it('"~ deals N damage to it/that creature" hits the antecedent, not the source', () => {
+    const flash = compileCard(C('Aether Flash')).script.abilities[0] as Extract<AbilitySpec, { kind: 'triggered' }>;
+    expect((flash.effects[0] as Extract<Effect, { kind: 'damage' }>).to).toEqual({ ref: 'triggerObject' });
+    const dart = compileCard(C('Lightning Dart')).script.abilities[0] as Extract<AbilitySpec, { kind: 'spell' }>;
+    const cond = dart.effects[0] as Extract<Effect, { kind: 'conditional' }>;
+    expect(cond.if).toEqual({ kind: 'objectMatches', ref: { ref: 'target', slot: 0 }, filter: { colors: ['W', 'U'] } });
+    expect((cond.then[0] as Extract<Effect, { kind: 'damage' }>).to).toEqual({ ref: 'target', slot: 0 });
+    const smash = compileCard(C('Smash to Smithereens')).script.abilities[0] as Extract<AbilitySpec, { kind: 'spell' }>;
+    expect((smash.effects[1] as Extract<Effect, { kind: 'damage' }>).to).toEqual({ ref: 'controllerOf', of: { ref: 'target', slot: 0 } });
+    // Carbonize: "If it's a creature" asks about the target, not the spell.
+    const carb = compileCard(C('Carbonize')).script.abilities[0] as Extract<AbilitySpec, { kind: 'spell' }>;
+    expect((carb.effects[1] as Extract<Effect, { kind: 'conditional' }>).if).toEqual({ kind: 'objectMatches', ref: { ref: 'target', slot: 0 }, filter: { types: ['Creature'] } });
+  });
+  it('Aether Flash: a creature entering takes 2 from the enchantment', () => {
+    const { d, p1 } = game();
+    d.put(p1, C('Aether Flash'));
+    d.lands(p1, 'Forest', 2);
+    const bears = d.give(p1, C('Grizzly Bears'));
+    d.cast(bears);
+    d.resolve();
+    d.until(() => d.g.state.objects[bears]?.zone === 'graveyard', 200);
+    expect(d.g.state.objects[bears]?.zone).toBe('graveyard');
+    expect(d.g.state.objects[d.bf(p1, 'Aether Flash')[0]]).toBeDefined(); // the enchantment took no damage
+  });
+  it('temporary copies end with the turn and copy the right object', () => {
+    const man = compileCard(C('Impossible Man')).script.abilities.find((a) => a.kind === 'activated') as Extract<AbilitySpec, { kind: 'activated' }>;
+    const copy = man.effects[0] as Extract<Effect, { kind: 'becomeCopy' }>;
+    expect(copy.duration).toBe('endOfTurn');
+    expect(copy.of).toEqual({ ref: 'target', slot: 0 });
+    expect(man.targets).toHaveLength(1);
+    const drifter = compileCard(C('Vesuvan Drifter')).script.abilities.find((a) => a.kind === 'triggered') as Extract<AbilitySpec, { kind: 'triggered' }>;
+    const cond = drifter.effects[1] as Extract<Effect, { kind: 'conditional' }>;
+    const dc = cond.then[0] as Extract<Effect, { kind: 'becomeCopy' }>;
+    expect(dc.of).toEqual({ ref: 'lastMoved' });
+    expect(dc.duration).toBe('endOfTurn');
+    const oldMan = compileCard(C('Old Man of the Sea')).script.abilities.find((a) => a.kind === 'activated') as Extract<AbilitySpec, { kind: 'activated' }>;
+    expect((oldMan.effects[0] as Extract<Effect, { kind: 'gainControl' }>).duration).toBe('whileSourceTapped');
+  });
+  it('Comet Storm: one extra target per kick, X damage to each', () => {
+    const storm = compileCard(C('Comet Storm')).script.abilities.find((a) => a.kind === 'spell') as Extract<AbilitySpec, { kind: 'spell' }>;
+    expect(storm.targets).toHaveLength(2);
+    expect(storm.targets[1].countAmount).toEqual({ kind: 'kickCount' });
+    expect(storm.effects.filter((e) => e.kind === 'damage').map((e) => (e as Extract<Effect, { kind: 'damage' }>).to)).toEqual([{ ref: 'target', slot: 0 }, { ref: 'target', slot: 1 }]);
   });
   it('Heartless Hidetsugu halves each player\'s own life total', () => {
     const { d, p1, p2 } = game();

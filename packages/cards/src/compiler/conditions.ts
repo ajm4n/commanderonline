@@ -1,7 +1,12 @@
-import type { Condition, Amount } from '@commander/engine';
+import type { Condition, Amount, Ref } from '@commander/engine';
 import { parseNoun, singularize } from './nouns.js';
 import { parseAmount, type RefCtx } from './amounts.js';
 import { wordToNumber } from './text.js';
+
+/** A bare "it" in a condition: the object in scope, else the triggering object, else the permanent itself. */
+function itRef(ctx: RefCtx): Ref {
+  return ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.self);
+}
 
 export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   {
@@ -160,9 +165,10 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^(an opponent|each opponent) has (\d+) or (less|fewer|more) life$/))) return { kind: 'life', ref: { ref: 'eachOpponent' }, op: m[3] === 'more' ? '>=' : '<=', value: parseInt(m[2], 10) };
   if (t === 'your life total is less than or equal to half your starting life total' || t === 'you have half your starting life total or less') return { kind: 'life', ref: { ref: 'controller' }, op: '<=', value: 20 };
   if (t === "an opponent's life total is less than half their starting life total" || t === 'an opponent has less than half their starting life total') return { kind: 'life', ref: { ref: 'eachOpponent' }, op: '<', value: 20 };
-  if ((m = t.match(/^(?:~|it) is (?:a|an) (creature|artifact|enchantment|land|planeswalker|token|artifact creature)$/))) {
-    const noun = parseNoun(`a ${m[1]}`);
-    if (noun) return { kind: 'objectMatches', ref: ctx.self, filter: noun.filter };
+  if ((m = t.match(/^(~|it) is (?:a|an) (creature|artifact|enchantment|land|planeswalker|token|artifact creature)$/))) {
+    const noun = parseNoun(`a ${m[2]}`);
+    // "Put a flood counter on another target creature or land. If it's a creature, …": "it" is that target, not ~.
+    if (noun) return { kind: 'objectMatches', ref: m[1] === 'it' ? itRef(ctx) : ctx.self, filter: noun.filter };
   }
   if (/^you have an enduring story$/.test(t)) return { kind: 'enduringStory' };
   if ((m = t.match(/^(white|blue|black|red|green) is the most common colou?r among all permanents(,? or is tied for most common)?$/))) {
@@ -239,7 +245,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const noun = parseNoun(`a ${oc(m, 1)}`);
     if (noun) return { kind: 'count', filter: { ...noun.filter, controllerRef: { ref: 'defendingPlayer' }, zone: 'battlefield' }, op: '>=', value: 1 };
   }
-  if ((m = t.match(/^(?:~|it) is (?:a|an) (.+?) (?:in addition to its other types)?$/)) && /^(creature|artifact|enchantment|land)$/.test(m[1])) return { kind: 'objectMatches', ref: ctx.self, filter: { types: [m[1].charAt(0).toUpperCase() + m[1].slice(1)] as never } };
+  if ((m = t.match(/^(~|it) is (?:a|an) (.+?) (?:in addition to its other types)?$/)) && /^(creature|artifact|enchantment|land)$/.test(m[2])) return { kind: 'objectMatches', ref: m[1] === 'it' ? itRef(ctx) : ctx.self, filter: { types: [m[2].charAt(0).toUpperCase() + m[2].slice(1)] as never } };
   if (t === '~ is untapped' || t === 'it is untapped') return { kind: 'not', c: { kind: 'isTapped', ref: ctx.self } };
   if (t === 'you control ~') return { kind: 'and', cs: [{ kind: 'inZone', ref: ctx.self, zone: 'battlefield' }, { kind: 'count', filter: { controller: 'you', zone: 'battlefield', nameIs: '~' }, op: '>=', value: 1 }] };
   if ((m = t.match(/^(?:it|that creature|that permanent) is (?:still )?on the battlefield$/))) return { kind: 'inZone', ref: ctx.lastObj ?? ctx.self, zone: 'battlefield' };

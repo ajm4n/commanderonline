@@ -1384,6 +1384,10 @@ export class Game {
       const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
       const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
       const cap = spec.maxAmount !== undefined ? this.resolveAmount(spec.maxAmount, { sourceId, controller: player, targets: [], triggerContext: ctx, memory: {}, x: x ?? 0, modes: [] }) : null;
+      if (spec.countAmount !== undefined) {
+        const n = this.resolveAmount(spec.countAmount, { sourceId, controller: player, targets: [], triggerContext: ctx, memory: {}, x: x ?? 0, modes: [] });
+        return { description: spec.description, legal, min: Math.min(n, legal.length), max: n };
+      }
       return { description: spec.description, legal, min, max: cap ?? xn ?? spec.max ?? 1 };
     });
     if (slots.some((s) => s.legal.length < s.min)) return null;
