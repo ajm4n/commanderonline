@@ -187,8 +187,11 @@ export function chooseRef(phrase: string, ctx: ParseCtx, who: Ref = YOU, upTo = 
   if (!noun || noun.target || noun.each) return null;
   if (noun.controllerPhrase) {
     const pr = playerRef(noun.controllerPhrase, ctx);
+    if (process.env.COMPILER_TRACE) console.error(`[chooseRef] ${phrase} :: controllerPhrase=${noun.controllerPhrase} lastPlayer=${JSON.stringify(ctx.lastPlayer)} -> ${JSON.stringify(pr)}`);
     if (!pr) return null;
     noun.filter.controllerRef = pr;
+    // "a creature they control" / "a creature that player controls": that player makes the choice.
+    if (who.ref === 'controller' && /^(?:they|that player|that opponent|the player)$/i.test(noun.controllerPhrase.trim()) && (pr.ref === 'iter' || pr.ref === 'triggerPlayer')) who = pr;
   }
   const f: ObjectFilter = { ...noun.filter };
   if (!f.zone) f.zone = 'battlefield';
@@ -9784,11 +9787,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     // "its controller may draw a card": the draw is that player's, so parse it with them as the subject first.
     let inner: Effect[] | null = null;
     // "Each player may draw a card": whoever says yes is the one who draws (the engine binds each such player as the iteration item).
-    if (who && /^each /i.test(m[1]) && /^(?:draw|discard|gain|lose|mill|scry|surveil|sacrifice|create|search|exile the top|reveal|look at)\b/i.test(m[2]) && !/copy of/i.test(m[2])) {
+    if (who && /^each /i.test(m[1]) && /^(?:draw|discard|gain|lose|mill|scry|surveil|sacrifice|create|search|exile the top|reveal|look at|tap|untap|put (?:a|an|\w+) [+\-\w\/]+ counters? on)\b/i.test(m[2]) && !/copy of/i.test(m[2])) {
       const afterWho = ctx.targets.length;
       const sub = newCtx({ ...ctx, targets: ctx.targets });
       sub.lastPlayer = { ref: 'iter' };
       inner = parseSentence(`that player ${m[2]}`, sub);
+      // "put two +1/+1 counters on a creature they control": imperative form, the chooser follows "they".
+      if (!inner && /^(?:put|tap|untap) /i.test(m[2])) inner = parseSentence(m[2], sub);
       if (inner) return [{ kind: 'may', effects: inner, who }];
       ctx.targets.length = afterWho;
     }

@@ -372,6 +372,8 @@ export interface ObjectFilter {
   owner?: 'you' | 'opponent' | 'any';
   /** The owner must be one of the players this ref resolves to. */
   ownerRef?: import('./script.js').Ref;
+  /** Bound form of ownerRef: any of these players. */
+  ownerIn?: PlayerId[];
   tapped?: boolean;
   untapped?: boolean;
   isToken?: boolean;

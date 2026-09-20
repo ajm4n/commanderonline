@@ -1380,7 +1380,7 @@ export class Game {
   *chooseTargets(player: PlayerId, sourceId: ObjectId | null, specs: TargetSpec[], ctx: Record<string, unknown>, prompt: string, x?: number): Gen<Target[] | null> {
     this.lastTargetChoiceCancelled = false;
     const slots = specs.map((spec) => {
-      const legal = legalTargets(this, spec, sourceId, player, x);
+      const legal = legalTargets(this, spec, sourceId, player, x, ctx);
       const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
       const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
       const cap = spec.maxAmount !== undefined ? this.resolveAmount(spec.maxAmount, { sourceId, controller: player, targets: [], triggerContext: ctx, memory: {}, x: x ?? 0, modes: [] }) : null;
@@ -1957,6 +1957,12 @@ export class Game {
       const { sameNameAs: _sn, ...rest } = filter;
       void _sn;
       filter = { ...rest, nameIn: names.length ? names : ['__no such name__'] };
+    }
+    if (filter.ownerRef) {
+      const owners = this.resolvePlayers(filter.ownerRef, ctx);
+      const { ownerRef: _or, ...restO } = filter;
+      void _or;
+      filter = { ...restO, ownerIn: owners.length ? owners : ['__nobody__' as PlayerId] };
     }
     if (!filter.controllerRef) return filter;
     const ps = this.resolvePlayers(filter.controllerRef, ctx);

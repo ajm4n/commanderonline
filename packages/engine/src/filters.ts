@@ -43,6 +43,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.monocolored && ch.colors.length !== 1) return false;
   if (filter.multicolored && ch.colors.length < 2) return false;
   if (filter.controllerIn && !filter.controllerIn.includes(obj.controller)) return false;
+  if (filter.ownerIn && !filter.ownerIn.includes(obj.owner)) return false;
   if (filter.controller) {
     if (filter.controller === 'you' && obj.controller !== ctx.controller) return false;
     if (filter.controller === 'opponent' && obj.controller === ctx.controller) return false;
@@ -522,9 +523,18 @@ export function protectionApplies(quality: string, colors: string[], types: stri
 }
 
 /** Enumerate all legal targets for a target spec. */
-export function legalTargets(g: Game, spec: TargetSpec, sourceId: ObjectId | null, controller: PlayerId, x?: number): Target[] {
+export function legalTargets(g: Game, spec: TargetSpec, sourceId: ObjectId | null, controller: PlayerId, x?: number, refCtx?: Record<string, unknown>): Target[] {
   const out: Target[] = [];
   const ctx: FilterContext = { sourceId, controller, x };
+  // "target artifact that player controls" / "target creature defending player controls": bind the player reference now,
+  // when it can be known (a trigger's player, the defending player, the controller); references to other targets or to
+  // things the effect will do later stay unbound rather than ruling every candidate out.
+  if (spec.filter && (spec.filter.controllerRef || spec.filter.ownerRef)) {
+    const refJson = JSON.stringify([spec.filter.controllerRef, spec.filter.ownerRef]);
+    if (!/"ref":"(?:target|chosen|iter|lastMoved|lastDamaged|lastCreated|lastDiscarded|lastRevealed|memory|stackTarget)"/.test(refJson)) {
+      spec = { ...spec, filter: g.bindFilter(spec.filter, { sourceId, controller, targets: [], triggerContext: refCtx ?? {}, x: x ?? 0, modes: [], memory: {} }) };
+    }
+  }
   const addPlayers = (pf: TargetSpec['playerFilter']) => {
     for (const p of Object.values(g.state.players)) {
       if (p.lost) continue;

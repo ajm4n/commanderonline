@@ -19,7 +19,7 @@ function targetsStillLegal(g: Game, item: StackItem): { legal: Target[]; anyIlle
     const srcId = g.state.objects[item.sourceId] ? item.sourceId : null;
     // CR 608.2b: the target must still meet the targeting requirement ("creature you control", "tapped creature"…).
     const spec = item.targetSpecs?.[i];
-    const stillFits = !spec || legalTargets(g, spec, srcId, item.controller, item.xValue).some((l) => l.kind === t.kind && l.id === t.id);
+    const stillFits = !spec || legalTargets(g, spec, srcId, item.controller, item.xValue, item.triggerContext).some((l) => l.kind === t.kind && l.id === t.id);
     const ok = sameObject && stillFits && canTarget(g, t, srcId, item.controller);
     if (ok) legal.push(t);
     else {
