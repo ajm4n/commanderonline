@@ -1178,8 +1178,8 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "If one or more creature tokens would be created under your control, that many 4/4 white Angel creature tokens are created instead."
-  if ((m = L.match(/^If one or more (creature |artifact )?tokens would be created under your control, (?:that many|(twice|three times) that many) (.+?) tokens are created instead$/i))) {
-    const tok = parseTokenPhrase(`a ${m[3]} token`);
+  if ((m = L.match(/^If one or more (creature |artifact )?tokens would be created under your control, (?:that many|(twice|three times) that many) (.+?) tokens?(?: with (.+?))? are created instead$/i))) {
+    const tok = parseTokenPhrase(`a ${m[3]} token${m[4] ? ` with ${m[4]}` : ''}`);
     if (tok) return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: /three times/i.test(m[2] ?? '') ? 2 : /twice/i.test(m[2] ?? '') ? 1 : 0, replaceToken: tok.token, creatureOnly: /creature/i.test(m[1] ?? '') || undefined }];
   }
   // "If a player would draw a card, that player skips that draw instead."
