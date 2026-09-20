@@ -144,7 +144,14 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
     // at ~, "that creature" in a trigger is still the creature that triggered it (Support Mission, Glorious Purpose).
     if (/^that /.test(l) && ctx.lastObj?.ref === 'self' && ctx.triggerHasObject) return ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' };
     // With no antecedent in scope, fall back to the last object this script moved ("put that card onto the battlefield").
-    return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : { ref: 'lastMoved' });
+    if (ctx.lastObj) return ctx.lastObj;
+    if (ctx.triggerHasObject) return ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' };
+    if (l === 'it') return SELF;
+    // "Return the top creature card of your graveyard to the battlefield. That creature gains haste. Exile it …":
+    // once "that creature" has meant what last moved, so does the "it" that follows (Shallow Grave). "That card" is
+    // left alone: reveal-and-put sequences still refer to the revealed pile afterwards (Curse of Unbinding).
+    if (/^that (?:creature|permanent|artifact|enchantment|land|planeswalker|token)$/.test(l)) ctx.lastObj = { ref: 'lastMoved' };
+    return { ref: 'lastMoved' };
   }
   if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker|enchantment)$/.test(l) || /^(?:enchanted|equipped) [A-Z]\w+$/i.test(t)) {
     if (!/player$/.test(l)) ctx.lastObj = { ref: 'attachedTo' }; // "Untap enchanted creature. It gains hexproof …"
@@ -9821,11 +9828,21 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if (isNoOpSentence(text)) return [];
   if (/^(it is still a land|it is still an? \w+|they are still lands|you may choose new targets for the cop(?:y|ies)|it cannot be regenerated|they cannot be regenerated|then shuffle|shuffle|you may choose the same mode more than once|~ can be your commander|this ability costs .+? less to activate.*|do this .+? times?|any player may activate this ability(?: but only as a sorcery)?|you may look at the top card of your library any time|you may choose not to untap ~ during your untap step|~'s power and toughness are each equal to .+|that player may .+? for as long as .+)$/i.test(text)) return [];
   if ((m = text.match(/^(.+?) unless (.+?) pays? (\{.+?\})$/i)) && !/^counter /i.test(text)) {
-    const who = playerRef(m[2], ctx);
+    // The head names the object ("Exile target attacking creature unless its controller pays {X}"), so parse it first.
+    const savedT = ctx.targets.length;
+    const savedLast = ctx.lastObj;
     const inner = parseSentence(m[1], ctx);
+    // "Exile target attacking creature unless its controller pays {X}": the payer is the target's controller as the
+    // spell resolves, not the controller of a card already in exile; "create a 3/3 Ogre unless that creature's
+    // controller pays {3}" (Kazuul) means the creature in scope before the head, not the token.
+    const afterHead = ctx.lastObj;
+    if (inner && (ctx.lastObj?.ref === 'lastMoved' || ctx.lastObj?.ref === 'lastCreated')) ctx.lastObj = ctx.targets.length > savedT ? { ref: 'target', slot: savedT } : savedLast;
+    const who = inner ? playerRef(m[2], ctx) : null;
+    ctx.lastObj = afterHead;
     if (who && inner) {
       return [{ kind: 'unlessPays', who, cost: m[3], effects: inner }];
     }
+    ctx.targets.length = savedT;
   }
   // "Counter that spell unless you put two cards from your graveyard on the bottom of your library."
   if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|an opponent) puts? (?:a|an|(\w+)) cards? from (?:their|your) graveyard on the bottom of (?:their|your) library$/i))) {
@@ -9985,6 +10002,28 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   // "If <condition>, <effects>" — the condition may itself contain commas ("If you control a God, a
   // Demigod, or a legendary enchantment, ..."), so try every split, real conditions first.
   if (/^if /i.test(text) && !/ would /i.test(text.split(',')[0])) {
+    // "If target creature has toughness 5 or greater, it gets +4/-4 until end of turn" (Blood Lust): the condition
+    // itself names the target, so register it and ask the condition about "that creature".
+    const tm = text.match(/^if (target [\w' -]+?) ((?:has|is|isn't|is not|was|doesn't|does not|shares|cannot|can't) .+?), (.+)$/i);
+    if (tm) {
+      const saved = ctx.targets.length;
+      const savedObj = ctx.lastObj;
+      const savedPlayer = ctx.lastPlayer;
+      const isPlayer = /^target (?:player|opponent)$/i.test(tm[1]);
+      const ref = isPlayer ? playerRef(tm[1], ctx) : objRef(tm[1], ctx);
+      if (ref) {
+        if (isPlayer) ctx.lastPlayer = ref;
+        else ctx.lastObj = ref;
+        const noun = tm[1].replace(/^target /i, '').split(' ')[0];
+        const subj = isPlayer ? 'that player' : `that ${/^(?:creature|permanent|land|artifact|enchantment|planeswalker)$/i.test(noun) ? noun : 'permanent'}`;
+        const cond = parseCondition(`${subj} ${tm[2]}`, { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, boundX: ctx.boundX });
+        const inner = cond ? parseSentence(tm[3], ctx) : null;
+        if (cond && inner) return [{ kind: 'conditional', if: cond, then: inner }];
+        ctx.targets.length = saved;
+        ctx.lastObj = savedObj;
+        ctx.lastPlayer = savedPlayer;
+      }
+    }
     const cuts: number[] = [];
     for (let k = 3; k < text.length; k++) if (text[k] === ',') cuts.push(k);
     const rctx = { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, boundX: ctx.boundX };
@@ -11339,10 +11378,18 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
     // "~ deals 3 damage to that player unless they put a -1/-1 counter on a creature they control."
     if (!r && (m = s.match(/^(.+?) unless (you|they|that player|its controller|the player|target player|target opponent|any player) (.+)$/i))) {
-      const who = playerRef(/^any player$/i.test(m[2]) ? 'each player' : m[2], ctx);
+      // Head first: "Destroy target creature unless its controller pays life equal to its toughness" — both the payer
+      // and the amount refer to the creature the head just targeted (Essence Vortex, Excise).
+      const savedT = ctx.targets.length;
+      const savedLast = ctx.lastObj;
+      const head = parseSentence(m[1], ctx);
+      const afterHead = ctx.lastObj;
+      if (head && (ctx.lastObj?.ref === 'lastMoved' || ctx.lastObj?.ref === 'lastCreated')) ctx.lastObj = ctx.targets.length > savedT ? { ref: 'target', slot: savedT } : savedLast;
+      const who = head ? playerRef(/^any player$/i.test(m[2]) ? 'each player' : m[2], ctx) : null;
       const cost = who ? unlessCost(m[3], ctx) : null;
-      const head = cost ? parseSentence(m[1], ctx) : null;
+      ctx.lastObj = afterHead;
       if (who && cost && head) r = [{ kind: 'unlessPays', who, cost, effects: head }];
+      else ctx.targets.length = savedT;
     }
     // "~ deals 1 damage to that player or a planeswalker that player controls."
     if (!r && (m = s.match(/^(.+ damage to .+?) or (?:a|any) planeswalkers? (?:that player|they|that opponent|that player's) controls?$/i))) {

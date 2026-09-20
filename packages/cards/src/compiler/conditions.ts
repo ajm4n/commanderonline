@@ -12,6 +12,23 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   {
     const tc = text.trim().toLowerCase().replace(/\.$/, '');
     let mc: RegExpMatchArray | null;
+    // "If it's attacking" / "if it has a +1/+1 counter on it" / "if they are equipped": with an object in scope, "it"
+    // is that object, not the permanent whose ability this is. The patterns below are written for "~", so ask them
+    // about the antecedent by making it the self of a nested parse (Battlefield Improvisation, Dual-Sun Technique,
+    // Sweep Away, Will of the All-Hunter, Joint Assault).
+    if (/^(?:it|they) /.test(tc) && (ctx.lastObj || ctx.triggerHasObject) && ctx.self.ref === 'self') {
+      const alt = itRef(ctx);
+      const r = parseCondition(text.trim().replace(/\.$/, '').replace(/^(?:it|they)\b/i, '~'), { ...ctx, self: alt });
+      // A condition about ~'s own memory (renowned, kicked, bargained, suspected) says nothing about an object in
+      // scope; with a trigger object as the antecedent (usually ~ itself) it still applies.
+      if (r && (JSON.stringify(r).includes(JSON.stringify(alt)) || !ctx.lastObj)) return r;
+    }
+    // Life totals of a named player: "that player has exactly 10 life", "target opponent has 10 or less life".
+    if ((mc = tc.match(/^(you|that player|target player|target opponent|that opponent|its controller|defending player|each opponent|an opponent) (?:has|have) (?:exactly (\d+)|(\w+|\d+) or (more|less|fewer)) life$/))) {
+      const who: Ref = mc[1] === 'you' ? { ref: 'controller' } : /^each opponent|^an opponent/.test(mc[1]) ? { ref: 'eachOpponent' } : ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : { ref: 'controllerOf', of: ctx.lastObj ?? { ref: 'lastMoved' } });
+      const n = mc[2] !== undefined ? parseInt(mc[2], 10) : wordToNumber(mc[3]);
+      if (typeof n === 'number') return { kind: 'life', ref: who, op: mc[2] !== undefined ? '==' : mc[4] === 'more' ? '>=' : '<=', value: n };
+    }
     if ((mc = tc.match(/^(\w+) or more creatures? attacked this turn$/))) {
       const n = wordToNumber(mc[1]);
       if (n !== null) return { kind: 'count', filter: { types: ['Creature'], zone: 'battlefield', attackedThisTurn: true }, op: '>=', value: n };
@@ -230,7 +247,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   // "Activate only if ~ is not enchanted." / "... is enchanted" / "... is equipped"
   if ((m = t.match(/^(~|it|that creature|enchanted creature|equipped creature) is (not )?(enchanted|equipped|tapped|untapped|attacking|blocking|monstrous)$/))) {
-    const ref = /^(?:enchanted|equipped) creature$/.test(m[1]) ? { ref: 'attachedTo' as const } : ctx.self;
+    // "that creature"/"it" is the object in scope (Sweep Away: "If that creature is attacking"), ~ is the permanent itself.
+    const ref = /^(?:enchanted|equipped) creature$/.test(m[1]) ? { ref: 'attachedTo' as const } : m[1] === '~' ? ctx.self : itRef(ctx);
     const f = ({ enchanted: { hasAttachment: 'Aura' }, equipped: { hasAttachment: 'Equipment' }, tapped: { tapped: true }, untapped: { untapped: true }, attacking: { attacking: true }, blocking: { blocking: true }, monstrous: { monstrous: true } } as const)[m[3] as 'enchanted'];
     const c = { kind: 'objectMatches' as const, ref, filter: { ...f } };
     return m[2] ? { kind: 'not', c } : c;
