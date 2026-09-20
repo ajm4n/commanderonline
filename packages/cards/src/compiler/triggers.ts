@@ -1114,7 +1114,20 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
   if ((m = L.match(/^At the beginning of combat on (your|each) turn, (.+)$/i)) || (m = L.match(/^At the beginning of (each) combat, (.+)$/i))) return { event: 'beginningOfCombat', filter: { player: m[1] === 'your' ? 'you' : 'any' }, hasObject: false, hasPlayer: true, rest: m[2] };
   // Casting
   if ((m = L.match(/^When you cast ~, (.+)$/i)) || (m = L.match(/^When you cast this spell, (.+)$/i))) return { event: 'cast', filter: { self: true }, zone: 'stack', hasObject: true, hasPlayer: true, rest: m[1] };
-  if ((m = L.match(/^Whenever you cast or copy (?:a|an) (.+?) spell, (.+)$/i))) L = `Whenever you cast a ${m[1]} spell, ${m[2]}`; // copies are approximated by casts
+  // Magecraft: "Whenever you cast or copy an instant or sorcery spell" fires on casts and on copies.
+  if ((m = L.match(/^Whenever you cast or copy (?:a|an) (.+?) spell, (.+)$/i))) {
+    const inner = parseTriggerHeadCore(`Whenever you cast a ${m[1]} spell, ${m[2]}`);
+    if (inner) {
+      const { rest: _r, also: _a, ...base } = inner;
+      void _r;
+      return { ...inner, also: [...(_a ?? []), { ...base, event: 'spellCopied', filter: { ...(inner.filter ?? {}), object: inner.filter?.object ? { ...inner.filter.object, zone: undefined } : undefined } }] };
+    }
+  }
+  // Mizzix: "Whenever you cast an instant or sorcery spell with mana value greater than the number of experience counters you have, …"
+  if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell with mana value (greater|less) than (.+?), (.+)$/i)) && !/^\d+$/.test(m[3])) {
+    const inner = parseTriggerHeadCore(`Whenever you cast a ${m[1]} spell, If that spell's mana value is ${m[2]} than ${m[3]}, ${m[4]}`);
+    if (inner) return inner;
+  }
   if ((m = L.match(/^Whenever you cast (?:a|an) (.+?) spell with mana value (\d+) or (greater|less), (.+)$/i)) || (m = L.match(/^Whenever you cast a (spell) with mana value (\d+) or (greater|less), (.+)$/i))) {
     const noun = m[1] === 'spell' ? { filter: {} as ObjectFilter } : parseNoun(`a ${m[1]} spell`);
     if (!noun) return null;

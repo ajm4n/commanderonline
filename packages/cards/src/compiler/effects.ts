@@ -9570,12 +9570,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   text = text.replace(/^until end of turn, (.+?)$/i, (_m, rest: string) => (/ until end of turn$/i.test(rest) ? rest : /, where X is /i.test(rest) ? rest.replace(/, where X is /i, ' until end of turn, where X is ') : `${rest} until end of turn`));
   if ((m = text.match(/^(.+?), where X is ([^,]+?), (.+)$/i)) && /\bX\b/.test(m[1])) {
-    const a = amt(m[2], ctx);
-    const inner = a !== null ? parseSentence(`${m[1]}, ${m[3]}`, ctx) : null;
-    if (inner) {
-      ctx.boundX = a!;
-      return inner.map((e) => substituteX(e, a!));
+    // Parse the effect first so "where X is that creature's power" can see the target it just named.
+    const saved = ctx.targets.length;
+    const inner = parseSentence(`${m[1]}, ${m[3]}`, ctx);
+    const a = inner ? amt(m[2], ctx) : null;
+    if (inner && a !== null) {
+      ctx.boundX = a;
+      return inner.map((e) => substituteX(e, a));
     }
+    ctx.targets.length = saved;
   }
   if ((m = text.match(/^(.+?), where X is (\d+) minus (.+)$/i))) {
     const mm = m;
@@ -9586,12 +9589,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^(.+), where X is (.+)$/i))) {
     // "…deals X damage…, where X is the number of…" → substitute amount.
     // Fall through when either half fails: a later pattern may take the whole sentence.
-    const a = amt(m[2], ctx);
+    const saved = ctx.targets.length;
     const inner = parseSentence(m[1], ctx);
+    const a = inner ? amt(m[2], ctx) : null;
     if (inner && a !== null) {
       ctx.boundX = a;
       return inner.map((e) => substituteX(e, a));
     }
+    ctx.targets.length = saved;
   }
   if ((m = text.match(/^for each (.+?), (.+)$/i))) {
     const noun = parseNoun(m[1]);

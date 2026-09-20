@@ -2041,7 +2041,14 @@ export class Game {
       }
       case 'stackTarget': {
         const t = ctx.targets.find((x) => x.kind === 'stackItem');
-        return t ? [t] : [];
+        if (t) return [t];
+        // In a cast trigger "that spell" is the spell that triggered it, still on the stack.
+        const tobj = ctx.triggerContext['triggerObject'];
+        if (typeof tobj === 'number') {
+          const item = this.state.stack.find((s) => s.kind === 'spell' && s.sourceId === tobj);
+          if (item) return [{ kind: 'stackItem', id: item.id }];
+        }
+        return [];
       }
       case 'player':
         return plT([ref.id]);

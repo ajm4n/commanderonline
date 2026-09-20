@@ -134,14 +134,16 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (/^(?:the number of )?(?:creatures?|permanents?|cards?) put into your graveyard from the battlefield this turn$/i.test(text.trim())) return { kind: 'eventsThisTurn', event: 'dies', player: 'you' };
   {
     const pw = text.trim().match(/^(?:the|its|that creature's|the sacrificed creature's|the destroyed creature's) ?(power|toughness|mana value)(?: of (the creature that died|that creature|it|the sacrificed creature|the destroyed creature|the exiled card|that card))?$/i);
-    if (pw && (pw[2] || /^(its|that|the sacrificed|the destroyed)/i.test(text.trim()))) return { kind: pw[1].toLowerCase() === 'power' ? 'power' : pw[1].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
+    // "the sacrificed creature's power" is the card a cost or effect just moved, whatever else was named since.
+    const moved = /\b(?:sacrificed|destroyed|exiled|discarded|revealed) (?:creature|card|permanent)/i.test(text);
+    if (pw && (pw[2] || /^(its|that|the sacrificed|the destroyed)/i.test(text.trim()))) return { kind: pw[1].toLowerCase() === 'power' ? 'power' : pw[1].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref: moved ? { ref: 'lastMoved' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
   }
   if (/^(?:the number of )?colors (?:that spell|it|that card|that permanent) is$/i.test(text.trim())) return { kind: 'colorCount', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'self' }) };
-  if (/^(?:that|the) (?:card|creature|permanent|spell|revealed card|exiled card|discarded card|sacrificed creature|sacrificed permanent)'s mana value$/i.test(text.trim())) return { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
+  if (/^(?:that|the) (?:card|creature|permanent|spell|revealed card|exiled card|discarded card|sacrificed creature|sacrificed permanent)'s mana value$/i.test(text.trim())) return { kind: 'manaValue', ref: /\b(?:sacrificed|exiled|discarded|revealed)\b/i.test(text) ? { ref: 'lastMoved' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
   {
     const pf = text.trim().match(/^the (power|toughness|mana value) of (the exiled card|the exiled cards|that card|that creature|that permanent|it|the revealed card|the discarded card|the sacrificed creature|the destroyed creature|the returned card)$/i);
     if (pf) {
-      const ref: Ref = /^the exiled/i.test(pf[2]) ? { ref: 'chosen', key: 'exiled' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' });
+      const ref: Ref = /^the exiled/i.test(pf[2]) ? { ref: 'chosen', key: 'exiled' } : /^the (?:revealed|discarded|sacrificed|destroyed|returned)/i.test(pf[2]) ? { ref: 'lastMoved' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' });
       return { kind: pf[1].toLowerCase() === 'power' ? 'power' : pf[1].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref };
     }
   }
@@ -232,7 +234,8 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const ref = /~|this/.test(m[0]) ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.self);
     return { kind: m[1] as 'power' | 'toughness', ref };
   }
-  if ((m = t.match(/^(?:its|that card's|that spell's|that permanent's|that creature's|the sacrificed creature's|the exiled card's|~'s) mana value$/))) return { kind: 'manaValue', ref: /~/.test(m[0]) ? ctx.self : ctx.lastObj ?? { ref: 'triggerObject' } };
+  // "that spell's mana value" inside a cast trigger means the spell that triggered it, whatever was created since.
+  if ((m = t.match(/^(?:its|that card's|that spell's|that permanent's|that creature's|the sacrificed creature's|the exiled card's|~'s) mana value$/))) return { kind: 'manaValue', ref: /~/.test(m[0]) ? ctx.self : /^that spell's/.test(m[0]) && ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.lastObj ?? { ref: 'triggerObject' } };
   if ((m = t.match(/^the sacrificed (?:creature|permanent)'s (power|toughness)$/))) return { kind: m[1] as 'power', ref: ctx.lastObj ?? { ref: 'triggerObject' } };
   if ((m = t.match(/^the number of cards in (that player's|their) hand$/))) return { kind: 'handSize', ref: thatPlayer(ctx) };
   if (t === 'your life total') return { kind: 'life', ref: { ref: 'controller' } };

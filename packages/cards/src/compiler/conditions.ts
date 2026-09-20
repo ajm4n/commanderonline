@@ -673,7 +673,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^(?:its|that spell's|the spell's) mana value is (less than or equal to|greater than or equal to|less than|greater than|equal to) (.+)$/))) {
     const a = parseAmount(m[2], ctx);
     const op = ({ 'less than or equal to': '<=', 'greater than or equal to': '>=', 'less than': '<', 'greater than': '>', 'equal to': '==' } as Record<string, '<=' | '>=' | '<' | '>' | '=='>)[m[1]];
-    if (a !== null) return { kind: 'amount', a: { kind: 'manaValue', ref: ctx.lastObj ?? { ref: 'stackTarget' } }, op, b: a };
+    if (a !== null) return { kind: 'amount', a: { kind: 'manaValue', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'stackTarget' }) }, op, b: a };
   }
   // ---- Round 104 ----
   // "you control a God, a Demigod, or a legendary enchantment" / "you control a blue permanent and a black permanent"
