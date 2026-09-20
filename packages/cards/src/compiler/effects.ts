@@ -1558,11 +1558,11 @@ const PATTERNS: Pattern[] = [
     if (!ref) return null;
     const p = m[2].toUpperCase().includes('X') ? (m[2].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[2], 10);
     const t = m[3].toUpperCase().includes('X') ? (m[3].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[3], 10);
-    const out: Effect[] = [{ kind: 'pump', power: p, toughness: t, on: ref, duration: dur ?? 'endOfTurn' }];
+    const out: Effect[] = [{ kind: 'pump', power: p, toughness: t, on: ref, duration: dur ?? 'permanent' }];
     if (m[4]) {
       const kws = parseKeywordList(m[4].replace(/ until end of turn$/i, ''));
       if (!kws) return null;
-      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur ?? 'endOfTurn' });
+      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur ?? 'permanent' });
     }
     return out;
   }],
@@ -9190,6 +9190,26 @@ function retargetToPlayer<T>(value: T, who: Ref): T {
 }
 
 /** Parse one sentence; returns null if not understood. */
+/**
+ * "Up to X target creatures …, where X is the number of Bobbleheads you control": target slots counted by X take their
+ * count from the defining amount instead of a mana X (which an ability without {X} in its cost never has).
+ */
+function bindCountX(ctx: ParseCtx, _from: number, a: Amount): void {
+  // Every X-counted slot of this ability: a card never has both a mana X and a "where X is" X, and the slot may have
+  // been registered by an earlier clause of the same sentence ("… get +1/+0 and gain indestructible, where X is …").
+  for (let i = 0; i < ctx.targets.length; i++) {
+    const t = ctx.targets[i];
+    if (!t.countX) continue;
+    const times = t.countX.times ?? 1;
+    const n: Amount = times === 1 ? a : { kind: 'times', a: times, b: a };
+    if (t.countX.upTo) {
+      t.maxAmount = n;
+      t.min = 0;
+    } else t.countAmount = n;
+    delete t.countX;
+  }
+}
+
 /** Does this effect list (looking inside conditionals, may, forEach) contain a becomeCopy? */
 function hasCopy(effects: Effect[]): boolean {
   return effects.some((e) => e.kind === 'becomeCopy' || (e.kind === 'conditional' && (hasCopy(e.then) || hasCopy(e.else ?? []))) || ((e.kind === 'may' || e.kind === 'forEach') && hasCopy(e.effects)));
@@ -10002,6 +10022,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const a = inner ? amt(m[2], ctx) : null;
     if (inner && a !== null) {
       ctx.boundX = a;
+      bindCountX(ctx, saved, a);
       return inner.map((e) => substituteX(e, a));
     }
     ctx.targets.length = saved;
@@ -10038,6 +10059,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ctx.lastObj = lastAfter;
     if (inner && a !== null) {
       ctx.boundX = a;
+      bindCountX(ctx, saved, a);
       return inner.map((e) => substituteX(e, a));
     }
     ctx.targets.length = saved;
@@ -10211,7 +10233,8 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (parts.length < 2) continue;
     // "A, B, and C until end of turn": the trailing duration applies to every clause.
     {
-      const dm = parts[parts.length - 1].match(/ (until end of turn|until your next turn|until end of combat)$/i);
+      // "… and gain indestructible until end of turn, where X is …": the X definition trails the duration.
+      const dm = parts[parts.length - 1].match(/ (until end of turn|until your next turn|until end of combat)(?:, where X is .+)?$/i);
       const stative = /\b(?:gets?|gains?|becomes?|has|have|is|are|cannot|can|loses? (?:all abilities|flying|\w+))\b/i;
       if (dm && parts.length > 1 && !parts.slice(0, -1).some((x) => new RegExp(dm[1], 'i').test(x)) && parts.every((x) => stative.test(x))) {
         parts = parts.map((x, i) => (i === parts.length - 1 ? x : `${x} ${dm[1]}`));
@@ -11189,6 +11212,10 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
       if (cond && inner) {
         const previous = effects.splice(lastStart);
+        // "Target creature gets -1/-1 until end of turn. That creature gets -4/-4 instead if …": the replacement
+        // keeps the duration the sentence it replaces had (Festering Newt).
+        const prevDur = (kind: string) => previous.find((e): e is Extract<Effect, { kind: 'pump' | 'grantKeywords' }> => e.kind === kind && 'duration' in e)?.duration;
+        inner = inner.map((e) => ((e.kind === 'pump' || e.kind === 'grantKeywords') && e.duration === 'permanent' && prevDur(e.kind) && prevDur(e.kind) !== 'permanent' ? { ...e, duration: prevDur(e.kind) } : e));
         effects.push({ kind: 'conditional', if: cond, then: inner, else: previous });
         continue;
       }
