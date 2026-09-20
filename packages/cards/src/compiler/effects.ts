@@ -134,7 +134,10 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
     // With no antecedent in scope, fall back to the last object this script moved ("put that card onto the battlefield").
     return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : { ref: 'lastMoved' });
   }
-  if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker|enchantment)$/.test(l) || /^(?:enchanted|equipped) [A-Z]\w+$/i.test(t)) return { ref: 'attachedTo' };
+  if (/^(enchanted|equipped|fortified) (creature|permanent|land|player|artifact|planeswalker|enchantment)$/.test(l) || /^(?:enchanted|equipped) [A-Z]\w+$/i.test(t)) {
+    if (!/player$/.test(l)) ctx.lastObj = { ref: 'attachedTo' }; // "Untap enchanted creature. It gains hexproof …"
+    return { ref: 'attachedTo' };
+  }
 
   if (/^each (?:\w+ )?(?:permanent|card|creature|player)s? with the most votes(?: or tied for most votes)?$/.test(l)) return { ref: 'chosen', key: 'votes' };
   if (/^(that|those) tokens?$/.test(l) || l === 'the tokens' || l === 'the token') return { ref: 'lastCreated' };
@@ -5246,9 +5249,11 @@ const PATTERNS: Pattern[] = [
     if (!ref) return null;
     const f: ObjectFilter = { subtypes: [/^Auras$/i.test(m[3]) ? 'Aura' : 'Equipment'], zone: 'battlefield', attachedToRef: ref };
     const all: Ref = { ref: 'all', filter: f };
+    // Moving the host detaches everything on it, so take the attachments first; the host is what "that card" means afterwards.
+    ctx.lastObj = { ref: 'lastMoved' };
     return /^exile$/i.test(m[1])
-      ? [{ kind: 'moveToZone', what: ref, zone: 'exile' }, { kind: 'moveToZone', what: all, zone: 'exile' }]
-      : [{ kind: 'destroy', what: ref }, { kind: 'destroy', what: all }];
+      ? [{ kind: 'exile', what: all, remember: 'exiled' }, { kind: 'exile', what: ref, remember: 'exiled' }]
+      : [{ kind: 'destroy', what: all }, { kind: 'destroy', what: ref }];
   }],
   // "Choose a creature card at random from target opponent's graveyard."
   [/^choose (?:a|an|one) (.+?) at random from (.+?)'s graveyard$/i, (m, ctx) => {
@@ -9498,22 +9503,21 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // "You may X. If you do, Y" is split by the caller; handle "you may X" here.
-  if ((m = text.match(/^(?:you may )?pay (\{.+?\}|\d+ life)\. if you do, (.+)$/i))) {
+  if ((m = text.match(/^(?:you may )?pay (\{.+?\}|\d+ life|\w+ \{E\})\. if you do, (.+)$/i))) {
     const inner = parseSentence(m[2], ctx);
     if (inner) {
       const life = m[1].match(/^(\d+) life$/);
-      const energy = m[1].match(/^(?:\{E\})+$/);
-      return [life ? { kind: 'ifPays', cost: '', payLife: parseInt(life[1], 10), effects: inner } : energy ? { kind: 'ifPays', cost: '', energy: (m[1].match(/\{E\}/g) ?? []).length, effects: inner } : { kind: 'ifPays', cost: m[1], effects: inner }];
+      const energy = m[1].match(/^(?:\{E\})+$/) ?? (/^\w+ \{E\}$/.test(m[1]) && wordToNumber(m[1].split(' ')[0]) !== null ? { count: wordToNumber(m[1].split(' ')[0]) as number } : null);
+      return [life ? { kind: 'ifPays', cost: '', payLife: parseInt(life[1], 10), effects: inner } : energy ? { kind: 'ifPays', cost: '', energy: 'count' in energy ? energy.count : (m[1].match(/\{E\}/g) ?? []).length, effects: inner } : { kind: 'ifPays', cost: m[1], effects: inner }];
     }
   }
   // "You may tap three untapped creatures you control. If you do, Y" / "you may discard a nonland card. If you do, Y"
   if ((m = text.match(/^(?:you may )?((?:tap|discard|sacrifice|exile|return|reveal|remove) .+?)\. if you do, (.+)$/i))) {
     const cost = parseCost(m[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
     // "Discard a card at random. If you do, ~ deals damage equal to that card's mana value": "that card" is what the cost moved.
-    if (/\bthat (?:card|creature|permanent)\b/i.test(m[2])) {
-      if (cost?.discard) ctx.lastObj = { ref: 'lastDiscarded' };
-      else if (cost?.sacrifice || cost?.exileObjects || cost?.exileFromGraveyard) ctx.lastObj = { ref: 'lastMoved' };
-    }
+    // A discarded card is only ever "that card"; a sacrificed or exiled object can be "that creature/permanent" too.
+    if (cost?.discard && /\bthat card\b/i.test(m[2])) ctx.lastObj = { ref: 'lastDiscarded' };
+    else if ((cost?.sacrifice || cost?.exileObjects || cost?.exileFromGraveyard) && /\bthat (?:card|creature|permanent)\b/i.test(m[2])) ctx.lastObj = { ref: 'lastMoved' };
     const inner = cost ? parseSentence(m[2], ctx) : null;
     if (cost && inner) return [{ kind: 'ifPays', cost: '', payCostSpec: cost, effects: inner, text: `${m[1]}?` }];
   }
@@ -10054,7 +10058,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     // "A, B, and C until end of turn": the trailing duration applies to every clause.
     {
       const dm = parts[parts.length - 1].match(/ (until end of turn|until your next turn|until end of combat)$/i);
-      const stative = /\b(?:gets?|gains?|becomes?|has|have|is|are|cannot|can)\b/i;
+      const stative = /\b(?:gets?|gains?|becomes?|has|have|is|are|cannot|can|loses? (?:all abilities|flying|\w+))\b/i;
       if (dm && parts.length > 1 && !parts.slice(0, -1).some((x) => new RegExp(dm[1], 'i').test(x)) && parts.every((x) => stative.test(x))) {
         parts = parts.map((x, i) => (i === parts.length - 1 ? x : `${x} ${dm[1]}`));
       }
@@ -10828,6 +10832,17 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       if (sents[i + 1] && /^otherwise, /i.test(sents[i + 1])) {
         s = `${s}. ${sents[i + 1]}`;
         i++;
+      }
+    }
+    // "You get {E}{E}, then you may pay eight {E}. When you do, X": X happens only if the whole amount was paid.
+    {
+      const lastE = effects[effects.length - 1];
+      if (/^(?:if|when) you do, /i.test(s) && lastE && lastE.kind === 'payEnergy' && lastE.max < 99) {
+        const inner = parseSentence(s.replace(/^(?:if|when) you do, /i, ''), ctx);
+        if (inner) {
+          effects.push({ kind: 'conditional', if: { kind: 'amount', a: { kind: 'ctxMemory', key: lastE.key }, op: '>=', b: lastE.max }, then: inner });
+          continue;
+        }
       }
     }
     // Flip a coin. If you win the flip, X. If you lose the flip, Y.
