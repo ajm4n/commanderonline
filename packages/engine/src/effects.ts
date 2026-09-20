@@ -129,8 +129,31 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     case 'damage': {
-      const targets = g.resolveRef(e.to, ctx);
+      let targets = g.resolveRef(e.to, ctx);
       const source = e.source ? g.resolveObjects(e.source, ctx)[0]?.id ?? ctx.sourceId : ctx.sourceId;
+      // "... to that player or a planeswalker that player controls": the source's controller picks.
+      if (e.orPlaneswalker) {
+        const picked: Target[] = [];
+        for (const t of targets) {
+          const pws = t.kind === 'player' ? g.state.battlefield.map((id) => g.state.objects[id]).filter((o) => !!o && o.controller === t.id && g.characteristics(o.id).types.includes('Planeswalker')) : [];
+          if (!pws.length) {
+            picked.push(t);
+            continue;
+          }
+          const resp = yield* g.ask({
+            type: 'chooseOption',
+            player: ctx.controller,
+            prompt: 'Damage that player, or a planeswalker they control?',
+            options: [{ id: 'player', label: 'That player' }, ...pws.map((o) => ({ id: String(o!.id), label: g.characteristics(o!.id).name }))],
+            min: 1,
+            max: 1,
+            sourceId: ctx.sourceId ?? undefined,
+          });
+          const pick = resp.type === 'options' ? resp.ids[0] : 'player';
+          picked.push(pick === 'player' ? t : { kind: 'object', id: Number(pick) });
+        }
+        targets = picked;
+      }
       const total = amt(e.amount);
       if (e.divided && targets.length > 1) {
         const resp = yield* g.ask({ type: 'distribute', player: ctx.controller, prompt: `Divide ${total} damage`, amount: total, targets, minPer: 1, sourceId: ctx.sourceId ?? undefined });
@@ -2039,6 +2062,37 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Exile ${need} from your graveyard? (choose none to decline)`, candidates: cands, min: 0, max: need, revealToChooser: true });
             if (r.type === 'objects' && r.ids.length === need) {
               for (const id of r.ids) g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'genericMana' in e.cost) {
+          const n = Math.max(0, g.resolveAmount(e.cost.genericMana, ctx));
+          paid = yield* offerToPay(g, p, `{${n}}`, e.text ?? `Pay {${n}}? Otherwise: ${describe(e.effects)}`);
+        } else if (typeof e.cost === 'object' && 'energy' in e.cost) {
+          const n = Math.max(0, g.resolveAmount(e.cost.energy, ctx));
+          if (g.player(p).energy >= n) {
+            const r = yield* g.ask({ type: 'yesNo', player: p, prompt: e.text ?? `Pay ${n} {E}? Otherwise: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'yesNo' && r.value) {
+              g.player(p).energy -= n;
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'payLifeAmount' in e.cost) {
+          const n = Math.max(0, g.resolveAmount(e.cost.payLifeAmount, ctx));
+          if (g.player(p).life >= n) {
+            const r = yield* g.ask({ type: 'yesNo', player: p, prompt: e.text ?? `Pay ${n} life? Otherwise: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'yesNo' && r.value) {
+              g.loseLife(p, n, ctx.sourceId ?? undefined);
+              paid = true;
+            }
+          }
+        } else if (typeof e.cost === 'object' && 'putCounter' in e.cost) {
+          const d = e.cost.putCounter;
+          const cands = objectsMatching(g, { ...d.filter, controller: 'you', zone: 'battlefield' }, { sourceId: ctx.sourceId, controller: p }).map((o) => o.id);
+          if (cands.length) {
+            const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: e.text ?? `Put ${d.amount} ${d.counter} counter${d.amount === 1 ? '' : 's'} on a permanent you control? (choose none to decline)`, candidates: cands, min: 0, max: 1, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'objects' && r.ids.length) {
+              g.addCounters(r.ids[0], d.counter, d.amount);
               paid = true;
             }
           }

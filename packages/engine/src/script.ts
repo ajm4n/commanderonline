@@ -310,7 +310,7 @@ export type Effect =
   | { kind: 'gainLife'; amount: Amount; who?: Ref }
   | { kind: 'loseLife'; amount: Amount; who?: Ref }
   | { kind: 'setLife'; amount: Amount; who?: Ref }
-  | { kind: 'damage'; amount: Amount; to: Ref; source?: Ref; divided?: boolean; /** "Excess damage is dealt to that creature's controller instead." */ excessToController?: boolean }
+  | { kind: 'damage'; amount: Amount; to: Ref; source?: Ref; divided?: boolean; /** "~ deals 1 damage to that player or a planeswalker that player controls." */ orPlaneswalker?: boolean; /** "Excess damage is dealt to that creature's controller instead." */ excessToController?: boolean }
   | { kind: 'destroy'; what: Ref; cantRegenerate?: boolean }
   | { kind: 'exile'; what: Ref; untilSourceLeaves?: boolean; remember?: string; counters?: { counter: CounterType; amount: Amount }; /** "exile all cards from your hand face down" */ faceDown?: boolean }
   | { kind: 'sacrifice'; what: Ref }
@@ -400,7 +400,7 @@ export type Effect =
   /** "Repeat this process": run the effects again while the condition holds (bounded). */
   | { kind: 'repeatWhile'; condition?: Condition; effects: Effect[]; max?: number; /** "You may repeat this process any number of times": ask before each extra iteration. */ optional?: boolean }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
-  | { kind: 'unlessPays'; who: Ref; cost: string | { mana: string; payLife: number } | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number } | { tap: ObjectFilter; count?: number } | { removeCounters: { counter: CounterType; amount: number; filter: ObjectFilter } } | { putFromGraveyardOnBottom: number } | { takeDamageFromSource: Amount }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
+  | { kind: 'unlessPays'; who: Ref; cost: string | { /** "unless its controller pays {1} for each card in your graveyard" */ genericMana: Amount } | { energy: Amount } | { payLifeAmount: Amount } | { putCounter: { counter: CounterType; amount: number; filter: ObjectFilter } } | { mana: string; payLife: number } | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number } | { tap: ObjectFilter; count?: number } | { removeCounters: { counter: CounterType; amount: number; filter: ObjectFilter } } | { putFromGraveyardOnBottom: number } | { takeDamageFromSource: Amount }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
   | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; /** Run these if the cost is not paid. */ else?: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */

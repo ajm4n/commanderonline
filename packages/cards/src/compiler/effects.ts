@@ -9960,6 +9960,38 @@ function deriveDifference(s: string, ctx: ParseCtx): Amount | null {
   return null;
 }
 
+/** The cost in "X unless <player> pays {2}" / "... unless they put a -1/-1 counter on a creature". */
+function unlessCost(text: string, ctx: ParseCtx): Extract<Effect, { kind: 'unlessPays' }>['cost'] | null {
+  const t = text.trim().replace(/[.,;]$/, '');
+  let m: RegExpMatchArray | null;
+  if ((m = t.match(/^pays? ((?:\{[^}]+\})+)$/i))) return m[1];
+  if ((m = t.match(/^pays? (\d+) life$/i))) return { payLife: parseInt(m[1], 10) };
+  if ((m = t.match(/^pays? life equal to (.+)$/i))) {
+    const a = amt(m[1], ctx);
+    return a === null || a === undefined ? null : { payLifeAmount: a };
+  }
+  if ((m = t.match(/^pays? an amount of \{E\} equal to (.+)$/i))) {
+    const a = amt(m[1], ctx);
+    return a === null || a === undefined ? null : { energy: a };
+  }
+  if ((m = t.match(/^pays? (?:mana equal to (.+)|\{1\} for each (.+))$/i))) {
+    const a = amt(m[1] ?? `the number of ${m[2]}`, ctx);
+    return a === null || a === undefined ? null : { genericMana: a };
+  }
+  if ((m = t.match(/^puts? (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+) counters? on (?:a|an) (.+)$/i))) {
+    const n = m[1] ? wordToNumber(m[1]) : 1;
+    const noun = parseNoun(`a ${m[3]}`);
+    if (typeof n !== 'number' || !noun || !noun.confident) return null;
+    return { putCounter: { counter: m[2], amount: n, filter: { ...noun.filter, zone: undefined } } };
+  }
+  const spec = parseCost(t.replace(/^[a-z]/, (c) => c.toUpperCase()));
+  if (spec?.mana) return spec.mana;
+  if (typeof spec?.payLife === 'number') return { payLife: spec.payLife };
+  if (spec?.sacrifice) return { sacrifice: spec.sacrifice.filter, count: typeof spec.sacrifice.count === 'number' ? spec.sacrifice.count : 1 };
+  if (spec?.discard && typeof spec.discard === 'object') return { discard: typeof spec.discard.count === 'number' ? spec.discard.count : 1 };
+  return null;
+}
+
 export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; unhandled: string[] } {
   const effects: Effect[] = [];
   const unhandled: string[] = [];
@@ -10502,6 +10534,21 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     let r = parseSentence(s, ctx);
+    // "~ deals 3 damage to that player unless they put a -1/-1 counter on a creature they control."
+    if (!r && (m = s.match(/^(.+?) unless (you|they|that player|its controller|the player|target player|target opponent|any player) (.+)$/i))) {
+      const who = playerRef(/^any player$/i.test(m[2]) ? 'each player' : m[2], ctx);
+      const cost = who ? unlessCost(m[3], ctx) : null;
+      const head = cost ? parseSentence(m[1], ctx) : null;
+      if (who && cost && head) r = [{ kind: 'unlessPays', who, cost, effects: head }];
+    }
+    // "~ deals 1 damage to that player or a planeswalker that player controls."
+    if (!r && (m = s.match(/^(.+ damage to .+?) or (?:a|any) planeswalkers? (?:that player|they|that opponent|that player's) controls?$/i))) {
+      const inner = parseSentence(m[1], ctx);
+      if (inner && inner.some((e) => e.kind === 'damage')) {
+        for (const e of inner) if (e.kind === 'damage') e.orPlaneswalker = true;
+        r = inner;
+      }
+    }
     // "..., and mana of any type can be spent to cast that spell" — a clause on the permission.
     if (!r && (m = s.match(/^(.+?),? and mana of any (?:colou?r|type) can be spent to (?:cast|play) (?:it|them|that spell|those spells|that card|those cards)$/i))) {
       const inner = parseSentence(m[1], ctx);
