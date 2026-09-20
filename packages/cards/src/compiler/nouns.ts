@@ -395,7 +395,8 @@ export function parseNoun(raw: string): ParsedNoun | null {
     let ok = true;
     for (const h of listHeads) if (!addHead(h) && !parseAdjectives([h], result)) ok = false;
     if (!ok) return null;
-    for (const h of right.slice(0, -0)) void h; // right side words are adjectives for the final head, already applied
+    // "Angel, Demon, or Dragon creature card": the word right after "or" is the last list member, not an adjective.
+    if (right.length) addHead(right[0]);
     if (types.size && subtypes.size && !(result.filter.types ?? []).length && !(result.filter.subtypes ?? []).length) {
       // "artifact or Human": a card type OR a subtype.
       result.filter.anyOf = [{ types: [...types] }, { subtypes: [...subtypes] }];

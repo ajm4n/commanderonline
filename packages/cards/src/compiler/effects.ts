@@ -576,7 +576,7 @@ const POOL_PATTERNS: Pattern[] = [
 
 /** "up to two basic land cards" / "a creature card" / "three cards" → count and filter for a library search. */
 function searchTarget(phrase: string, ctx: ParseCtx): { count: Amount; upTo: boolean; filter: ObjectFilter } | null {
-  let t = phrase.trim().replace(/[.,]$/, '');
+  let t = phrase.trim().replace(/[.,]$/, '').replace(/ that each have different names$/i, ' with different names');
   let upTo = false;
   let count: Amount = 1;
   let m: RegExpMatchArray | null;
@@ -654,6 +654,12 @@ const REVEAL_UNTIL_PATTERNS: Pattern[] = [
 ];
 
 const PATTERNS: Pattern[] = [
+  // Scion of the Ur-Dragon: "~ becomes a copy of that card until end of turn"
+  [/^(~|it|that creature) becomes a copy of (that card|that creature|it|the exiled card|the chosen card) until end of turn$/i, (m, ctx) => {
+    const what = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx);
+    const of = ctx.lastObj ?? { ref: 'lastMoved' as const };
+    return what ? [{ kind: 'becomeCopy', what, of, duration: 'endOfTurn' }] : null;
+  }],
   [/^each (.+?) deals (?:(\d+|X) damage|damage equal to its (power|toughness)) to (?:its|their) controller$/i, (m) => {
     const noun = parseNoun(`a ${m[1]}`);
     if (!noun) return null;
@@ -1136,7 +1142,7 @@ const PATTERNS: Pattern[] = [
     const key = `hand${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
     return [{ kind: 'chooseObjects', filter: { ...noun.filter, zone: 'hand', owner: 'you' }, count: n, key }, { kind: 'putOnLibrary', what: { ref: 'chosen', key }, position: /top/.test(m[3]) ? 'top' : 'bottom' }];
   }],
-  [/^(?:you may )?put (?:a|an|up to (\w+)) (.+?) from your hand onto the battlefield(?: (tapped)(?: and (attacking))?)?$/i, (m, ctx) => {
+  [/^(?:you may )?put (?:a|an|up to (\w+)) (.+?) from your hand onto the battlefield(?: (tapped)(?: and (attacking)(?: that (?:player|opponent))?)?)?$/i, (m, ctx) => {
     const c = chooseRef(`a ${/\bcards?\b/i.test(m[2]) ? m[2].replace(/ cards$/i, ' card') : `${m[2]} card`} from your hand`, ctx, YOU, true);
     if (!c) return null;
     return [...c.pre, { kind: 'returnToBattlefield', what: c.ref, tapped: !!m[3], attacking: m[4] ? true : undefined }];
@@ -8925,6 +8931,8 @@ function retargetToPlayer<T>(value: T, who: Ref): T {
 /** Parse one sentence; returns null if not understood. */
 export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if (/^you may shuffle(?: your library)?\.?$/i.test(s.trim())) return [{ kind: 'may', effects: [{ kind: 'shuffle' }] }];
+  // Tiamat: "Dragon cards … that each have different names" is the usual "with different names".
+  if (/ that each have different names\b/i.test(s)) s = s.replace(/ that each have different names\b/gi, ' with different names');
   let text = s.trim().replace(/\.$/, '');
   if (!text) return [];
   text = text.replace(/^then,? /i, '');

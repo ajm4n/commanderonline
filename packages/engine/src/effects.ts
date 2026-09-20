@@ -766,8 +766,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const own = g.scriptFor(o).abilities.find((a): a is Extract<AbilitySpec, { kind: 'triggered' | 'activated' }> => (a.kind === 'triggered' || a.kind === 'activated') && /becomes? a copy of/i.test(a.text));
           if (own) ex = { ...ex, keywords: [...(ex.keywords ?? []), own.text] };
         }
-        o.copyOf = applyCopyExceptions(copiableCard(src), ex);
-        o.faceIndex = 0;
+        const card = applyCopyExceptions(copiableCard(src), ex);
+        if (e.duration) {
+          g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: durationOf(e.duration), modification: { layer: 'copy', card } });
+        } else {
+          o.copyOf = card;
+          o.faceIndex = 0;
+        }
         g.log(`${g.nameOf(o.id)} becomes a copy of ${g.nameOf(src.id)}.`);
       }
       g.touch();

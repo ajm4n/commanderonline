@@ -476,6 +476,18 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever an opponent discards a card or mills one or more cards, (.+)$/i))) return { event: 'discard', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'mill', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true }] };
   if ((m = L.match(/^Whenever you play a legendary land or cast a legendary spell, (.+)$/i))) return { event: 'landPlayed', filter: { player: 'you', object: { supertypes: ['Legendary'] } }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'cast', filter: { player: 'you', object: { supertypes: ['Legendary'] } }, hasObject: true, hasPlayer: true }] };
   if ((m = L.match(/^Whenever (?:a|an) player sacrifices another permanent, (.+)$/i))) return { event: 'sacrifice', filter: { object: { other: true } }, hasObject: true, hasPlayer: true, rest: m[1] };
+  // The Ur-Dragon: "Whenever one or more Dragons you control attack, draw that many cards" — once per attack
+  // declaration; "that many" is how many of them are attacking.
+  if ((m = L.match(/^Whenever one or more (.+?) you control attack, (.+)$/i))) {
+    const noun = parseNoun(`a ${singularize(m[1])}`);
+    if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      delete f.controller;
+      const rest = /\bthat many\b/i.test(m[2]) ? `${m[2].replace(/\bthat many\b/gi, 'X')}, where X is the number of attacking ${m[1]} you control` : m[2];
+      return { event: 'attacks', filter: { object: f, objectController: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest };
+    }
+  }
   if ((m = L.match(/^Whenever one or more (.+?) you control attack an opponent, (.+)$/i))) {
     const noun = parseNoun(`a ${m[1]}`);
     if (noun && noun.confident) { const f = { ...noun.filter }; delete f.zone; delete f.controller; return { event: 'attacks', filter: { object: f, objectController: 'you', otherPlayer: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[2] }; }
