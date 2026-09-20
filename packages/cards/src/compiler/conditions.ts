@@ -854,6 +854,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const noun = parseNoun(`a ${oc(m, 1)} card`);
     if (noun) return { kind: 'objectMatches', ref: ctx.lastObj ?? ctx.self, filter: noun.filter };
   }
+  // "the top card of your library is black"
+  if ((m = t.match(/^the top card of your library is (white|blue|black|red|green|colorless|multicolored|legendary)$/))) {
+    const nounTop = parseNoun(`a ${m[1]} card`);
+    if (nounTop) return { kind: 'count', filter: { ...nounTop.filter, zone: 'library', owner: 'you', custom: 'topOfLibrary' }, op: '>=', value: 1 };
+  }
   if ((m = t.match(/^the top card of your library is (?:a|an) (.+)$/))) {
     const noun = parseNoun(`a ${oc(m, 1)}`);
     if (noun) return { kind: 'count', filter: { ...noun.filter, zone: 'library', owner: 'you', custom: 'topOfLibrary' }, op: '>=', value: 1 };

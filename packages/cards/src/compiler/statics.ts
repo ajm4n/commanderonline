@@ -536,6 +536,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       );
     }
   }
+  // "For each non-Human creature you control, you may have that creature assign its combat damage
+  // as though it weren't blocked." / "Enchanted creature's controller may have it assign ..."
+  if ((m = L.match(/^For each (.+?), you may have that (?:creature|permanent) assign its combat damage as though it (?:weren't|were not|was not) blocked$/i))) {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (noun && noun.confident) return [{ kind: 'static', text: line, affects: { ...noun.filter, zone: 'battlefield' }, rule: { kind: 'custom', tag: 'assignAsUnblocked' } }];
+  }
+  if ((m = L.match(/^(Enchanted|Equipped) (?:creature|permanent)'s controller may have it assign its combat damage as though it (?:weren't|were not|was not) blocked$/i))) {
+    return [{ kind: 'static', text: line, affects: 'attachedTo', rule: { kind: 'custom', tag: 'assignAsUnblocked' } }];
+  }
   // "Equipped creature has lifelink if you control a Cleric, deathtouch if you control a Rogue,
   // ..." — one static per clause. A clause conditioned on the subject itself ("vigilance if it is
   // white") becomes a filter on the subject instead, so it is judged per affected object.
