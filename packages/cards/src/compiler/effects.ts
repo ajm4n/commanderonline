@@ -9300,6 +9300,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (inner && hasCopy(inner)) return retimeCopies(inner);
     ctx.targets.length = saved;
   }
+  // Kaya, Ghost Assassin: "Exile ~ or up to one target creature." — one of two exiles, chosen on resolution.
+  if ((m = text.match(/^exile ~ or up to one target (creature|permanent|nonland permanent)$/i))) {
+    const ref = objRef(`up to one target ${m[1]}`, ctx);
+    if (ref) {
+      ctx.lastObj = { ref: 'lastMoved' };
+      return [{ kind: 'chooseMode', count: 1, options: [{ text: `Exile ~`, effects: [{ kind: 'exile', what: SELF, remember: 'exiled' }] }, { text: `Exile the target ${m[1]}`, effects: [{ kind: 'exile', what: ref, remember: 'exiled' }] }] }];
+    }
+  }
   // Comet Storm: "Choose any target, then choose another target for each time this spell was kicked."
   if (/^choose any target, then choose another target for each time (?:~|this spell|it) was kicked$/i.test(text)) {
     ctx.targets.push({ description: 'any target', kind: 'any', playerFilter: 'any' });
