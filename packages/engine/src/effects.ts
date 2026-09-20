@@ -39,7 +39,10 @@ export function applyCopyExceptions(base: CardData, ex: TokenSpec['exceptions'] 
   if (ex.addTypes?.length) typeLine = `${ex.addTypes.filter((t) => !typeLine.includes(t)).join(' ')} ${typeLine}`.trim();
   if (ex.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
   const extraText = [...(ex.keywords ?? []), ...(ex.haste ? ['Haste'] : []), ...(ex.abilities ?? [])];
-  return { ...base, oracleId: `${base.oracleId}:x`, name: ex.name ?? base.name, typeLine, oracleText: extraText.length ? `${base.oracleText}\n${extraText.join('\n')}` : base.oracleText, power: ex.power ?? base.power, toughness: ex.toughness ?? base.toughness, colors: ex.colors ?? base.colors };
+  const kept = ex.losesAbilities?.length
+    ? base.oracleText.split('\n').filter((l) => !ex.losesAbilities!.some((k) => new RegExp(`^${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(l.trim()))).join('\n')
+    : base.oracleText;
+  return { ...base, oracleId: `${base.oracleId}:x`, name: ex.name ?? base.name, typeLine, oracleText: extraText.length ? `${kept}\n${extraText.join('\n')}` : kept, power: ex.power ?? base.power, toughness: ex.toughness ?? base.toughness, colors: ex.colors ?? base.colors };
 }
 
 export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardData {

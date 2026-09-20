@@ -8641,7 +8641,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
   // Split on commas/ands outside quoted rules text.
   const masked = text.replace(/"[^"]*"/g, (q) => '\u0001'.repeat(q.length));
   const bounds: number[] = [];
-  for (const bm of masked.matchAll(/,? and (?=(?:it|they|its|is|has|have|are)\b)|, /gi)) bounds.push(bm.index!, bm.index! + bm[0].length);
+  for (const bm of masked.matchAll(/,? and (?=(?:it|they|its|is|has|have|are|loses|lose)\b)|, /gi)) bounds.push(bm.index!, bm.index! + bm[0].length);
   const parts: string[] = [];
   let at = 0;
   for (let bi = 0; bi < bounds.length; bi += 2) {
@@ -8655,7 +8655,7 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
     const p2 = p
       .replace(/^and /i, '')
       .replace(/^(?:the token|the copy|that token|those tokens|the tokens|the copies|those creatures|that creature) /i, 'it ')
-      .replace(/^(?=(?:is|has|have|are) )/i, 'it ')
+      .replace(/^(?=(?:is|has|have|are|loses|lose) )/i, 'it ')
       .replace(/\b(?:aren't|are not|isn't)\b/gi, 'is not');
     if ((m = p2.match(/^(?:it|they) (?:is|are) (white|blue|black|red|green|colorless)$/i))) {
       const cc = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G', colorless: '' } as const;
@@ -8697,6 +8697,10 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
         if (!kws) return null;
         ex.keywords = [...(ex.keywords ?? []), ...kws];
       }
+    } else if ((m = p2.match(/^(?:it|they) loses? (.+)$/i))) {
+      const gone = m[1].split(/,? and |, /i).map((k) => k.trim()).filter(Boolean);
+      if (!gone.length || gone.some((k) => !/^[\w' -]+$/.test(k))) return null;
+      ex.losesAbilities = [...(ex.losesAbilities ?? []), ...gone.map((k) => k.replace(/^\w/, (ch) => ch.toUpperCase()))];
     } else if ((m = p2.match(/^(?:it|they) enters? with (?:an additional|a|an|(\w+)) ([+-]\d\/[+-]\d|\w+) counters? on (?:it|them)$/i))) {
       const n308 = m[1] ? wordToNumber(m[1]) : 1;
       if (typeof n308 !== 'number') return null;
@@ -8880,7 +8884,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (ref && options.length > 1) return [{ kind: 'addCounters', counter: options[0], counterOptions: options, amount: 1, on: ref }];
   }
   // "return target creature card from your graveyard to the battlefield tapped and attacking"
-  if ((m = text.match(/^(return .+? to the battlefield) tapped and attacking$/i))) {
+  if ((m = text.match(/^(return .+? to the battlefield(?: under (?:your|its owner's|their owner's|that player's) control)?) tapped and attacking$/i))) {
     const inner = parseSentence(`${m[1]} tapped`, ctx);
     if (inner) return inner.map((e) => (e.kind === 'returnToBattlefield' ? { ...e, attacking: true } : e));
   }
