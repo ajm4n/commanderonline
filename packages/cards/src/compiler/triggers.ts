@@ -1743,7 +1743,9 @@ export function splitTriggerRest(rest: string): { optional: boolean; condition: 
   let optional = false;
   // Keep "you may" inline when a later sentence branches on it ("If you do, ..." / "Otherwise, ..."),
   // so the optional effect and its branches stay one unit.
-  if ((m = r.match(/^you may (.+)$/i)) && !/^you may pay /i.test(r) && !/\.\s*(?:If you do|Otherwise|When you do)[,.]/i.test(r)) {
+  // A leading "you may" makes the whole trigger optional, unless a later sentence depends on the choice
+  // ("If you do", "If you don't", "If you can't", "Otherwise"): then the option lives inside the effects.
+  if ((m = r.match(/^you may (.+)$/i)) && !/^you may pay /i.test(r) && !/\.\s*(?:If you do|If you don't|If you do not|If you can't|If you cannot|Otherwise|When you do)[,.]/i.test(r)) {
     optional = true;
     r = m[1];
     r = r.replace(/^have (.+?) deal /i, '$1 deals ').replace(/^have (.+?) fight /i, '$1 fights ');
