@@ -8683,5 +8683,74 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/4/4/44dcab01-1d13-4dfc-ae2f-fbaa3dd35087.jpg?1783918082"
     }
+  },
+  {
+    "object": "card",
+    "id": "14dc88ee-bba9-4625-af0d-89f3762a0ead",
+    "oracle_id": "8485cfaa-1dbf-432b-b5d0-92a6aa6a329b",
+    "name": "Tergrid, God of Fright // Tergrid's Lantern",
+    "lang": "en",
+    "layout": "modal_dfc",
+    "mana_cost": "{3}{B}{B}",
+    "cmc": 5,
+    "type_line": "Legendary Creature — God",
+    "oracle_text": "Menace\nWhenever an opponent sacrifices a nontoken permanent or discards a permanent card, you may put that card from a graveyard onto the battlefield under your control.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [
+      "Menace"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "4",
+    "toughness": "5",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/1/4/14dc88ee-bba9-4625-af0d-89f3762a0ead.jpg?1783928244"
+    }
+  },
+  {
+    "object": "card",
+    "id": "97eb1804-6fd8-4917-af36-87fdfce39d3a",
+    "oracle_id": "25eaa977-ca85-4f8d-8be5-9297a3edb14f",
+    "name": "Gyruda, Doom of Depths",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}{U/B}{U/B}",
+    "cmc": 6,
+    "type_line": "Legendary Creature — Demon Kraken",
+    "oracle_text": "Companion — Your starting deck contains only cards with even mana values. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nWhen Gyruda enters, each player mills four cards. Put a creature card with an even mana value from among the milled cards onto the battlefield under your control.",
+    "colors": [
+      "U",
+      "B"
+    ],
+    "color_identity": [
+      "U",
+      "B"
+    ],
+    "keywords": [
+      "Companion",
+      "Mill"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "6",
+    "toughness": "6",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/9/7/97eb1804-6fd8-4917-af36-87fdfce39d3a.jpg?1783931012"
+    }
   }
 ]

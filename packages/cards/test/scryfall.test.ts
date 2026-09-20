@@ -21,7 +21,7 @@ const byName = (name: string): ScryfallCard => {
 
 describe('fixture', () => {
   it('contains the expected cards and every one is playable', () => {
-    expect(raw.length).toBe(161);
+    expect(raw.length).toBe(163);
     expect(raw.every(isPlayableCard)).toBe(true);
     expect(raw.filter((c) => c.card_faces).map((c) => c.layout).sort()).toEqual(['adventure', 'flip', 'modal_dfc', 'split', 'transform']);
   });
@@ -210,8 +210,8 @@ describe('CardDb', () => {
   const db = loadFixtureDb();
 
   it('loads the fixture synchronously', () => {
-    expect(db.size).toBe(161);
-    expect(db.all()).toHaveLength(161);
+    expect(db.size).toBe(163);
+    expect(db.all()).toHaveLength(163);
     expect(db.all()).not.toBe(db.all()); // defensive copy
   });
 
@@ -333,7 +333,7 @@ describe('loadCardDb', () => {
     const file = join(dir, 'cards.json');
     writeFileSync(file, JSON.stringify(loadFixtureDb().all()));
     const db = await loadCardDb(file);
-    expect(db.size).toBe(161);
+    expect(db.size).toBe(163);
     expect(db.byName('Counterspell')?.oracleText).toBe('Counter target spell.');
   });
 });

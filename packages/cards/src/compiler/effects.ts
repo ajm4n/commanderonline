@@ -2187,6 +2187,18 @@ const PATTERNS: Pattern[] = [
     { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'lifeCantChange' }, duration: 'untilYourNextTurn' },
     { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'protectionFromEverything' }, duration: 'untilYourNextTurn' },
   ]],
+  // Gyruda: "Put a creature card with an even mana value from among the milled cards onto the battlefield under your control."
+  [/^put (?:a|an|up to one) (.+?) from among (?:the milled cards|the cards milled this way|them|those cards) onto the battlefield( tapped)?(?: under your control)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun || !noun.confident) return null;
+    const key = `pick_${Math.random().toString(36).slice(2, 6)}`;
+    const pool: Ref = ctx.restKey ? { ref: 'chosen', key: ctx.restKey } : ctx.lastObj ?? { ref: 'lastMoved' };
+    ctx.lastObj = { ref: 'chosen', key };
+    return [
+      { kind: 'chooseObjects', who: YOU, from: pool, filter: { ...noun.filter, zone: undefined }, count: 1, key, upTo: true },
+      { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, controller: 'you', ...(m[2] ? { tapped: true } : {}) },
+    ];
+  }],
   // Chrome Mox: "Add one mana of any of the exiled card's colors."
   [/^add one mana of any of the exiled card's colou?rs$/i, () => [{ kind: 'addMana', mana: 'exiledColors' }]],
   // Thousand-Year Storm: "copy it for each other instant and sorcery spell you've cast before it this turn"

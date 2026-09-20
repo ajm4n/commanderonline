@@ -483,6 +483,21 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever an opponent attacks another one of your opponents, (.+)$/i))) return { event: 'attacks', filter: { player: 'opponent', otherPlayer: 'opponent', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever an opponent discards a card or mills one or more cards, (.+)$/i))) return { event: 'discard', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'mill', filter: { player: 'opponent' }, hasObject: true, hasPlayer: true }] };
   if ((m = L.match(/^Whenever you play a legendary land or cast a legendary spell, (.+)$/i))) return { event: 'landPlayed', filter: { player: 'you', object: { supertypes: ['Legendary'] } }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'cast', filter: { player: 'you', object: { supertypes: ['Legendary'] } }, hasObject: true, hasPlayer: true }] };
+  // Tergrid: "Whenever an opponent sacrifices a nontoken permanent or discards a permanent card, you may put that card from a graveyard onto the battlefield under your control."
+  if ((m = L.match(/^Whenever an opponent sacrifices (?:a|an) (.+?) or discards (?:a|an) (.+?), (.+)$/i))) {
+    const a = parseNoun(`a ${m[1]}`);
+    const b = parseNoun(`a ${m[2]}`);
+    if (a && b) {
+      return {
+        event: 'sacrifice',
+        filter: { player: 'opponent', object: { ...a.filter, zone: undefined } },
+        hasObject: true,
+        hasPlayer: true,
+        rest: m[3].replace(/\bput that card from (?:a|their) graveyard onto the battlefield\b/i, 'put that card onto the battlefield'),
+        also: [{ event: 'discard', filter: { player: 'opponent', object: { ...b.filter, zone: undefined } }, hasObject: true, hasPlayer: true }],
+      };
+    }
+  }
   if ((m = L.match(/^Whenever (?:a|an) player sacrifices another permanent, (.+)$/i))) return { event: 'sacrifice', filter: { object: { other: true } }, hasObject: true, hasPlayer: true, rest: m[1] };
   // The Ur-Dragon: "Whenever one or more Dragons you control attack, draw that many cards" — once per attack
   // declaration; "that many" is how many of them are attacking.

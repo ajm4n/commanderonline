@@ -1126,7 +1126,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         g.emit({ name: 'surveil', playerId: p, amount: amt(e.amount) });
       }
       return;
-    case 'mill':
+    case 'mill': {
+      const allMilled: ObjectId[] = []; // "from among the milled cards" covers every player's cards (Gyruda)
       for (const p of playersOf(g, e.who, ctx)) {
         let n = amt(e.amount);
         // "If an opponent would mill one or more cards, they mill twice that many cards instead."
@@ -1152,10 +1153,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const r = g.moveObject(id, 'graveyard', { cause: 'mill' });
           if (r) milled.push(r.id);
         }
-        ctx.memory['lastMoved'] = milled;
+        allMilled.push(...milled);
         if (milled.length) g.log(`${g.player(p).name} mills ${milled.length}.`);
       }
+      ctx.memory['lastMoved'] = allMilled;
       return;
+    }
     case 'discard':
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
