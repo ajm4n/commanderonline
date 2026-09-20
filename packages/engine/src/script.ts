@@ -75,6 +75,8 @@ export type Amount =
   /** Number of colors of the referenced object(s). */
   /** Mana spent to cast the source: distinct colors, total, or how many times a symbol group was paid. */
   | { kind: 'manaSpent'; of: 'colors' | 'total'; symbols?: string }
+  /** "the number of colors in your commanders' color identity" */
+  | { kind: 'commanderColors'; ref: Ref }
   /** How many votes an option received (see the `vote` effect). */
   | { kind: 'voteCount'; option: string }
   | { kind: 'colorCount'; ref?: Ref; /** Distinct colors among objects matching this filter ('colors among permanents you control'). */ filter?: ObjectFilter }
@@ -655,6 +657,12 @@ export interface AbilityCost {
   handToLibrary?: { count: number; position: 'top' | 'bottom' };
   /** "Remove a +1/+1 counter from a creature you control" */
   removeCountersFrom?: { counter: CounterType | 'any'; amount: number; filter: ObjectFilter };
+  /** "Remove X +1/+1 counters from among creatures you control": spread over several permanents. */
+  removeCountersAcross?: { counter: CounterType | 'any'; amount: number | 'X'; filter: ObjectFilter };
+  /** "Pay life equal to the number of colors in your commanders' color identity". */
+  payLifeAmount?: Amount;
+  /** "{R}{W}, Unattach ~". */
+  unattachSelf?: boolean;
   /** Crew / saddle: tap any number of untapped matching creatures with total power N or more. */
   tapUntappedTotalPower?: { filter: ObjectFilter; power: number };
   returnToHand?: { filter: ObjectFilter; count: number };

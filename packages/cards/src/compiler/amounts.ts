@@ -29,7 +29,10 @@ function thatPlayer(ctx: RefCtx): Ref {
 }
 
 /** Parse an amount phrase. Returns null if not understood. */
+const COMMANDER_COLORS_RE = /^the number of colou?rs? in (?:your|their) commanders?'? colou?r identity$/i;
+
 export function parseAmount(text: string, ctx: RefCtx): Amount | null {
+  if (COMMANDER_COLORS_RE.test(text.trim().replace(/[.,;]$/, ''))) return { kind: 'commanderColors', ref: { ref: 'controller' } };
   text = text.replace(/\byou've\b/gi, 'you have').replace(/\bopponents? you have\b/i, 'opponents you have').replace(/\b([+\-\w\/]+) counter on\b/i, '$1 counters on');
   {
     const t0 = text.trim().toLowerCase().replace(/^the number of /, '');

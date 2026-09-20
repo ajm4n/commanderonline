@@ -3,6 +3,7 @@ import type { AbilityCost, Condition } from '@commander/engine';
 import { parseNoun, singularize, singularizeList } from './nouns.js';
 import { wordToNumber } from './text.js';
 import { parseCondition } from './conditions.js';
+import { parseAmount } from './amounts.js';
 
 const MANA_RE = /^(?:\{[^}]+\})+$/;
 
@@ -52,13 +53,14 @@ export function parseCost(text: string): AbilityCost | null {
   }
   // "Remove a counter from an artifact, creature, land, or planeswalker you control": comma list.
   {
-    const rm = text.match(/^Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+ )?counters? from (?:a|an) ([\w -]+(?:, [\w -]+)+,? or [\w -]+)$/i);
+    const rm = text.match(/^(?:(.+?),\s*)?Remove (?:a|an|(\w+)) ([+-]\d\/[+-]\d|[\w'-]+ )?counters? from (?:a|an) ([\w -]+(?:, [\w -]+)+,? or [\w -]+)$/i);
     if (rm) {
-      const listed = singularizeList(rm[3].replace(/,? and\/or /g, ', or '));
+      const listed = singularizeList(rm[4].replace(/,? and\/or /g, ', or '));
       const noun = parseNoun(`an ${listed}`) ?? parseNoun(`a ${listed}`);
-      const n = rm[1] ? wordToNumber(rm[1]) : 1;
-      if (noun && noun.confident && typeof n === 'number') {
-        return { removeCountersFrom: { counter: rm[2] ? rm[2].trim() : 'any', amount: n, filter: { ...noun.filter, zone: 'battlefield' } } };
+      const n = rm[2] ? wordToNumber(rm[2]) : 1;
+      const pre = rm[1] ? parseCost(rm[1]) : {};
+      if (pre && noun && noun.confident && typeof n === 'number') {
+        return { ...pre, removeCountersFrom: { counter: rm[3] ? rm[3].trim() : 'any', amount: n, filter: { ...noun.filter, zone: 'battlefield' } } };
       }
     }
   }
@@ -188,11 +190,28 @@ export function parseCost(text: string): AbilityCost | null {
       else cost.mana = p.replace(/\{T\}/g, '');
       matched = true;
     }
+    if (!matched) kp15b: if ((m = p.match(/^Remove (X|a|an|\w+) (?:([+-]\d\/[+-]\d|[\w'-]+) )?counters? from among (.+)$/i))) {
+      const noun = parseNoun(`all ${m[3]}`) ?? parseNoun(m[3]);
+      const n = /^x$/i.test(m[1]) ? 'X' : /^(?:a|an)$/i.test(m[1]) ? 1 : wordToNumber(m[1]);
+      if (!noun || !noun.confident || n === null) break kp15b;
+      cost.removeCountersAcross = { counter: m[2] ? m[2].trim() : 'any', amount: n, filter: { ...noun.filter, zone: 'battlefield' } };
+      matched = true;
+    }
+    if (!matched) kp15c: if (/^Unattach ~$/i.test(p)) {
+      cost.unattachSelf = true;
+      matched = true;
+    }
+    if (!matched) kp15d: if ((m = p.match(/^Pay life equal to (.+)$/i))) {
+      const a = parseAmount(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (a === null) break kp15d;
+      cost.payLifeAmount = a;
+      matched = true;
+    }
     if (!matched) kp16: if (/^Sacrifice ~$/i.test(p)) {
       cost.sacrificeSelf = true;
       matched = true;
     }
-    if (!matched) kp17: if ((m = p.match(/^Sacrifice ~ and (?:a|an) (.+)$/i))) {
+    if (!matched) kp17: if ((m = p.match(/^Sacrifice ~ and (?:a|an|another) (.+)$/i))) {
       const noun = parseNoun(`a ${m[1]}`);
       if (!noun) break kp17;
       cost.sacrificeSelf = true;

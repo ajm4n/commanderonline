@@ -1772,6 +1772,8 @@ export class Game {
         for (const o of objectsMatching(this, a.filter, fctx)) for (const t of this.characteristics(o.id).types) types.add(t);
         return types.size;
       }
+      case 'commanderColors':
+        return this.resolvePlayers(a.ref, ctx).reduce((n, pid) => n + this.colorsOfCommander(pid).length, 0);
       case 'manaSpent': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : undefined;
         const pool = (src?.memory['manaSpentPool'] as Record<string, number> | undefined) ?? {};

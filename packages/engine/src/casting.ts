@@ -581,6 +581,15 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     } else if (pile.length < cost.exileTop.count) return false;
   }
   if (cost.handToLibrary && g.player(p).hand.length < cost.handToLibrary.count) return false;
+  if (cost.removeCountersAcross) {
+    const need = cost.removeCountersAcross.amount === 'X' ? x : cost.removeCountersAcross.amount;
+    const kind = cost.removeCountersAcross.counter;
+    const have = objectsMatching(g, cost.removeCountersAcross.filter, ctx).reduce((a, o) => a + (kind === 'any' ? Object.values(o.counters).reduce((s, v) => s + (v ?? 0), 0) : o.counters[kind] ?? 0), 0);
+    if (have < need) return false;
+  }
+  const amtCtx = { sourceId: obj.id, controller: p, targets: [], triggerContext: {}, x, modes: [], memory: {} };
+  if (cost.payLifeAmount !== undefined && g.player(p).life < g.resolveAmount(cost.payLifeAmount, amtCtx)) return false;
+  if (cost.unattachSelf && obj.attachedTo === null) return false;
   if (cost.removeCountersFrom) {
     const cands = objectsMatching(g, cost.removeCountersFrom.filter, ctx).filter((o) => (cost.removeCountersFrom!.counter === 'any' ? Object.values(o.counters).reduce((a, b) => a + (b ?? 0), 0) : o.counters[cost.removeCountersFrom!.counter] ?? 0) >= cost.removeCountersFrom!.amount);
     if (!cands.length) return false;
@@ -727,6 +736,33 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       ids = resp.ids;
     }
     for (const id of ids) g.untap(id);
+  }
+  if (cost.payLifeAmount !== undefined) g.loseLife(p, g.resolveAmount(cost.payLifeAmount, amtCtx));
+  if (cost.unattachSelf) {
+    if (obj.attachedTo === null) return false;
+    const host = g.state.objects[obj.attachedTo];
+    if (host) host.attachments = host.attachments.filter((id) => id !== obj.id);
+    obj.attachedTo = null;
+    g.emit({ name: 'becomesUnattached', objectId: obj.id, playerId: obj.controller });
+    g.touch();
+  }
+  if (cost.removeCountersAcross) {
+    const need = cost.removeCountersAcross.amount === 'X' ? x : cost.removeCountersAcross.amount;
+    const kind = cost.removeCountersAcross.counter;
+    const has = (o: GameObject): number => (kind === 'any' ? Object.values(o.counters).reduce((s, v) => s + (v ?? 0), 0) : o.counters[kind] ?? 0);
+    for (let left = need; left > 0; left--) {
+      const cands = objectsMatching(g, cost.removeCountersAcross.filter, ctx).filter((o) => has(o) > 0).map((o) => o.id);
+      if (!cands.length) return false;
+      let pick = cands[0];
+      if (cands.length > 1) {
+        const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Remove a ${kind === 'any' ? '' : `${kind} `}counter as a cost (${left} left)`, candidates: cands, min: 1, max: 1, sourceId: obj.id });
+        if (resp.type !== 'objects' || !resp.ids.length) return false;
+        pick = resp.ids[0];
+      }
+      const one = kind === 'any' ? (Object.entries(g.obj(pick).counters).find(([, v]) => (v ?? 0) > 0)?.[0] ?? '') : kind;
+      if (!one) return false;
+      g.removeCounters(pick, one, 1);
+    }
   }
   if (cost.removeCountersFrom) {
     const need = cost.removeCountersFrom.amount;
