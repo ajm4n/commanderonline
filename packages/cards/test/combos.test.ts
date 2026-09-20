@@ -134,7 +134,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage', 'Bite Down', 'Warstorm Surge', 'Fecundity', 'Heartless Hidetsugu', 'Yawgmoth Demon'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage', 'Bite Down', 'Warstorm Surge', 'Fecundity', 'Heartless Hidetsugu', 'Yawgmoth Demon', 'Glimpse the Sun God'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -1023,6 +1023,23 @@ describe('combos and staples played through the engine', () => {
     expect(d.g.obj(demon).tapped).toBe(true);
     expect(d.g.player(p1).life).toBe(38);
     expect(d.bf(p1, 'Sol Ring')).toHaveLength(1);
+  });
+  it('"Tap X target creatures" asks for exactly X targets', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Plains', 3);
+    const a = d.put(p2, C('Grizzly Bears'));
+    const b = d.put(p2, C('Grizzly Bears'));
+    d.put(p2, C('Llanowar Elves'));
+    const glimpse = d.give(p1, C('Glimpse the Sun God'));
+    d.cast(glimpse, { xValue: 2 });
+    d.until((x) => x.type === 'chooseTargets', 60);
+    const dec = d.g.pending as Extract<Decision, { type: 'chooseTargets' }>;
+    expect(dec.slots[0].min).toBe(2);
+    expect(dec.slots[0].max).toBe(2);
+    d.submit({ type: 'targets', targets: [[{ kind: 'object', id: a }, { kind: 'object', id: b }]] });
+    d.resolve();
+    expect(d.g.obj(a).tapped).toBe(true);
+    expect(d.g.obj(b).tapped).toBe(true);
   });
   it('Terastodon: each destroyed permanent\'s controller gets an Elephant', () => {
     const { d, p1, p2 } = game();

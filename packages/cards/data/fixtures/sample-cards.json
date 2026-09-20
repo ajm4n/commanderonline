@@ -9200,5 +9200,36 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/6/9/696a9fe1-ce63-4638-8793-5187fc726731.jpg?1783943978"
     }
+  },
+  {
+    "object": "card",
+    "id": "f241e5f7-3168-4bd2-b586-185aad3ae9d9",
+    "oracle_id": "87cc3a67-b4f0-41f0-9e34-745ef23aa479",
+    "name": "Glimpse the Sun God",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{X}{W}",
+    "cmc": 1,
+    "type_line": "Instant",
+    "oracle_text": "Tap X target creatures. Scry 1. (Look at the top card of your library. You may put that card on the bottom.)",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [
+      "Scry"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/2/f241e5f7-3168-4bd2-b586-185aad3ae9d9.jpg?1783939580"
+    }
   }
 ]
