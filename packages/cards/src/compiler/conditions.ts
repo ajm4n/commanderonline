@@ -408,6 +408,20 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   if (t === 'it is your turn' || t === "it's your turn") return { kind: 'yourTurn' };
   if (t === 'it is not your turn') return { kind: 'notYourTurn' };
+  // "if it's not their turn" (Adrenaline Jockey) / "if it's that player's turn"
+  if ((m = t.match(/^it is (not )?(?:their|that player's|that opponent's) turn$/))) {
+    const who: Ref = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' } : { ref: 'controllerOf', of: ctx.lastObj ?? { ref: 'triggerObject' } });
+    const c: Condition = { kind: 'playersTurn', ref: who };
+    return m[1] ? { kind: 'not', c } : c;
+  }
+  // "if ~ attacked or blocked this combat" (Clockwork Avian)
+  if ((m = t.match(/^(~|it) attacked or blocked this (?:combat|turn)$/))) {
+    const ref = m[1] === '~' ? ctx.self : itRef(ctx);
+    return { kind: 'or', cs: [{ kind: 'objectMatches', ref, filter: { attackedThisTurn: true } }, { kind: 'objectMatches', ref, filter: { blockedThisTurn: true } }] };
+  }
+  if ((m = t.match(/^(~|it) blocked this (?:combat|turn)$/))) return { kind: 'objectMatches', ref: m[1] === '~' ? ctx.self : itRef(ctx), filter: { blockedThisTurn: true } };
+  // Pack tactics: "if you attacked with creatures with total power 6 or greater this combat"
+  if ((m = t.match(/^you attacked with creatures with total power (\d+) or greater this combat$/))) return { kind: 'amount', a: { kind: 'totalPower', filter: { types: ['Creature'], attacking: true, controller: 'you', zone: 'battlefield' } }, op: '>=', b: parseInt(m[1], 10) };
   if (t === 'you control your commander' || t === 'you control a commander') return { kind: 'controlsCommander' };
   if (t === 'you are the monarch') return { kind: 'isMonarch', ref: { ref: 'controller' } };
   if (t === 'you have no cards in hand') return { kind: 'handSize', ref: { ref: 'controller' }, op: '==', value: 0 };

@@ -1466,6 +1466,8 @@ export class Game {
       }
       case 'yourTurn':
         return this.state.turn.activePlayer === ctx.controller;
+      case 'playersTurn':
+        return this.resolvePlayers(c.ref, ectx).includes(this.state.turn.activePlayer);
       case 'mostCommonColor': {
         const counts: Record<string, number> = { W: 0, U: 0, B: 0, R: 0, G: 0 };
         for (const id of this.state.battlefield) {

@@ -349,6 +349,7 @@ function* declareBlockers(g: Game): Gen {
       const blocker = g.obj(b.blocker);
       const attacker = g.obj(b.attacker);
       blocker.blocking.push(b.attacker);
+      blocker.memory['blockedThisTurn'] = true;
       attacker.blockedBy.push(b.blocker);
       attacker.wasBlocked = true;
     }

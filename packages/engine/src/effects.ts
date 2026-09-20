@@ -260,6 +260,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.simultaneousZoneChange(() => {
         for (const id of chosen) if (g.state.objects[id]?.zone === 'battlefield') g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
       });
+      // "That player sacrifices a creature. If the player can't, they lose 5 life" (Cruel Reality) reads what was sacrificed.
+      ctx.memory['lastMoved'] = chosen;
       return;
     }
     case 'exileChoice': {
@@ -700,19 +702,26 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'anyPlayerMay': {
       let anyPaid = false;
+      let accepted = 0;
       // "Any opponent may have it deal 4 damage to them" (Vexing Devil): the controller is not offered the choice.
       for (const p of g.activePlayers().filter((x) => !e.opponentsOnly || x !== ctx.controller)) {
         if (e.cost) {
           const paid = yield* offerToPay(g, p, e.cost, e.prompt ?? `Pay ${e.cost}?`);
-          if (paid) anyPaid = true;
+          if (paid) {
+            anyPaid = true;
+            accepted++;
+          }
           continue;
         }
         const resp = yield* g.ask({ type: 'yesNo', player: p, prompt: e.prompt ?? describe(e.effects), sourceId: ctx.sourceId ?? undefined });
         if (resp.type === 'yesNo' && resp.value) {
           anyPaid = true;
+          accepted++;
           yield* executeEffects(g, e.effects, { ...ctx, controller: p });
         }
       }
+      // "If no one does, …" (Book Burning) / "If a player does, …" read this like a may's acceptance count.
+      ctx.memory['acceptedTotal'] = accepted;
       if (anyPaid && e.then) yield* executeEffects(g, e.then, ctx);
       return;
     }

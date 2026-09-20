@@ -381,6 +381,8 @@ export interface ObjectFilter {
   attacking?: boolean;
   /** Attacked at any point this turn (even if no longer attacking). */
   attackedThisTurn?: boolean;
+  /** Blocked this turn ("if ~ attacked or blocked this combat"). */
+  blockedThisTurn?: boolean;
   /** Dealt damage to the effect's controller this turn. */
   dealtDamageToYouThisTurn?: boolean;
   /** Dealt damage to anything this turn ("target creature that dealt damage this turn"). */

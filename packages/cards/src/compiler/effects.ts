@@ -9026,7 +9026,9 @@ function damageToInner(targetText: string, amount: Amount, ctx: ParseCtx, source
   // "~ deals X damage to each of them" after "Choose any target, then choose another target …": every slot.
   if (/^(?:each of them|them|each of those targets)$/i.test(t) && ctx.anyTargets?.length) return ctx.anyTargets.map((r) => mk(r));
   // "~ deals 1 damage to them" with only a player in scope: that player (Roiling Vortex's "each player's upkeep").
-  if (l === 'them' && !ctx.lastObj && (ctx.lastPlayer || (ctx.triggerHasPlayer && !ctx.triggerHasObject))) return [mk(ctx.lastPlayer ?? { ref: 'triggerPlayer' })];
+  // A single trigger object is never "them"; the player is (Adrenaline Jockey: "Whenever a player casts a spell, … deals
+  // 4 damage to them"). Batch triggers ("one or more creatures") keep their objects.
+  if (l === 'them' && !ctx.lastObj && (ctx.lastPlayer || (ctx.triggerHasPlayer && !ctx.triggerBatch))) return [mk(ctx.lastPlayer ?? { ref: 'triggerPlayer' })];
   const ref = anyRef(t, ctx);
   if (ref) return [mk(ref)];
   return null;
@@ -9712,6 +9714,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // "You may X. If you do, Y" is split by the caller; handle "you may X" here.
+  // "You may pay {1} and 1 life. If you do, draw a card" (Miara, Purgatory): mana plus life.
+  if ((m = text.match(/^(?:you may )?pay ((?:\{[^}]+\})+) and (\d+) life\. if you do, (.+)$/i))) {
+    const inner = parseSentence(m[3], ctx);
+    if (inner) return [{ kind: 'ifPays', cost: m[1], payLife: parseInt(m[2], 10), effects: inner }];
+  }
   if ((m = text.match(/^(?:you may )?pay (\{.+?\}|\d+ life|\w+ \{E\})\. if you do, (.+)$/i))) {
     const inner = parseSentence(m[2], ctx);
     if (inner) {
@@ -10054,7 +10061,8 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   // "<effects> if <condition>" — likewise try each " if " boundary.
   if (/ if /i.test(text) && !/^counter /i.test(text)) {
     const cuts: number[] = [];
-    for (const mm of text.matchAll(/ if /gi)) if (mm.index !== undefined) cuts.push(mm.index);
+    // ". If you do, …" is a sentence boundary, not a trailing condition ("you may exile X. If you do, gain 2 life").
+    for (const mm of text.matchAll(/ if /gi)) if (mm.index !== undefined && text[mm.index - 1] !== '.') cuts.push(mm.index);
     for (const k of cuts) {
       const head = text.slice(0, k);
       const condText = text.slice(k + 4);
@@ -11136,6 +11144,15 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
             continue;
           }
         }
+        // "That player sacrifices a creature of their choice. If the player can't, they lose 5 life." (Cruel Reality): the
+        // sacrifice records what was given up, so "can't" is "fewer than asked were sacrificed".
+        if (/^if (?:the player|they|that player) (?:can't|cannot), /i.test(s) && lastP && lastP.kind === 'sacrificeChoice' && typeof lastP.count === 'number') {
+          const inner = parseSentence(s.replace(/^if (?:the player|they|that player) (?:can't|cannot), /i, ''), ctx);
+          if (inner) {
+            effects.push({ kind: 'conditional', if: { kind: 'amount', a: { kind: 'countRef', ref: { ref: 'lastMoved' } }, op: '<', b: lastP.count }, then: inner });
+            continue;
+          }
+        }
         // "Sacrifice a creature. If you can't, sacrifice this artifact." (Eldrazi Monument): the forced sacrifice needs a candidate.
         if (/^if you (?:can't|cannot), /i.test(s) && lastP && lastP.kind === 'sacrificeChoice' && typeof lastP.count === 'number' && (!lastP.who || lastP.who.ref === 'controller')) {
           const inner = parseSentence(s.replace(/^if you (?:can't|cannot), /i, ''), ctx);
@@ -11156,10 +11173,22 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
           continue;
         }
       }
+      // "You may reveal it and put it into your hand. If you don't put the card into your hand, you may put it into your
+      // graveyard" (Archghoul of Thraben) / "If you didn't put a card into your hand this way" / "If you don't cast it".
+      {
+        const nd = s.match(/^if you (?:don't|do not|didn't|did not) (?:put (?:the|that|a) card (?:into your hand|onto the battlefield)(?: this way)?|put it (?:into your hand|onto the battlefield)|cast (?:it|that card|a spell this way|a card this way)|reveal (?:it|a card)), (.+)$/i);
+        if (nd && /"kind":"(?:may|ifPays)"/.test(JSON.stringify(effects))) {
+          const inner = parseSentence(nd[1], ctx);
+          if (inner) {
+            effects.push({ kind: 'conditional', if: { kind: 'amount', a: { kind: 'ctxMemory', key: 'acceptedCount' }, op: '==', b: 0 }, then: inner });
+            continue;
+          }
+        }
+      }
       // "any player may …. If a player does, X" / "If no one does, X" / "If the player does, X" / "If that player doesn't, X"
       {
         const pd = s.match(/^if (a player|any player|no one|no player|the player|that player|they) (does|do|does not|doesn't|do not|don't)(?:,| then) (.+)$/i);
-        const hadMay = pd && JSON.stringify(effects).includes('"kind":"may"');
+        const hadMay = pd && /"kind":"(?:may|anyPlayerMay)"/.test(JSON.stringify(effects));
         // A positive "If they do, X" right after a "may" is merged into that block by the handlers below; take the rest here.
         const lastIsMay = effects[effects.length - 1]?.kind === 'may';
         const negative = pd ? /not|n't/i.test(pd[2]) : false;
@@ -11253,6 +11282,22 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
           continue;
         }
         ctx.lastPlayer = savedPlayer;
+        ctx.targets.length = saved;
+      }
+    }
+    // "Discard a card. If you do, draw a card" (Yuna's Decision): after a mandatory action, "if you do" means it happened.
+    {
+      const fu2 = s.match(/^if you do, (.+)$/i);
+      const prev = effects[effects.length - 1];
+      const movers = new Set(['discard', 'exile', 'exileChoice', 'sacrifice', 'sacrificeChoice', 'destroy', 'returnToHand', 'moveToZone', 'mill', 'searchLibrary', 'putIntoHand', 'removeCounters', 'returnToBattlefield']);
+      if (fu2 && prev && movers.has(prev.kind)) {
+        const saved = ctx.targets.length;
+        const inner = parseSentence(fu2[1], ctx);
+        if (inner) {
+          const ref: Ref = prev.kind === 'discard' ? { ref: 'lastDiscarded' } : { ref: 'lastMoved' };
+          effects.push(prev.kind === 'removeCounters' ? { kind: 'conditional', if: { kind: 'amount', a: { kind: 'ctxMemory', key: 'acceptedCount' }, op: '>=', b: 1 }, then: inner } : { kind: 'conditional', if: { kind: 'amount', a: { kind: 'countRef', ref }, op: '>=', b: 1 }, then: inner });
+          continue;
+        }
         ctx.targets.length = saved;
       }
     }

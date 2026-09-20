@@ -369,6 +369,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     if (host === null || host === undefined || !(g.state.damagedBy[obj.id] ?? []).includes(host)) return false;
   }
   if (filter.attackedThisTurn && !obj.memory['attackedThisTurn']) return false;
+  if (filter.blockedThisTurn && !obj.memory['blockedThisTurn']) return false;
   if (filter.ownerRef) {
     const owners = g.resolvePlayers(filter.ownerRef, { sourceId: ctx.sourceId ?? null, controller: ctx.controller, targets: [], triggerContext: {}, x: ctx.x ?? 0, modes: [], memory: {} });
     if (!owners.includes(obj.owner)) return false;
