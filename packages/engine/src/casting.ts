@@ -912,6 +912,22 @@ export function playableFromTop(g: Game, p: PlayerId, obj: GameObject): boolean 
   return false;
 }
 
+const PERMANENT_TYPES = ['Artifact', 'Creature', 'Enchantment', 'Planeswalker', 'Battle'] as const;
+
+/**
+ * Muldrotha: "cast a permanent spell of each permanent type from your graveyard" each turn. The first permanent type
+ * of the card not yet used this turn, or undefined when every type it has is spent.
+ */
+function unusedGraveyardType(g: Game, p: PlayerId, obj: GameObject): string | undefined {
+  const types = g.characteristics(obj.id).types;
+  return PERMANENT_TYPES.find((t) => types.includes(t) && !g.state.turnStats[`castFromGyType:${p}:${t}`]);
+}
+
+/** Does a per-permanent-type graveyard permission (Muldrotha) apply to this player right now? */
+function perTypeGraveyardRule(g: Game, p: PlayerId, tag: 'castFromGraveyard' | 'playLandsFromGraveyard'): boolean {
+  return g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === tag && !!(r.data as { perPermanentType?: boolean } | undefined)?.perPermanentType);
+}
+
 /** Zones a player may cast the object from right now. */
 function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (obj.zone === 'library') return playableFromTop(g, p, obj);
@@ -922,8 +938,10 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
     if (obj.owner !== p) return false;
     for (const r of g.playerRules(p)) {
       if (r.kind !== 'custom' || r.tag !== 'castFromGraveyard') continue;
-      const d = (r.data as { filter?: import('./types.js').ObjectFilter; oncePerTurn?: boolean } | undefined) ?? {};
+      const d = (r.data as { filter?: import('./types.js').ObjectFilter; oncePerTurn?: boolean; yourTurnOnly?: boolean; perPermanentType?: boolean } | undefined) ?? {};
       if (d.oncePerTurn && g.state.turnStats[`castFromGy:${p}`]) continue;
+      if (d.yourTurnOnly && g.state.turn.activePlayer !== p) continue;
+      if (d.perPermanentType && unusedGraveyardType(g, p, obj) === undefined) continue;
       if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
       return true;
     }
@@ -1242,7 +1260,9 @@ export function buildPriorityDecision(g: Game, p: PlayerId): PriorityDecision {
   if (pl.library[0] !== undefined && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playFromTop')) zonesToScan.push(pl.library[0]);
   const landsFromGraveyard = (o: GameObject) => g.playerRules(p).some((r) => {
     if (r.kind !== 'custom' || r.tag !== 'playLandsFromGraveyard') return false;
-    const d = r.data as { filter?: import('./types.js').ObjectFilter } | undefined;
+    const d = r.data as { filter?: import('./types.js').ObjectFilter; yourTurnOnly?: boolean; perPermanentType?: boolean } | undefined;
+    if (d?.yourTurnOnly && g.state.turn.activePlayer !== p) return false;
+    if (d?.perPermanentType && g.state.turnStats[`castFromGyType:${p}:Land`]) return false;
     return !d?.filter || matchesFilter(g, o, { ...d.filter, zone: undefined }, { sourceId: null, controller: p });
   });
   for (const o of g.opponentsOf(p)) zonesToScan.push(...g.player(o).graveyard.filter((id) => g.obj(id).memory['castableBy'] === p), ...g.player(o).exile.filter((id) => Object.values(g.obj(id).counters).some((n) => n > 0)));
@@ -1363,8 +1383,15 @@ export function* playLand(g: Game, p: PlayerId, id: ObjectId): Gen<boolean> {
     if (back < 1) return false;
     faceIndex = back;
   }
-  const fromGraveyard = obj.zone === 'graveyard' && obj.owner === p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playLandsFromGraveyard');
+  const fromGraveyard = obj.zone === 'graveyard' && obj.owner === p && g.playerRules(p).some((r) => {
+    if (r.kind !== 'custom' || r.tag !== 'playLandsFromGraveyard') return false;
+    const d = r.data as { yourTurnOnly?: boolean; perPermanentType?: boolean } | undefined;
+    if (d?.yourTurnOnly && g.state.turn.activePlayer !== p) return false;
+    if (d?.perPermanentType && g.state.turnStats[`castFromGyType:${p}:Land`]) return false;
+    return true;
+  });
   if (!(obj.zone === 'hand' || ((obj.zone === 'exile' || obj.zone === 'library') && castableFrom(g, p, obj)) || obj.zone === 'command' || fromGraveyard)) return false;
+  if (fromGraveyard && perTypeGraveyardRule(g, p, 'playLandsFromGraveyard')) g.state.turnStats[`castFromGyType:${p}:Land`] = 1;
   obj.faceIndex = faceIndex;
   const fromZone = obj.zone;
   const r = yield* enterBattlefield(g, id, p, {});
@@ -1686,7 +1713,13 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (!opts.free) {
     const paid = yield* payCost(g, p, cost, x, id, keywords, !!resp.manualMana);
     if (paid) {
-      if (fromZone === 'graveyard' && !/^Flashback/m.test(face.oracleText) && obj.memory['castableBy'] !== p) g.state.turnStats[`castFromGy:${p}`] = 1;
+      if (fromZone === 'graveyard' && !/^Flashback/m.test(face.oracleText) && obj.memory['castableBy'] !== p) {
+        g.state.turnStats[`castFromGy:${p}`] = 1;
+        if (perTypeGraveyardRule(g, p, 'castFromGraveyard')) {
+          const t = unusedGraveyardType(g, p, obj);
+          if (t) g.state.turnStats[`castFromGyType:${p}:${t}`] = 1;
+        }
+      }
       if (fromZone === 'library') g.state.turnStats[`castFromTop:${p}`] = 1;
       if (altId?.startsWith('plr:')) g.state.turnStats[`altCost:${p}`] = 1;
       obj.memory['wasCast'] = true;

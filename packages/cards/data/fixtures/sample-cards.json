@@ -7642,5 +7642,40 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/d/4/d4cf468f-4e9d-4551-a0ed-10bd6a2316ad.jpg?1783922493"
     }
+  },
+  {
+    "object": "card",
+    "id": "705b4d97-2f50-47f7-9053-d748f4337553",
+    "oracle_id": "e4625704-1d52-44e4-804f-2f45644d76ac",
+    "name": "Muldrotha, the Gravetide",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{B}{G}{U}",
+    "cmc": 6,
+    "type_line": "Legendary Creature — Elemental Avatar",
+    "oracle_text": "During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard. (If a card has multiple permanent types, choose one as you play it.)",
+    "colors": [
+      "U",
+      "B",
+      "G"
+    ],
+    "color_identity": [
+      "U",
+      "B",
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "6",
+    "toughness": "6",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/7/0/705b4d97-2f50-47f7-9053-d748f4337553.jpg?1783904538"
+    }
   }
 ]

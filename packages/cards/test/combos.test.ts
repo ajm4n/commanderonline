@@ -117,9 +117,9 @@ class D {
   }
 }
 
-function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
+function game(seed = 3, commanders: CardData[] = []): { d: D; p1: PlayerId; p2: PlayerId } {
   const setups: PlayerSetup[] = [
-    { id: 'a', name: 'A', deck: { mainboard: Array.from({ length: 40 }, () => C('Plains')), commanders: [] } },
+    { id: 'a', name: 'A', deck: { mainboard: Array.from({ length: 40 }, () => C('Plains')), commanders } },
     { id: 'b', name: 'B', deck: { mainboard: Array.from({ length: 40 }, () => C('Forest')), commanders: [] } },
   ];
   const g = new Game(setups, { seed }, scriptFor);
@@ -133,7 +133,7 @@ function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -412,5 +412,37 @@ describe('combos and staples played through the engine', () => {
       expect(d.d.candidates).toHaveLength(4);
       expect(d.d.candidates).toEqual(d.g.player(p2).library.slice(0, 4));
     }
+  });
+  it('Edgar Markov makes a Vampire token from the command zone (eminence)', () => {
+    const { d, p1 } = game(3, [C('Edgar Markov')]);
+    expect(d.g.player(p1).command.map((id) => d.g.obj(id).card.name)).toContain('Edgar Markov');
+    d.lands(p1, 'Swamp', 2);
+    const artist = d.give(p1, C('Blood Artist'));
+    d.cast(artist);
+    d.resolve();
+    expect(d.bf(p1, 'Blood Artist')).toHaveLength(1);
+    expect(d.bf(p1, 'Vampire')).toHaveLength(1);
+  });
+
+  it('Muldrotha lets you cast one permanent spell of each type from your graveyard on your turn', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Forest', 6);
+    d.put(p1, C('Muldrotha, the Gravetide'));
+    const bear1 = d.g.createObject(C('Grizzly Bears'), p1, 'graveyard', { skipEvents: true }).id;
+    const bear2 = d.g.createObject(C('Grizzly Bears'), p1, 'graveyard', { skipEvents: true }).id;
+    const ring = d.g.createObject(C('Sol Ring'), p1, 'graveyard', { skipEvents: true }).id;
+    d.g.refreshDecision();
+    d.until((x) => x.type === 'priority' && x.player === p1);
+    expect(d.prio().playableCards).toEqual(expect.arrayContaining([bear1, bear2, ring]));
+    d.cast(bear1);
+    d.resolve();
+    expect(d.bf(p1, 'Grizzly Bears')).toHaveLength(1);
+    // The creature slot is used; the artifact slot is not.
+    expect(d.prio().playableCards).not.toContain(bear2);
+    expect(d.prio().playableCards).toContain(ring);
+    // The slots reset on your next turn.
+    d.main(p2);
+    d.main(p1);
+    expect(d.prio().playableCards).toEqual(expect.arrayContaining([bear2, ring]));
   });
 });

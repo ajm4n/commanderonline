@@ -1429,6 +1429,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   const coverage: CardScript['coverage'] = meaningful.length === 0 || unhandledLines.length === 0 ? 'full' : automatedAbilities.length === 0 ? 'none' : 'partial';
   // Derevi: "{1}{G}{W}{U}: Put ~ onto the battlefield from the command zone" is activated from the command zone.
   for (const ab of abilities) if (ab.kind === 'activated' && ab.zone === undefined && /from the command zone/i.test(ab.text) && ab.effects.some((e) => e.kind === 'returnToBattlefield' && e.what.ref === 'self')) ab.zone = 'command';
+  // Eminence: "if ~ is in the command zone or on the battlefield" triggers must be watched from the command zone too.
+  for (const ab of abilities) if (ab.kind === 'triggered' && ab.zone === undefined && ab.condition && JSON.stringify(ab.condition).includes('"zone":"command"')) ab.zone = ['battlefield', 'command'];
   return { script: { name: faceName, abilities, additionalCost, castCondition, gift, alternativeCosts: alternativeCosts.length ? alternativeCosts : undefined, costModifiers: costModifiers.length ? costModifiers : undefined, coverage, origin: 'compiled', unhandledText: unhandledLines.length ? unhandledLines : undefined }, compiledLines, unhandledLines };
 }
 

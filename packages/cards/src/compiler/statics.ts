@@ -2014,6 +2014,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (typeof n !== 'number') break sx10;
     return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: n } }];
   }
+  // Muldrotha: "During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard."
+  if (/^During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard$/i.test(L)) {
+    return [
+      { kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { permanentCard: true }, perPermanentType: true, yourTurnOnly: true } } },
+      { kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playLandsFromGraveyard', data: { perPermanentType: true, yourTurnOnly: true } } },
+    ];
+  }
   // "If an opponent would search a library, that player searches the top four cards of that library instead."
   if ((m = L.match(/^If (an opponent|a player) would search a library, that player searches the top (\w+) cards of that library instead$/i))) {
     const n = wordToNumber(m[2]);
