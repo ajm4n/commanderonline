@@ -1706,6 +1706,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (e.exileAfter) o.memory['exileOnResolve'] = true;
         const ok = yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: true });
         if (!ok) delete o.memory['exileOnResolve'];
+        ctx.memory['acceptedCount'] = ok ? 1 : 0; // "If you don't, …" after "you may cast it without paying its mana cost"
       }
       return;
     case 'castFrom':
@@ -1718,6 +1719,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           delete o.memory['castableBy'];
           delete o.memory['exileOnResolve'];
         }
+        ctx.memory['acceptedCount'] = ok ? 1 : 0;
       }
       return;
     case 'playFromExile':

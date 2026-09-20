@@ -10890,6 +10890,21 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
           continue;
         }
       }
+      // "You may cast it without paying its mana cost. If you don't, put it into your hand" (Breaching Dragonstorm, Djinn of Wishes):
+      // the cast happens as this resolves, so "don't" is known right away.
+      {
+        const lastC = effects[effects.length - 1];
+        const castKinds = new Set(['castWithoutPaying', 'castFrom']);
+        const hasCast = (list: Effect[]): boolean => list.some((e) => castKinds.has(e.kind) || (e.kind === 'may' && !e.else?.length && hasCast(e.effects)) || (e.kind === 'conditional' && hasCast(e.then) && !e.else?.length));
+        const isCast = lastC && (castKinds.has(lastC.kind) || ((lastC.kind === 'may' || lastC.kind === 'conditional') && hasCast([lastC])));
+        if (/^if you (?:don't|do not), /i.test(s) && isCast) {
+          const inner = parseSentence(s.replace(/^if you (?:don't|do not), /i, ''), ctx);
+          if (inner) {
+            effects.push({ kind: 'conditional', if: { kind: 'amount', a: { kind: 'ctxMemory', key: 'acceptedCount' }, op: '==', b: 0 }, then: inner });
+            continue;
+          }
+        }
+      }
       // "You may sacrifice a creature. If you do, X. If you don't, Y" (Crovax, Entrails Feaster): Y is the cost block's else branch.
       {
         const lastP = effects[effects.length - 1];
