@@ -450,6 +450,10 @@ export interface ObjectFilter {
   attachedToRef?: import('./script.js').Ref;
   /** Cards this effect's source exiled ("all creature cards exiled with ~"). */
   exiledWithSource?: boolean;
+  /** A foretold card in exile ("for each foretold card you own in exile"). */
+  foretold?: boolean;
+  /** Has a mana ability that could add this mana ("land that could produce {C}"). */
+  couldProduce?: ManaColor;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
   damagedBySource?: boolean;
   /** Its controller was dealt damage this turn by the effect's source ("permanents whose controller was dealt combat damage by ~ this turn"). */

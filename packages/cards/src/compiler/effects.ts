@@ -2486,6 +2486,20 @@ const PATTERNS: Pattern[] = [
     if (colors.length) out.push({ kind: 'setColors', colors, on, duration: dur });
     return out;
   }],
+  // "~ deals five times X damage to each of up to X targets." (Crackle with Power)
+  [/^(.+?) deals (\w+) times X damage to (.+)$/i, (m, ctx) => {
+    const k = wordToNumber(m[2]);
+    const src = objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    if (typeof k !== 'number' || !src) return null;
+    return damageTo(m[3], { kind: 'times', a: 'X', b: k }, ctx, src);
+  }],
+  // "Exile all but the bottom card of target player's library." (Nicol Bolas, the Arisen)
+  [/^exile all but the bottom card of (.+?)'s library$/i, (m, ctx) => {
+    const who = playerRef(m[1], ctx);
+    if (!who) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'exileTop', who, amount: { kind: 'minus', a: { kind: 'librarySize', ref: who }, b: 1 } }];
+  }],
   // "~ deals twice X damage to target creature."
   [/^(.+?) deals twice (X|\w+) damage to (.+)$/i, (m, ctx) => {
     const a: Amount | null = m[2].toUpperCase() === 'X' ? 'X' : wordToNumber(m[2]);
@@ -8890,7 +8904,9 @@ function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref
     const hi = hiRaw.toUpperCase() === 'X' ? 'X' : wordToNumber(hiRaw);
     if (hi === null) return null;
     const max = hi === 'X' ? 20 : hi;
-    ctx.targets.push({ description: t, kind: 'any', min: lo === null || lo === 'X' ? max : lo, max, distinct: true });
+    // "each of up to X targets": exactly X (or up to X) targets, X being the spell's X.
+    if (hi === 'X') ctx.targets.push({ description: t, kind: 'any', min: em[1] ? 0 : 1, max, countX: { upTo: Boolean(em[1]) }, distinct: true });
+    else ctx.targets.push({ description: t, kind: 'any', min: lo === null || lo === 'X' ? max : lo, max, distinct: true });
     const ref: Ref = { ref: 'target', slot: ctx.targets.length - 1 };
     ctx.lastObj = ref;
     return [mk(ref)];

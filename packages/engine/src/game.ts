@@ -34,7 +34,7 @@ import { matchesFilter, objectsMatching, legalTargets, sameTarget, type FilterCo
 import { parseTypeLine } from './typeline.js';
 import { ENFORCED_KEYWORDS } from './keywords.js';
 import { executeEffects, enterBattlefield, type EffectContext } from './effects.js';
-import { buildPriorityDecision, castSpell, activateAbility, playLand, abilitiesOf, wardTriggers } from './casting.js';
+import { buildPriorityDecision, castSpell, activateAbility, playLand, abilitiesOf, wardTriggers, manaFromAbility } from './casting.js';
 import { resolveTopOfStack } from './resolve.js';
 import { runCombatStep } from './combat.js';
 import { checkStateBasedActions } from './sba.js';
@@ -2133,6 +2133,14 @@ export class Game {
    * "Its controller creates a token": for a permanent or spell that left the battlefield or stack this turn, the
    * controller it had there (rule 608.2h last known information), not the owner it reverts to in the graveyard.
    */
+  /** Whether one of this object's mana abilities could add the given mana ("land that could produce {C}"). */
+  couldProduceMana(o: GameObject, color: ManaColor): boolean {
+    for (const ab of abilitiesOf(this, o)) {
+      if (!ab.spec.manaAbility) continue;
+      if (manaFromAbility(this, o, ab.spec).some((alt) => alt.includes(color) || (color !== 'C' && alt.includes('any' as ManaColor)))) return true;
+    }
+    return false;
+  }
   lastController(o: GameObject | undefined): PlayerId | undefined {
     if (!o) return undefined;
     if (o.zone === 'battlefield' || o.zone === 'stack') return o.controller;

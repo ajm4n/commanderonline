@@ -104,7 +104,7 @@ function canUseTapAbility(g: Game, obj: GameObject): boolean {
 }
 
 /** Mana each ability could produce, as alternatives. */
-function manaFromAbility(g: Game, obj: GameObject, ab: ActivatedAbilitySpec): ManaColor[][] {
+export function manaFromAbility(g: Game, obj: GameObject, ab: ActivatedAbilitySpec): ManaColor[][] {
   const alts: ManaColor[][] = [];
   const flat: Effect[] = [];
   for (const e of ab.effects) {

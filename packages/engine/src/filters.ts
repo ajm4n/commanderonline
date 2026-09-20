@@ -346,6 +346,8 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const c = src?.memory['color'] ?? src?.chosen['color'];
     if (typeof c !== 'string' || !ch.colors.includes(c as (typeof ch.colors)[number])) return false;
   }
+  if (filter.foretold !== undefined && Boolean(obj.memory['foretold']) !== filter.foretold) return false;
+  if (filter.couldProduce && !g.couldProduceMana(obj, filter.couldProduce)) return false;
   if (filter.damagedBySource && (ctx.sourceId === null || ctx.sourceId === undefined || !(g.state.damagedBy[obj.id] ?? []).includes(ctx.sourceId))) return false;
   if (filter.controllerDamagedBySource) {
     if (ctx.sourceId === null || ctx.sourceId === undefined) return false;
