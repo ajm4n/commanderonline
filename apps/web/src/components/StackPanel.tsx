@@ -1,6 +1,7 @@
 import type { GameView } from '@commander/engine';
 import { playerName, targetLabel } from '../lib/format.js';
 import type { Highlights } from '../state/ui.js';
+import { avatarColor } from './PlayerPanel.js';
 
 export function StackPanel({ view, highlights, selected, onSelect }: { view: GameView; highlights: Highlights; selected: number | null; onSelect: (id: number) => void }) {
   const items = view.stack;
@@ -27,7 +28,28 @@ export function StackPanel({ view, highlights, selected, onSelect }: { view: Gam
                   </div>
                   <div className="who">{playerName(view, s.controller)}</div>
                   <div style={{ opacity: 0.9 }}>{s.text}</div>
-                  {s.targets.length > 0 && <div className="targets">→ {s.targets.map((t) => targetLabel(view, t)).join(', ')}</div>}
+                  {s.targets.length > 0 && (
+                    <div className="targets" title={s.targets.map((t) => targetLabel(view, t)).join(', ')}>
+                      <span className="arrow">→</span>
+                      {s.targets.map((t, ti) => {
+                        if (t.kind === 'player') {
+                          const p = view.players.find((x) => x.id === t.id);
+                          return (
+                            <span key={ti} className="tgt-avatar" style={{ background: avatarColor(view, t.id) }}>
+                              {(p?.name ?? '?').slice(0, 1).toUpperCase()}
+                            </span>
+                          );
+                        }
+                        const o = t.kind === 'object' ? view.objects[t.id] : undefined;
+                        if (o?.imageUri && !o.hidden) return <img key={ti} className="thumb sm" src={o.imageUri} alt="" />;
+                        return (
+                          <span key={ti} className="tgt-chip">
+                            {targetLabel(view, t)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   {s.countered && <div className="error">countered</div>}
                 </div>
               </div>

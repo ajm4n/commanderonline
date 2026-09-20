@@ -721,10 +721,18 @@ h3 {
 }
 .card img {
   display: block;
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+}
+/* The text rendering sits underneath until the art has arrived, so a card is never a blank box. */
+.card img.loaded {
+  opacity: 1;
 }
 .card.tapped {
   transform: rotate(90deg) scale(0.92);
@@ -763,6 +771,19 @@ h3 {
 }
 .card.blocking {
   outline-color: var(--orange);
+  box-shadow: 0 0 14px rgba(255, 159, 67, 0.75);
+}
+.ov.atk {
+  left: 3px;
+  top: 3px;
+  background: #7a1f1f;
+  border-color: var(--red);
+}
+.ov.blk {
+  left: 3px;
+  top: 3px;
+  background: #6b3d10;
+  border-color: var(--orange);
 }
 .card.dim {
   filter: brightness(0.5) saturate(0.6);
@@ -825,6 +846,7 @@ h3 {
 }
 .ov {
   position: absolute;
+  z-index: 2;
   pointer-events: none;
   font-weight: 800;
   font-size: calc(var(--cw) * 0.14);
@@ -1031,6 +1053,40 @@ h3 {
 }
 .stack-item .targets {
   color: var(--cyan);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+}
+.stack-item .thumb.sm {
+  width: 22px;
+  border: 1px solid rgba(56, 214, 245, 0.6);
+}
+.stack-item .tgt-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  border: 1px solid rgba(56, 214, 245, 0.6);
+}
+.stack-item .tgt-chip {
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 214, 245, 0.5);
+}
+.manual-btn.active {
+  border-color: var(--accent);
+}
+.ctx .ctx-hint {
+  padding: 4px 8px 2px;
+  color: var(--muted);
   font-size: 11px;
 }
 .log-list {

@@ -4,7 +4,7 @@ import type { Decision, ObjectId, ObjectView, PlayerId, Target } from '@commande
 import { sameTarget } from '../lib/format.js';
 import type { HoverRect } from '../components/Card.js';
 
-export type MenuState = { kind: 'object'; id: ObjectId; x: number; y: number } | { kind: 'player'; id: PlayerId; x: number; y: number } | null;
+export type MenuState = { kind: 'object'; id: ObjectId; x: number; y: number } | { kind: 'player'; id: PlayerId; x: number; y: number } | { kind: 'manual'; x: number; y: number } | null;
 export type BrowseState = { player: PlayerId; zone: 'graveyard' | 'exile' | 'command' | 'hand' } | null;
 export type DialogState =
   | { kind: 'token' }
@@ -209,7 +209,10 @@ export function computeHighlights(d: Decision | null, ui: Pick<UiState, 'slot' |
         h.selectedObjects.add(ui.blocker);
         d.candidates.find((c) => c.id === ui.blocker)?.canBlock.forEach((a) => h.legalObjects.add(a));
       }
-      ui.blocks.forEach((b) => h.selectedObjects.add(b.blocker));
+      for (const b of ui.blocks) {
+        h.selectedObjects.add(b.blocker);
+        h.selectedObjects.add(b.attacker);
+      }
       break;
     case 'mulligan':
       d.hand.forEach((id) => h.legalObjects.add(id));

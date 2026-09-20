@@ -9,7 +9,7 @@ import { Hand } from '../components/Hand.js';
 import { StackPanel } from '../components/StackPanel.js';
 import { LogPanel } from '../components/LogPanel.js';
 import { DecisionBar, DecisionModal } from '../components/Decisions.js';
-import { ObjectMenu, PlayerMenu } from '../components/Menus.js';
+import { ManualMenu, ObjectMenu, PlayerMenu } from '../components/Menus.js';
 import { Dialogs } from '../components/Dialogs.js';
 import { ZoneBrowser } from '../components/ZoneBrowser.js';
 import { CardPreview } from '../components/CardPreview.js';
@@ -213,20 +213,16 @@ export function GameScreen() {
         </button>
         {mode === 'online' && <span className={`conn-pill ${connStatus}`}>{connStatus}</span>}
         {mode === 'solo' && <span className="conn-pill open">solo</span>}
-        <button className="sm" onClick={() => ui.setDialog({ kind: 'token' })} title="Create a token (manual)">
-          Token
-        </button>
-        <button className="sm" onClick={() => ui.setDialog({ kind: 'mana' })} title="Add mana to your pool (manual)">
-          Mana
-        </button>
-        <button className="sm" onClick={() => ui.setDialog({ kind: 'number', title: 'Draw cards', label: 'Count', initial: 1, onSubmit: (n) => manual({ kind: 'draw', count: n }) })} title="Draw cards (manual)">
-          Draw
-        </button>
-        <button className="sm" onClick={() => ui.setDialog({ kind: 'number', title: 'Mill cards', label: 'Count', initial: 1, onSubmit: (n) => manual({ kind: 'mill', count: n }) })} title="Mill cards (manual)">
-          Mill
-        </button>
-        <button className="sm" onClick={() => manual({ kind: 'shuffle' })} title="Shuffle your library (manual)">
-          Shuffle
+        <button
+          className={`sm manual-btn ${ui.menu?.kind === 'manual' ? 'active' : ''}`}
+          data-testid="manual-menu"
+          title="Manual actions: tokens, mana, draw, mill, shuffle"
+          onClick={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            ui.setMenu(ui.menu?.kind === 'manual' ? null : { kind: 'manual', x: r.left, y: r.bottom + 4 });
+          }}
+        >
+          Manual ▾
         </button>
         {!me?.lost && !view.over && (
           <button className="sm danger" onClick={() => ui.setDialog({ kind: 'confirmConcede' })}>
@@ -318,6 +314,7 @@ export function GameScreen() {
       <CardPreview obj={ui.hover} rect={ui.hoverRect} />
       {ui.menu?.kind === 'object' && menuObj && <ObjectMenu view={view} obj={menuObj} at={ui.menu} decision={decision} onClose={() => ui.setMenu(null)} manual={manual} onCast={(o) => cast(o)} onPlayLand={playLand} onActivate={activate} />}
       {ui.menu?.kind === 'player' && <PlayerMenu view={view} playerId={ui.menu.id} at={ui.menu} onClose={() => ui.setMenu(null)} manual={manual} />}
+      {ui.menu?.kind === 'manual' && <ManualMenu at={ui.menu} onClose={() => ui.setMenu(null)} manual={manual} />}
       {ui.browse && <ZoneBrowser view={view} player={ui.browse.player} zone={ui.browse.zone} highlights={highlights} decisionActive={decisionActive} handlers={handlers} onClose={() => ui.setBrowse(null)} />}
       <Dialogs view={view} manual={manual} onCast={(o, i, alt) => cast(o, i, alt)} onPlayLand={playLand} onConcede={concede} />
     </div>

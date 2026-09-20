@@ -140,7 +140,11 @@ export const useStore = create<AppState>((set, get) => {
         const patch: Partial<AppState> = { view: msg.view, lastLogSeq: seq, screen: 'game' };
         if (err && err !== s.lastDecisionError) toasts.push({ kind: 'error', text: err });
         patch.lastDecisionError = err;
-        if (toasts.length) patch.toasts = [...s.toasts, ...toasts.map((t) => ({ ...t, id: toastSeq++, at: Date.now() }))].slice(-TOAST_LIMIT);
+        if (toasts.length) {
+          // A new "Your turn" replaces the previous one: in a quick game they piled up down the side.
+          const kept = toasts.some((t) => t.kind === 'turn') ? s.toasts.filter((t) => t.kind !== 'turn') : s.toasts;
+          patch.toasts = [...kept, ...toasts.map((t) => ({ ...t, id: toastSeq++, at: Date.now() }))].slice(-TOAST_LIMIT);
+        }
         // Learn card data for previews / printed P/T comparisons.
         set(patch);
         return;

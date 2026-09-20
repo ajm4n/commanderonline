@@ -25,6 +25,33 @@ const ZONES: { zone: ZoneName; label: string; position?: 'top' | 'bottom' }[] = 
   { zone: 'command', label: 'Command zone' },
 ];
 
+/** The top bar's manual overrides, in one dropdown so the phase tracker keeps its width. */
+export function ManualMenu({ at, onClose, manual }: { at: { x: number; y: number }; onClose: () => void; manual: (a: ManualAction) => void }) {
+  const setDialog = useUi((s) => s.setDialog);
+  const open = (d: Parameters<typeof setDialog>[0]) => {
+    setDialog(d);
+    onClose();
+  };
+  return (
+    <ContextMenu at={at} title="Manual actions" onClose={onClose}>
+      <button onClick={() => open({ kind: 'token' })}>Create a token…</button>
+      <button onClick={() => open({ kind: 'mana' })}>Add mana to your pool…</button>
+      <button onClick={() => open({ kind: 'number', title: 'Draw cards', label: 'Count', initial: 1, onSubmit: (n) => manual({ kind: 'draw', count: n }) })}>Draw cards…</button>
+      <button onClick={() => open({ kind: 'number', title: 'Mill cards', label: 'Count', initial: 1, onSubmit: (n) => manual({ kind: 'mill', count: n }) })}>Mill cards…</button>
+      <div className="sep" />
+      <button
+        onClick={() => {
+          manual({ kind: 'shuffle' });
+          onClose();
+        }}
+      >
+        Shuffle your library
+      </button>
+      <div className="ctx-hint">Right-click a card or avatar for more.</div>
+    </ContextMenu>
+  );
+}
+
 export function ObjectMenu({ view, obj, at, decision, onClose, manual, onCast, onPlayLand, onActivate }: ObjectMenuProps) {
   const setDialog = useUi((s) => s.setDialog);
   const prio = decision?.type === 'priority' ? decision : null;

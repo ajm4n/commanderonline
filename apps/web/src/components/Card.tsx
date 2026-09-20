@@ -64,6 +64,7 @@ export const CardText = memo(function CardText({ obj, big }: { obj: ObjectView; 
 export const Card = memo(function Card(props: CardProps) {
   const { obj, count, tappedCount, onClick, onContextMenu, onHover, children, className, noRotate, showCoverage } = props;
   const [imgFailed, setImgFailed] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const img = obj.faceIndex > 0 && obj.backImageUri ? obj.backImageUri : obj.imageUri;
   const isCreature = obj.types.includes('Creature');
   const showPT = isCreature || (obj.power !== null && obj.toughness !== null && obj.zone === 'battlefield');
@@ -104,7 +105,18 @@ export const Card = memo(function Card(props: CardProps) {
       }}
       onMouseLeave={() => onHover?.(null)}
     >
-      {!obj.hidden && img && !imgFailed ? <img src={img} alt={obj.name} loading="lazy" draggable={false} onError={() => setImgFailed(true)} /> : !obj.hidden ? <CardText obj={obj} /> : null}
+      {!obj.hidden && (!img || imgFailed || !imgLoaded) && <CardText obj={obj} />}
+      {!obj.hidden && img && !imgFailed && <img className={imgLoaded ? 'loaded' : ''} src={img} alt={obj.name} loading="lazy" draggable={false} onLoad={() => setImgLoaded(true)} onError={() => setImgFailed(true)} />}
+      {obj.attacking !== null && obj.attacking !== undefined && obj.zone === 'battlefield' && !obj.hidden && (
+        <span className="ov atk" title="Attacking">
+          ⚔
+        </span>
+      )}
+      {obj.blocking?.length > 0 && obj.zone === 'battlefield' && !obj.hidden && (
+        <span className="ov blk" title={`Blocking ${obj.blocking.length === 1 ? 'an attacker' : `${obj.blocking.length} attackers`}`}>
+          🛡{obj.blocking.length > 1 ? obj.blocking.length : ''}
+        </span>
+      )}
       {obj.faceDown && !obj.hidden && <span className="ov facedown">face down</span>}
       {counters.length > 0 && (
         <span className="ov counters">
