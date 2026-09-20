@@ -631,7 +631,13 @@ function applyQualifier(q: string, r: ParsedNoun) {
     else r.confident = false;
   }
   else if ((m = q.match(/^named (.+)$/))) r.filter.nameIs = m[1] === '~' ? '~' : m[1];
-  else if ((m = q.match(/^that is (?:a|an) (.+)$/))) r.filter.subtypes = m[1].split(/,? or (?:a |an )?|, (?:a |an )?/).map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+  else if ((m = q.match(/^that is (?:a|an) (.+)$/))) {
+    // "card that is an instant or sorcery" names card types; "creature that is a Vampire or Zombie" names creature types.
+    const words = m[1].split(/,? or (?:a |an )?|, (?:a |an )?/).map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+    const CARD_TYPES = ['Artifact', 'Creature', 'Enchantment', 'Instant', 'Land', 'Planeswalker', 'Sorcery', 'Battle', 'Kindred', 'Tribal'];
+    if (words.every((w) => CARD_TYPES.includes(w))) r.filter.types = words;
+    else r.filter.subtypes = words;
+  }
   else if ((m = q.match(/^that (?:does not|doesn't) have (?:a|an) ([+-]?[\w/+-]+) counters? on it$/))) r.filter.withoutCounter = m[1];
   else if ((m = q.match(/^that has (?:a|an) ([+-]?[\w/+-]+) counters? on it$/))) r.filter.counterAtLeast = { counter: m[1], n: 1 };
   else if (/^that shares? a colou?r with (?:~|it)$/.test(q) || /^that share a colou?r with (?:~|it)$/.test(q)) r.filter.sharesColorWith = { ref: 'self' };

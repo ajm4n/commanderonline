@@ -957,6 +957,13 @@ function perTypeGraveyardRule(g: Game, p: PlayerId, tag: 'castFromGraveyard' | '
   return g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === tag && !!(r.data as { perPermanentType?: boolean } | undefined)?.perPermanentType);
 }
 
+/** "Flashback {1}{U}" / "Flashback—{1}{U}, Pay 3 life." (Deep Analysis): the mana part and any life payment. */
+export function flashbackCost(obj: GameObject): { mana: string; life?: number } | null {
+  const m = obj.card.oracleText.match(/^Flashback[—\s]+((?:\{[^}]+\})+)(?:, Pay (\d+) life)?/mi);
+  if (!m) return null;
+  return { mana: m[1], ...(m[2] ? { life: parseInt(m[2], 10) } : {}) };
+}
+
 /** Flashback printed on the card or granted to it (Snapcaster Mage: "gains flashback until end of turn"). */
 export function hasFlashback(g: Game, obj: GameObject): boolean {
   return /^Flashback/m.test(obj.card.oracleText) || (obj.zone === 'graveyard' && g.characteristics(obj.id).keywords.has('Flashback'));
@@ -1072,9 +1079,9 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   if (granted) cost = parseManaCost(granted.mana);
   else if (alt) cost = parseManaCost(alt.cost.mana ?? '');
   else if (opts.alternative === 'flashback' && zone === 'graveyard') {
-    const fb = obj.card.oracleText.match(/Flashback (\{[^\n]+?\})(?:\s|$)/);
+    const fb = flashbackCost(obj);
     const esc = fb ? null : escapeCost(g, obj);
-    cost = parseManaCost(fb?.[1] ?? esc?.mana ?? face.manaCost);
+    cost = parseManaCost(fb?.mana ?? esc?.mana ?? face.manaCost);
   } else if (typeof obj.memory['playForCost'] === 'string' && zone === 'exile') {
     // Airbend and similar: cast it from exile for a fixed cost instead of its mana cost.
     cost = parseManaCost(obj.memory['playForCost'] as string);
@@ -1735,6 +1742,17 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     if (!ok) {
       revert();
       return false;
+    }
+  }
+  // "Flashback—{1}{U}, Pay 3 life.": the non-mana part of a flashback cost.
+  if (!opts.free && fromZone === 'graveyard' && hasFlashback(g, obj)) {
+    const fb = flashbackCost(obj);
+    if (fb?.life) {
+      const ok = yield* payAbilityCost(g, p, obj, { payLife: fb.life }, x);
+      if (!ok) {
+        revert();
+        return false;
+      }
     }
   }
   // Escape: exile the other cards from the graveyard as part of the cost (rule 702.138a).

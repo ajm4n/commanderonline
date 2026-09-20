@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery"];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -970,5 +970,20 @@ describe('combos and staples played through the engine', () => {
     d.resolve();
     expect(d.g.player(p2).library.length).toBe(lib2 - 6); // Brain Freeze plus its storm copy (Snapcaster was cast before it)
     expect(d.g.obj(freeze).zone).toBe('exile'); // flashback exiles it
+  });
+  it('Deep Analysis flashes back for {1}{U} and 3 life', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Island', 2);
+    const da = d.g.createObject(C('Deep Analysis'), p1, 'graveyard', { skipEvents: true }).id;
+    d.g.refreshDecision();
+    d.until((x) => x.type === 'priority' && x.player === p1);
+    expect(d.prio().playableCards).toContain(da); // {1}{U} with two Islands, not {3}{U}
+    const hand = d.g.player(p1).hand.length;
+    d.cast(da);
+    d.targetPlayer(p1);
+    d.resolve();
+    expect(d.g.player(p1).life).toBe(37);
+    expect(d.g.player(p1).hand.length).toBe(hand + 2);
+    expect(d.g.obj(da).zone).toBe('exile');
   });
 });

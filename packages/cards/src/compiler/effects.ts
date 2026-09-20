@@ -1120,12 +1120,13 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'destroy', what: ref, cantRegenerate: /regenerat/i.test(m[0]) }] : null;
   }],
-  [/^exile (.+?)(?: from (?:their|your|its owner's|that player's) graveyard)?(?: with (?:a|an|(\w+)) (\w+) counters? on (?:it|them))?(?: until (?:~|it) leaves the battlefield)?$/i, (m, ctx) => {
+  [/^exile (.+?)( from (?:their|your|its owner's|that player's) graveyard)?(?: with (?:a|an|(\w+)) (\w+) counters? on (?:it|them))?(?: until (?:~|it) leaves the battlefield)?$/i, (m, ctx) => {
     const until = / until (?:~|it) leaves the battlefield$/i.test(m[0]);
-    const ref = objRef(m[1], ctx);
+    // "target card that is an instant or sorcery from your graveyard": the zone belongs to the noun.
+    const ref = objRef(`${m[1]}${m[2] ?? ''}`, ctx) ?? (m[2] ? objRef(m[1], ctx) : null);
     if (!ref) return null;
     const e: Effect = { kind: 'exile', what: ref, untilSourceLeaves: until, remember: 'exiled' };
-    if (m[3]) e.counters = { counter: m[3], amount: m[2] ? (wordToNumber(m[2]) ?? 1) : 1 };
+    if (m[4]) e.counters = { counter: m[4], amount: m[3] ? (wordToNumber(m[3]) ?? 1) : 1 };
     ctx.lastObj = { ref: 'lastMoved' };
     return [e];
   }],

@@ -8924,5 +8924,67 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/2/2/22b36ad5-bf4d-436a-9c3c-fa4acd0052fe.jpg?1783907976"
     }
+  },
+  {
+    "object": "card",
+    "id": "1a297bae-f259-4fc7-b76a-285f972d69e3",
+    "oracle_id": "579cbd92-797f-4cdf-91ed-fca7a523eae5",
+    "name": "Deep Analysis",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{U}",
+    "cmc": 4,
+    "type_line": "Sorcery",
+    "oracle_text": "Target player draws two cards.\nFlashback—{1}{U}, Pay 3 life. (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [
+      "Flashback"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/1/a/1a297bae-f259-4fc7-b76a-285f972d69e3.jpg?1783903240"
+    }
+  },
+  {
+    "object": "card",
+    "id": "4fa2d7f2-05b3-468f-9f2c-a61b46bad88e",
+    "oracle_id": "40362fe0-a1a9-4d76-8c35-eac474b91af5",
+    "name": "Mizzix's Mastery",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{R}",
+    "cmc": 4,
+    "type_line": "Sorcery",
+    "oracle_text": "Exile target card that's an instant or sorcery from your graveyard. For each card exiled this way, copy it, and you may cast the copy without paying its mana cost. Exile Mizzix's Mastery.\nOverload {5}{R}{R}{R} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [
+      "Overload"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/4/f/4fa2d7f2-05b3-468f-9f2c-a61b46bad88e.jpg?1783911917"
+    }
   }
 ]
