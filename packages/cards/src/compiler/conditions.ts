@@ -424,11 +424,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^it is (?:a|an) (.+?) card$/))) {
     // "it is a permanent card": keep the word "card" so "permanent card" / "creature card" keep their meaning.
     const noun = parseNoun(`a ${oc(m, 1)} card`) ?? parseNoun(`a ${oc(m, 1)}`);
-    if (noun && noun.confident) return { kind: 'objectMatches', ref: ctx.lastObj ?? { ref: 'lastMoved' }, filter: noun.filter };
+    if (noun && noun.confident) return { kind: 'objectMatches', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : { ref: 'lastMoved' as const }), filter: noun.filter };
   }
   if ((m = t.match(/^it is (?:a|an) (.+)$/))) {
     const noun = parseNoun(`a ${oc(m, 1)}`);
-    if (noun) return { kind: 'objectMatches', ref: ctx.lastObj ?? { ref: 'lastMoved' }, filter: noun.filter };
+    if (noun) return { kind: 'objectMatches', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : { ref: 'lastMoved' as const }), filter: noun.filter };
   }
   if ((m = t.match(/^you have (\w+|\d+) or (more|less) life$/))) return { kind: 'life', ref: { ref: 'controller' }, op: m[2] === 'more' ? '>=' : '<=', value: wordToNumber(m[1]) ?? 0 };
   if ((m = t.match(/^your life total is (?:less than|greater than) (\d+)$/))) return { kind: 'life', ref: { ref: 'controller' }, op: /less/.test(t) ? '<' : '>', value: parseInt(m[1], 10) };
@@ -469,7 +469,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     if (sm) {
       const verb = sm[1];
       const rest = orig.slice(orig.length - sm[2].length);
-      const ref = ctx.lastObj ?? { ref: 'lastMoved' as const };
+      const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : { ref: 'lastMoved' as const });
       if (/^(?:is|was)$/.test(verb)) {
         if (/^blocking$/i.test(rest)) return { kind: 'objectMatches', ref, filter: { blocking: true } };
         if (/^attacking$/i.test(rest)) return { kind: 'isAttacking', ref };
@@ -597,7 +597,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   // ---- Round 116 ----
   if ((m = t.match(/^the (?:sacrificed|exiled|discarded|chosen|revealed|returned) (?:creature|card|permanent|land) (?:was|is) (?:a|an )?(.+)$/))) {
     const noun = parseNoun(`a ${oc(m, 1)}`) ?? parseNoun(`a ${oc(m, 1)} permanent`);
-    if (noun && noun.confident) return { kind: 'objectMatches', ref: ctx.lastObj ?? { ref: 'lastMoved' }, filter: noun.filter };
+    if (noun && noun.confident) return { kind: 'objectMatches', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : { ref: 'lastMoved' as const }), filter: noun.filter };
     if (/^suspected$/i.test(m[1])) return { kind: 'memoryFlag', key: 'suspected' };
   }
   if ((m = t.match(/^(?:the )?((?:\{[^}]+\})+|[\w'-]+(?: [\w'-]+)?) cost was paid$/))) {
