@@ -1344,7 +1344,10 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           compiledLines.push(line);
           continue;
         }
-        const isMana = effects.length > 0 && effects.every((e) => e.kind === 'addMana' || e.kind === 'addManaPerColor' || (e.kind === 'chooseMode' && e.options.every((o) => o.effects.every((x) => x.kind === 'addMana')))) && ctx.targets.length === 0;
+        // Rule 605.1a: an activated ability that could add mana, has no target and isn't a loyalty ability is a mana
+        // ability — even when it also does something else ("{T}: Add {C}{C}. This land deals 2 damage to you.").
+        const addsMana = (e: Effect): boolean => e.kind === 'addMana' || e.kind === 'addManaPerColor' || (e.kind === 'chooseMode' && e.options.some((o) => o.effects.some(addsMana))) || (e.kind === 'conditional' && [...(e.then ?? []), ...(e.else ?? [])].some(addsMana));
+        const isMana = effects.length > 0 && effects.some(addsMana) && ctx.targets.length === 0 && cost.loyalty === undefined;
         const conds: Condition[] = [];
         if (rest.yourTurn) conds.push({ kind: 'yourTurn' });
         if (rest.condition) conds.push(rest.condition);
