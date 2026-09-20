@@ -134,7 +134,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage', 'Bite Down', 'Warstorm Surge'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage', 'Bite Down', 'Warstorm Surge', 'Fecundity', 'Heartless Hidetsugu'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -981,6 +981,36 @@ describe('combos and staples played through the engine', () => {
     const sd = surge.effects[0] as Extract<Effect, { kind: 'damage' }>;
     expect(sd.amount).toEqual({ kind: 'power', ref: { ref: 'triggerObject' } });
     expect(sd.to).toEqual({ ref: 'target', slot: 0 });
+  });
+  it("Fecundity: the dying creature's controller, not Fecundity's, gets the draw", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Swamp', 3);
+    d.put(p1, C('Fecundity'));
+    const bears = d.put(p2, C('Grizzly Bears'));
+    d.put(p2, C('Llanowar Elves')); // a second legal target, so Murder's target is a real choice
+    const h1 = d.g.player(p1).hand.length;
+    const h2 = d.g.player(p2).hand.length;
+    const murder = d.give(p1, C('Murder'));
+    d.cast(murder);
+    d.targetObject(bears);
+    let asked: PlayerId | null = null;
+    d.until((x) => { if (x.type === 'yesNo' && /Fecundity/.test(x.prompt)) asked = x.player; return d.g.player(p2).hand.length === h2 + 1; }, 200);
+    expect(asked).toBe(p2);
+    expect(d.g.player(p2).hand.length).toBe(h2 + 1);
+    expect(d.g.player(p1).hand.length).toBe(h1); // Murder left the hand, nothing drawn
+  });
+  it('Heartless Hidetsugu halves each player\'s own life total', () => {
+    const { d, p1, p2 } = game();
+    const hide = d.put(p1, C('Heartless Hidetsugu'));
+    d.g.player(p1).life = 40;
+    d.g.player(p2).life = 21;
+    d.g.refreshDecision();
+    const ab = d.prio().activatableAbilities.find((a) => a.objectId === hide);
+    expect(ab).toBeDefined();
+    d.submit({ type: 'activate', objectId: hide, abilityIndex: ab!.abilityIndex });
+    d.resolve();
+    expect(d.g.player(p1).life).toBe(20);
+    expect(d.g.player(p2).life).toBe(11); // half of 21 rounded down is 10
   });
   it('Terastodon: each destroyed permanent\'s controller gets an Elephant', () => {
     const { d, p1, p2 } = game();

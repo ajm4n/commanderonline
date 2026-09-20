@@ -9106,5 +9106,65 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/d/b/dbe1bfe0-0be7-496d-94db-e8028d4d9493.jpg?1783922416"
     }
+  },
+  {
+    "object": "card",
+    "id": "b979578b-a82f-4d5e-8871-9e45401038a8",
+    "oracle_id": "ffa64ac6-fe55-48b8-b015-849982cd7ad8",
+    "name": "Fecundity",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{G}",
+    "cmc": 3,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature dies, that creature's controller may draw a card.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/b/9/b979578b-a82f-4d5e-8871-9e45401038a8.jpg?1783933791"
+    }
+  },
+  {
+    "object": "card",
+    "id": "7b3ff07c-9653-4197-ad3d-638e712e8465",
+    "oracle_id": "b68e965a-96f4-447a-99be-35dbd27846e9",
+    "name": "Heartless Hidetsugu",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{R}{R}",
+    "cmc": 5,
+    "type_line": "Legendary Creature — Ogre Shaman",
+    "oracle_text": "{T}: Heartless Hidetsugu deals damage to each player equal to half that player's life total, rounded down.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "4",
+    "toughness": "3",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/7/b/7b3ff07c-9653-4197-ad3d-638e712e8465.jpg?1783915651"
+    }
   }
 ]
