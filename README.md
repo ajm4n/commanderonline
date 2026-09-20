@@ -121,7 +121,9 @@ Still open, roughly in order of value:
   anthems and "becomes the basic land type of your choice" are prompts, not automation.
 - **Modal double-faced back faces and flip cards** work for casting and playing lands, but transform
   and flip triggers on the back face are only as good as the compiler's handling of that face's text.
-- **Moxfield URL import** is blocked by Moxfield's bot protection (Cloudflare returns 403 to any
-  server). Paste the "Export" text instead; Archidekt URLs work.
+- **Moxfield URL import** only works for user agents Moxfield has approved (Cloudflare returns
+  403 to everything else, browser-like or not). Use Archidekt links, which import directly, or
+  paste Moxfield's "Export" text. If you get a user agent approved by Moxfield, set
+  `DECK_IMPORT_USER_AGENT` on the server and Moxfield links work too.
 - **Hosting.** GitHub Pages needs *Settings → Pages → Source: GitHub Actions* enabled once; the
   Render/Fly/Docker configs run the full multiplayer server.

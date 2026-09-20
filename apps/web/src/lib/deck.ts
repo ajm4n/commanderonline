@@ -135,13 +135,17 @@ export async function prepareDeckFromText(text: string, onProgress?: (p: Resolve
   return { payload, missing: Array.from(missing), warnings, coverage: computeCoverage([...commanders, ...mainboard]), source: 'text' };
 }
 
-/** Import a Moxfield / Archidekt URL via the server (CORS). Throws a friendly error if the server is unreachable. */
+/** Moxfield's API only answers user agents it has approved, so its links are not fetched directly. */
+const MOXFIELD_HINT =
+  'Moxfield links cannot be imported directly (Moxfield only serves approved apps). Use an Archidekt deck link instead — Archidekt imports here in one step — or in Moxfield open the deck → More → Export → Copy to clipboard and paste the text here.';
+
+/** Import an Archidekt / Moxfield URL via the server (CORS). Throws a friendly error if the server is unreachable. */
 export async function prepareDeckFromUrl(url: string): Promise<PreparedDeck> {
   let res;
   try {
     res = await importDeckFromServer({ url: url.trim() });
   } catch (e) {
-    if (detectSource(url) === 'moxfield') throw new Error('Moxfield blocks automated downloads (they only allow approved apps). In Moxfield open your deck → More → Export → copy the text, then paste it here.');
+    if (detectSource(url) === 'moxfield') throw new Error(MOXFIELD_HINT);
     if (isNetworkError(e)) throw new Error('The game server is not reachable, so URL import is unavailable. Export your deck as text and paste it instead.');
     throw e;
   }
@@ -150,7 +154,7 @@ export async function prepareDeckFromUrl(url: string): Promise<PreparedDeck> {
   if (res.commanders.length === 0 && res.mainboard.length === 0) {
     const why = (res.warnings ?? []).find((w) => w.trim()) ?? `No cards were found at ${url.trim()}.`;
     // The server's warning usually ends with its own paste hint; only add ours when it does not.
-    throw new Error(detectSource(url) === 'moxfield' && !/paste/i.test(why) ? `${why} In Moxfield open your deck → More → Export → copy the text, then paste it here.` : why);
+    throw new Error(detectSource(url) === 'moxfield' ? MOXFIELD_HINT : why);
   }
   for (const c of [...res.commanders, ...res.mainboard]) rememberCard(c);
   const payload: DeckPayload = { name: res.name || deckNameFrom(res.commanders), commanders: res.commanders, mainboard: res.mainboard };

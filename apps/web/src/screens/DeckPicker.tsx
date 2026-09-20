@@ -80,7 +80,7 @@ export function DeckPicker() {
     setProgress(null);
     try {
       const t = text.trim();
-      if (!t) throw new Error('Paste a decklist or a Moxfield / Archidekt URL first.');
+      if (!t) throw new Error('Paste an Archidekt deck link or a decklist first.');
       const result = isDeckUrl(t) ? await prepareDeckFromUrl(t) : await prepareDeckFromText(t, setProgress);
       setPrepared(result);
     } catch (e) {
@@ -119,7 +119,7 @@ export function DeckPicker() {
               <div className="col">
                 <textarea
                   value={text}
-                  placeholder={'https://moxfield.com/decks/…  or  https://archidekt.com/decks/…\n\nor paste a decklist:\nCommander\n1 Atraxa, Praetors\' Voice\n\nDeck\n1 Sol Ring\n1 Arcane Signet\n…\n\n(*CMDR* / [Commander] markers work too)'}
+                  placeholder={'https://archidekt.com/decks/…\n\nor paste a decklist (Moxfield: More → Export → Copy):\n1 Atraxa, Praetors\' Voice\n\n1 Sol Ring\n1 Arcane Signet\n…\n\nCommander / Deck headers and *CMDR* markers work too.\nMoxfield links need Moxfield\'s approval and are not imported directly.'}
                   onChange={(e) => setText(e.target.value)}
                   style={{ minHeight: 260 }}
                 />

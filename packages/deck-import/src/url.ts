@@ -29,7 +29,7 @@ export function apiUrlFor(url: string): { source: Exclude<DeckSource, 'text'>; a
   return { source: 'unknown' };
 }
 
-const PASTE_HINT = 'Paste the deck as exported text instead (Moxfield: More > Export > Copy to clipboard).';
+const PASTE_HINT = 'Use an archidekt.com deck link instead, or paste the deck as exported text (Moxfield: More > Export > Copy to clipboard).';
 
 /**
  * Fetch and parse a deck from a Moxfield, Archidekt or TappedOut URL.
@@ -49,7 +49,7 @@ export async function importDeckFromUrl(
     return deck;
   };
   if (source === 'unknown' || !apiUrl) {
-    return fail(`Unrecognised deck URL "${url}". Supported: moxfield.com/decks/..., archidekt.com/decks/..., tappedout.net/mtg-decks/...`);
+    return fail(`Unrecognised deck URL "${url}". Supported: archidekt.com/decks/..., tappedout.net/mtg-decks/... (moxfield.com/decks/... only with an approved user agent)`);
   }
   if (typeof fetchImpl !== 'function') return fail('No fetch implementation is available in this environment.');
 
