@@ -700,7 +700,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'anyPlayerMay': {
       let anyPaid = false;
-      for (const p of g.activePlayers()) {
+      // "Any opponent may have it deal 4 damage to them" (Vexing Devil): the controller is not offered the choice.
+      for (const p of g.activePlayers().filter((x) => !e.opponentsOnly || x !== ctx.controller)) {
         if (e.cost) {
           const paid = yield* offerToPay(g, p, e.cost, e.prompt ?? `Pay ${e.cost}?`);
           if (paid) anyPaid = true;
@@ -2005,6 +2006,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.log(won ? `${g.player(ctx.controller).name} wins the clash.` : `${g.player(ctx.controller).name} does not win the clash.`);
       if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) g.state.objects[ctx.sourceId].memory['clashWon'] = won;
       ctx.memory['clashWon'] = won ? 1 : 0;
+      ctx.memory['clashOpponent'] = opp; // Captivating Glance: "Otherwise, that player gains control of enchanted creature"
       g.emit({ name: 'clashed', playerId: ctx.controller, sourceId: ctx.sourceId ?? undefined, data: { won } });
       return;
     }

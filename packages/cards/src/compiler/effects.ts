@@ -3707,9 +3707,9 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'goaded', data: '__you__' }, on: ref, duration: 'permanent' }];
   }],
   // "any opponent may have it deal 5 damage to them"
-  [/^any (?:player|opponent) may have (?:it|~) deal (\d+|X) damage to (?:them|him or her)$/i, (m) => {
-    const n: Amount = m[1] === 'X' ? 'X' : parseInt(m[1], 10);
-    return [{ kind: 'anyPlayerMay', prompt: `Have it deal ${m[1]} damage to you?`, effects: [{ kind: 'damage', amount: n, to: { ref: 'controller' }, source: SELF }] }];
+  [/^any (player|opponent) may have (?:it|~) deal (\d+|X) damage to (?:them|him or her)$/i, (m) => {
+    const n: Amount = m[2] === 'X' ? 'X' : parseInt(m[2], 10);
+    return [{ kind: 'anyPlayerMay', prompt: `Have it deal ${m[2]} damage to you?`, effects: [{ kind: 'damage', amount: n, to: { ref: 'controller' }, source: SELF }], ...(m[1].toLowerCase() === 'opponent' ? { opponentsOnly: true } : {}) }];
   }],
   // "choose a card in your hand"
   [/^choose (?:a|an|(\w+)) (.+?) in your hand$/i, (m, ctx) => {
@@ -9615,7 +9615,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if (/^~ assigns no combat damage this turn$/i.test(text)) return [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'dealsNoDamage', data: 'combat' }, on: SELF, duration: 'endOfTurn' }];
   if (/^until end of turn, you (?:do not|don't) lose this mana as steps and phases end$/i.test(text) || /^you (?:do not|don't) lose this mana as steps and phases end(?: this turn)?$/i.test(text)) return [{ kind: 'turnFlag', flag: 'keepMana' }];
-  if (/^clash with an opponent$/i.test(text)) return [{ kind: 'clash' }];
+  if (/^clash with an opponent$/i.test(text)) {
+    ctx.lastPlayer = { ref: 'chosen', key: 'clashOpponent' }; // "Otherwise, that player gains control of enchanted creature"
+    return [{ kind: 'clash' }];
+  }
   if ((m = text.match(/^detain (.+)$/i))) {
     const ref = objRef(m[1], ctx);
     if (ref) return [{ kind: 'applyRule', rule: { kind: 'cantAttack' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'cantBlock' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivate' }, on: ref, duration: 'untilYourNextTurn' }];
