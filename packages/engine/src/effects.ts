@@ -8,7 +8,7 @@ import type { Effect, Ref, TokenSpec, Duration, Amount, AbilitySpec } from './sc
 import { TOKEN_PRESETS } from './tokens.js';
 import { matchesFilter, objectsMatching, legalTargets } from './filters.js';
 import { parseManaCost, solvePayment } from './mana.js';
-import { manaSourcesFor, payCost, spellTargets, chooseTargetsGrouped, payAbilityCost } from './casting.js';
+import { manaSourcesFor, payCost, spellTargets, chooseTargetsGrouped, payAbilityCost, costMemory } from './casting.js';
 import { DUNGEONS } from './dungeons.js';
 
 export interface EffectContext {
@@ -1727,7 +1727,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (e.fromGraveyard) o.memory['castableBy'] = ctx.controller;
         if (e.exileAfter) o.memory['exileOnResolve'] = true;
         o.memory['playableBy'] = e.owner ? o.owner : ctx.controller;
-        o.memory['playableUntil'] = e.duration === 'permanent' ? 'permanent' : g.state.turn.number;
+        if (e.duration === 'untilYourNextTurn' || e.duration === 'untilEndOfYourNextTurn') {
+          o.memory['playableUntil'] = e.duration;
+          o.memory['playableGrantTurns'] = g.player(ctx.controller).turnsStarted ?? 0;
+        } else o.memory['playableUntil'] = e.duration === 'permanent' ? 'permanent' : g.state.turn.number;
         if (e.forCost) o.memory['playForCost'] = e.forCost;
         if (e.anyMana) o.memory['playAnyMana'] = true;
         if (e.payLife) o.memory['payLifeToCast'] = true;
@@ -2337,6 +2340,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay the cost? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
         if (r.type !== 'yesNo' || !r.value) return yield* otherwise();
         const ok = yield* payAbilityCost(g, who, src, e.payCostSpec, 0);
+        // What the cost discarded, sacrificed or exiled is "that card" for the follow-up.
+        Object.assign(ctx.memory, costMemory(src));
         if (ok) yield* executeEffects(g, e.effects, ctx);
         else yield* otherwise();
         return;

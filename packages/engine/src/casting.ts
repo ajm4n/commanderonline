@@ -381,13 +381,15 @@ function reduceGeneric(cost: ManaCost, n: number): ManaCost {
 export function costMemory(obj: GameObject | undefined): Record<string, unknown> {
   if (!obj) return {};
   const moved = [...((obj.memory['sacrificedAsCost'] as ObjectId[] | undefined) ?? []), ...((obj.memory['exiledAsCost'] as ObjectId[] | undefined) ?? [])];
-  return moved.length ? { lastMoved: moved } : {};
+  const discarded = (obj.memory['discardedAsCost'] as ObjectId[] | undefined) ?? [];
+  return { ...(moved.length ? { lastMoved: moved } : {}), ...(discarded.length ? { lastDiscarded: discarded } : {}) };
 }
 
 export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: AbilityCost, x: number, abilityText?: string): Gen<boolean> {
   const ctx = { sourceId: obj.id, controller: p, x };
   delete obj.memory['sacrificedAsCost'];
   delete obj.memory['exiledAsCost'];
+  delete obj.memory['discardedAsCost'];
   if (cost.optional) {
     const { optional: _o, ...rest } = cost;
     void _o;
@@ -802,7 +804,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       }
     } else g.removeCounters(pick, kind, need);
   }
-  if (cost.sacrificeSelf) g.moveObject(obj.id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
+  if (cost.sacrificeSelf) {
+    g.moveObject(obj.id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
+    obj.memory['sacrificedAsCost'] = [...((obj.memory['sacrificedAsCost'] as ObjectId[] | undefined) ?? []), obj.id];
+  }
   if (cost.exileSelf) g.moveObject(obj.id, 'exile', { cause: 'exile', sourceId: obj.id });
   if (cost.discardSelf) {
     g.moveObject(obj.id, 'graveyard', { cause: 'discard' });
@@ -812,8 +817,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.returnSelf) g.moveObject(obj.id, 'hand', { cause: 'bounce' });
   if (cost.discard) {
     const hand = [...g.player(p).hand];
-    if (cost.discard === 'hand') for (const id of hand) g.moveObject(id, 'graveyard', { cause: 'discard' });
-    else {
+    if (cost.discard === 'hand') {
+      for (const id of hand) g.moveObject(id, 'graveyard', { cause: 'discard' });
+      obj.memory['discardedAsCost'] = hand;
+    } else {
       const cands = hand.filter((id) => !cost.discard || cost.discard === 'hand' || matchesFilter(g, g.obj(id), { ...cost.discard.filter, zone: 'hand' }, ctx));
       const dn = nx(cost.discard.count);
       let ids = cands.slice(0, dn);
@@ -824,6 +831,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
         ids = resp.ids;
       }
       for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'discard' });
+      obj.memory['discardedAsCost'] = ids;
       if (ids.length) g.emit({ name: 'discardBatch', playerId: p, amount: ids.length, objectId: ids[0] });
     }
   }
@@ -1044,6 +1052,12 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
     if (obj.memory['playableBy'] !== p) return false;
     if (typeof obj.memory['plotted'] === 'number' && obj.memory['plotted'] >= g.state.turn.number) return false; // plot: a later turn
     if (typeof obj.memory['foretoldTurn'] === 'number' && obj.memory['foretoldTurn'] >= g.state.turn.number) return false; // foretell: a later turn
+    if (until === 'untilYourNextTurn' || until === 'untilEndOfYourNextTurn') {
+      const grant = (obj.memory['playableGrantTurns'] as number | undefined) ?? 0;
+      const started = g.player(p).turnsStarted ?? 0;
+      // "until your next turn" ends as that turn begins; "until the end of your next turn" lasts through it.
+      return until === 'untilYourNextTurn' ? started === grant : started <= grant + 1;
+    }
     return until === 'permanent' || until === g.state.turn.number;
   }
   return false;

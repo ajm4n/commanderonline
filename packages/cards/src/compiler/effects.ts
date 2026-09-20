@@ -15,6 +15,8 @@ export interface ParseCtx {
   targets: TargetSpec[];
   lastObj: Ref | null;
   lastPlayer: Ref | null;
+  /** The target registered by a bare "Choose any target." sentence, for a later "that target". */
+  anyTarget?: Ref;
   /** Inside a trigger whose event carries an object / player. */
   triggerHasObject: boolean;
   triggerHasPlayer: boolean;
@@ -254,8 +256,10 @@ function actorRef(phrase: string, ctx: ParseCtx): Ref | null {
 function anyRef(phrase: string, ctx: ParseCtx): Ref | null {
   const l = phrase.trim().toLowerCase();
   if (l === 'each creature and each player' || l === 'each creature and each planeswalker and each player') return null; // handled by caller
-  // "that permanent or player" refers back to an "any target" already chosen.
-  if (/^that (?:permanent or player|creature, player, or planeswalker|permanent, player or planeswalker)$/i.test(l) && ctx.lastObj) return ctx.lastObj;
+  // "that target" / "that permanent or player" refers back to an "any target" already chosen, even when a
+  // later sentence moved "it" elsewhere (Blast of Genius: "Choose any target. Draw three cards, then discard a card. ~ deals … to that target").
+  if (/^that (?:target|permanent or player|creature, player, or planeswalker|permanent, player or planeswalker|creature or player|player or permanent)$/i.test(l) && (ctx.anyTarget ?? ctx.lastObj)) return ctx.anyTarget ?? ctx.lastObj;
+  if (/^that (?:creature|permanent|player|opponent|planeswalker|land|artifact)$/i.test(l) && ctx.anyTarget) return ctx.anyTarget;
   return playerRef(phrase, ctx) ?? objRef(phrase, ctx);
 }
 
@@ -1364,7 +1368,7 @@ const PATTERNS: Pattern[] = [
   }],
   [/^you may (?:play|cast) (?:that card|those cards|it|them) (?:this turn|until end of turn|until the end of your next turn|for as long as (?:it remains|they remain) exiled)$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? { ref: 'lastMoved' as const };
-    return [{ kind: 'playFromExile', what: ref, duration: /this turn|until end of turn/i.test(m[0]) ? 'thisTurn' : 'permanent' }];
+    return [{ kind: 'playFromExile', what: ref, duration: playUntil(m[0]) }];
   }],
   [/^add (\w+|X) mana of the chosen color$/i, (m) => {
     const n = wordToNumber(m[1]);
@@ -1760,7 +1764,13 @@ const PATTERNS: Pattern[] = [
   // "choose target X." → just registers the target for the following sentences
   [/^choose (target .+|up to \w+ (?:other )?target .+)$/i, (m, ctx) => {
     const parts = m[1].split(/ and (?=target |up to \w+ target )/i);
-    for (const p of parts) if (!(objRef(p, ctx) ?? playerRef(p, ctx))) return null;
+    let last: Ref | null = null;
+    for (const p of parts) {
+      last = objRef(p, ctx) ?? playerRef(p, ctx);
+      if (!last) return null;
+    }
+    // A bare "Choose target X." exists so later sentences can say "that creature"/"that target" after other things moved "it".
+    if (parts.length === 1 && last) ctx.anyTarget = last;
     return [];
   }],
   // Reveal-and-discard: "You choose a nonland card from it. That player discards that card."
@@ -2266,6 +2276,7 @@ const PATTERNS: Pattern[] = [
   [/^choose (?:any target|another target)$/i, (m, ctx) => {
     ctx.targets.push({ description: 'any target', kind: 'any', playerFilter: 'any' });
     ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.anyTarget = ctx.lastObj;
     return [];
   }],
   // "Double ~'s power until end of turn."
@@ -5702,6 +5713,13 @@ const PATTERNS: Pattern[] = [
     ctx.lastObj = ref;
     return [/destroy/i.test(m[1]) ? { kind: 'destroy', what: ref, cantRegenerate: false } : /exile/i.test(m[1]) ? { kind: 'moveToZone', what: ref, zone: 'exile' } : { kind: 'tap', what: ref }];
   }],
+  // "Choose any number of target players or planeswalkers." (Kaboom!)
+  [/^choose any number of target players or planeswalkers$/i, (m, ctx) => {
+    ctx.targets.push({ description: 'any number of target players or planeswalkers', kind: 'any', filter: { types: ['Planeswalker'], zone: 'battlefield' }, playerFilter: 'any', min: 0, max: 20 });
+    ctx.lastObj = { ref: 'target', slot: ctx.targets.length - 1 };
+    ctx.anyTarget = ctx.lastObj;
+    return [];
+  }],
   [/^choose any number of target (.+?), (.+?),? and\/or players$/i, (m, ctx) => {
     const a = parseNoun(`a ${singularize(m[1])}`);
     const b = parseNoun(`a ${singularize(m[2])}`);
@@ -8509,14 +8527,15 @@ const PATTERNS: Pattern[] = [
   }],
   // "You may play cards exiled this way until the end of your next turn."
   [/^(?:you may )?(?:play|cast) (it|them|that card|those cards|the exiled cards?|cards exiled this way|cards exiled with ~|up to \w+ of those cards|lands from among those cards|lands and cast spells from among cards exiled with ~|lands and cast spells from among the exiled cards)(?: (?:this turn|until the end of your next turn|until your next end step|until your next turn|until the beginning of your next upkeep|for as long as (?:it remains|they remain) exiled|for as long as you control ~|until you exile another card with ~))?(?: without paying (?:its|their) mana costs?)?$/i, (m, ctx) => {
-    const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
-    const dur: 'thisTurn' | 'permanent' = /this turn|next end step|next turn|next upkeep/i.test(m[0]) ? 'thisTurn' : 'permanent';
+    // "the exiled cards" / "cards exiled this way" are everything this source exiled, not whatever "it" last pointed at.
+    const ref: Ref = /exiled/i.test(m[1]) ? { ref: 'chosen', key: 'exiled' } : ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const dur = playUntil(m[0]);
     return [{ kind: 'playFromExile', what: ref, duration: dur, free: /without paying/i.test(m[0]) || undefined }];
   }],
   // "cast it from your graveyard this turn"
   [/^cast (it|that card|them) from your graveyard(?: this turn| as an Adventure until the end of your next turn| until the end of your next turn)?$/i, (m, ctx) => {
     const ref = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
-    return [{ kind: 'playFromExile', what: ref, duration: /this turn|next turn/i.test(m[0]) ? 'thisTurn' : 'permanent', fromGraveyard: true }];
+    return [{ kind: 'playFromExile', what: ref, duration: playUntil(m[0]), fromGraveyard: true }];
   }],
   // "destroy all Auras attached to target land"
   [/^destroy all (.+?) attached to (.+)$/i, (m, ctx) => {
@@ -8779,6 +8798,14 @@ function setAnyMana(list: Effect[]): boolean {
     if (Array.isArray(nested) && setAnyMana(nested)) return true;
   }
   return false;
+}
+
+/** How long a "you may play/cast … " permission lasts, from the sentence's trailing duration. */
+function playUntil(text: string): 'thisTurn' | 'permanent' | 'untilYourNextTurn' | 'untilEndOfYourNextTurn' {
+  if (/until the end of your next turn/i.test(text)) return 'untilEndOfYourNextTurn';
+  if (/until your next turn|until the beginning of your next upkeep/i.test(text)) return 'untilYourNextTurn';
+  if (/this turn|until end of turn|next end step/i.test(text)) return 'thisTurn';
+  return 'permanent';
 }
 
 function damageTo(targetText: string, amount: Amount, ctx: ParseCtx, source: Ref): Effect[] | null {
@@ -9233,7 +9260,26 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // "~ deals damage equal to the discarded card's mana value to that permanent or player" → "~ deals X damage to ..., where X is ..."
-  if ((m = text.match(/^(.+?) deals damage equal to (.+?) to (.+)$/i)) && !/\bwhere X is\b/i.test(text)) {
+  if ((m = text.match(/^(.+?) deals damage equal to (.+?) to (.+)$/i)) && !/\bwhere X is\b/i.test(text) && !/\. |, /.test(m[1])) {
+    // Resolve the subject, then the amount, then the damage target: "its power" is the subject's
+    // (Soul's Fire) and "that card's mana value" is what an earlier sentence set up (Kindle the
+    // Carnage), not the creature being damaged.
+    const saved = ctx.targets.length;
+    const savedLast = ctx.lastObj;
+    // A "~" subject must not become "that card": keep whatever an earlier sentence set up.
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    let a: Amount | null = null;
+    if (src && /^its\b/i.test(m[2])) {
+      // "X deals damage equal to its power": "its" is the subject X.
+      const keep = ctx.lastObj;
+      ctx.lastObj = src;
+      a = amt(m[2], ctx);
+      ctx.lastObj = keep;
+    } else if (src) a = amt(m[2], ctx);
+    const direct = src && a !== null ? damageTo(m[3], a, ctx, src) : null;
+    if (direct) return direct;
+    ctx.targets.length = saved;
+    ctx.lastObj = savedLast;
     const r = parseSentence(`${m[1]} deals X damage to ${m[3]}, where X is ${m[2]}`, ctx);
     if (r) return r;
   }
@@ -9381,6 +9427,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   // "You may tap three untapped creatures you control. If you do, Y" / "you may discard a nonland card. If you do, Y"
   if ((m = text.match(/^(?:you may )?((?:tap|discard|sacrifice|exile|return|reveal|remove) .+?)\. if you do, (.+)$/i))) {
     const cost = parseCost(m[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
+    // "Discard a card at random. If you do, ~ deals damage equal to that card's mana value": "that card" is what the cost moved.
+    if (/\bthat card\b/i.test(m[2])) {
+      if (cost?.discard) ctx.lastObj = { ref: 'lastDiscarded' };
+      else if (cost?.sacrifice || cost?.exileObjects || cost?.exileFromGraveyard) ctx.lastObj = { ref: 'lastMoved' };
+    }
     const inner = cost ? parseSentence(m[2], ctx) : null;
     if (cost && inner) return [{ kind: 'ifPays', cost: '', payCostSpec: cost, effects: inner, text: `${m[1]}?` }];
   }
@@ -9626,7 +9677,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       body = km[2];
     }
     const ref = objRef(body, ctx) ?? ctx.lastObj ?? { ref: 'lastMoved' as const };
-    return [{ kind: 'playFromExile', what: ref, duration: /end of turn$/i.test(m[0].split(',')[0]) ? 'thisTurn' : 'permanent', ...(free ? { free: true } : {}), ...(filter ? { filter } : {}) }];
+    return [{ kind: 'playFromExile', what: ref, duration: playUntil(m[0].split(',')[0]), ...(free ? { free: true } : {}), ...(filter ? { filter } : {}) }];
   }
   // "If <condition>, <effects>" — the condition may itself contain commas ("If you control a God, a
   // Demigod, or a legendary enchantment, ..."), so try every split, real conditions first.
@@ -9680,9 +9731,11 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   text = text.replace(/^until your next turn, (.+?)$/i, (_m, rest: string) => (/ until your next turn$/i.test(rest) ? rest : `${rest} until your next turn`));
-  // Patterns are written for "until end of turn"; retime whatever they produce.
+  text = text.replace(/^until the end of your next turn, (.+?)$/i, (_m, rest: string) => (/ until the end of your next turn$/i.test(rest) ? rest : `${rest} until the end of your next turn`));
+  // Patterns are written for "until end of turn"; retime whatever they produce. Play/cast permissions carry their own
+  // duration ("you may play those cards until the end of your next turn"), so leave them to their handler.
   for (const [suffix, dur] of [[' until your next turn', 'untilYourNextTurn'], [' until end of combat', 'endOfCombat'], [' until the end of your next turn', 'untilYourNextTurn']] as const) {
-    if (text.toLowerCase().endsWith(suffix)) {
+    if (text.toLowerCase().endsWith(suffix) && !/^(?:you may )?(?:play|cast) (?:it|them|that card|those cards|the exiled|cards exiled|lands|up to)/i.test(text)) {
       const saved = ctx.targets.length;
       const inner = parseSentence(text.slice(0, -suffix.length) + ' until end of turn', ctx);
       if (inner) return inner.map((e) => retime(e, dur));
@@ -9720,6 +9773,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ctx.targets.length = saved;
   }
   if ((m = text.match(/^for each (.+?), (.+)$/i))) {
+    // "Choose any number of target creatures. For each of them, …": iterate over what was just chosen.
+    if (/^(?:of )?(?:them|those (?:creatures|permanents|players|cards|targets))$/i.test(m[1]) && ctx.lastObj) {
+      const sub = newCtx({ ...ctx, targets: ctx.targets });
+      sub.lastObj = { ref: 'iter' };
+      sub.lastPlayer = { ref: 'iter' };
+      sub.anyTarget = { ref: 'iter' };
+      const inner = parseSentence(m[2], sub); // "that permanent or player" / "that player" resolve to the iteration item
+      if (inner) return [{ kind: 'forEach', over: ctx.lastObj, effects: inner }];
+    }
     const noun = parseNoun(m[1]);
     if (noun) {
       const sub = newCtx({ ...ctx, targets: ctx.targets });
@@ -10433,11 +10495,13 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
     }
-    // "You may repeat this process any number of times." — the previous sentence loops.
-    if (/^(?:you may )?repeat this process any number of times$/i.test(s) && effects.length > lastStart) {
-      const body = effects.slice(lastStart);
-      effects.length = lastStart;
+    // "You may repeat this process any number of times." — the whole paragraph so far loops
+    // (Ad Nauseam: reveal, put into hand, lose life; Kindle the Carnage: discard, deal damage).
+    if (/^(?:you may )?repeat this process any number of times$/i.test(s) && effects.length > 0) {
+      const body = effects.slice(0);
+      effects.length = 0;
       effects.push({ kind: 'repeatWhile', effects: body, optional: true });
+      curStart = 0;
       continue;
     }
     // "Otherwise, X" completes the previous conditional, optional effect or payment.

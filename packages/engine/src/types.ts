@@ -191,6 +191,8 @@ export interface Player {
   attemptedDrawFromEmpty: boolean;
   /** Turn number at which this player's most recent turn began (CR 302.6 summoning sickness). */
   lastTurnStarted?: number;
+  /** How many turns this player has begun (for "until the end of your next turn" permissions). */
+  turnsStarted?: number;
   /** Player-level "flags" for effects like "you can't lose the game". */
   flags: Record<string, unknown>;
   /** Turn-scoped stats used by triggers ("first time each turn"). */

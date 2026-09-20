@@ -9017,5 +9017,36 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/6/3/63195796-197e-47ec-85f0-d4ec0065f6e6.jpg?1783927528"
     }
+  },
+  {
+    "object": "card",
+    "id": "912b94c9-7200-452d-940f-df0a7cceb377",
+    "oracle_id": "8d286376-f386-43ab-a9bd-8478fb9e2497",
+    "name": "Light Up the Stage",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}",
+    "cmc": 3,
+    "type_line": "Sorcery",
+    "oracle_text": "Spectacle {R} (You may cast this spell for its spectacle cost rather than its mana cost if an opponent lost life this turn.)\nExile the top two cards of your library. Until the end of your next turn, you may play those cards.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [
+      "Spectacle"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/9/1/912b94c9-7200-452d-940f-df0a7cceb377.jpg?1783909612"
+    }
   }
 ]

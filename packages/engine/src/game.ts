@@ -2970,6 +2970,7 @@ export class Game {
     t.skipSteps = [];
     t.attackers = [];
     this.player(pid).lastTurnStarted = t.number;
+    this.player(pid).turnsStarted = (this.player(pid).turnsStarted ?? 0) + 1;
     // Rules granted "this turn" end; "until your next turn" rules end only when that player's turn begins.
     this.state.turnRules = (this.state.turnRules ?? []).filter((r) => r.untilNextTurnOf !== undefined && r.untilNextTurnOf !== pid);
     this.state.turnStats = {};

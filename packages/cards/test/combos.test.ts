@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -986,6 +986,28 @@ describe('combos and staples played through the engine', () => {
     expect(d.g.obj(ring).zone).toBe('graveyard');
     expect(d.bf(p2, 'Elephant')).toHaveLength(2);
     expect(d.bf(p1, 'Elephant')).toHaveLength(1);
+  });
+  it('Light Up the Stage: exiled cards stay playable through your next turn, not after', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Mountain', 4);
+    const bears = d.g.createObject(C('Grizzly Bears'), p1, 'library', { skipEvents: true }).id;
+    const ring = d.g.createObject(C('Sol Ring'), p1, 'library', { skipEvents: true }).id;
+    const lib = d.g.player(p1).library;
+    for (const id of [bears, ring]) lib.splice(lib.indexOf(id), 1);
+    lib.unshift(bears, ring);
+    d.g.refreshDecision();
+    const stage = d.give(p1, C('Light Up the Stage'));
+    d.cast(stage);
+    d.resolve();
+    expect(d.g.obj(ring).zone).toBe('exile');
+    expect(d.prio().playableCards).toContain(ring);
+    const turn = d.g.state.turn.number;
+    const main1 = (x: Decision, minTurn: number) => x.type === 'priority' && x.player === p1 && d.g.state.turn.activePlayer === p1 && d.g.state.turn.number > minTurn && d.g.state.turn.step === 'main1' && d.g.state.stack.length === 0;
+    d.until((x) => main1(x, turn), 800);
+    expect(d.prio().playableCards).toContain(ring); // your next turn: still playable
+    const next = d.g.state.turn.number;
+    d.until((x) => main1(x, next), 800);
+    expect(d.prio().playableCards).not.toContain(ring); // the turn after: permission has ended
   });
   it('Deep Analysis flashes back for {1}{U} and 3 life', () => {
     const { d, p1 } = game();
