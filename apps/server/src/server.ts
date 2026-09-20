@@ -146,7 +146,7 @@ export async function createServer(opts: ServerOptions): Promise<RunningServer> 
         if (typeof body.url === 'string' && body.url.trim()) {
           let imported;
           try {
-            imported = await importDeckFromUrl(body.url.trim(), fetchImpl);
+            imported = await importDeckFromUrl(body.url.trim(), fetchImpl, { userAgent: process.env.DECK_IMPORT_USER_AGENT });
           } catch (err) {
             throw new HttpError(502, `Could not import deck from URL: ${err instanceof Error ? err.message : String(err)}`);
           }

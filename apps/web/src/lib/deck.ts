@@ -145,6 +145,16 @@ export async function prepareDeckFromUrl(url: string): Promise<PreparedDeck> {
     if (isNetworkError(e)) throw new Error('The game server is not reachable, so URL import is unavailable. Export your deck as text and paste it instead.');
     throw e;
   }
+  // importDeckFromUrl never throws for a remote failure: it returns an empty deck and explains
+  // itself in `warnings`. Without this the picker would happily "prepare" a deck of nothing.
+  if (res.commanders.length === 0 && res.mainboard.length === 0) {
+    const why = (res.warnings ?? []).find((w) => w.trim()) ?? `No cards were found at ${url.trim()}.`;
+    throw new Error(
+      detectSource(url) === 'moxfield'
+        ? `${why} In Moxfield open your deck → More → Export → copy the text, then paste it here.`
+        : why,
+    );
+  }
   for (const c of [...res.commanders, ...res.mainboard]) rememberCard(c);
   const payload: DeckPayload = { name: res.name || deckNameFrom(res.commanders), commanders: res.commanders, mainboard: res.mainboard };
   return { payload, missing: res.missing ?? [], warnings: res.warnings ?? [], coverage: computeCoverage([...payload.commanders, ...payload.mainboard]), source: 'url' };

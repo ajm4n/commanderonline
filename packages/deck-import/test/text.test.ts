@@ -143,4 +143,37 @@ describe('Moxfield export shapes', () => {
     const d = parseDeckText(`1 Sol Ring\n1 Tinybones, Trinket Thief *CMDR*\n1 Swamp`);
     expect(d.commanders.map((c) => c.name)).toEqual(['Tinybones, Trinket Thief']);
   });
+
+  // Moxfield's own text export introduces nothing at all: the commander is the first block.
+  const ninetyNine = Array.from({ length: 20 }, (_, i) => `1 Island (LEA) ${i + 1}`).join('\n');
+
+  it('claims a headerless first block of one card as the commander', () => {
+    const d = parseDeckText(`1 Tinybones, Trinket Thief (CMM) 470\n\n${ninetyNine}\n`);
+    expect(d.commanders.map((c) => c.name)).toEqual(['Tinybones, Trinket Thief']);
+    expect(d.mainboard.some((e) => e.name === 'Tinybones, Trinket Thief')).toBe(false);
+    expect(d.warnings.some((w) => /no commander/i.test(w))).toBe(false);
+  });
+
+  it('claims a headerless first block of two cards (partners)', () => {
+    const d = parseDeckText(`1 Thrasios, Triton Hero (C16) 40\n1 Tymna the Weaver (C16) 38\n\n${ninetyNine}\n`);
+    expect(d.commanders.map((c) => c.name)).toEqual(['Thrasios, Triton Hero', 'Tymna the Weaver']);
+  });
+
+  it('still claims it when a SIDEBOARD section follows the deck', () => {
+    const d = parseDeckText(`1 Tinybones, Trinket Thief (CMM) 470\n\n${ninetyNine}\n\nSIDEBOARD:\n1 Swords to Plowshares (STA) 12\n`);
+    expect(d.commanders.map((c) => c.name)).toEqual(['Tinybones, Trinket Thief']);
+    expect(d.sideboard.map((c) => c.name)).toEqual(['Swords to Plowshares']);
+  });
+
+  it('leaves an MTGO maindeck / sideboard split alone', () => {
+    const main = Array.from({ length: 12 }, (_, i) => `4 Bolt ${i} (LEA) ${i}`).join('\n');
+    const d = parseDeckText(`${main}\n\n2 Smash to Smithereens (SOM) 1\n`);
+    expect(d.commanders).toEqual([]);
+    expect(d.mainboard.length).toBe(13);
+  });
+
+  it('leaves a flat list with no blank line alone', () => {
+    const d = parseDeckText(`1 Tinybones, Trinket Thief (CMM) 470\n${ninetyNine}\n`);
+    expect(d.commanders).toEqual([]);
+  });
 });

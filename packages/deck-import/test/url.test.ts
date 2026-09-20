@@ -63,6 +63,21 @@ describe('importDeckFromUrl', () => {
     expect(deck.warnings[0]).toMatch(/paste/i);
   });
 
+  it('sends a configured User-Agent and names it when Moxfield refuses', async () => {
+    let seen: RequestInit | undefined;
+    const ok = mockFetch((_url, init) => {
+      seen = init;
+      return new Response(v3, { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    await importDeckFromUrl('https://www.moxfield.com/decks/aB3dE9fGh1', ok, { userAgent: 'ApprovedApp/2.0' });
+    expect((seen?.headers as Record<string, string>)['User-Agent']).toBe('ApprovedApp/2.0');
+
+    const refused = mockFetch(() => new Response('Forbidden', { status: 403 }));
+    const deck = await importDeckFromUrl('https://www.moxfield.com/decks/aB3dE9fGh1', refused, { userAgent: 'ApprovedApp/2.0' });
+    expect(deck.warnings[0]).toMatch(/ApprovedApp\/2\.0/);
+    expect(deck.warnings[0]).toMatch(/DECK_IMPORT_USER_AGENT/);
+  });
+
   it('reports network errors and unknown URLs as warnings', async () => {
     const failing = mockFetch(() => {
       throw new Error('ECONNRESET');

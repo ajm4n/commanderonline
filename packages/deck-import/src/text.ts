@@ -146,12 +146,21 @@ export function parseDeckText(text: string): ImportedDeck {
   let sawExplicitCommanderSection = false;
   let sawAnyHeader = false;
   let unparsed = 0;
+  // Moxfield and Archidekt text exports introduce nothing: the commander is simply the first
+  // block, separated from the deck by a blank line. Remember that block to claim it below.
+  let blocks = 0;
+  let cardInBlock = false;
+  const firstBlock: { entry: DeckEntry; quantity: number }[] = [];
 
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) {
-      // Moxfield-style exports separate the commander block from the deck with a blank line and no "Deck" header.
+      // An explicit "Commander" section ends at the blank line that follows it.
       if (current === 'commanders' && deck.commanders.length > 0) current = 'mainboard';
+      if (cardInBlock) {
+        blocks++;
+        cardInBlock = false;
+      }
       continue;
     }
 
@@ -187,6 +196,23 @@ export function parseDeckText(text: string): ImportedDeck {
       addEntry(deck.sideboard, parsed.entry);
     } else {
       addEntry(deck.mainboard, parsed.entry);
+      if (blocks === 0) firstBlock.push({ entry: parsed.entry, quantity: parsed.entry.quantity });
+    }
+    cardInBlock = true;
+  }
+
+  // "1 Atraxa, Praetors' Voice (2X2) 137" + blank line + the other 99: a headerless first block of
+  // one or two cards is the commander. Guarded so an MTGO maindeck/sideboard split is left alone.
+  if (deck.commanders.length === 0 && !sawExplicitCommanderSection && blocks >= 1 && firstBlock.length > 0 && firstBlock.length <= 2) {
+    const intact = firstBlock.every((f) => deck.mainboard.includes(f.entry) && f.entry.quantity === f.quantity);
+    const leading = firstBlock.reduce((n, f) => n + f.quantity, 0);
+    const rest = deck.mainboard.reduce((n, e) => n + e.quantity, 0) - leading;
+    if (intact && leading <= 2 && rest >= 10) {
+      for (const { entry } of firstBlock) {
+        deck.mainboard.splice(deck.mainboard.indexOf(entry), 1);
+        entry.isCommander = true;
+        addEntry(deck.commanders, entry);
+      }
     }
   }
 

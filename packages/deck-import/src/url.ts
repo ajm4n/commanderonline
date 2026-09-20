@@ -35,8 +35,13 @@ const PASTE_HINT = 'Paste the deck as exported text instead (Moxfield: More > Ex
  * Fetch and parse a deck from a Moxfield, Archidekt or TappedOut URL.
  * Never throws for remote failures: problems are reported in `warnings`.
  */
-export async function importDeckFromUrl(url: string, fetchImpl: typeof fetch = globalThis.fetch): Promise<ImportedDeck> {
+export async function importDeckFromUrl(
+  url: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  opts: { userAgent?: string } = {},
+): Promise<ImportedDeck> {
   const { source, apiUrl } = apiUrlFor(url);
+  const userAgent = opts.userAgent?.trim() || USER_AGENT;
   const fail = (message: string): ImportedDeck => {
     const deck = emptyDeck(source);
     deck.url = url;
@@ -52,7 +57,7 @@ export async function importDeckFromUrl(url: string, fetchImpl: typeof fetch = g
   try {
     response = await fetchImpl(apiUrl, {
       headers: {
-        'User-Agent': USER_AGENT,
+        'User-Agent': userAgent,
         Accept: source === 'tappedout' ? 'text/plain, */*' : 'application/json',
       },
       redirect: 'follow',
@@ -64,7 +69,8 @@ export async function importDeckFromUrl(url: string, fetchImpl: typeof fetch = g
   if (!response.ok) {
     if (source === 'moxfield' && (response.status === 403 || response.status === 401)) {
       return fail(
-        `Moxfield refused the request (HTTP ${response.status}); its API only accepts approved user agents. ${PASTE_HINT}`,
+        `Moxfield refused the request (HTTP ${response.status}) for User-Agent "${userAgent}"; its API only serves user agents Moxfield has approved. ` +
+          `Ask Moxfield to approve one, then set DECK_IMPORT_USER_AGENT on the server. ${PASTE_HINT}`,
       );
     }
     if (response.status === 404) return fail(`Deck not found at ${apiUrl} (HTTP 404). Is the deck public?`);
