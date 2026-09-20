@@ -1,3 +1,4 @@
+import { BASIC_LAND_TYPES } from './typeline.js';
 import type { Game } from './game.js';
 import type { CardType, Color, ContinuousEffect, GameObject, Modification, ObjectFilter, ObjectId, RuleModification, Supertype } from './types.js';
 import { parseTypeLine } from './typeline.js';
@@ -216,13 +217,18 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     }
     return ordered;
   };
+  let landTypeReset = false;
   const applyTypes = (c: Characteristics, m: Modification) => {
     if (m.layer !== 4) return;
     if (m.setTypes) c.types = [...m.setTypes];
     if (m.addTypes) for (const t of m.addTypes) if (!c.types.includes(t)) c.types.push(t);
     const rm = m.removeTypes;
     if (rm) c.types = c.types.filter((t) => !rm.includes(t));
-    if (m.setSubtypes) c.subtypes = [...m.setSubtypes];
+    if (m.setSubtypes) {
+      c.subtypes = [...m.setSubtypes];
+      // Rule 305.7: an effect that sets a land's subtype to a basic land type also removes its other abilities.
+      if (c.types.includes('Land') && m.setSubtypes.length && m.setSubtypes.every((t) => t in BASIC_LAND_TYPES)) landTypeReset = true;
+    }
     if (m.addSubtypes) for (const t of m.addSubtypes) if (!c.subtypes.includes(t)) c.subtypes.push(t);
     if (m.addSupertypes) for (const t of m.addSupertypes) if (!c.supertypes.includes(t)) c.supertypes.push(t);
     if (m.removeSupertypes) c.supertypes = c.supertypes.filter((t) => !m.removeSupertypes!.includes(t));
@@ -259,6 +265,13 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
   // Layer 5: colors
   for (const e of orderLayer(5, applyColors)) applyColorsFor(ch, e.mod, e.sourceId ?? null);
   // Layer 6: abilities
+  if (landTypeReset) {
+    // Blood Moon / Spreading Seas: the land keeps only the intrinsic mana ability of its new type (rule 305.7).
+    ch.keywords.clear();
+    ch.protections = [];
+    ch.hexproofFrom = [];
+    ch.lostAllAbilities = true;
+  }
   for (const e of orderLayer(6, (c, m) => applyAbilities(c, m))) applyAbilities(ch, e.mod);
   if (ch.lostAllAbilities && !obj.faceDown) {
     // CR 613.1f / 604.3: an object's own static abilities and its "*" P/T definition were removed with its abilities.

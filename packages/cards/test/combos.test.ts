@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -678,5 +678,28 @@ describe('combos and staples played through the engine', () => {
     d.targetPlayer(p2);
     d.resolve();
     expect(d.g.player(p2).library.length).toBe(lib2 - 9); // original + one copy
+  });
+  it("Thalia taxes opponents' noncreature spells too", () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Thalia, Guardian of Thraben'));
+    d.lands(p2, 'Island', 1);
+    d.lands(p2, 'Forest', 1);
+    const freeze = d.give(p2, C('Brain Freeze')); // {1}{U}
+    d.main(p2);
+    expect(d.prio().playableCards).not.toContain(freeze); // {1}{U} becomes {2}{U} with two lands
+    d.lands(p2, 'Forest', 1);
+    d.until((x) => x.type === 'priority' && x.player === p2);
+    expect(d.prio().playableCards).toContain(freeze);
+  });
+
+  it('Blood Moon turns a nonbasic land into a plain Mountain (305.7)', () => {
+    const { d, p1 } = game();
+    const tower = d.put(p1, C('Command Tower'));
+    const before = d.prio().activatableAbilities.filter((a) => a.objectId === tower).map((a) => a.text);
+    expect(before.some((t) => /commander's color identity/.test(t))).toBe(true);
+    d.put(p1, C('Blood Moon'));
+    const after = d.prio().activatableAbilities.filter((a) => a.objectId === tower).map((a) => a.text);
+    expect(after).toEqual(['{T}: Add {R}.']);
+    expect(d.g.characteristics(tower).subtypes).toEqual(['Mountain']);
   });
 });

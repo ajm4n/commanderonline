@@ -8242,5 +8242,67 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/e/2/e21aa266-4264-4e02-9403-02930e641573.jpg?1783934859"
     }
+  },
+  {
+    "object": "card",
+    "id": "c9f8b8fb-1cd8-450e-a1fe-892e7a323479",
+    "oracle_id": "9b7f1d05-707c-4ed3-9f0e-8ced1232c2ee",
+    "name": "Thalia, Guardian of Thraben",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{W}",
+    "cmc": 2,
+    "type_line": "Legendary Creature — Human Soldier",
+    "oracle_text": "First strike\nNoncreature spells cost {1} more to cast.",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [
+      "First strike"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "1",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/c/9/c9f8b8fb-1cd8-450e-a1fe-892e7a323479.jpg?1783924909"
+    }
+  },
+  {
+    "object": "card",
+    "id": "d072e9ca-aae7-45dc-8025-3ce590bae63f",
+    "oracle_id": "94fac5fe-97d5-4c12-a80c-8efff9d853ae",
+    "name": "Blood Moon",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}",
+    "cmc": 3,
+    "type_line": "Enchantment",
+    "oracle_text": "Nonbasic lands are Mountains.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/0/d072e9ca-aae7-45dc-8025-3ce590bae63f.jpg?1783930171"
+    }
   }
 ]

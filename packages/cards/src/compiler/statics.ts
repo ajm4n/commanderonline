@@ -3027,7 +3027,9 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const generic = m[2].match(/^\{(\d)\}$/);
     const kind = m[3].toLowerCase() === 'less' ? 'costReduction' : 'costIncrease';
     if (!generic && /\d/.test(m[2])) break sfall18;
-    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: generic ? { kind, amount: parseInt(generic[1], 10), filter } : { kind, amount: 0, symbols: m[2], filter } }];
+    // "Noncreature spells cost {1} more to cast" (Thalia) taxes everyone; "… you cast" is only the controller.
+    const who = /\byou cast\b/i.test(L) ? 'controller' : 'allPlayers';
+    return [{ kind: 'static', text: line, ruleAffects: who, rule: generic ? { kind, amount: parseInt(generic[1], 10), filter } : { kind, amount: 0, symbols: m[2], filter } }];
   }
   }
   sfall19: {
