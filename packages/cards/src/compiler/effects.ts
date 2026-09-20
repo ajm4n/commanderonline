@@ -1822,6 +1822,18 @@ const PATTERNS: Pattern[] = [
     return n === null ? null : [{ kind: 'addMana', mana: 'anyColor', amount: n }];
   }],
   // Mana
+  // "Add {G} for each Elf you control" (Priest of Titania, Elvish Archdruid)
+  [/^add ((?:\{[WUBRGC]\})+) for each (.+)$/i, (m, ctx) => {
+    const mana = [...m[1].matchAll(/\{([WUBRGC])\}/g)].map((x) => x[1] as ManaColor);
+    const amount = amt(`the number of ${m[2]}`, ctx) ?? amt(m[2], ctx);
+    return amount === null ? null : [{ kind: 'addMana', mana, amount }];
+  }],
+  // "add {G} and you gain 1 life" (Selvala, Explorer Returned)
+  [/^add ((?:\{[WUBRGC]\})+) and (.+)$/i, (m, ctx) => {
+    const mana = [...m[1].matchAll(/\{([WUBRGC])\}/g)].map((x) => x[1] as ManaColor);
+    const rest = parseSentence(m[2], ctx);
+    return rest ? [{ kind: 'addMana', mana }, ...rest] : null;
+  }],
   [/^add (.+)$/i, (m) => {
     const body = m[1];
     let mm: RegExpMatchArray | null;
