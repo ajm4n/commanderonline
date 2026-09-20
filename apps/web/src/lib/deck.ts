@@ -149,11 +149,8 @@ export async function prepareDeckFromUrl(url: string): Promise<PreparedDeck> {
   // itself in `warnings`. Without this the picker would happily "prepare" a deck of nothing.
   if (res.commanders.length === 0 && res.mainboard.length === 0) {
     const why = (res.warnings ?? []).find((w) => w.trim()) ?? `No cards were found at ${url.trim()}.`;
-    throw new Error(
-      detectSource(url) === 'moxfield'
-        ? `${why} In Moxfield open your deck → More → Export → copy the text, then paste it here.`
-        : why,
-    );
+    // The server's warning usually ends with its own paste hint; only add ours when it does not.
+    throw new Error(detectSource(url) === 'moxfield' && !/paste/i.test(why) ? `${why} In Moxfield open your deck → More → Export → copy the text, then paste it here.` : why);
   }
   for (const c of [...res.commanders, ...res.mainboard]) rememberCard(c);
   const payload: DeckPayload = { name: res.name || deckNameFrom(res.commanders), commanders: res.commanders, mainboard: res.mainboard };

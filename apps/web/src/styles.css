@@ -1488,7 +1488,27 @@ h3 {
   }
 }
 
-.bf-row.command { border-left: 2px solid rgba(255, 200, 80, 0.35); padding-left: 8px; position: relative; }
+/* The command zone is a zone, not part of the battlefield. It is a compact box anchored to the
+   left edge rather than a full-width centred row, so a commander waiting in it is never mistaken
+   for one in play; casting it moves it to the centred creature row on its own. */
+.bf-row.command {
+  --cw: 70px;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  min-height: 0;
+  gap: 4px;
+  padding: 14px 8px 6px;
+  border: 1px solid rgba(255, 200, 80, 0.3);
+  border-left: 2px solid rgba(255, 200, 80, 0.45);
+  border-radius: 8px;
+  background: rgba(255, 200, 80, 0.06);
+  position: relative;
+}
+.bf-row.command .bf-label {
+  top: 3px;
+  left: 9px;
+}
 .log-card {
   color: #cfe1ff;
   border-bottom: 1px dotted rgba(140, 185, 255, 0.55);
