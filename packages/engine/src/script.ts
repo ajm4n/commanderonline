@@ -323,7 +323,7 @@ export type Effect =
   /** "~ becomes a copy of that creature" (permanently). */
   | { kind: 'becomeCopy'; what: Ref; of: Ref; exceptions?: TokenSpec['exceptions'] }
   | { kind: 'moveToZone'; what: Ref; zone: ZoneName; position?: 'top' | 'bottom' }
-  | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref; /** Counters the token enters with. */ counters?: { counter: CounterType; amount: Amount } }
+  | { kind: 'createToken'; token: TokenSpec; count: Amount; tapped?: boolean; attacking?: boolean; /** Which player the token attacks ("create a token tapped and attacking that player"). */ attackingPlayer?: Ref; who?: Ref; /** Role tokens: attach the created Aura to this object. */ attachTo?: Ref; /** Counters the token enters with. */ counters?: { counter: CounterType; amount: Amount } }
   | { kind: 'addCounters'; counter: CounterType; amount: Amount; on: Ref; /** "Distribute N counters among ..." */ divided?: boolean ; /** "your choice of a +1/+1, first strike, or trample counter" */ counterOptions?: string[]; /** "Put up to X counters on ~": the controller picks how many. */ upTo?: boolean }
   | { kind: 'removeCounters'; counter: CounterType; amount: Amount | 'all'; on: Ref; /** "Remove up to three counters": the controller may remove fewer. */ upTo?: boolean }
   | { kind: 'pump'; power: Amount; toughness: Amount; on: Ref; duration?: Duration }

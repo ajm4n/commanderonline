@@ -780,7 +780,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           let attacking: PlayerId | ObjectId | undefined;
           if (e.attacking) {
             const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
-            attacking = src?.attacking ?? g.opponentsOf(p)[0];
+            const named = e.attackingPlayer ? g.resolvePlayers(e.attackingPlayer, ctx)[0] : undefined;
+            attacking = named ?? src?.attacking ?? g.opponentsOf(p)[0];
           }
           const o = g.createObject(card, p, 'battlefield', { tapped: e.tapped, attacking });
           if (ctx.sourceId !== null) o.memory.createdBy = ctx.sourceId;

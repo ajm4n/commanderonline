@@ -1705,6 +1705,21 @@ const PATTERNS: Pattern[] = [
     else cond = { kind: 'amount', a: { kind: 'life', ref: { ref: 'iter' } }, op: /more/i.test(m[2]) ? '>' : '<', b: { kind: 'life', ref: YOU } };
     return [{ kind: 'forEach', over: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: [{ kind: 'conditional', if: cond, then: inner }] }];
   }],
+  // "For each opponent, create a 1/1 white Human creature token that is tapped and attacking that player."
+  [/^for each (opponent|player), (.+)$/i, (m, ctx) => {
+    const sub = newCtx({ ...ctx, targets: ctx.targets });
+    sub.lastPlayer = { ref: 'iter' };
+    // "attacking that player" is the iterated player, not whoever this source is attacking.
+    const naming = / attacking that (?:player|opponent)\b/i.test(m[2]);
+    const inner = parseSentence(naming ? m[2].replace(/ attacking that (?:player|opponent)\b/i, ' attacking') : m[2], sub);
+    if (!inner) return null;
+    if (naming) {
+      let tagged = false;
+      for (const e of inner) if (e.kind === 'createToken' && e.attacking) { e.attackingPlayer = { ref: 'iter' }; tagged = true; }
+      if (!tagged) return null;
+    }
+    return [{ kind: 'forEach', over: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: inner }];
+  }],
   [/^the ring tempts you$/i, () => [{ kind: 'ringTempts' }]],
   [/^you take the initiative$/i, () => [{ kind: 'takeInitiative' }]],
   [/^(.+?) takes the initiative$/i, (m, ctx) => {
@@ -10404,7 +10419,17 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         continue;
       }
     }
-    const r = parseSentence(s, ctx);
+    let r = parseSentence(s, ctx);
+    // "~ has base power and toughness 4/2 until end of turn and gains first strike until end of
+    // turn": one subject, two effects, each carrying its own duration.
+    if (!r && (m = s.match(/^(.+?) (until end of turn|until your next turn) and ((?:gains?|has|have|gets?|becomes?) .+)$/i))) {
+      const subj = m[1].match(/^(.+?) (?:has|have|gets?|gains?|becomes?)\b/i);
+      if (subj) {
+        const a = parseSentence(`${m[1]} ${m[2]}`, ctx);
+        const b = a ? parseSentence(`${subj[1]} ${m[3]}`, ctx) : null;
+        if (a && b) r = [...a, ...b];
+      }
+    }
     if (r) effects.push(...r);
     else {
       unhandled.push(s);
