@@ -128,6 +128,9 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/i.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
+    // "that creature" never means ~ itself (a card says "~" for that): after "put a quest counter on ~" pointed "it"
+    // at ~, "that creature" in a trigger is still the creature that triggered it (Support Mission, Glorious Purpose).
+    if (/^that /.test(l) && ctx.lastObj?.ref === 'self' && ctx.triggerHasObject) return ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' };
     // With no antecedent in scope, fall back to the last object this script moved ("put that card onto the battlefield").
     return ctx.lastObj ?? (ctx.triggerHasObject ? (ctx.triggerObjectIsSource ? { ref: 'triggerSource' } : { ref: 'triggerObject' }) : l === 'it' ? SELF : { ref: 'lastMoved' });
   }
