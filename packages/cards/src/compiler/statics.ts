@@ -2345,7 +2345,8 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   sx17: {
   if (/^Players have no maximum hand size$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'allPlayers', rule: { kind: 'noMaxHandSize' } }];
   // Clones
-  if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {
+  if ((m = L.match(/^(You may have )?~ enters? (?:tapped )?as a copy of (?:any|a|an|another) (.+?)(?: on the battlefield)?(?:, except (.+))?$/i))) {
+    const another = /as a copy of another /i.test(L);
     // "..., except it enters with X additional +1/+1 counters on it" belongs on the replacement, not the copy.
     let etbCounters: { counter: string; amount: Amount } | undefined;
     if (m[3]) {
@@ -2359,6 +2360,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
     const noun = parseNoun(`a ${m[2]}`);
     if (!noun) break sx17;
+    if (another) noun.filter.other = true;
     const ex = m[3] ? parseCopyExceptions(m[3].replace(/^(?:it|he|she) enters with /i, 'it has ').replace(/\bhis name\b/i, 'its name')) : undefined;
     if (m[3] && !ex) break sx17;
     return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, tapped: /enters? tapped as a copy/i.test(L) || undefined, enterAsCopy: noun.filter, enterAsCopyOptional: !!m[1], copyExceptions: ex ?? undefined, counters: etbCounters as { counter: import('@commander/engine').CounterType; amount: Amount } | undefined }];

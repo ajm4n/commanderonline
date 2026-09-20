@@ -2753,9 +2753,19 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
         if (pick !== undefined) {
           const src = g.obj(pick);
           o.copyOf = applyCopyExceptions(src.copyOf ?? src.card, ab.copyExceptions);
+          if (ab.copyExceptions?.ownOtherAbilities) {
+            // Sakashima of a Thousand Faces: keep this card's other abilities alongside the copied text.
+            const own = o.card.oracleText.split('\n').filter((l) => !/enters? (?:tapped )?as a copy of/i.test(l));
+            o.copyOf = { ...o.copyOf, oracleText: [o.copyOf.oracleText, ...own].filter(Boolean).join('\n') };
+          }
           o.faceIndex = 0;
           const exc = ab.copyExceptions?.counters;
           if (exc) o.counters[exc.counter] = (o.counters[exc.counter] ?? 0) + exc.amount;
+          if (ab.copyExceptions?.extraCounterByType) {
+            const tl = o.copyOf.typeLine;
+            if (/\bCreature\b/.test(tl)) o.counters['+1/+1'] = (o.counters['+1/+1'] ?? 0) + 1;
+            else if (/\bPlaneswalker\b/.test(tl)) o.counters['loyalty'] = (o.counters['loyalty'] ?? 0) + 1;
+          }
           g.log(`${o.card.name} enters as a copy of ${g.nameOf(pick)}.`);
         }
       }

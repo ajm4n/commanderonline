@@ -8852,6 +8852,16 @@ export function parseCopyExceptions(text: string): TokenSpec['exceptions'] | nul
       ex.thisAbility = true;
       continue;
     }
+    // Spark Double: "it enters with an additional +1/+1 counter on it if it is a creature, … loyalty counter … if it is a planeswalker"
+    if (/^(?:it|they) (?:enters? with|has|have) an additional \+1\/\+1 counter on (?:it|them) if (?:it|they) (?:is|are) (?:a )?creatures?$/i.test(p2) || /^(?:it|they) (?:enters? with|has|have) an additional loyalty counter on (?:it|them) if (?:it|they) (?:is|are) (?:a )?planeswalkers?$/i.test(p2)) {
+      ex.extraCounterByType = true;
+      continue;
+    }
+    // Sakashima of a Thousand Faces: "it has ~'s other abilities"
+    if (/^(?:it|they) (?:has|have) ~'s other abilities$/i.test(p2)) {
+      ex.ownOtherAbilities = true;
+      continue;
+    }
     if ((m = p2.match(/^its name is (.+)$/i))) {
       ex.name = m[1].replace(/^~'s /, '');
       continue;

@@ -193,7 +193,7 @@ export interface TokenSpec {
   legendary?: boolean;
   /** Copy of another object (for "create a token that's a copy of ~"). */
   copyOf?: Ref;
-  exceptions?: { /** "except it enters with an additional +1/+1 counter on it" */ counters?: { counter: CounterType; amount: number }; /** Quoted rules text the copy also has. */ abilities?: string[]; keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[]; name?: string; /** "except it has this ability": the copying object's own copy ability is kept. */ thisAbility?: boolean; /** "except it loses soulbond": rules lines the copy does not get. */ losesAbilities?: string[] };
+  exceptions?: { /** "except it enters with an additional +1/+1 counter on it" */ counters?: { counter: CounterType; amount: number }; /** Spark Double: an extra +1/+1 counter if it's a creature, an extra loyalty counter if it's a planeswalker. */ extraCounterByType?: boolean; /** Sakashima of a Thousand Faces: the copy keeps the copying card's other abilities. */ ownOtherAbilities?: boolean; /** Quoted rules text the copy also has. */ abilities?: string[]; keywords?: string[]; haste?: boolean; addSubtypes?: string[]; addTypes?: string[]; notLegendary?: boolean; legendary?: boolean; power?: string; toughness?: string; colors?: Color[]; name?: string; /** "except it has this ability": the copying object's own copy ability is kept. */ thisAbility?: boolean; /** "except it loses soulbond": rules lines the copy does not get. */ losesAbilities?: string[] };
 }
 
 // ---------------------------------------------------------------------------
