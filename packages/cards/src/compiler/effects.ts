@@ -4536,7 +4536,9 @@ const PATTERNS: Pattern[] = [
   }],
   // "That spell's controller may draw a card."
   [/^(?:that|the) (?:spell|permanent|creature|card)'s (controller|owner) (.+)$/i, (m, ctx) => {
-    const who: Ref = m[1].toLowerCase() === 'controller' ? { ref: 'controllerOf', of: ctx.lastObj ?? { ref: 'stackTarget' } } : { ref: 'ownerOf', of: ctx.lastObj ?? { ref: 'stackTarget' } };
+    // "that creature's controller" in a trigger about a creature is that creature's controller; only a spell context means the spell on the stack.
+    const of: Ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'stackTarget' });
+    const who: Ref = m[1].toLowerCase() === 'controller' ? { ref: 'controllerOf', of } : { ref: 'ownerOf', of };
     const prev = ctx.lastPlayer;
     ctx.lastPlayer = who;
     const inner = parseSentence(`that player ${m[2]}`, ctx);
@@ -9169,12 +9171,12 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if (/^if ~ is your commander, choose a color before the game begins$/i.test(text)) return [{ kind: 'chooseColor', key: 'color' }];
   if (/^~ is the chosen color$/i.test(text)) return [{ kind: 'setColors', colors: [], chosenKey: 'color', on: SELF, duration: 'permanent' }];
   // "each player searches their library for up to two basic land cards, puts them onto the battlefield, then shuffles"
-  if ((m = text.match(/^(each player|each opponent|that player|target player|target opponent|its controller) searches their library for (.+?), (?:reveals? (?:it|them), )?puts? (.+?)(?:, then shuffles?)?$/i))) {
+  if ((m = text.match(/^(each player|each opponent|that player|target player|target opponent|its controller) search(?:es)? their library for (.+?)(?:,| and) (reveals? (?:it|them), )?puts? (.+?)(?:, then shuffles?)?$/i))) {
     const who = playerRef(m[1], ctx);
     if (who) {
       const saved = ctx.lastPlayer;
       ctx.lastPlayer = who;
-      const r = parseSentence(`search their library for ${m[2]}, put ${m[3]}, then shuffle`, ctx);
+      const r = parseSentence(`search their library for ${m[2]}, ${m[3] ? 'reveal it, ' : ''}put ${m[4]}, then shuffle`, ctx);
       if (r) return r;
       ctx.lastPlayer = saved;
     }
