@@ -10534,6 +10534,11 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     let r = parseSentence(s, ctx);
+    // "For as long as ~ remains on the battlefield, that creature gets +2/+2" — the duration reads
+    // the same trailing the clause it modifies, which is the form the patterns know.
+    if (!r && (m = s.match(/^((?:for as long as|as long as|until) [^,]+), (.+)$/i))) {
+      r = parseSentence(`${m[2]} ${m[1].toLowerCase()}`, ctx);
+    }
     // "~ deals 3 damage to that player unless they put a -1/-1 counter on a creature they control."
     if (!r && (m = s.match(/^(.+?) unless (you|they|that player|its controller|the player|target player|target opponent|any player) (.+)$/i))) {
       const who = playerRef(/^any player$/i.test(m[2]) ? 'each player' : m[2], ctx);

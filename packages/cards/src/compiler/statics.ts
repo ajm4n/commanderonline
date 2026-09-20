@@ -562,7 +562,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "~ attacks each combat if able unless you control a creature named Advocate of the Beast."
-  if ((m = L.match(/^(.+?) unless (you control .+|an opponent controls .+)$/i))) {
+  if ((m = L.match(/^(.+?) unless (.+)$/i))) {
     const inner = parseStatic(m[1], isCreatureOrPermanent);
     const c = parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     if (inner && c && c.kind !== 'manual' && inner.every((x) => x.kind === 'static' && !x.condition))
