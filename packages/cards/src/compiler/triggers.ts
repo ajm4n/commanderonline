@@ -892,6 +892,8 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
   }
   if ((m = L.match(/^When ~ leaves the battlefield or becomes untapped, (.+)$/i))) return { event: 'leavesBattlefield', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'untapped', filter: { self: true }, hasObject: true, hasPlayer: true }] };
   if ((m = L.match(/^When you cast or cycle ~, (.+)$/i))) return { event: 'cast', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'cycled', filter: { self: true }, hasObject: true, hasPlayer: true }] };
+  // Prosper: "Whenever you play a card from exile" covers both land plays and spells cast from exile.
+  if ((m = L.match(/^Whenever you play (?:a|one or more) cards? from exile, (.+)$/i))) return { event: 'landPlayed', filter: { player: 'you', fromZone: 'exile' }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'cast', filter: { player: 'you', fromZone: 'exile' }, hasObject: true, hasPlayer: true }] };
   if ((m = L.match(/^Whenever you play a land from exile or cast a spell from exile, (.+)$/i))) return { event: 'landPlayed', filter: { player: 'you', fromZone: 'exile' }, hasObject: true, hasPlayer: true, rest: m[1], also: [{ event: 'cast', filter: { player: 'you', fromZone: 'exile' }, hasObject: true, hasPlayer: true }] };
   // Crew, plot, clash, energy, discards, counters, targets
   if ((m = L.match(/^Whenever ~ (?:crews a Vehicle|saddles a Mount or crews a Vehicle)(?: during your main phase)?, (.+)$/i))) return { event: 'crewed', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };

@@ -2183,6 +2183,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'ifPays': {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
+      const payLife = e.payLifeAmount !== undefined ? amt(e.payLifeAmount) : e.payLife;
       const otherwise = function* (): Gen<void> {
         if (e.else?.length) yield* executeEffects(g, e.else, ctx);
       };
@@ -2194,11 +2195,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         yield* executeEffects(g, e.effects, ctx);
         return;
       }
-      if (e.payLife !== undefined) {
-        if (g.player(who).life < e.payLife) return yield* otherwise();
-        const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${e.payLife} life? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
+      if (payLife !== undefined) {
+        if (g.player(who).life < payLife) return yield* otherwise();
+        const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${payLife} life? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
         if (r.type !== 'yesNo' || !r.value) return yield* otherwise();
-        g.loseLife(who, e.payLife, ctx.sourceId ?? undefined);
+        g.loseLife(who, payLife, ctx.sourceId ?? undefined);
         yield* executeEffects(g, e.effects, ctx);
         return;
       }
@@ -2415,10 +2416,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (e.counter === 'all') {
           pl.poison = 0;
           pl.energy = 0;
-          pl.turnStats['experience'] = 0;
+          pl.experience = 0;
         } else if (e.counter === 'poison') pl.poison = 0;
         else if (e.counter === 'energy') pl.energy = 0;
-        else if (e.counter === 'experience') pl.turnStats['experience'] = 0;
+        else if (e.counter === 'experience') pl.experience = 0;
         else pl.turnStats[e.counter] = 0;
         g.log(`${pl.name} loses all ${e.counter} counters.`);
       }

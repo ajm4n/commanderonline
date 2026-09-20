@@ -1616,7 +1616,10 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'mustBlockAny' }, on: ref, duration: 'endOfTurn' }] : null;
   }],
-  [/^reveal the top card of your library and put (?:it|that card) into your hand$/i, () => [{ kind: 'draw', amount: 1 }]],
+  [/^reveal the top card of your library and put (?:it|that card) into your hand$/i, (_m, ctx) => {
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'revealTop', destination: 'hand' }];
+  }],
   [/^(?:(.+?) )?draws? an additional card$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
     return who ? [{ kind: 'draw', amount: 1, who }] : null;
@@ -9204,6 +9207,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       return [{ kind: 'unlessPays', who: YOU, cost: life ? { payLife: parseInt(life[1], 10) } : m[1], effects: inner, text }];
     }
   }
+  // "You may pay X life, where X is …. If you do, draw X cards"
+  if ((m = text.match(/^(?:you may )?pay X life, where X is (.+?)\. if you do, (.+)$/i))) {
+    const a = amt(m[1], ctx);
+    const inner = a !== null ? parseSentence(m[2], ctx) : null;
+    if (a !== null && inner) {
+      ctx.boundX = a;
+      return [{ kind: 'ifPays', cost: '', payLifeAmount: a, effects: inner.map((e) => substituteXDeep(e, a)) }];
+    }
+  }
   // "You may X. If you do, Y" is split by the caller; handle "you may X" here.
   if ((m = text.match(/^(?:you may )?pay (\{.+?\}|\d+ life)\. if you do, (.+)$/i))) {
     const inner = parseSentence(m[2], ctx);
@@ -9949,6 +9961,16 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   return null;
 }
 
+/** substituteX through nested effect lists ("if you do", "may", conditional branches). */
+export function substituteXDeep(e: Effect, a: Amount): Effect {
+  const out = substituteX(e, a) as unknown as Record<string, unknown>;
+  for (const k of ['effects', 'then', 'else']) {
+    const v = out[k];
+    if (Array.isArray(v)) out[k] = (v as Effect[]).map((x) => substituteXDeep(x, a));
+  }
+  return out as unknown as Effect;
+}
+
 export function substituteX(e: Effect, a: Amount): Effect {
   const rep = (v: unknown): unknown => (v === 'X' ? a : v);
   const out: Record<string, unknown> = { ...e };
@@ -9964,7 +9986,7 @@ function rephraseFirstPerson(s: string): string {
   return s
     .replace(/^have (.+?) deal /i, '$1 deals ')
     .replace(/^have (.+?) fight /i, '$1 fights ')
-    .replace(/^have (.+?) (lose|gain|draw|discard|sacrifice|mill|exile|shuffle|reveal|scry|surveil) /i, (_m, who: string, verb: string) => `${who} ${verb}s `);
+    .replace(/^have (.+?) (lose|gain|draw|discard|sacrifice|mill|exile|shuffle|reveal|scry|surveil|create) /i, (_m, who: string, verb: string) => `${who} ${verb}s `);
 }
 
 function ctx0(): void {
@@ -10625,6 +10647,9 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       effects.push({ kind: 'manual', text: s });
     }
   }
+  // "…, where X is your devotion to blue. … If X is greater than …, you win the game": once a sentence has
+  // defined X, every sentence of the ability means that X.
+  if (ctx.boundX !== undefined) for (let i = 0; i < effects.length; i++) effects[i] = substituteXDeep(effects[i], ctx.boundX);
   // "Reveal cards … until you reveal X. Put that card into your hand and exile all other cards revealed
   // this way." — the reveal-until already parks the non-matches somewhere, so the follow-up decides where.
   for (let i = 0; i < effects.length; i++) {

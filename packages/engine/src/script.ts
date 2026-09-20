@@ -86,6 +86,8 @@ export type Amount =
   | { kind: 'playerTurnStat'; key: string; ref?: Ref; /** Sum the stat across every opponent instead of one player. */ opponents?: boolean }
   /** A player counter total, summed over the players a ref resolves to. */
   | { kind: 'playerStatAmount'; stat: 'poison' | 'experience' | 'energy'; ref: Ref }
+  /** "the number of opponents that were dealt (combat) damage this turn" */
+  | { kind: 'opponentsDamagedThisTurn'; combat?: boolean }
   /** Total power of the objects a ref resolves to. */
   | { kind: 'totalPowerRef'; ref: Ref }
   /** Number of players who have lost the game. */
@@ -401,7 +403,7 @@ export type Effect =
   | { kind: 'repeatWhile'; condition?: Condition; effects: Effect[]; max?: number; /** "You may repeat this process any number of times": ask before each extra iteration. */ optional?: boolean }
   | { kind: 'may'; effects: Effect[]; prompt?: string; who?: Ref; /** "If you don't, ..." */ else?: Effect[] }
   | { kind: 'unlessPays'; who: Ref; cost: string | { /** "unless its controller pays {1} for each card in your graveyard" */ genericMana: Amount } | { energy: Amount } | { payLifeAmount: Amount } | { putCounter: { counter: CounterType; amount: number; filter: ObjectFilter } } | { mana: string; payLife: number } | { discard: number; random?: boolean; filter?: ObjectFilter } | { sacrifice: ObjectFilter; count?: number } | { payLife: number } | { returnToHand: ObjectFilter; count: number } | { exileFromGraveyard: ObjectFilter; count: number } | { tap: ObjectFilter; count?: number } | { removeCounters: { counter: CounterType; amount: number; filter: ObjectFilter } } | { putFromGraveyardOnBottom: number } | { takeDamageFromSource: Amount }; effects: Effect[]; /** Run these instead when the player does pay. */ thenEffects?: Effect[]; text?: string }
-  | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; /** Run these if the cost is not paid. */ else?: Effect[]; text?: string; payLife?: number; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
+  | { kind: 'ifPays'; who?: Ref; cost: string; effects: Effect[]; /** Run these if the cost is not paid. */ else?: Effect[]; text?: string; payLife?: number; /** "you may pay X life, where X is …" */ payLifeAmount?: Amount; energy?: number; /** A non-mana cost the player may pay instead ("you may tap three untapped creatures you control"). */ payCostSpec?: AbilityCost }
   | { kind: 'changeTargets'; what: Ref }
   /** "End the turn." */
   | { kind: 'endTurn' }

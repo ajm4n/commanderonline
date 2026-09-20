@@ -1714,6 +1714,8 @@ export class Game {
       }
       case 'minus':
         return Math.max(0, this.resolveAmount(a.a, ctx) - this.resolveAmount(a.b, ctx));
+      case 'opponentsDamagedThisTurn':
+        return this.opponentsOf(ctx.controller).filter((pid) => (this.player(pid).turnStats[a.combat ? 'combatDamageTaken' : 'damageTaken'] ?? 0) > 0).length;
       case 'playerStatAmount':
         return this.resolvePlayers(a.ref, ctx).reduce((s2, p) => s2 + (a.stat === 'poison' ? this.player(p).poison : a.stat === 'experience' ? this.player(p).experience : this.player(p).energy), 0);
       case 'divide': {
@@ -2559,6 +2561,7 @@ export class Game {
         p.poison += tox;
       }
       p.turnStats['damageTaken'] = (p.turnStats['damageTaken'] ?? 0) + dealt;
+      if (combat) p.turnStats['combatDamageTaken'] = (p.turnStats['combatDamageTaken'] ?? 0) + dealt;
       if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] = (this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] ?? 0) + dealt;
       if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damageDealtBy:${sourceId}`] = (this.state.turnStats[`damageDealtBy:${sourceId}`] ?? 0) + dealt;
       this.touch();

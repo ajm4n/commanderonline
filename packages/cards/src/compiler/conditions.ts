@@ -446,7 +446,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const a = parseAmount(m[1], ctx);
     if (a !== null) return { kind: 'amount', a, op: m[3] === 'more' ? '>=' : '<=', b: parseInt(m[2], 10) };
   }
-  if ((m = t.match(/^you have (\w+) or more (poison|experience) counters$/))) { const v = wordToNumber(m[1]); return { kind: 'turnStat', key: m[2], op: '>=', value: typeof v === 'number' ? v : 0 }; }
+  if ((m = t.match(/^you have (\w+) or more (poison|experience) counters$/))) { const v = wordToNumber(m[1]); return { kind: 'playerStat', stat: m[2] as 'poison' | 'experience', ref: { ref: 'controller' }, op: '>=', value: typeof v === 'number' ? v : 1 }; }
   if ((m = t.match(/^(an opponent|you|a player|each opponent) (discarded a card|discarded one or more cards|drew a card|drew two or more cards|gained life|lost life|cast a spell|cast an instant or sorcery spell|attacked|sacrificed a permanent|sacrificed a creature|was dealt damage|milled a card|milled one or more cards) this turn$/))) {
     const who = m[1] === 'you' ? 'you' : m[1] === 'a player' ? 'any' : 'opponent';
     const ev = m[2];
@@ -901,6 +901,13 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const n = wordToNumber(m[1]);
     const noun = parseNoun(oc(m, 2));
     if (noun && typeof n === 'number') return { kind: 'sameNameGroup', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, op: '>=', value: n };
+  }
+  // "that card's mana value is less than or equal to the number of experience counters you have": any two amounts.
+  if ((m = t.match(/^(.+?) is (less than or equal to|greater than or equal to|less than|greater than|equal to) (.+)$/))) {
+    const a = parseAmount(oc(m, 1), ctx);
+    const b = a !== null ? parseAmount(oc(m, 3), ctx) : null;
+    const op = ({ 'less than or equal to': '<=', 'greater than or equal to': '>=', 'less than': '<', 'greater than': '>', 'equal to': '==' } as Record<string, '<=' | '>=' | '<' | '>' | '=='>)[m[2]];
+    if (a !== null && b !== null) return { kind: 'amount', a, op, b };
   }
   return null;
 }

@@ -353,7 +353,8 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if ((m = t.match(/^the greatest (power|toughness|mana value) (?:among|of) (?:your commanders|a commander you own(?: on the battlefield or in the command zone)?|commanders? you own)$/))) {
     return { kind: 'maxOf', stat: m[1] === 'power' ? 'power' : m[1] === 'toughness' ? 'toughness' : 'manaValue', filter: { isCommander: true, owner: 'you', zoneIn: ['battlefield', 'command'] } };
   }
-  if (/^(?:the number of )?experience counters? (?:you have|you control)$/.test(t)) return { kind: 'turnStat', key: 'experience' };
+  if (/^(?:the number of )?experience counters? (?:you have|you control)$/.test(t)) return { kind: 'playerStatAmount', stat: 'experience', ref: { ref: 'controller' } };
+  if ((m = t.match(/^the number of opponents (?:that|who) were dealt (combat )?damage this turn$/))) return { kind: 'opponentsDamagedThisTurn', combat: !!m[1] };
   if (t === 'player' || t === 'players' || t === 'the number of players' || t === 'players in the game') return { kind: 'sum', parts: [1, { kind: 'opponents' }] };
   if ((m = t.match(/^(?:the number of )?colors? among (.+)$/))) {
     const noun = withCtrl(parseNoun(oc(m, 1)), ctx);

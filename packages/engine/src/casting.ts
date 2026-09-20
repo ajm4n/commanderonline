@@ -1361,12 +1361,13 @@ export function* playLand(g: Game, p: PlayerId, id: ObjectId): Gen<boolean> {
   const fromGraveyard = obj.zone === 'graveyard' && obj.owner === p && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'playLandsFromGraveyard');
   if (!(obj.zone === 'hand' || ((obj.zone === 'exile' || obj.zone === 'library') && castableFrom(g, p, obj)) || obj.zone === 'command' || fromGraveyard)) return false;
   obj.faceIndex = faceIndex;
+  const fromZone = obj.zone;
   const r = yield* enterBattlefield(g, id, p, {});
   if (!r) return false;
   r.faceIndex = faceIndex;
   g.player(p).landsPlayedThisTurn++;
   g.log(`${g.player(p).name} plays ${g.nameOf(id)}.`, { kind: 'play', data: { player: p, objectId: id } });
-  g.emit({ name: 'landPlayed', objectId: id, playerId: p });
+  g.emit({ name: 'landPlayed', objectId: id, playerId: p, fromZone });
   return true;
 }
 
