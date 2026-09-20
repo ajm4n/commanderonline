@@ -1,6 +1,6 @@
 /** Well-known Commander interactions, compiled from oracle text and played through the engine. */
 import { describe, it, expect } from 'vitest';
-import { Game, type CardData, type Decision, type PlayerSetup, type Response, type PlayerId, type ObjectId, type Target } from '@commander/engine';
+import { Game, buildPriorityDecision, type CardData, type Decision, type PlayerSetup, type Response, type PlayerId, type ObjectId, type Target } from '@commander/engine';
 import { loadFixtureDb } from '../src/db-node.js';
 import { scriptFor } from '../src/index.js';
 
@@ -117,12 +117,12 @@ class D {
   }
 }
 
-function game(seed = 3, commanders: CardData[] = []): { d: D; p1: PlayerId; p2: PlayerId } {
+function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@commander/engine').GameConfig> = {}): { d: D; p1: PlayerId; p2: PlayerId } {
   const setups: PlayerSetup[] = [
     { id: 'a', name: 'A', deck: { mainboard: Array.from({ length: 40 }, () => C('Plains')), commanders } },
     { id: 'b', name: 'B', deck: { mainboard: Array.from({ length: 40 }, () => C('Forest')), commanders: [] } },
   ];
-  const g = new Game(setups, { seed }, scriptFor);
+  const g = new Game(setups, { seed, ...config }, scriptFor);
   g.start();
   const d = new D(g);
   const [p1, p2] = g.state.playerOrder;
@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = []): { d: D; p1: PlayerId; p2: 
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -572,5 +572,27 @@ describe('combos and staples played through the engine', () => {
     expect(now).toEqual(expect.arrayContaining(top));
     expect(now).not.toContain(hand[0]);
     expect(d.g.player(p1).library.slice(0, 2).sort()).toEqual(hand.slice(0, 2).sort());
+  });
+  it('Krosan Grip (split second) stops spells and non-mana abilities while on the stack', () => {
+    const { d, p1, p2 } = game(3, [], { autoPassWhenNothingToDo: false });
+    d.lands(p1, 'Forest', 3);
+    d.lands(p2, 'Island', 2);
+    const ring = d.put(p2, C('Sol Ring'));
+    const top = d.put(p2, C("Sensei's Divining Top"));
+    const drain = d.give(p2, C('Mana Drain'));
+    const grip = d.give(p1, C('Krosan Grip'));
+    // Before: p2 could respond with Mana Drain and use the Top.
+    const before = buildPriorityDecision(d.g, p2);
+    expect(before.activatableAbilities.some((a) => a.objectId === top)).toBe(true);
+    d.cast(grip);
+    d.targetObject(ring);
+    d.until((x) => x.type === 'priority' && x.player === p2 && d.g.state.stack.length === 1);
+    const during = d.prio();
+    expect(during.playableCards).not.toContain(drain);
+    expect(during.activatableAbilities.some((a) => a.objectId === top)).toBe(false);
+    expect(during.activatableAbilities.some((a) => a.objectId === ring)).toBe(true); // mana ability
+    d.resolve();
+    expect(d.bf(p2, 'Sol Ring')).toHaveLength(0);
+    expect(buildPriorityDecision(d.g, p2).activatableAbilities.some((a) => a.objectId === top)).toBe(true);
   });
 });

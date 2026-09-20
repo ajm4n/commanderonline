@@ -1187,7 +1187,17 @@ export function payableWithLife(g: Game, p: PlayerId, cost: ManaCost, x: number,
   return false;
 }
 
+/** Split second (rule 702.61): while a spell with split second is on the stack, nobody may cast spells or activate non-mana abilities. */
+export function splitSecondOnStack(g: Game): boolean {
+  return g.state.stack.some((item) => {
+    if (item.kind !== 'spell') return false;
+    const o = g.state.objects[item.sourceId];
+    return !!o && /^Split second\b/m.test(o.card.oracleText);
+  });
+}
+
 export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
+  if (splitSecondOnStack(g)) return false;
   if (!castableFrom(g, p, obj)) return false;
   const ch = g.characteristics(obj.id);
   const face = obj.card;
@@ -1305,6 +1315,7 @@ export function stepName(g: Game): string {
 }
 
 export function canActivate(g: Game, p: PlayerId, obj: GameObject, ab: ObjectAbility): boolean {
+  if (!ab.spec.manaAbility && splitSecondOnStack(g)) return false;
   const spec = ab.spec;
   if (spec.sorcerySpeed && !canCastSorcerySpeed(g, p)) return false;
   if (spec.cost.loyalty !== undefined) {

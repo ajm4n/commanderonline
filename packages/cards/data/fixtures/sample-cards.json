@@ -7861,5 +7861,93 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/2/c/2c523ef7-d6c4-4887-9a4e-0c2bc6f63676.jpg?1783913302"
     }
+  },
+  {
+    "object": "card",
+    "id": "d3571dee-7b90-4c0c-abc7-59b515ffa129",
+    "oracle_id": "3e39224c-72ce-4ecc-aa17-12c071ea1f3e",
+    "name": "Krosan Grip",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{G}",
+    "cmc": 3,
+    "type_line": "Instant",
+    "oracle_text": "Split second (As long as this spell is on the stack, players can't cast spells or activate abilities that aren't mana abilities.)\nDestroy target artifact or enchantment.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [
+      "Split second"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/3/d3571dee-7b90-4c0c-abc7-59b515ffa129.jpg?1783927533"
+    }
+  },
+  {
+    "object": "card",
+    "id": "84056124-1a6f-4274-bee2-74cf0debddb5",
+    "oracle_id": "b01d61cc-9844-4191-86a0-f2db6d42d6e5",
+    "name": "Damn",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{B}{B}",
+    "cmc": 2,
+    "type_line": "Sorcery",
+    "oracle_text": "Destroy target creature. A creature destroyed this way can't be regenerated.\nOverload {2}{W}{W} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "W",
+      "B"
+    ],
+    "keywords": [
+      "Overload"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/8/4/84056124-1a6f-4274-bee2-74cf0debddb5.jpg?1783913875"
+    }
+  },
+  {
+    "object": "card",
+    "id": "e5142b7a-e580-4737-a4aa-2590f6610ceb",
+    "oracle_id": "13575cf9-65c1-4861-b21e-eb2155e07766",
+    "name": "Sensei's Divining Top",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}",
+    "cmc": 1,
+    "type_line": "Artifact",
+    "oracle_text": "{1}: Look at the top three cards of your library, then put them back in any order.\n{T}: Draw a card, then put this artifact on top of its owner's library.",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/e/5/e5142b7a-e580-4737-a4aa-2590f6610ceb.jpg?1783921788"
+    }
   }
 ]

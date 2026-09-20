@@ -10683,7 +10683,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     // "Destroy all creatures. They can't be regenerated." — the second sentence qualifies the first.
-    if (/^(?:it|they|that (?:creature|permanent)|those (?:creatures|permanents)) cannot be regenerated(?: this turn)?$/i.test(s)) {
+    if (/^(?:it|they|that (?:creature|permanent)|those (?:creatures|permanents)|(?:a|any) (?:creature|permanent|artifact|enchantment|land)s? destroyed this way|(?:creatures|permanents) destroyed this way) cannot be regenerated(?: this turn)?$/i.test(s)) {
       let marked = false;
       for (let k = lastStart; k < effects.length; k++) {
         const e = effects[k];

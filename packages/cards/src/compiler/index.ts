@@ -149,7 +149,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const ss = sentences(line);
       const kept = [...ss];
       // "Destroy all creatures. They can't be regenerated.": the rider qualifies the destroy, so keep it for parseEffects.
-      const qualifiesDestroy = (i: number) => /cannot be regenerated/i.test(kept[i]) && /^destroy\b/i.test(kept[i - 1] ?? '');
+      const qualifiesDestroy = (i: number) => /cannot be regenerated/i.test(kept[i]) && /\bdestroy\b/i.test(kept[i - 1] ?? '');
       while (kept.length > 1 && isTrailingNoise(kept[kept.length - 1]) && !qualifiesDestroy(kept.length - 1)) kept.pop();
       if (kept.length && kept.length < ss.length) line = kept.length === 1 ? kept[0] : `${kept.join('. ')}.`;
       // A trailing sentence after a closing quote ('… end of turn." It is still a land.') is not
