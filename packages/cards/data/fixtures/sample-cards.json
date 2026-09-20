@@ -7677,5 +7677,75 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/7/0/705b4d97-2f50-47f7-9053-d748f4337553.jpg?1783904538"
     }
+  },
+  {
+    "object": "card",
+    "id": "86c5c337-d25f-4c3e-9762-09ed0c2d36d7",
+    "oracle_id": "33666a98-812f-4892-9f8d-33e0cbecc340",
+    "name": "Niv-Mizzet, Parun",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{U}{U}{U}{R}{R}{R}",
+    "cmc": 6,
+    "type_line": "Legendary Creature — Dragon Wizard",
+    "oracle_text": "This spell can't be countered.\nFlying\nWhenever you draw a card, Niv-Mizzet deals 1 damage to any target.\nWhenever a player casts an instant or sorcery spell, you draw a card.",
+    "colors": [
+      "U",
+      "R"
+    ],
+    "color_identity": [
+      "U",
+      "R"
+    ],
+    "keywords": [
+      "Flying"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "5",
+    "toughness": "5",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/8/6/86c5c337-d25f-4c3e-9762-09ed0c2d36d7.jpg?1783911897"
+    }
+  },
+  {
+    "object": "card",
+    "id": "40489e28-878d-44a2-847f-07beef1aa0f8",
+    "oracle_id": "a5e54d2b-aad8-4ddd-af4b-13668913762b",
+    "name": "The Gitrog Monster",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{B}{G}",
+    "cmc": 5,
+    "type_line": "Legendary Creature — Frog Horror",
+    "oracle_text": "Deathtouch\nAt the beginning of your upkeep, sacrifice The Gitrog Monster unless you sacrifice a land.\nYou may play an additional land on each of your turns.\nWhenever one or more land cards are put into your graveyard from anywhere, draw a card.",
+    "colors": [
+      "B",
+      "G"
+    ],
+    "color_identity": [
+      "B",
+      "G"
+    ],
+    "keywords": [
+      "Deathtouch"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "6",
+    "toughness": "6",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/4/0/40489e28-878d-44a2-847f-07beef1aa0f8.jpg?1783906028"
+    }
   }
 ]

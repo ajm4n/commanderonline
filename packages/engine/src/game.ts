@@ -145,13 +145,18 @@ export class Game {
   /** Run `fn` treating every battlefield departure inside it as simultaneous. */
   /** Tokens that left the battlefield during the current batch; they cease to exist once every trigger has seen the batch (CR 603.10a). */
   private pendingCease: ObjectId[] = [];
+  /** Identifies the events that happened together, so "whenever one or more …" triggers once for them (rule 603.2c). */
+  private batchSeq = 0;
+  private currentBatch: number | null = null;
   simultaneousZoneChange<T>(fn: () => T): T {
     if (this.leavingTogether) return fn();
     this.leavingTogether = new Map();
+    this.currentBatch = ++this.batchSeq;
     try {
       return fn();
     } finally {
       this.leavingTogether = null;
+      this.currentBatch = null;
       if (this.pendingCease.length) {
         for (const id of this.pendingCease.splice(0)) {
           const o = this.state.objects[id];
@@ -1096,7 +1101,7 @@ export class Game {
             const eo = event.objectId !== undefined ? this.state.objects[event.objectId] ?? (event.snapshot as GameObject | undefined) : undefined;
             if (!eo || !matchesFilter(this, eo, { ...d.eventObject, zone: undefined }, { sourceId: obj.id, controller })) continue;
           }
-          this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: this.triggerContextFrom(event), snapshot: isSelfLeaving ? event.snapshot : together });
+          this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: { ...this.triggerContextFrom(event), batchId: `extra:${++this.batchSeq}` }, snapshot: isSelfLeaving ? event.snapshot : together });
         }
       }
     }
@@ -1140,6 +1145,7 @@ export class Game {
       triggerEvent: event.name,
       triggerData: event.data,
       stackItemId: (event.data as { stackItemId?: number } | undefined)?.stackItemId,
+      batchId: this.currentBatch ?? ++this.batchSeq,
     };
   }
 
@@ -1298,7 +1304,12 @@ export class Game {
   /** Put all pending triggers on the stack in APNAP order, asking players to order theirs. */
   *putTriggersOnStack(): Gen {
     while (this.pendingTriggers.length > 0) {
-      const batch = this.pendingTriggers;
+      const batch = this.pendingTriggers.filter((t, i, all) => {
+        // "Whenever one or more …" triggers once for everything that happened together (rule 603.2c).
+        if (!t.ability.filter?.oncePerBatch) return true;
+        // Still once per player: "one or more creatures deal combat damage to a player" fires for each player hit.
+        return all.findIndex((u) => u.sourceId === t.sourceId && u.ability.text === t.ability.text && u.controller === t.controller && u.context['batchId'] === t.context['batchId'] && u.context['triggerPlayer'] === t.context['triggerPlayer'] && u.context['triggerOtherPlayer'] === t.context['triggerOtherPlayer']) === i;
+      });
       this.pendingTriggers = [];
       for (const pid of this.apnap()) {
         const mine = batch.filter((t) => t.controller === pid);

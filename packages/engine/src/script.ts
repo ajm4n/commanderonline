@@ -564,6 +564,8 @@ export interface TriggerFilter {
   counterType?: CounterType;
   /** Only the first time each turn. */
   firstEachTurn?: boolean;
+  /** "Whenever one or more …": simultaneous events produce a single trigger (rule 603.2c). */
+  oncePerBatch?: boolean;
   /** Attack on you or a planeswalker you control (for "attacks you"). */
   attacksYou?: boolean;
   /** Object controller relative to the script's controller. */

@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = []): { d: D; p1: PlayerId; p2: 
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -444,5 +444,47 @@ describe('combos and staples played through the engine', () => {
     d.main(p2);
     d.main(p1);
     expect(d.prio().playableCards).toEqual(expect.arrayContaining([bear2, ring]));
+  });
+  it("Niv-Mizzet, Parun can't be countered", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Island', 3);
+    d.lands(p1, 'Mountain', 3);
+    d.lands(p2, 'Island', 2);
+    const niv = d.give(p1, C('Niv-Mizzet, Parun'));
+    const drain = d.give(p2, C('Mana Drain'));
+    d.cast(niv);
+    d.until((x) => x.type === 'priority' && x.player === p2 && d.g.state.stack.length === 1);
+    expect(d.prio().playableCards).toContain(drain);
+    d.cast(drain);
+    d.until((x) => x.type === 'chooseTargets' || x.type === 'priority');
+    if (d.d.type === 'chooseTargets') d.submit({ type: 'targets', targets: [[d.d.slots[0].legal[0]]] });
+    d.resolve();
+    expect(d.bf(p1, 'Niv-Mizzet, Parun')).toHaveLength(1);
+    expect(d.g.player(p2).graveyard.map((id) => d.g.obj(id).card.name)).toContain('Mana Drain');
+  });
+
+  it('The Gitrog Monster draws once when several lands hit the graveyard together', () => {
+    const { d, p1 } = game();
+    d.put(p1, C('The Gitrog Monster'));
+    const a = d.put(p1, C('Forest'));
+    const b = d.put(p1, C('Forest'));
+    const c = d.put(p1, C('Forest'));
+    const hand = d.g.player(p1).hand.length;
+    d.g.simultaneousZoneChange(() => {
+      for (const id of [a, b, c]) d.g.moveObject(id, 'graveyard', { cause: 'sacrifice' });
+    });
+    d.g.refreshDecision();
+    d.answer(d.d); // pass priority: the pending trigger goes on the stack and resolves
+    d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step === 'main1');
+    expect(d.g.player(p1).hand.length).toBe(hand + 1);
+    // Separate events are separate triggers.
+    const e = d.put(p1, C('Forest'));
+    const f = d.put(p1, C('Forest'));
+    d.g.moveObject(e, 'graveyard', { cause: 'sacrifice' });
+    d.g.moveObject(f, 'graveyard', { cause: 'sacrifice' });
+    d.g.refreshDecision();
+    d.answer(d.d);
+    d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step === 'main1');
+    expect(d.g.player(p1).hand.length).toBe(hand + 3);
   });
 });

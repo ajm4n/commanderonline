@@ -42,6 +42,13 @@ function nounFilter(text: string, opts: { defaultYou?: boolean } = {}) {
 }
 
 export function parseTriggerHead(line: string): TriggerHead | null {
+  const h = parseTriggerHeadInner(line);
+  // "Whenever one or more …": however many happened together, the ability triggers once (rule 603.2c).
+  if (h && /^When(?:ever)? one or more /i.test(line) && !h.filter?.oncePerBatch) return { ...h, filter: { ...h.filter, oncePerBatch: true } };
+  return h;
+}
+
+function parseTriggerHeadInner(line: string): TriggerHead | null {
   const direct = parseTriggerHeadCore(line);
   if (direct) return direct;
   // "... for the first time each turn" restricts how often the trigger fires, not what it matches,
@@ -1299,8 +1306,8 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
       const base = L.replace(/^(When(?:ever)? )one or more /i, '$1a ').replace(/\b(enter|die|are put|are exiled|become|attack|deal|leave|are tapped|are dealt|are countered|are destroyed|are sacrificed)\b/i, verb);
       for (const alt of [base, base.replace(/^(When(?:ever)? a )([\w' -]*?)s\b/i, '$1$2'), base.replace(/^(When(?:ever)? a )([\w' -]+?)s /i, '$1$2 ')]) {
         if (alt === L) continue;
-        const h = parseTriggerHead(alt);
-        if (h) return h;
+        const h = parseTriggerHeadInner(alt);
+        if (h) return { ...h, filter: { ...h.filter, oncePerBatch: true } };
       }
     }
   }
