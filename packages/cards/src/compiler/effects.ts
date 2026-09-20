@@ -2370,8 +2370,9 @@ const PATTERNS: Pattern[] = [
   [/^(?:(.+?) )?separates? (?:all|those) (.+?) into two piles$/i, (m, ctx) => {
     const by = m[1] ? actorRef(m[1], ctx) : YOU;
     if (!by) return null;
+    const prev = ctx.lastObj;
     ctx.lastObj = { ref: 'memory', key: 'chosenPile' };
-    if (/^(?:cards|them|those cards)$/i.test(m[2])) return [{ kind: 'separatePiles', what: ctx.lastObj?.ref === 'memory' ? ctx.lastObj : { ref: 'lastMoved' }, by }];
+    if (/^(?:cards|them|those cards)$/i.test(m[2])) return [{ kind: 'separatePiles', what: prev && (prev.ref === 'memory' || prev.ref === 'chosen') ? prev : { ref: 'lastMoved' }, by }];
     const noun = parseNoun(`all ${m[2]}`) ?? parseNoun(m[2]);
     if (!noun) return null;
     return [{ kind: 'separatePiles', what: { ref: 'all', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } }, by }];
@@ -2387,7 +2388,7 @@ const PATTERNS: Pattern[] = [
   [/^put (?:that|one) pile into (your hand|your graveyard|the battlefield)(?: and the (?:other|rest) into (your hand|your graveyard|their owners'? graveyards?))?$/i, (m, ctx) => {
     const dest = (t: string): Effect['kind'] | null => (/hand/i.test(t) ? 'putIntoHand' : /graveyard/i.test(t) ? 'putIntoGraveyard' : 'returnToBattlefield');
     const out: Effect[] = [];
-    if (/^one pile/i.test(m[0])) out.push({ kind: 'choosePile', by: YOU });
+    if (/^put one pile/i.test(m[0])) out.push({ kind: 'choosePile', by: YOU });
     const d1 = dest(m[1]);
     if (!d1) return null;
     out.push({ kind: d1, what: { ref: 'memory', key: 'chosenPile' } } as Effect);
@@ -8910,6 +8911,7 @@ function retargetToPlayer<T>(value: T, who: Ref): T {
 
 /** Parse one sentence; returns null if not understood. */
 export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
+  if (/^you may shuffle(?: your library)?\.?$/i.test(s.trim())) return [{ kind: 'may', effects: [{ kind: 'shuffle' }] }];
   let text = s.trim().replace(/\.$/, '');
   if (!text) return [];
   text = text.replace(/^then,? /i, '');
