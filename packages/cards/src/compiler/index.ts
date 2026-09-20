@@ -1240,7 +1240,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
       const split = splitTriggerRest(head.rest);
-      const ctx = newCtx({ triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer, triggerObjectIsSource: head.objectIsSource });
+      const attackersFilter = head.event === 'attacks' && head.filter?.player === 'you' && head.filter.object && /\bone or more\b/i.test(line) ? head.filter.object : undefined;
+      const ctx = newCtx({ triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer, triggerObjectIsSource: head.objectIsSource, triggerBatch: head.filter?.oncePerBatch || undefined, attackersFilter });
       let effects: Effect[];
       let unhandled: string[];
       let reflexivePrefix: string | null = null;

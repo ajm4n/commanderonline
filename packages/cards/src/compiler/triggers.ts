@@ -775,7 +775,7 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
     const tf = nounFilter(`a ${m[1]} you control`);
     if (tf) return { event: 'attacks', filter: tf, hasObject: true, hasPlayer: true, rest: `if you control exactly one attacking creature, ${m[2]}` };
   }
-  if ((m = L.match(/^Whenever you attack with (\w+) or more creatures, (.+)$/i))) return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking creatures, ${m[2]}` };
+  if ((m = L.match(/^Whenever you attack with (\w+) or more creatures, (.+)$/i))) return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking creatures, ${m[2].replace(/\beach of (?:them|those creatures)\b/gi, 'each attacking creature you control')}` };
   if ((m = L.match(/^Whenever ~ attacks a player who has (more|less) life than you, (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if that player has ${m[1]} life than you, ${m[2]}` };
   if ((m = L.match(/^Whenever ~ attacks while you control (.+?), (.+)$/i))) return { event: 'attacks', filter: { self: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]}, ${m[2]}` };
   if ((m = L.match(/^When(?:ever)? ~ enters or is turned face up, (.+)$/i))) return { event: 'entersBattlefield', filter: { self: true }, hasObject: true, hasPlayer: false, rest: m[1] };
@@ -1624,7 +1624,7 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
       if (src) return { event: m[2] ? 'dealsCombatDamage' : 'dealsDamage', filter: { source: src }, hasObject: true, hasPlayer: true, rest: m[3] };
     }
     if ((m = L.match(/^When(?:ever)? you attack with (\w+) or more (.+?), (.+)$/i)) && wordToNumber(m[1]) !== null)
-      return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking ${m[2]}, ${m[3]}` };
+      return { event: 'attacks', filter: { player: 'you', firstEachTurn: true }, hasObject: true, hasPlayer: true, rest: `if you control ${m[1]} or more attacking ${m[2]}, ${m[3].replace(/\beach of (?:them|those creatures)\b/gi, `each attacking ${singularize(m[2])} you control`)}` };
     if ((m = L.match(/^When(?:ever)? ~ or (?:a|an|another) (.+?) leaves the battlefield, (.+)$/i))) {
       const tf = tfOf(m[1]);
       if (tf?.object) {

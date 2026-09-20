@@ -121,6 +121,8 @@ export type Ref =
   | { ref: 'eachOpponent' }
   | { ref: 'eachPlayer' }
   | { ref: 'triggerObject' }
+  /** Every object of a "whenever one or more …" batch trigger (falls back to the single trigger object). */
+  | { ref: 'triggerObjects' }
   | { ref: 'triggerPlayer' }
   | { ref: 'triggerSource' }
   | { ref: 'triggerController' } // controller of the trigger object

@@ -226,11 +226,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     }
-    case 'sacrifice':
+    case 'sacrifice': {
+      const moved: ObjectId[] = [];
       g.simultaneousZoneChange(() => {
-        for (const o of g.resolveObjects(e.what, ctx)) if (o.zone === 'battlefield') g.moveObject(o.id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+        for (const o of g.resolveObjects(e.what, ctx)) {
+          if (o.zone !== 'battlefield') continue;
+          g.moveObject(o.id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+          moved.push(o.id);
+        }
       });
+      // "Target creature's controller sacrifices it, then that player creates …" / "Sacrifice ~. Return it …"
+      if (moved.length) ctx.memory['lastMoved'] = moved;
       return;
+    }
     case 'sacrificeChoice': {
       // CR 101.4 / 700.4: every player chooses first, then all the sacrifices happen at once.
       const chosen: ObjectId[] = [];

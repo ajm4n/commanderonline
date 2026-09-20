@@ -1324,6 +1324,14 @@ export class Game {
       const batch = this.pendingTriggers.filter((t, i, all) => {
         // "Whenever one or more …" triggers once for everything that happened together (rule 603.2c).
         if (!t.ability.filter?.oncePerBatch) return true;
+        // The surviving trigger remembers every object of the batch ("put one of them onto the battlefield").
+        if (!t.context['triggerObjects']) {
+          const same = all.filter((u) => u.sourceId === t.sourceId && u.ability.text === t.ability.text && u.controller === t.controller && u.context['batchId'] === t.context['batchId'] && u.context['triggerPlayer'] === t.context['triggerPlayer']);
+          const objs = [...new Set(same.map((u) => u.context['triggerObject'] as ObjectId | undefined).filter((x): x is ObjectId => x !== undefined))];
+          // Damage batches name the dealing creatures as sources ("one or more Ninjas deal combat damage to a player").
+          const ids = objs.length ? objs : [...new Set(same.map((u) => u.context['triggerSource'] as ObjectId | undefined).filter((x): x is ObjectId => x !== undefined))];
+          if (ids.length) t.context['triggerObjects'] = ids;
+        }
         // Still once per player: "one or more creatures deal combat damage to a player" fires for each player hit.
         return all.findIndex((u) => u.sourceId === t.sourceId && u.ability.text === t.ability.text && u.controller === t.controller && u.context['batchId'] === t.context['batchId'] && u.context['triggerPlayer'] === t.context['triggerPlayer'] && u.context['triggerOtherPlayer'] === t.context['triggerOtherPlayer']) === i;
       });
@@ -2026,6 +2034,11 @@ export class Game {
       }
       case 'triggerObject':
         return objT([ctx.triggerContext.triggerObject as ObjectId]);
+      case 'triggerObjects': {
+        const ids = ctx.triggerContext.triggerObjects as ObjectId[] | undefined;
+        const one = (ctx.triggerContext.triggerObject ?? ctx.triggerContext.triggerSource) as ObjectId | undefined;
+        return objT(ids?.length ? ids : one !== undefined ? [one] : []);
+      }
       case 'triggerPlayer':
         return plT([ctx.triggerContext.triggerPlayer as PlayerId]);
       case 'triggerSource':

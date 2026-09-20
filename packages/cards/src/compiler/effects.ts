@@ -28,6 +28,10 @@ export interface ParseCtx {
   isSpell: boolean;
   /** Inside a trigger whose subject is the event's source (damage dealer) rather than its object. */
   triggerObjectIsSource?: boolean;
+  /** Inside a "whenever one or more …" trigger: plural pronouns mean every object of the batch. */
+  triggerBatch?: boolean;
+  /** "Whenever you attack with one or more Insects, … each of them": the attacking creatures the head named. */
+  attackersFilter?: import('@commander/engine').ObjectFilter;
   /** Memory key of a looked-at / revealed pool of library cards that "the rest" refers to. */
   restKey?: string;
   /** The creature that just explored (for "Whenever a creature you control explores"). */
@@ -122,7 +126,7 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
     ctx.lastObj = SELF;
     return SELF;
   }
-  if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l)) return ctx.lastObj ?? { ref: 'lastMoved' };
+  if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l)) return ctx.lastObj ?? (ctx.attackersFilter ? { ref: 'all', filter: { ...ctx.attackersFilter, attacking: true, controller: 'you', zone: 'battlefield' } } : ctx.triggerBatch ? { ref: 'triggerObjects' } : { ref: 'lastMoved' });
   if ((m0 = l.match(/^the player or planeswalker (it|that creature|~) is attacking$/))) return { ref: 'defenderOf', of: m0[1] === '~' ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
   // After a bare "Choose target X." sentence, "that creature" is that chosen target even when later sentences moved "it".
@@ -131,6 +135,10 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^the creature that attacked$/.test(l)) return ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF;
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/i.test(t)) {
     if (l.includes('token') && !ctx.lastObj) return { ref: 'lastCreated' };
+    // "Whenever one or more creature cards are put into your graveyard …, put one of them onto the battlefield" / "put a
+    // +1/+1 counter on each of those creatures": all the objects that triggered it together.
+    if (ctx.attackersFilter && !ctx.lastObj && /^(?:them|they|those \w+)$/.test(l)) return { ref: 'all', filter: { ...ctx.attackersFilter, attacking: true, controller: 'you', zone: 'battlefield' } };
+    if (ctx.triggerBatch && !ctx.lastObj && /^(?:them|they|those \w+)$/.test(l)) return { ref: 'triggerObjects' };
     // On a permanent, a bare "it" with nothing else in scope means the permanent itself ("if ~ is tapped, put a counter on it").
     // "that creature" never means ~ itself (a card says "~" for that): after "put a quest counter on ~" pointed "it"
     // at ~, "that creature" in a trigger is still the creature that triggered it (Support Mission, Glorious Purpose).
@@ -511,7 +519,9 @@ function restDest(dest: string): Extract<Effect, { kind: 'moveRest' }>['to'] | n
 /** Follow-up clauses after "Look at the top N cards of your library" (the pool is remembered under ctx.restKey). */
 /** The pool that "them" / "the rest" refers to: a held look/search pool, else the cards just moved. */
 function poolRef(ctx: ParseCtx): Ref {
-  return ctx.restKey ? { ref: 'chosen', key: ctx.restKey } : { ref: 'lastMoved' };
+  // In a "whenever one or more … " trigger with nothing looked at or moved yet, "them" is the batch itself
+  // (Colossal Grave-Reaver: "put one of them onto the battlefield").
+  return ctx.restKey ? { ref: 'chosen', key: ctx.restKey } : ctx.triggerBatch && !ctx.lastObj ? { ref: 'triggerObjects' } : { ref: 'lastMoved' };
 }
 
 const POOL_PATTERNS: Pattern[] = [
@@ -1039,7 +1049,10 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }, { kind: 'gainControl', what: ref, who: { ref: 'chosen', key: 'opponent' } }] : null;
   }],
-  [/^choose an opponent$/i, () => [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }]],
+  [/^choose an opponent$/i, (_m, ctx) => {
+    ctx.lastPlayer = { ref: 'chosen', key: 'opponent' };
+    return [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }];
+  }],
   // Baleful Mastery: "an opponent draws a card" — you choose which opponent.
   [/^an opponent (draws? .+|discards? .+|gains? \d+ life|loses? \d+ life)$/i, (m, ctx) => {
     const key = `opp_${Math.random().toString(36).slice(2, 6)}`;
@@ -1188,6 +1201,16 @@ const PATTERNS: Pattern[] = [
     return [e];
   }],
   [/^(?:(.+?) )?sacrifices? (~|it|them|that creature|that permanent|the creature|the permanent|that token|the token|those creatures|those tokens|enchanted creature|equipped creature)$/i, (m, ctx) => {
+    // Sarkhan the Mad: "Target creature's controller sacrifices it, then that player creates …" — the object is the
+    // possessive's noun, and "that player" afterwards is its controller.
+    const pm = m[1]?.match(/^(.+?)'s controller$/i);
+    if (pm && /^(?:it|that creature|that permanent)$/i.test(m[2])) {
+      const obj = objRef(pm[1], ctx);
+      if (!obj) return null;
+      ctx.lastObj = obj;
+      ctx.lastPlayer = { ref: 'controllerOf', of: obj };
+      return [{ kind: 'sacrifice', what: obj }];
+    }
     const ref = objRef(m[2], ctx);
     return ref ? [{ kind: 'sacrifice', what: ref }] : null;
   }],
@@ -2320,7 +2343,10 @@ const PATTERNS: Pattern[] = [
     ctx.lastObj = { ref: 'chosen', key };
     return [{ kind: 'chooseObjects', from: pool, filter: {}, count: n as Amount, key }];
   }],
-  [/^choose another player$/i, () => [{ kind: 'choosePlayer', key: 'player', who: 'opponent' }]],
+  [/^choose another player$/i, (_m, ctx) => {
+    ctx.lastPlayer = { ref: 'chosen', key: 'player' }; // "That player gains control of …" (Discerning Financier)
+    return [{ kind: 'choosePlayer', key: 'player', who: 'opponent' }];
+  }],
   [/^choose (?:a|an) (?:[\w, -]+ )?(?:card|creature card|artifact card|nonland card|land card) name(?: other than .+)?$/i, () => [{ kind: 'nameCard', key: 'cardName' }]],
   [/^choose a permanent type$/i, () => [{ kind: 'chooseCreatureType', key: 'cardType', pool: 'cardType' }]],
   // "Choose a Dwarf you control." / "Choose a nonlegendary creature on the battlefield."
@@ -3282,7 +3308,7 @@ const PATTERNS: Pattern[] = [
   }],
   // "Destroy one of them at random" / "destroy one of those permanents at random"
   [/^(destroy|exile|sacrifice|tap) (?:one|(\w+)) of (?:them|those (?:creatures|permanents|cards|lands|tokens))(?: chosen)? at random$/i, (m, ctx) => {
-    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const src = pluralRef(ctx);
     const n = m[2] ? wordToNumber(m[2]) : 1;
     if (n === null) return null;
     const key = `rnd${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
@@ -3779,7 +3805,7 @@ const PATTERNS: Pattern[] = [
   }],
   // "Put a stun counter on one of them"
   [/^put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on one of them$/i, (m, ctx) => {
-    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const src = pluralRef(ctx);
     const n = m[1] ? wordToNumber(m[1]) : 1;
     if (typeof n !== 'number') return null;
     const key = `one${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
@@ -3876,7 +3902,7 @@ const PATTERNS: Pattern[] = [
     if (!who || !noun) return null;
     const n = m[2] ? wordToNumber(m[2]) : 1;
     if (typeof n !== 'number') return null;
-    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const src = pluralRef(ctx);
     const key = `opp${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
     ctx.lastObj = { ref: 'chosen', key };
     return [{ kind: 'chooseObjects', who, filter: { ...noun.filter, zone: undefined }, count: n, key, from: src }];
@@ -3999,7 +4025,7 @@ const PATTERNS: Pattern[] = [
   }],
   // "Exile one of those creatures and put two +1/+1 counters on the other"
   [/^exile one of those (.+?) and put (?:a|an|(\w+)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on the other$/i, (m, ctx) => {
-    const src = ctx.lastObj ?? ({ ref: 'lastMoved' } as Ref);
+    const src = pluralRef(ctx);
     const n = m[1] ? wordToNumber(m[1]) : 1;
     if (typeof n !== 'number') return null;
     const key = `pick${ctx.targets.length}_${Math.random().toString(36).slice(2, 6)}`;
@@ -9210,6 +9236,11 @@ function bindCountX(ctx: ParseCtx, _from: number, a: Amount): void {
   }
 }
 
+/** The plural antecedent ("them", "one of them", "each of them"): the object in scope, else a batch trigger's objects, else what last moved. */
+function pluralRef(ctx: ParseCtx): Ref {
+  return ctx.lastObj ?? (ctx.triggerBatch ? { ref: 'triggerObjects' } : { ref: 'lastMoved' });
+}
+
 /** Does this effect list (looking inside conditionals, may, forEach) contain a becomeCopy? */
 function hasCopy(effects: Effect[]): boolean {
   return effects.some((e) => e.kind === 'becomeCopy' || (e.kind === 'conditional' && (hasCopy(e.then) || hasCopy(e.else ?? []))) || ((e.kind === 'may' || e.kind === 'forEach') && hasCopy(e.effects)));
@@ -10055,6 +10086,9 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       const desc = lastAfter?.ref === 'target' ? ctx.targets[lastAfter.slot ?? 0]?.description ?? '' : '';
       if (!(lastAfter?.ref === 'target' && word && new RegExp(word, 'i').test(desc))) ctx.lastObj = { ref: 'triggerObject' };
     }
+    // Mercy Killing: "…, then creates X tokens, where X is that creature's power" — the token just created is not
+    // "that creature"; the creature the sentence targeted is.
+    if (inner && !itsAmt && ctx.lastObj?.ref === 'lastCreated' && ctx.targets.length > saved && /^that (?:creature|permanent)'s\b/i.test(m[2].trim())) ctx.lastObj = { ref: 'target', slot: saved };
     const a = inner ? amt(m[2], ctx) : null;
     ctx.lastObj = lastAfter;
     if (inner && a !== null) {
@@ -10066,13 +10100,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^for each (.+?), (.+)$/i))) {
     // "Choose any number of target creatures. For each of them, …": iterate over what was just chosen.
-    if (/^(?:of )?(?:them|those (?:creatures|permanents|players|cards|targets))$/i.test(m[1]) && ctx.lastObj) {
+    if (/^(?:of )?(?:them|those (?:creatures|permanents|players|cards|targets))$/i.test(m[1]) && (ctx.lastObj || ctx.triggerBatch)) {
+      const over: Ref = ctx.lastObj ?? { ref: 'triggerObjects' }; // Kambal: "Whenever one or more tokens … enter, for each of them, …"
       const sub = newCtx({ ...ctx, targets: ctx.targets });
       sub.lastObj = { ref: 'iter' };
       sub.lastPlayer = { ref: 'iter' };
       sub.anyTarget = { ref: 'iter' };
       const inner = parseSentence(m[2], sub); // "that permanent or player" / "that player" resolve to the iteration item
-      if (inner) return [{ kind: 'forEach', over: ctx.lastObj, effects: inner }];
+      if (inner) return [{ kind: 'forEach', over, effects: inner }];
     }
     const noun = parseNoun(m[1]);
     if (noun) {
@@ -10497,11 +10532,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     // keeps the first clause's subject (an imperative "then draw a card" is still you).
     const sub = m[1].match(/^((?:target |each |that |the )?[~\w' -]+?) (?:loses?|gains?|deals?|fights?|attacks?|blocks?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
     const thirdPerson = /^(?:loses|gains|deals|fights|attacks|blocks|draws|discards|mills|sacrifices|puts|exiles|reveals|shuffles|creates|taps|untaps|returns|destroys|searches|scries|surveils|gets|has|may|can't|cannot)\b/i.test(m[2]);
-    let b = a && sub && thirdPerson ? parseSentence(`${sub[1]} ${m[2]}`, ctx) : null;
+    // "Target creature's controller sacrifices it, then creates …": naming the subject again would register the
+    // target twice, so a subject that named a target continues as "that player".
+    const subj = sub && /\btarget\b/i.test(sub[1]) && ctx.lastPlayer ? 'that player' : sub?.[1];
+    let b = a && subj && thirdPerson ? parseSentence(`${subj} ${m[2]}`, ctx) : null;
     if (a && !b) b = parseSentence(m[2], ctx) ?? parseSentence(`you ${m[2]}`, ctx);
     if (a && !b) {
       // "Each player discards their hand, then returns up to three cards ...": shared subject.
-      if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
+      if (subj) b = parseSentence(`${subj} ${m[2]}`, ctx);
     }
     if (a && b) return [...a, ...b];
     ctx.targets.length = saved;
