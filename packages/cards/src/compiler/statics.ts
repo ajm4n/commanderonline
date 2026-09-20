@@ -511,6 +511,19 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return out;
     }
   }
+  // "During your turn, you may cast cards exiled with ~ ... Mana of any type can be spent to cast
+  // those spells." — as a following sentence or as a trailing clause.
+  if ((m = L.match(/^(.+?)(?:\.|,)? (?:and )?[Mm]ana of any (?:colou?r|type) can be spent to (?:cast|play) (?:it|them|that spell|those spells|that card|those cards)$/i))) {
+    const ANY_MANA_TAGS = ['playFromTop', 'playExiledWithSource', 'playExiledWithCounter', 'castExiledWithSource', 'castFromGraveyard'];
+    const inner = parseStatic(m[1], isCreatureOrPermanent);
+    if (inner && inner.length && inner.every((x) => x.kind === 'static' && x.rule?.kind === 'custom' && ANY_MANA_TAGS.includes(x.rule.tag))) {
+      return inner.map((x) =>
+        x.kind === 'static' && x.rule?.kind === 'custom'
+          ? { ...x, rule: { ...x.rule, data: { ...((x.rule.data as Record<string, unknown>) ?? {}), anyMana: true } } }
+          : x,
+      );
+    }
+  }
   // "During your turn, you may play cards exiled with ~. If you cast a spell this way, pay life
   // equal to its mana value rather than pay its mana cost."
   if ((m = L.match(/^(.+?)\. If you cast a spell this way, (?:you )?pay life equal to (?:its|that spell's|the spell's) mana value rather than pay(?:ing)? its mana cost$/i))) {

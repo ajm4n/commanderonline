@@ -77,6 +77,8 @@ export type Amount =
   | { kind: 'manaSpent'; of: 'colors' | 'total'; symbols?: string }
   /** "the number of colors in your commanders' color identity" */
   | { kind: 'commanderColors'; ref: Ref }
+  /** "equal to the difference": the gap the sentence's own comparison set up. */
+  | { kind: 'difference'; a: Amount; b: Amount }
   /** How many votes an option received (see the `vote` effect). */
   | { kind: 'voteCount'; option: string }
   | { kind: 'colorCount'; ref?: Ref; /** Distinct colors among objects matching this filter ('colors among permanents you control'). */ filter?: ObjectFilter }

@@ -1772,6 +1772,8 @@ export class Game {
         for (const o of objectsMatching(this, a.filter, fctx)) for (const t of this.characteristics(o.id).types) types.add(t);
         return types.size;
       }
+      case 'difference':
+        return Math.abs(this.resolveAmount(a.a, ctx) - this.resolveAmount(a.b, ctx));
       case 'commanderColors':
         return this.resolvePlayers(a.ref, ctx).reduce((n, pid) => n + this.colorsOfCommander(pid).length, 0);
       case 'manaSpent': {

@@ -26,6 +26,8 @@ export interface ParseCtx {
   restKey?: string;
   /** The creature that just explored (for "Whenever a creature you control explores"). */
   exploreRef?: Ref;
+  /** Bound by a sentence whose comparison defines "the difference". */
+  difference?: Amount;
 }
 
 export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
@@ -408,7 +410,7 @@ function amt(text: string, ctx: ParseCtx) {
     const who = playerRef(hm[1], ctx);
     if (who) return (hm[2].toLowerCase() === 'hand' ? { kind: 'handSize', ref: who } : { kind: 'graveyardSize', ref: who }) as Amount;
   }
-  return parseAmount(text, { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, resolvePlayer: (p) => playerRef(p, ctx) });
+  return parseAmount(text, { self: SELF, difference: ctx.difference, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, resolvePlayer: (p) => playerRef(p, ctx) });
 }
 
 /** "for each X": a count of matching objects, or any other amount phrase. */
@@ -3091,6 +3093,13 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'copySpell', what: ref, count: n }];
   }],
   // "Proliferate X times" / "Populate X times"
+  // "proliferate a number of times equal to the difference"
+  [/^(proliferate|populate|investigate) a number of times equal to (.+)$/i, (m, ctx) => {
+    const n = amt(m[2], ctx);
+    if (n === null || n === undefined) return null;
+    if (/investigate/i.test(m[1])) return [{ kind: 'investigate', count: n }];
+    return [{ kind: 'repeat', times: n, effects: [/proliferate/i.test(m[1]) ? { kind: 'proliferate' } : { kind: 'populate' }] }];
+  }],
   [/^(proliferate|populate|investigate) (?:(X|\w+) times|(twice|three times))$/i, (m, ctx) => {
     const n: Amount | null = m[3] ? (/twice/i.test(m[3]) ? 2 : 3) : m[2] === 'X' ? 'X' : wordToNumber(m[2]);
     if (n === null) return null;
@@ -9908,6 +9917,38 @@ function ctx0(): void {
 }
 
 /** Parse a full effect text (multiple sentences). */
+/** "If X is less than Y, ... equal to the difference": the gap the sentence's comparison names. */
+function deriveDifference(s: string, ctx: ParseCtx): Amount | null {
+  const A = (t: string): Amount | null => amt(t.trim(), ctx) ?? null;
+  const pair = (a: Amount | null, b: Amount | null): Amount | null => (a !== null && b !== null ? { kind: 'difference', a, b } : null);
+  let cm: RegExpMatchArray | null;
+  // "If you put fewer than two lands onto the battlefield this way, ..."
+  if ((cm = s.match(/\b(?:you |they )?(?:put|drew|drawn) (?:fewer|less|more) than (\w+) ([\w ]+?) (onto the battlefield|into your graveyard) this way\b/i))) {
+    const n = wordToNumber(cm[1]);
+    if (typeof n === 'number') return pair(n, A(`the number of ${cm[2]} you put ${cm[3]} this way`));
+  }
+  // "If fewer than two cards were discarded this way, ..."
+  if ((cm = s.match(/\b(?:fewer|less|more) than (\w+) ([\w ]+?) (?:were|was) ([\w]+) this way\b/i))) {
+    const n = wordToNumber(cm[1]);
+    if (typeof n === 'number') return pair(n, A(`the number of ${cm[2]} ${cm[3]} this way`));
+  }
+  // "If its controller has more than four cards in hand, ..."
+  if ((cm = s.match(/\b(you|they|its controller|that player|target player|target opponent) (?:has|have) (?:more|fewer|less|greater) than (\w+) cards? in (?:hand|their hand|your hand)\b/i))) {
+    const n = wordToNumber(cm[2]);
+    const poss = /^you$/i.test(cm[1]) ? 'your' : 'their';
+    if (typeof n === 'number') return pair(A(`the number of cards in ${poss} hand`), n);
+  }
+  // "If they control fewer lands than you, ..."
+  if ((cm = s.match(/\b(you|they|that player|target player|target opponent) controls? (?:fewer|less|more) ([\w ]+?) than (you|they|that player)\b/i))) {
+    const one = /^you$/i.test(cm[1]) ? 'you control' : 'they control';
+    const two = /^you$/i.test(cm[3]) ? 'you control' : 'they control';
+    return pair(A(`the number of ${cm[2]} ${one}`), A(`the number of ${cm[2]} ${two}`));
+  }
+  // "if the amount of mana spent to cast it was less than its mana value, ..."
+  if ((cm = s.match(/^(?:if )?(.+?) (?:is|are|was|were) (?:less|fewer|greater|more) than ([^,]+),/i))) return pair(A(cm[1]), A(cm[2]));
+  return null;
+}
+
 export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; unhandled: string[] } {
   const effects: Effect[] = [];
   const unhandled: string[] = [];
@@ -9920,6 +9961,11 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // `lastStart` is where the previous sentence's effects begin: "X. If ~ was kicked, Y instead." replaces them.
     lastStart = curStart;
     curStart = effects.length;
+    // Bind "the difference" from whatever comparison this line set up (it may be a prior sentence).
+    if (/\bthe difference\b/i.test(text)) {
+      const d = deriveDifference(s, ctx);
+      if (d) ctx.difference = d;
+    }
     // A sentence that failed rolls ctx.targets back; don't let a stale "last" ref
     // keep pointing at a target slot that no longer exists.
     if (ctx.lastObj?.ref === 'target' && (ctx.lastObj.slot ?? 0) >= ctx.targets.length) ctx.lastObj = null;
@@ -9927,6 +9973,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // "If you cast a spell this way, you may spend mana as though it were mana of any color to
     // cast it." — a rider on the play-from-exile effect before it.
     if (/^(?:if you cast a spell this way, )?(?:you|they) may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to (?:cast|pay)\b/i.test(s) && setAnyMana(effects)) continue;
+    if (/^mana of any (?:colou?r|type) can be spent to (?:cast|play) (?:it|them|that spell|those spells|that card|those cards)$/i.test(s) && setAnyMana(effects)) continue;
     // "If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost."
     if (/^if you cast a spell this way, (?:you )?pay life equal to (?:its|that spell's|the spell's) mana value rather than pay(?:ing)? its mana cost$/i.test(s) && setPayLife(effects)) continue;
     // "Any player may pay 5 life. If a player does, counter ~." — the follow-up hangs off the offer.
@@ -10444,6 +10491,11 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     let r = parseSentence(s, ctx);
+    // "..., and mana of any type can be spent to cast that spell" — a clause on the permission.
+    if (!r && (m = s.match(/^(.+?),? and mana of any (?:colou?r|type) can be spent to (?:cast|play) (?:it|them|that spell|those spells|that card|those cards)$/i))) {
+      const inner = parseSentence(m[1], ctx);
+      if (inner && setAnyMana(inner)) r = inner;
+    }
     // "You may cast that card by paying life equal to its mana value rather than paying its mana
     // cost": the alternative cost rides on whatever permission the rest of the sentence grants.
     if (!r && (m = s.match(/^(.+?) by paying life equal to (?:its|that spell's|the spell's) mana value rather than pay(?:ing)? its mana cost$/i))) {

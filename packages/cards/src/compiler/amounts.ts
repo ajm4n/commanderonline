@@ -6,6 +6,8 @@ export interface RefCtx {
   self: Ref;
   lastObj: Ref | null;
   triggerHasObject: boolean;
+  /** Bound by a sentence whose comparison defines "the difference". */
+  difference?: Amount;
   lastPlayer?: Ref | null;
   triggerHasPlayer?: boolean;
   /** Resolve a player phrase ("target player") to a Ref, registering targets when the caller can. */
@@ -33,6 +35,7 @@ const COMMANDER_COLORS_RE = /^the number of colou?rs? in (?:your|their) commande
 
 export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   if (COMMANDER_COLORS_RE.test(text.trim().replace(/[.,;]$/, ''))) return { kind: 'commanderColors', ref: { ref: 'controller' } };
+  if (ctx.difference && /^the difference$/i.test(text.trim().replace(/[.,;]$/, ''))) return ctx.difference;
   text = text.replace(/\byou've\b/gi, 'you have').replace(/\bopponents? you have\b/i, 'opponents you have').replace(/\b([+\-\w\/]+) counter on\b/i, '$1 counters on');
   {
     const t0 = text.trim().toLowerCase().replace(/^the number of /, '');
