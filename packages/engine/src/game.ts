@@ -1507,8 +1507,10 @@ export class Game {
         return this.resolveObjects(c.ref, ectx).every((o) => o.tapped);
       case 'isAttacking':
         return this.resolveObjects(c.ref, ectx).every((o) => o.attacking !== null);
-      case 'isMonarch':
-        return this.resolvePlayers(c.ref, ectx).every((p) => this.state.monarch === p);
+      case 'isMonarch': {
+        const ps = this.resolvePlayers(c.ref, ectx);
+        return ps.length > 0 && ps.every((p) => this.state.monarch === p); // "there is no monarch" = not(isMonarch of the monarch ref)
+      }
       case 'castFrom': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         return src?.castFromZone === c.zone;

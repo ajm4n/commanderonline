@@ -188,6 +188,24 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const c = { kind: 'objectMatches' as const, ref: { ref: 'attachedTo' as const }, filter: { supertypes: ['Legendary' as const] } };
     return m[1] ? { kind: 'not', c } : c;
   }
+  if (t === 'there is no monarch') return { kind: 'not', c: { kind: 'isMonarch', ref: { ref: 'monarch' } } };
+  if (t === 'there is a monarch') return { kind: 'isMonarch', ref: { ref: 'monarch' } };
+  if (t === 'an opponent has more cards in hand than you') return { kind: 'opponentCompare', what: { zone: 'hand' }, op: '>' };
+  if (t === 'you have more life than an opponent' || t === 'you have more life than each opponent' && false) return { kind: 'opponentCompare', what: 'life', op: '<' };
+  if ((m = t.match(/^that player has (\w+) or fewer cards in hand$/))) { const n = wordToNumber(m[1]); return { kind: 'handSize', ref: thatPlayer, op: '<=', value: typeof n === 'number' ? n : 1 }; }
+  if ((m = t.match(/^(it|~|that creature|this creature) (?:didn't|did not) attack this turn$/))) {
+    // "it" with nothing in scope is left alone: "That creature attacks this turn if able. If it doesn't, …" is about a target we no longer hold.
+    const ref = m[1] === 'it' || m[1] === 'that creature' ? ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : null) : ctx.self;
+    if (ref) return { kind: 'not', c: { kind: 'objectMatches', ref, filter: { attackedThisTurn: true } } };
+  }
+  if ((m = t.match(/^this ability has been activated (\w+) or more times this turn$/))) { const n = wordToNumber(m[1]); return { kind: 'abilityResolvedThisTurn', op: '>=', value: typeof n === 'number' ? n : 2 }; }
+  if (/^you (?:haven't|have not) cast a spell(?: from your hand)? this turn$/.test(t)) return { kind: 'eventThisTurn', event: 'cast', player: 'you', op: '==', value: 0 };
+  // "if it is not a creature" (Does Machines); the positive "if it's a creature card" forms are handled below with the revealed card.
+  if ((m = t.match(/^(it|that permanent) is not (?:a|an) (creature|artifact|enchantment|land|planeswalker)$/))) {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : ctx.self);
+    const type = m[2].charAt(0).toUpperCase() + m[2].slice(1);
+    return { kind: 'not', c: { kind: 'objectMatches', ref, filter: { types: [type as import('@commander/engine').CardType] } } };
+  }
   // "if it isn't a token" (Gruff Triplets) / "if it had counters on it" (Angelic Sleuth) / "if it had a +1/+1 counter on it"
   if ((m = t.match(/^(it|that creature|that permanent|~) (?:is|was) (not |n't )?a token$/))) {
     const ref = m[1] === '~' ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : ctx.self);
