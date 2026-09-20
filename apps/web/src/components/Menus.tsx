@@ -39,6 +39,17 @@ export function ObjectMenu({ view, obj, at, decision, onClose, manual, onCast, o
   const isMine = obj.controller === view.you;
   return (
     <ContextMenu at={at} title={obj.hidden ? 'Face-down card' : obj.name} onClose={onClose}>
+      {!obj.hidden && (
+        <button
+          className="view-card"
+          onClick={() => {
+            useUi.getState().setHover(obj);
+            onClose();
+          }}
+        >
+          View card
+        </button>
+      )}
       {playable && (
         <>
           {isLand && prio?.canPlayLand && (

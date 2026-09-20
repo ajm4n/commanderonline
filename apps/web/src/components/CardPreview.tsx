@@ -3,6 +3,7 @@ import type { ObjectView } from '@commander/engine';
 import { CardText, type HoverRect } from './Card.js';
 import { ManaCost } from './ManaCost.js';
 import { coverageLabel } from '../lib/format.js';
+import { useUi } from '../state/ui.js';
 
 const PREVIEW_W = 300;
 /** Breathing room between the hovered card and the large view. */
@@ -42,7 +43,7 @@ export function CardPreview({ obj, rect }: { obj: ObjectView | null; rect?: Hove
   if (!obj || obj.hidden) return null;
   const img = obj.faceIndex > 0 && obj.backImageUri ? obj.backImageUri : obj.imageUri;
   return (
-    <div className="preview" key={obj.id} ref={ref} style={rect ? anchor(rect, height) : undefined}>
+    <div className="preview" key={obj.id} ref={ref} style={rect ? anchor(rect, height) : undefined} onClick={() => useUi.getState().setHover(null)}>
       {img ? <img src={img} alt={obj.name} /> : <CardText obj={obj} big />}
       <div className="preview-text">
         <div className="row" style={{ justifyContent: 'space-between' }}>

@@ -14,7 +14,7 @@ import { Dialogs } from '../components/Dialogs.js';
 import { ZoneBrowser } from '../components/ZoneBrowser.js';
 import { CardPreview } from '../components/CardPreview.js';
 import { CastAnnounce } from '../components/CastAnnounce.js';
-import { playerName } from '../lib/format.js';
+import { playerName, STEP_LABEL } from '../lib/format.js';
 
 const FACE_CHOICE_LAYOUTS = new Set(['modal_dfc', 'adventure', 'split']);
 
@@ -205,6 +205,12 @@ export function GameScreen() {
           Turn {view.turn.number} · {view.turn.activePlayer === view.you ? 'Your turn' : `${playerName(view, view.turn.activePlayer)}'s turn`}
         </span>
         <PhaseTracker view={view} compact={compactPhases} />
+        <span className={`step-pill ${view.turn.activePlayer === view.you ? '' : 'opp'}`} title="Current step">
+          {STEP_LABEL[view.turn.step]}
+        </span>
+        <button className={`sm drawer-btn ${view.stack.length ? 'has-stack' : ''}`} onClick={() => ui.setSidebarOpen(!ui.sidebarOpen)} title="Stack, log and chat">
+          Log{view.stack.length ? ` · ${view.stack.length}` : ''}
+        </button>
         {mode === 'online' && <span className={`conn-pill ${connStatus}`}>{connStatus}</span>}
         {mode === 'solo' && <span className="conn-pill open">solo</span>}
         <button className="sm" onClick={() => ui.setDialog({ kind: 'token' })} title="Create a token (manual)">
@@ -289,7 +295,8 @@ export function GameScreen() {
         {!replay && view.you === '' && <div className="spectator-banner">Spectating · {view.waitingOn ? `waiting on ${playerName(view, view.waitingOn)}` : 'game over'}</div>}
       </main>
 
-      <aside className="sidebar">
+      {ui.sidebarOpen && <div className="side-backdrop" onClick={() => ui.setSidebarOpen(false)} />}
+      <aside className={`sidebar ${ui.sidebarOpen ? 'open' : ''}`}>
         <div className="side-section decision-side">
           <h3>Decision</h3>
           {decision ? (

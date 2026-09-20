@@ -105,7 +105,7 @@ export function DeckPicker() {
           </button>
           <h1 style={{ margin: 0 }}>Choose a deck</h1>
         </div>
-        <div className="cards-grid" style={{ gridTemplateColumns: 'minmax(300px, 1fr) minmax(320px, 1.2fr)' }}>
+        <div className="cards-grid deck-grid">
           <div className="panel">
             <div className="tabs">
               <button className={tab === 'paste' ? 'active' : ''} onClick={() => setTab('paste')}>

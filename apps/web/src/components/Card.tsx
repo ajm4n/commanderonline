@@ -98,6 +98,7 @@ export const Card = memo(function Card(props: CardProps) {
         onContextMenu?.(obj, e);
       }}
       onMouseEnter={(e) => {
+        if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(hover: hover)').matches) return;
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
         onHover?.(obj, { left: r.left, top: r.top, width: r.width, height: r.height });
       }}

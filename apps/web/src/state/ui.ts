@@ -33,8 +33,11 @@ interface UiState {
   browse: BrowseState;
   dialog: DialogState;
   selectedStackItem: number | null;
+  /** Small screens: the stack/log sidebar slides in as a drawer. */
+  sidebarOpen: boolean;
 
   syncDecision(d: Decision | null): void;
+  setSidebarOpen(open: boolean): void;
   setSlot(i: number): void;
   toggleTarget(t: Target, d: Decision): void;
   toggleAttacker(id: ObjectId, target: PlayerId | ObjectId): void;
@@ -61,7 +64,11 @@ export const useUi = create<UiState>((set, get) => ({
   browse: null,
   dialog: null,
   selectedStackItem: null,
+  sidebarOpen: false,
 
+  setSidebarOpen(open) {
+    set({ sidebarOpen: open });
+  },
   syncDecision(d) {
     const id = d?.id ?? null;
     if (id === get().decisionId) return;

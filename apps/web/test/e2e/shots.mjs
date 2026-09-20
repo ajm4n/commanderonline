@@ -35,6 +35,25 @@ for (const s of sizes) {
     await waitFor(page, (x) => x.decision?.type === 'priority', { label: 'priority', timeout: 60000 });
     await sleep(600);
     await shot('4-game');
+    if (s.mobile) {
+      const drawer = page.locator('.drawer-btn');
+      if (await drawer.isVisible()) {
+        await drawer.click();
+        await sleep(350);
+        await shot('5-drawer');
+        await page.locator('.side-backdrop').click({ position: { x: 10, y: 200 } });
+      }
+      // Long-press a hand card: on touch devices this should open the card menu.
+      const hand = page.locator('.hand .card').first();
+      if (await hand.count()) {
+        const box = await hand.boundingBox();
+        if (box) {
+          await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+          await sleep(300);
+          await shot('6-tap-card');
+        }
+      }
+    }
     console.log(`${s.name}: ok`);
   } catch (e) {
     await shot('9-error');

@@ -265,6 +265,9 @@ h3 {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
+.deck-grid {
+  grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.2fr);
+}
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -435,6 +438,28 @@ h3 {
 .topbar .turn-info {
   white-space: nowrap;
   font-weight: 600;
+}
+/* Phone-only: the current step as a pill (the full tracker needs the width) and the drawer toggle. */
+.step-pill,
+.drawer-btn {
+  display: none;
+}
+.step-pill {
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.step-pill.opp {
+  background: #b3462f;
+}
+.drawer-btn.has-stack {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.4) inset;
 }
 .phases {
   display: flex;
@@ -1590,3 +1615,303 @@ h3 {
 .spectator-banner { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 4px 12px; border-radius: 999px; background: rgba(120, 90, 255, 0.25); border: 1px solid rgba(120, 90, 255, 0.5); font-size: 12px; }
 .commander-list { display: flex; flex-direction: column; gap: 4px; }
 .commander-list .row { align-items: center; gap: 6px; }
+
+/* Phones -------------------------------------------------------------------
+   One column: the stack/log sidebar becomes a drawer, opponents shrink to a strip, the hand
+   scrolls sideways, and the decision bar is a full-width strip above it. Touch targets grow. */
+@media (max-width: 720px) {
+  .game {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 44px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .topbar {
+    grid-column: 1;
+    gap: 6px;
+    padding: 0 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .topbar::-webkit-scrollbar {
+    display: none;
+  }
+  .topbar .turn-info {
+    font-size: 13px;
+  }
+  .topbar .phases {
+    display: none;
+  }
+  .topbar .step-pill {
+    display: inline-flex;
+  }
+  .topbar .drawer-btn {
+    display: inline-block;
+    margin-left: auto;
+  }
+  .table {
+    grid-column: 1;
+  }
+  .sidebar {
+    position: fixed;
+    top: 44px;
+    right: 0;
+    bottom: 0;
+    width: min(92vw, 360px);
+    z-index: 60;
+    transform: translateX(100%);
+    transition: transform 0.2s ease-out;
+    box-shadow: var(--shadow);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sidebar.open {
+    transform: none;
+  }
+  .side-backdrop {
+    position: fixed;
+    inset: 44px 0 0 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 55;
+  }
+  .opponents {
+    padding: 4px 4px 0;
+    gap: 4px;
+    max-height: 34%;
+    min-height: 96px;
+  }
+  .seat {
+    padding: 4px;
+    gap: 2px;
+  }
+  .seat.opp {
+    --cw: 46px;
+  }
+  .seat.me {
+    flex-direction: column;
+    margin: 4px 4px 0;
+    --cw: 62px;
+  }
+  .seat.me .player-panel {
+    width: auto;
+    flex: 0 0 auto;
+  }
+  .player-panel {
+    font-size: 11px;
+  }
+  .seat.me .pp-head .muted.small {
+    display: none;
+  }
+  .avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+  .bf-row.command {
+    --cw: 48px;
+    padding: 12px 6px 4px;
+  }
+  .bf-row {
+    gap: 4px;
+    min-height: 0;
+  }
+  .hand-wrap {
+    height: 132px;
+    --cw: 70px;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+  }
+  .hand {
+    justify-content: flex-start;
+    align-items: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding: 4px 4px 0;
+    scrollbar-width: none;
+  }
+  .hand::-webkit-scrollbar {
+    display: none;
+  }
+  .hand .card-wrap,
+  .hand.many .card-wrap {
+    margin: 0;
+  }
+  .hand .card-wrap:hover {
+    transform: none;
+    margin: 0;
+  }
+  .hand-count {
+    left: 8px;
+    bottom: 2px;
+    font-size: 10px;
+  }
+  .decision-bar {
+    left: 4px;
+    right: 4px;
+    bottom: 128px;
+    transform: none;
+    max-width: none;
+    padding: 6px 8px;
+    gap: 8px;
+    border-radius: 8px;
+  }
+  .decision-bar .prompt {
+    white-space: normal;
+    font-size: 13px;
+    max-width: none;
+    line-height: 1.25;
+  }
+  .decision-bar .sub {
+    white-space: normal;
+    font-size: 11px;
+  }
+  .decision-bar .pass {
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+  .toasts {
+    right: 8px;
+    top: 50px;
+  }
+  .toast {
+    max-width: 62vw;
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  /* No hover on a phone: the large view opens from the card menu, centred, and a tap closes it. */
+  .preview {
+    pointer-events: auto;
+    left: 50% !important;
+    top: 50% !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%);
+    width: min(300px, 82vw) !important;
+    animation: none;
+    z-index: 65;
+  }
+  .modal {
+    min-width: 0;
+    width: 94vw;
+    max-height: 86vh;
+    padding: 12px;
+  }
+  .card-grid {
+    --cw: 84px;
+  }
+  .ctx button {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  button.sm {
+    min-height: 30px;
+  }
+  .page {
+    padding: 16px 12px 40px;
+  }
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+  .cards-grid,
+  .deck-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .row.wrap > .grow.small {
+    flex-basis: 100%;
+  }
+  .modal .card-grid {
+    max-height: 50vh;
+  }
+}
+
+/* Landscape phones: wide enough for the desktop grid but far too short for its heights. */
+@media (max-height: 520px) and (min-width: 721px) {
+  .game {
+    grid-template-columns: minmax(0, 1fr) 230px;
+    grid-template-rows: 36px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .topbar {
+    gap: 6px;
+    padding: 0 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .opponents {
+    min-height: 64px;
+    max-height: 38%;
+    padding: 4px 4px 0;
+    gap: 4px;
+  }
+  .seat {
+    padding: 4px;
+    gap: 2px;
+  }
+  .seat.opp {
+    --cw: 40px;
+  }
+  .seat.me {
+    --cw: 58px;
+    margin: 4px 4px 0;
+  }
+  .bf-row.command {
+    --cw: 44px;
+    padding: 12px 6px 4px;
+  }
+  .bf-row {
+    min-height: 0;
+  }
+  .hand-wrap {
+    height: 92px;
+    --cw: 58px;
+    padding: 4px 6px 4px;
+  }
+  .hand .card-wrap {
+    margin: 0 -8px;
+  }
+  .hand .card-wrap:hover {
+    transform: translateY(-6px) scale(1.04);
+    margin: 0 2px;
+  }
+  .decision-bar {
+    position: static;
+    transform: none;
+    order: 5;
+    margin: 2px 6px;
+    padding: 3px 8px;
+    gap: 8px;
+    max-width: none;
+    border-radius: 6px;
+  }
+  .hand-wrap {
+    order: 10;
+  }
+  .decision-bar .prompt {
+    font-size: 13px;
+    max-width: none;
+  }
+  .seat.me .player-panel {
+    width: 130px;
+    flex-basis: 130px;
+  }
+  .seat.me .pp-head .muted.small {
+    display: none;
+  }
+  .decision-bar .sub {
+    font-size: 11px;
+  }
+  .decision-bar .pass {
+    padding: 6px 14px;
+    font-size: 14px;
+  }
+  .preview {
+    width: 220px;
+  }
+  .side-section.stack {
+    flex: 0 1 40%;
+  }
+  .modal {
+    max-height: 92vh;
+    padding: 10px;
+  }
+}
