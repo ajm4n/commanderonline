@@ -1379,8 +1379,11 @@ const PATTERNS: Pattern[] = [
   }],
   // "Put those counters on target creature you control." (after "remove ... counters")
   [/^put those counters on (.+)$/i, (m, ctx) => {
+    // The Ozolith: "Whenever a creature you control leaves the battlefield, if it had counters on it, put those
+    // counters on ~" — the counters come from the object in scope; with none, from ~ ("remove … counters from ~").
+    const from: Ref = ctx.lastObj && ctx.lastObj.ref !== 'self' ? ctx.lastObj : ctx.triggerHasObject && !ctx.lastObj ? { ref: 'triggerObject' } : SELF;
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'moveCounters', from: SELF, to: ref }] : null;
+    return ref ? [{ kind: 'moveCounters', from, to: ref }] : null;
   }],
   // "An opponent chooses two of those cards."
   [/^(.+?) chooses (\w+) of those cards$/i, (m, ctx) => {
@@ -2133,8 +2136,15 @@ const PATTERNS: Pattern[] = [
   [/^(?:you may )?cast the cop(?:y|ies)(?: without paying (?:its|their) mana costs?)?$/i, (m) => [{ kind: 'may', effects: [/without paying/i.test(m[0]) ? { kind: 'castWithoutPaying', what: { ref: 'lastCreated' } } : { kind: 'castFrom', what: { ref: 'lastCreated' } }] }]],
   // Attach
   [/^attach (.+) to (.+?)$/i, (m, ctx) => {
+    // Resolve the host first: "attach ~ to it" must not let "~" become the antecedent of "it" (dozens of
+    // "create a token, then attach ~ to it" Equipment attached themselves to themselves).
+    // Targets register in the card's order, but the host's pronoun ("attach ~ to it", "attach target Equipment
+    // to that creature") refers to what was in scope before this sentence, not to the thing being attached.
+    const savedLast = ctx.lastObj;
     const a = objRef(m[1], ctx);
+    ctx.lastObj = savedLast;
     const b = a ? objRef(m[2], ctx) : null;
+    if (a && b) ctx.lastObj = b;
     return a && b ? [{ kind: 'attach', what: a, to: b }] : null;
   }],
   [/^transform (.+)$/i, (m, ctx) => {
@@ -3237,8 +3247,11 @@ const PATTERNS: Pattern[] = [
   }],
   // "attach target Equipment you control to up to one target creature you control"
   [/^attach (.+?) to (.+)$/i, (m, ctx) => {
+    const savedLast = ctx.lastObj;
     const what = objRef(m[1], ctx);
+    ctx.lastObj = savedLast;
     const to = what ? objRef(m[2], ctx) : null;
+    if (what && to) ctx.lastObj = to;
     return what && to ? [{ kind: 'attach', what, to }] : null;
   }],
   // "You may play that card for as long as it remains exiled, and mana of any type can be spent to cast it"
