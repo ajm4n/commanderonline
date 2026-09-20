@@ -424,6 +424,9 @@ export class Game {
           const slot = d.slots[i];
           if (t[i].length < slot.min || t[i].length > slot.max) return `${slot.description}: choose ${slot.min}-${slot.max}`;
           for (const tt of t[i]) if (!slot.legal.some((l) => sameTarget(l, tt))) return `Illegal target for ${slot.description}`;
+          for (let a = 0; a < t[i].length; a++) for (let b = a + 1; b < t[i].length; b++) if (sameTarget(t[i][a], t[i][b])) return `${slot.description}: the same target twice`;
+          // "another target creature": a slot marked distinct shares no pick with any other slot.
+          if (slot.distinct) for (let j = 0; j < t.length; j++) if (j !== i && t[i].some((tt) => t[j].some((o) => sameTarget(o, tt)))) return `${slot.description} must differ from the other targets`;
         }
         break;
       }
@@ -1384,11 +1387,12 @@ export class Game {
       const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
       const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
       const cap = spec.maxAmount !== undefined ? this.resolveAmount(spec.maxAmount, { sourceId, controller: player, targets: [], triggerContext: ctx, memory: {}, x: x ?? 0, modes: [] }) : null;
+      const distinct = spec.distinct || /\b(?:another|a second) target\b/i.test(spec.description) || undefined;
       if (spec.countAmount !== undefined) {
         const n = this.resolveAmount(spec.countAmount, { sourceId, controller: player, targets: [], triggerContext: ctx, memory: {}, x: x ?? 0, modes: [] });
-        return { description: spec.description, legal, min: Math.min(n, legal.length), max: n };
+        return { description: spec.description, legal, min: Math.min(n, legal.length), max: n, distinct };
       }
-      return { description: spec.description, legal, min, max: cap ?? xn ?? spec.max ?? 1 };
+      return { description: spec.description, legal, min, max: cap ?? xn ?? spec.max ?? 1, distinct };
     });
     if (slots.some((s) => s.legal.length < s.min)) return null;
     // Auto-choose when there's exactly one legal option for every required slot.

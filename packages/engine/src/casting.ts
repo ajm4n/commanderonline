@@ -1900,13 +1900,14 @@ export function* chooseTargetsGrouped(g: Game, p: PlayerId, sourceId: ObjectId |
     const xn = spec.countX ? (x ?? 0) * (spec.countX.times ?? 1) : null;
     const min = spec.optional || (xn !== null && spec.countX?.upTo) ? 0 : xn ?? spec.min ?? 1;
     const cap = spec.maxAmount !== undefined ? g.resolveAmount(spec.maxAmount, { sourceId, controller: p, targets: [], triggerContext: {}, memory: {}, x: x ?? 0, modes: [] }) : null;
+    const distinct = spec.distinct || /\b(?:another|a second) target\b/i.test(spec.description) || undefined;
     if (spec.countAmount !== undefined) {
       // "another target for each time this spell was kicked": as many targets as the amount says, no more.
       const n = g.resolveAmount(spec.countAmount, { sourceId, controller: p, targets: [], triggerContext: {}, memory: {}, x: x ?? 0, modes: [] });
       const legal = legalTargets(g, spec, sourceId, p, x);
-      return { description: spec.description, legal, min: Math.min(n, legal.length), max: n };
+      return { description: spec.description, legal, min: Math.min(n, legal.length), max: n, distinct };
     }
-    return { description: spec.description, legal: legalTargets(g, spec, sourceId, p, x), min, max: cap ?? xn ?? spec.max ?? 1 };
+    return { description: spec.description, legal: legalTargets(g, spec, sourceId, p, x), min, max: cap ?? xn ?? spec.max ?? 1, distinct };
   });
   if (slots.some((s) => s.legal.length < s.min)) return null;
   let chosen: Target[][];

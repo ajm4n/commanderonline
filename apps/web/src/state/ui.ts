@@ -92,9 +92,12 @@ export const useUi = create<UiState>((set, get) => ({
     const spec = d.slots[slot];
     if (!spec) return;
     const legal = spec.legal.some((l) => sameTarget(l, t));
+    // "another target creature": a pick already used by another slot is not available here.
+    const takenElsewhere = (i: number) => d.slots.some((s, j) => j !== i && (s.distinct || d.slots[i]?.distinct) && (targets[j] ?? []).some((c) => sameTarget(c, t)));
+    if (legal && takenElsewhere(slot) && !cur.some((c) => sameTarget(c, t))) return;
     if (!legal) {
       // Maybe it is legal for another slot: jump there.
-      const other = d.slots.findIndex((s, i) => i !== slot && s.legal.some((l) => sameTarget(l, t)) && (targets[i]?.length ?? 0) < s.max);
+      const other = d.slots.findIndex((s, i) => i !== slot && s.legal.some((l) => sameTarget(l, t)) && (targets[i]?.length ?? 0) < s.max && !takenElsewhere(i));
       if (other < 0) return;
       const next = targets.map((x) => [...x]);
       next[other] = [...(next[other] ?? []), t];

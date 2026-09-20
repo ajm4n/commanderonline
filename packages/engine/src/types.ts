@@ -736,7 +736,8 @@ export interface PriorityDecision extends DecisionBase {
 export interface ChooseTargetsDecision extends DecisionBase {
   type: 'chooseTargets';
   /** Legal targets per target slot. */
-  slots: { description: string; legal: Target[]; min: number; max: number }[];
+  /** `distinct`: a target picked here may not also be picked in another slot ("another target creature"). */
+  slots: { description: string; legal: Target[]; min: number; max: number; distinct?: boolean }[];
 }
 
 export interface YesNoDecision extends DecisionBase {

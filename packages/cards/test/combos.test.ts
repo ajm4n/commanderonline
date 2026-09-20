@@ -56,10 +56,16 @@ class D {
       case 'chooseTargets':
         return this.submit({
           type: 'targets',
-          targets: d.slots.map((s) => {
-            const pick = s.legal.find((t) => t.kind === 'player' && t.id === this.enemy) ?? s.legal[0];
-            return (pick ? [pick] : []).slice(0, Math.max(s.min, 1)) as Target[];
-          }),
+          targets: ((): Target[][] => {
+            const used: Target[] = [];
+            return d.slots.map((s) => {
+              const legal = s.legal.filter((t) => !s.distinct || !used.some((u) => JSON.stringify(u) === JSON.stringify(t)));
+              const pick = legal.find((t) => t.kind === 'player' && t.id === this.enemy) ?? legal[0];
+              const picks = (pick ? [pick] : []).slice(0, Math.max(s.min, 1)) as Target[];
+              used.push(...picks);
+              return picks;
+            });
+          })(),
         });
       case 'chooseNumber':
         return this.submit({ type: 'number', value: d.max });
@@ -1043,6 +1049,31 @@ describe('combos and staples played through the engine', () => {
     expect(grant.keywords).toEqual(['Haste']);
     expect(grant.on).toEqual({ ref: 'lastCreated' });
     expect(grant.duration).toBe('permanent');
+  });
+  it('Comet Storm kicked once: two distinct targets, the same creature twice is refused', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Mountain', 4);
+    const storm = d.give(p1, C('Comet Storm'));
+    const bears = d.put(p2, C('Grizzly Bears'));
+    const elves = d.put(p2, C('Llanowar Elves'));
+    let kicks = 0;
+    d.yesNo = (prompt) => (/multikicker/i.test(prompt) ? kicks++ < 1 : true); // kick exactly once
+    d.cast(storm, { xValue: 1 });
+    d.until((x) => x.type === 'chooseTargets', 200);
+    expect(d.d.type).toBe('chooseTargets');
+    const dec = d.d as Extract<Decision, { type: 'chooseTargets' }>;
+    expect(dec.slots).toHaveLength(2);
+    expect(dec.slots[1].max).toBe(1); // one kick → one extra target
+    expect(dec.slots[1].distinct).toBe(true);
+    // Naming Grizzly Bears in both slots is rejected and the decision stays open.
+    d.submit({ type: 'targets', targets: [[{ kind: 'object', id: bears }], [{ kind: 'object', id: bears }]] });
+    expect(d.d.type).toBe('chooseTargets');
+    expect((d.d as { error?: string }).error).toMatch(/differ/);
+    d.submit({ type: 'targets', targets: [[{ kind: 'object', id: bears }], [{ kind: 'object', id: elves }]] });
+    d.resolve();
+    d.until(() => d.g.state.objects[elves]?.zone === 'graveyard', 200);
+    expect(d.g.state.objects[elves]?.zone).toBe('graveyard'); // 1 damage kills the 1/1
+    expect(d.g.obj(bears).damage).toBe(1);
   });
   it('Comet Storm: one extra target per kick, X damage to each', () => {
     const storm = compileCard(C('Comet Storm')).script.abilities.find((a) => a.kind === 'spell') as Extract<AbilitySpec, { kind: 'spell' }>;

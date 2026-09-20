@@ -4,7 +4,8 @@
  * can, attacks). Mirrors Driver.defaultAnswer from the engine's test helpers,
  * plus a loop guard so a rejected response falls back to the safe default.
  */
-import type { Decision, Response, GameView, PlayerId, ObjectId } from '@commander/engine';
+import type { Decision, Response, GameView, PlayerId, ObjectId, Target } from '@commander/engine';
+import { sameTarget } from './format.js';
 
 export function defaultAnswer(d: Decision): Response {
   switch (d.type) {
@@ -24,8 +25,16 @@ export function defaultAnswer(d: Decision): Response {
       return { type: 'options', ids: d.options.filter((o) => !o.disabled).slice(0, d.min).map((o) => o.id) };
     case 'orderObjects':
       return { type: 'order', ids: d.items ? d.items.map((i) => i.id) : d.objectIds };
-    case 'chooseTargets':
-      return { type: 'targets', targets: d.slots.map((s) => s.legal.slice(0, s.min)) };
+    case 'chooseTargets': {
+      // Slots marked distinct ("another target creature") must not reuse a pick from another slot.
+      const used: Target[] = [];
+      const targets = d.slots.map((s) => {
+        const picks = s.legal.filter((t) => !s.distinct || !used.some((u) => sameTarget(u, t))).slice(0, s.min);
+        used.push(...picks);
+        return picks;
+      });
+      return { type: 'targets', targets };
+    }
     case 'chooseNumber':
       return { type: 'number', value: d.max };
     case 'distribute': {
@@ -117,10 +126,12 @@ export function botAnswer(d: Decision, ctx: BotContext): Response {
     }
     case 'chooseTargets': {
       // Prefer targeting opponents / their stuff when the slot allows players.
+      const used: Target[] = [];
       const targets = d.slots.map((s) => {
-        const legal = [...s.legal];
+        const legal = s.legal.filter((t) => !s.distinct || !used.some((u) => sameTarget(u, t)));
         const opp = legal.filter((t) => (t.kind === 'player' ? t.id !== d.player : t.kind === 'object' ? view.objects[t.id]?.controller !== d.player : true));
         const chosen = (opp.length >= s.min ? opp : legal).slice(0, s.min);
+        used.push(...chosen);
         return chosen;
       });
       return { type: 'targets', targets };
