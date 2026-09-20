@@ -3348,6 +3348,13 @@ const PATTERNS: Pattern[] = [
     if (!ref || typeof n !== 'number') return null;
     return [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, counters: { counter: m[4], amount: n } }];
   }],
+  // "you may put it onto the battlefield with a manifestation counter on it" (Arbiter of the Ideal)
+  [/^put (it|that card|them|those cards|the revealed card) onto the battlefield( tapped)?(?: under your control)? with (?:(\w+) )?([+-]\d+\/[+-]\d+|[\w'-]+) counters? on (?:it|them|each of them)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    const n = m[3] && !/^(?:a|an)$/i.test(m[3]) ? wordToNumber(m[3]) : 1;
+    if (!ref || typeof n !== 'number') return null;
+    return [{ kind: 'returnToBattlefield', what: ref, tapped: m[2] ? true : undefined, counters: { counter: m[4], amount: n } }];
+  }],
   // "Return target creature card from your graveyard to the battlefield with an additional +1/+1 counter on it"
   [/^return (.+?) from your graveyard to the battlefield with (?:an additional|(\w+) additional) ([+-]\d+\/[+-]\d+|[\w'-]+) counters? on it$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -11010,11 +11017,14 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       i++;
     }
     // "Reveal the top card of your library. If it is a permanent card, A. Otherwise, B."
-    if (/^reveal the top card of your library$/i.test(s) && sents[i + 1] && /^if it is (?:a|an) .+? card, /i.test(sents[i + 1])) {
-      const cm = sents[i + 1].match(/^if it is (?:a|an) (.+?) card, (.+)$/i)!;
-      const noun = parseNoun(`a ${cm[1]} card`);
+    if (/^reveal the top card of your library$/i.test(s) && sents[i + 1] && /^if it is (?:not )?(?:a|an) .+? card(?: with [^,]+?)?, /i.test(sents[i + 1])) {
+      // "If it is not a creature card, put it into your graveyard. Otherwise, put that card onto the battlefield" (Impromptu
+      // Raid) swaps the branches; "If it is a land card, put it into your graveyard and repeat this process" (Countryside
+      // Crusher) keeps revealing while the card matches.
+      const cm = sents[i + 1].match(/^if it is (not )?(?:a|an) (.+? card(?: with [^,]+?)?), (.+?)(,? and repeat this process)?$/i)!;
+      const noun = parseNoun(`a ${cm[2]}`);
       const sub = { ...ctx, lastObj: { ref: 'lastMoved' } as Ref };
-      const thenE = noun ? parseSentence(cm[2], sub) : null;
+      const thenE = noun ? parseSentence(cm[3], sub) : null;
       let elseE: Effect[] | null = null;
       let used = 1;
       if (thenE && sents[i + 2] && /^otherwise, /i.test(sents[i + 2])) {
@@ -11022,7 +11032,8 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         if (elseE) used = 2;
       }
       if (noun && thenE) {
-        effects.push({ kind: 'revealTop', ifMatches: noun.filter, then: thenE, else: elseE ?? undefined, destination: 'stay' });
+        const reveal: Effect = cm[1] ? { kind: 'revealTop', ifMatches: noun.filter, then: elseE ?? [], else: thenE, destination: 'stay' } : { kind: 'revealTop', ifMatches: noun.filter, then: thenE, else: elseE ?? undefined, destination: 'stay' };
+        effects.push(cm[4] ? { kind: 'repeatWhile', effects: [reveal], condition: { kind: 'objectMatches', ref: { ref: 'lastMoved' }, filter: noun.filter }, checkAfter: true, max: 50 } : reveal);
         i += used;
         continue;
       }
