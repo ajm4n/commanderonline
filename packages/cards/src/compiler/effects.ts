@@ -10890,6 +10890,35 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
           continue;
         }
       }
+      // "Remove a pupa counter from ~. If you can't, sacrifice it, …" (Cocoon): the removal only happens when a counter is there.
+      const lastR = effects[effects.length - 1];
+      if (/^if you (?:can't|cannot), /i.test(s) && lastR && lastR.kind === 'removeCounters' && typeof lastR.amount === 'number' && lastR.counter !== 'any') {
+        const inner = parseSentence(s.replace(/^if you (?:can't|cannot), /i, ''), ctx);
+        if (inner) {
+          effects.pop();
+          effects.push({ kind: 'conditional', if: { kind: 'hasCounter', ref: lastR.on, counter: lastR.counter, op: '>=', value: lastR.amount }, then: [lastR], else: inner });
+          continue;
+        }
+      }
+      // "any player may …. If a player does, X" / "If no one does, X" / "If the player does, X" / "If that player doesn't, X"
+      {
+        const pd = s.match(/^if (a player|any player|no one|no player|the player|that player|they) (does|do|does not|doesn't|do not|don't)(?:,| then) (.+)$/i);
+        const hadMay = pd && JSON.stringify(effects).includes('"kind":"may"');
+        // A positive "If they do, X" right after a "may" is merged into that block by the handlers below; take the rest here.
+        const lastIsMay = effects[effects.length - 1]?.kind === 'may';
+        const negative = pd ? /not|n't/i.test(pd[2]) : false;
+        const anyoneForm = pd ? /^(?:a|any) player|no one|no player/i.test(pd[1]) : false;
+        if (pd && hadMay && (anyoneForm || negative || !lastIsMay)) {
+          const inner = parseSentence(pd[3], ctx);
+          if (inner) {
+            const anyone = /^(?:a|any) player|no one|no player/i.test(pd[1]);
+            const yes = /^(?:does|do)$/i.test(pd[2]) !== /^no /i.test(pd[1]);
+            const a: Amount = { kind: 'ctxMemory', key: anyone ? 'acceptedTotal' : 'acceptedCount' };
+            effects.push({ kind: 'conditional', if: yes ? { kind: 'amount', a, op: '>=', b: 1 } : { kind: 'amount', a, op: '==', b: 0 }, then: inner });
+            continue;
+          }
+        }
+      }
       // "Pay {E}{E}. If you can't, return ~ to its owner's hand and you get {E}." (Greenbelt Rampager)
       const pe = s.match(/^pay ((?:\{E\})+)$/i);
       if (pe && sents[i + 1] && /^if you (?:can't|cannot), /i.test(sents[i + 1])) {

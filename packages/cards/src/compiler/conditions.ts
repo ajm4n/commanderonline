@@ -188,6 +188,22 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const c = { kind: 'objectMatches' as const, ref: { ref: 'attachedTo' as const }, filter: { supertypes: ['Legendary' as const] } };
     return m[1] ? { kind: 'not', c } : c;
   }
+  // "if it isn't a token" (Gruff Triplets) / "if it had counters on it" (Angelic Sleuth) / "if it had a +1/+1 counter on it"
+  if ((m = t.match(/^(it|that creature|that permanent|~) (?:is|was) (not |n't )?a token$/))) {
+    const ref = m[1] === '~' ? ctx.self : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : ctx.self);
+    const c = { kind: 'objectMatches' as const, ref, filter: m[2] ? { nonToken: true } : { isToken: true } };
+    return c;
+  }
+  if ((m = t.match(/^(it|that creature|that permanent) had (?:one or more |a |an )?(?:([+\-\w\/]+) )?counters? on it$/))) {
+    const ref = ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' as const } : ctx.self);
+    return { kind: 'objectMatches', ref, filter: m[2] ? { hasCounter: oc(m, 2) } : { hasAnyCounter: true } };
+  }
+  // "if you don't control an Ogre" (Gutwrencher Oni) / "if you control a Demon"
+  if ((m = t.match(/^you (do not |don't )?control (?:a|an) ([A-Z][\w' -]*|\w+)$/))) {
+    const word = oc(m, 2);
+    const noun = parseNoun(`${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`);
+    if (noun && noun.confident) return { kind: 'count', filter: { ...noun.filter, controller: 'you', zone: 'battlefield' }, op: m[1] ? '<' : '>=', value: 1 };
+  }
   // "Activate only if ~ is not enchanted." / "... is enchanted" / "... is equipped"
   if ((m = t.match(/^(~|it|that creature|enchanted creature|equipped creature) is (not )?(enchanted|equipped|tapped|untapped|attacking|blocking|monstrous)$/))) {
     const ref = /^(?:enchanted|equipped) creature$/.test(m[1]) ? { ref: 'attachedTo' as const } : ctx.self;

@@ -2110,6 +2110,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       ctx.memory['acceptedCount'] = accepted;
       ctx.memory['declinedCount'] = declined;
+      // Across a "for each player, that player may …" loop: did anyone accept? ("If a player does, …" / "If no one does, …")
+      ctx.memory['acceptedTotal'] = ((ctx.memory['acceptedTotal'] as number) ?? 0) + accepted;
       return;
     }
     case 'unlessPays': {
