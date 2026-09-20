@@ -8614,5 +8614,74 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/9/9/99cfd1a8-49fd-4cc0-96f2-f9f159ce5d55.jpg?1783903765"
     }
+  },
+  {
+    "object": "card",
+    "id": "275426c4-c14e-47d0-a9d4-24da7f6f6911",
+    "oracle_id": "e15504a7-2b67-4185-b916-172145f10b19",
+    "name": "Yorion, Sky Nomad",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{W/U}{W/U}",
+    "cmc": 5,
+    "type_line": "Legendary Creature — Bird Serpent",
+    "oracle_text": "Companion — Your starting deck contains at least twenty cards more than the minimum deck size. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nFlying\nWhen Yorion enters, exile any number of other nonland permanents you own and control. Return those cards to the battlefield at the beginning of the next end step.",
+    "colors": [
+      "W",
+      "U"
+    ],
+    "color_identity": [
+      "W",
+      "U"
+    ],
+    "keywords": [
+      "Flying",
+      "Companion"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "4",
+    "toughness": "5",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/2/7/275426c4-c14e-47d0-a9d4-24da7f6f6911.jpg?1783931007"
+    }
+  },
+  {
+    "object": "card",
+    "id": "44dcab01-1d13-4dfc-ae2f-fbaa3dd35087",
+    "oracle_id": "5ade11c0-41dd-4b6a-9f5b-c5903a3a0d7f",
+    "name": "Elesh Norn, Mother of Machines",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}{W}",
+    "cmc": 5,
+    "type_line": "Legendary Creature — Phyrexian Praetor",
+    "oracle_text": "Vigilance\nIf a permanent entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.\nPermanents entering don't cause abilities of permanents your opponents control to trigger.",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [
+      "Vigilance"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "4",
+    "toughness": "7",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/4/4/44dcab01-1d13-4dfc-ae2f-fbaa3dd35087.jpg?1783918082"
+    }
   }
 ]

@@ -2895,6 +2895,15 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'costIncrease', amount: parseInt(m[2], 10), filter: f } }];
     }
   }
+  // Elesh Norn, Mother of Machines: "Permanents entering do not cause abilities of permanents your opponents control to trigger."
+  if ((m = L.match(/^(.+?) entering(?: the battlefield)? do not cause abilities of permanents (your opponents|you) control to trigger$/i))) {
+    const words = m[1].split(/,? and |, /i).map((w) => w.trim()).filter(Boolean);
+    const parts = words.map((w) => (/^permanents?$/i.test(w) ? { filter: {} as ObjectFilter } : parseNoun(w)));
+    if (parts.every((x) => x)) {
+      const f = parts.length === 1 ? { ...parts[0]!.filter, zone: undefined } : { anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
+      return [{ kind: 'static', text: line, ruleAffects: /opponents/i.test(m[2]) ? 'opponents' : 'controller', rule: { kind: 'custom', tag: 'noEtbTriggersForYourPermanents', data: { filter: f } } }];
+    }
+  }
   // "Creatures entering do not cause abilities to trigger."
   if ((m = L.match(/^(.+?) entering(?: the battlefield)?(?: or dying)? do not cause abilities to trigger$/i))) {
     const words = m[1].split(/,? and |, /i).map((w) => w.trim()).filter(Boolean);

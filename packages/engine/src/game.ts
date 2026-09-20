@@ -1086,6 +1086,13 @@ export class Game {
         const controller = isSelfLeaving && event.snapshot ? event.snapshot.controller : together ? together.controller : obj.controller;
         const evalObj = isSelfLeaving && event.snapshot ? event.snapshot : together ?? obj;
         if (event.name === 'tappedForMana' && ab.effects.every((e) => e.kind === 'addMana')) continue; // already resolved as a mana ability
+        // Elesh Norn, Mother of Machines: permanents entering don't cause abilities of permanents your opponents control to trigger.
+        if (event.name === 'entersBattlefield' && event.objectId !== undefined && this.playerRules(controller).some((r) => {
+          if (r.kind !== 'custom' || r.tag !== 'noEtbTriggersForYourPermanents') return false;
+          const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
+          const entering = this.state.objects[event.objectId!];
+          return !!entering && (!f || matchesFilter(this, entering, { ...f, zone: undefined }, { sourceId: null, controller }));
+        })) continue;
         if (!this.triggerMatches(ab.filter, event, evalObj, controller, lkiCh)) continue;
         if (ab.condition && !this.checkCondition(ab.condition, { sourceId: obj.id, controller, triggerContext: this.triggerContextFrom(event) })) continue;
         if (ab.oncePerTurn) {

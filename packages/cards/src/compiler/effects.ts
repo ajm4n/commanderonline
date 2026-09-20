@@ -7370,10 +7370,14 @@ const PATTERNS: Pattern[] = [
     const ref = ctx.lastObj ?? ({ ref: 'lastRevealed' } as Ref);
     return [{ kind: 'moveToZone', what: ref, zone: 'library', position: 'bottom' }];
   }],
-  [/^exile any number of other nonland permanents you own and control$/i, () => [
-    { kind: 'chooseObjects', who: YOU, filter: { nonland: true, controller: 'you', owner: 'you', zone: 'battlefield', other: true }, count: 99, key: 'yorion', upTo: true },
-    { kind: 'exile', what: { ref: 'chosen', key: 'yorion' }, untilSourceLeaves: true },
-  ]],
+  [/^exile any number of other nonland permanents you own and control$/i, (_m, ctx) => {
+    // Yorion: the cards come back at the next end step whatever happens to Yorion, so this is a plain exile.
+    ctx.lastObj = { ref: 'chosen', key: 'yorion' };
+    return [
+      { kind: 'chooseObjects', who: YOU, filter: { nonland: true, controller: 'you', owner: 'you', zone: 'battlefield', other: true }, count: 99, key: 'yorion', upTo: true },
+      { kind: 'exile', what: { ref: 'chosen', key: 'yorion' } },
+    ];
+  }],
   // ---- Round 184 ----
   [/^you skip your next (\w+) turns?$/i, (m) => {
     const n = wordToNumber(m[1]);

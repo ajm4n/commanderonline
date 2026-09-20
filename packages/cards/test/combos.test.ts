@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -849,5 +849,38 @@ describe('combos and staples played through the engine', () => {
     d.cast(hydra);
     d.resolve();
     expect(d.g.obj(d.bf(p1, 'Kalonian Hydra')[0]).counters['+1/+1']).toBe(5);
+  });
+  it('Yorion blinks your permanents until the next end step', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Plains', 4);
+    d.lands(p1, 'Island', 1);
+    const bear = d.put(p1, C('Grizzly Bears'));
+    const ring = d.put(p1, C('Sol Ring'));
+    const yorion = d.give(p1, C('Yorion, Sky Nomad'));
+    const turn = d.g.state.turn.number;
+    d.cast(yorion);
+    d.until(() => d.g.obj(bear).zone === 'exile', 200);
+    expect(d.g.obj(bear).zone).toBe('exile');
+    expect(d.g.obj(ring).zone).toBe('exile');
+    expect(d.g.state.turn.number).toBe(turn);
+    d.until(() => d.g.obj(bear).zone === 'battlefield', 400);
+    expect(d.g.state.turn.number).toBe(turn); // back at this turn's end step
+    expect(d.g.state.turn.step).toMatch(/end|cleanup/);
+    expect(d.bf(p1, 'Grizzly Bears')).toHaveLength(1);
+    expect(d.bf(p1, 'Sol Ring')).toHaveLength(1);
+  });
+
+  it("Elesh Norn, Mother of Machines: opponents' ETB triggers don't fire", () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Elesh Norn, Mother of Machines'));
+    d.put(p2, C('Impact Tremors'));
+    d.lands(p2, 'Forest', 2);
+    d.main(p2);
+    const bears = d.give(p2, C('Grizzly Bears'));
+    d.cast(bears);
+    d.resolve();
+    d.answer(d.d);
+    d.until((x) => x.type === 'priority' && d.g.state.stack.length === 0);
+    expect(d.g.player(p1).life).toBe(40); // no Impact Tremors damage
   });
 });
