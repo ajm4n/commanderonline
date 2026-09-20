@@ -3365,6 +3365,32 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (c310 && c310.kind !== 'manual')
       return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantAttackAlone' }, condition: { kind: 'not', c: c310 } }];
   }
+  // "If a source would deal damage to you, prevent that damage" is the same rule as "If damage
+  // would be dealt to you, ...", which is the phrasing the patterns above know.
+  if ((m = L.match(/^If a source would deal (combat |noncombat )?damage to (.+?), (.+)$/i))) {
+    const inner = parseStatic(`If ${m[1] ?? ''}damage would be dealt to ${m[2]}, ${m[3]}`, isCreatureOrPermanent);
+    if (inner) return inner;
+  }
+  // "Creatures you control get +1/+1 for as long as you control a Forest." — the same condition,
+  // trailing instead of leading. Tried on every " if "/" as long as " boundary, longest first.
+  {
+    const cuts: number[] = [];
+    for (const mm of L.matchAll(/ (?:for as long as|as long as|while|only if|if) /gi)) if (mm.index !== undefined) cuts.push(mm.index);
+    for (const k of cuts.reverse()) {
+      const head = L.slice(0, k);
+      const condText = L.slice(k).replace(/^ (?:for as long as|as long as|while|only if|if) /i, '');
+      const cond = parseCondition(condText, { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (!cond || cond.kind === 'manual') continue;
+      const inner = parseStatic(head, isCreatureOrPermanent);
+      if (!inner || !inner.length || !inner.every((a) => a.kind === 'static')) continue;
+      return inner.map((a) => (a.kind === 'static' ? { ...a, condition: a.condition ? ({ kind: 'and', cs: [a.condition, cond] } as Condition) : cond } : a));
+    }
+  }
+  // "Creatures you control get +1/+1 during your turn." — the timing clause may trail instead.
+  if ((m = L.match(/^(.+?) during (your|each opponent's|each player's|an opponent's|each of your opponents') turns?$/i))) {
+    const inner = parseStatic(`During ${m[2]} turn, ${m[1]}`, isCreatureOrPermanent);
+    if (inner) return inner;
+  }
   // "As long as ~ has a counter on it, it can attack as though it didn't have defender." /
   // "If there are three or more Lesson cards in your graveyard, you may cast ~ as though it had
   // flash." A leading condition applies to whatever static follows it.

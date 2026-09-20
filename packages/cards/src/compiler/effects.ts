@@ -703,9 +703,10 @@ const PATTERNS: Pattern[] = [
     if (n === null) return null;
     return [{ kind: 'draw', amount: n, who }];
   }],
-  [/^(?:(.+?) )?draws? (that many cards(?: minus one| plus one)?)$/i, (m, ctx) => {
+  [/^(?:(.+?) )?draws? ((?:twice |half )?that many cards(?: minus one| plus one)?)$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
-    const a = /minus one/i.test(m[2]) ? amt(m[2], ctx) : /plus one/i.test(m[2]) ? { kind: 'sum' as const, parts: [{ kind: 'discardedThisWay' as const, ref: { ref: 'iter' as const } }, 1] } : { kind: 'discardedThisWay' as const, ref: { ref: 'iter' as const } };
+    const base: Amount = { kind: 'discardedThisWay', ref: { ref: 'iter' } };
+    const a = /minus one/i.test(m[2]) ? amt(m[2], ctx) : /plus one/i.test(m[2]) ? ({ kind: 'sum', parts: [base, 1] } as Amount) : /^twice /i.test(m[2]) ? ({ kind: 'times', a: base, b: 2 } as Amount) : /^half /i.test(m[2]) ? ({ kind: 'half', a: base, round: 'down' } as Amount) : base;
     return who && a !== null ? [{ kind: 'draw', amount: a, who }] : null;
   }],
   [/^(?:(.+?) )?draws? cards equal to (.+)$/i, (m, ctx) => {
@@ -1660,7 +1661,7 @@ const PATTERNS: Pattern[] = [
     const n = wordToNumber(m[1]);
     return n === null ? null : [{ kind: 'surveil', amount: n }];
   }],
-  [/^(?:(.+?) )?mills? ((?:twice |three times |four times )?(?:\w+|X)|that many|half that many) cards?$/i, (m, ctx) => {
+  [/^(?:(.+?) )?mills? ((?:twice |three times |four times )?(?:\w+|X)|(?:twice |half |three times )?that many) cards?$/i, (m, ctx) => {
     const who = subjectPlayer(m[1], ctx);
     const n = wordToNumber(m[2]) ?? amt(m[2], ctx);
     return who && n !== null ? [{ kind: 'mill', amount: n, who }] : null;
