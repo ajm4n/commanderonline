@@ -522,6 +522,30 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.touch();
       return;
     }
+    case 'reanimateAura': {
+      // Animate Dead / Dance of the Dead / Necromancy: put the card onto the battlefield under your control,
+      // attach this Aura to it, and have its controller sacrifice it when the Aura leaves.
+      const aura = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
+      if (!aura || aura.zone !== 'battlefield') return;
+      const card = e.what ? g.resolveObjects(e.what, ctx)[0] : aura.attachedTo !== null ? g.state.objects[aura.attachedTo] : undefined;
+      if (!card || card.zone !== 'graveyard') return;
+      const entered = yield* enterBattlefield(g, card.id, ctx.controller, { tapped: e.tapped, ctx });
+      if (!entered) return;
+      aura.memory['reanimated'] = entered.id;
+      attach(g, aura.id, entered.id);
+      g.state.delayedTriggers.push({
+        id: g.state.nextEffectId++,
+        event: 'leavesBattlefield',
+        filter: { self: true },
+        effects: [{ kind: 'sacrifice', what: { ref: 'memory', key: 'reanimated' } }],
+        text: `${g.nameOf(aura.id)} left the battlefield: sacrifice ${g.nameOf(entered.id)}`,
+        controller: ctx.controller,
+        sourceId: aura.id,
+        once: true,
+        context: { delayedMemory: { reanimated: [entered.id] } },
+      });
+      return;
+    }
     case 'addManaPerColor': {
       const colors = new Set<import('./types.js').ManaColor>();
       for (const o of objectsMatching(g, { ...e.filter, zone: e.filter.zone ?? 'battlefield' }, { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x })) {
@@ -2762,7 +2786,7 @@ export function* enterBattlefield(g: Game, id: ObjectId, controller: PlayerId, o
   const ch = g.characteristics(id);
   let attachTo: ObjectId | null = null;
   if (ch.types.includes('Enchantment') && ch.subtypes.includes('Aura') && !opts.fromStack) {
-    const spec = auraTargetSpec(o.card.oracleText);
+    const spec = auraTargetSpec(o.card.oracleText, o);
     const legal = legalTargets(g, spec, id, controller).filter((t) => t.kind === 'object') as { kind: 'object'; id: ObjectId }[];
     if (!legal.length) {
       g.log(`${o.card.name} has nothing to enchant and stays where it is.`);
@@ -2814,9 +2838,14 @@ function* offerSoulbond(g: Game, id: ObjectId, controller: PlayerId): Gen<void> 
 }
 
 /** Aura "Enchant X" → target spec. */
-export function auraTargetSpec(text: string) {
+export function auraTargetSpec(text: string, aura?: GameObject) {
+  // Animate Dead once it has done its work: "enchant creature put onto the battlefield with this Aura".
+  const reanimated = aura?.memory['reanimated'];
+  if (typeof reanimated === 'number') return { description: 'enchant creature put onto the battlefield with this Aura', kind: 'object' as const, filter: { zone: 'battlefield' as const, ids: [reanimated] } };
   const m = text.match(/^Enchant ([^\n]+)/m);
   const what = (m?.[1] ?? 'creature').toLowerCase().trim();
+  // "Enchant creature card in a graveyard"
+  if (/^creature card in a graveyard$/.test(what)) return { description: 'enchant creature card in a graveyard', kind: 'object' as const, filter: { types: ['Creature'], zone: 'graveyard' as const } };
   const filter: import('./types.js').ObjectFilter = { zone: 'battlefield' };
   if (what.includes('creature')) filter.types = ['Creature'];
   else if (what.includes('land')) filter.types = ['Land'];

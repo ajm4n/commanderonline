@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = []): { d: D; p1: PlayerId; p2: 
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -486,5 +486,31 @@ describe('combos and staples played through the engine', () => {
     d.answer(d.d);
     d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step === 'main1');
     expect(d.g.player(p1).hand.length).toBe(hand + 3);
+  });
+  it('Animate Dead reanimates a creature from any graveyard and takes it with it when it leaves', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Swamp', 2);
+    const bear = d.g.createObject(C('Grizzly Bears'), p2, 'graveyard', { skipEvents: true }).id;
+    d.g.refreshDecision();
+    const ad = d.give(p1, C('Animate Dead'));
+    d.until((x) => x.type === 'priority' && x.player === p1);
+    expect(d.prio().playableCards).toContain(ad);
+    d.cast(ad);
+    d.targetObject(bear);
+    d.resolve();
+    // The Bears are back under p1's control, enchanted, at -1/-0.
+    expect(d.bf(p1, 'Grizzly Bears')).toHaveLength(1);
+    expect(d.bf(p1, 'Animate Dead')).toHaveLength(1);
+    const bearNow = d.bf(p1, 'Grizzly Bears')[0];
+    expect(d.g.obj(d.bf(p1, 'Animate Dead')[0]).attachedTo).toBe(bearNow);
+    expect(d.g.characteristics(bearNow).power).toBe(1);
+    expect(d.g.characteristics(bearNow).toughness).toBe(2);
+    // Animate Dead leaves: the creature's controller sacrifices it.
+    d.g.moveObject(d.bf(p1, 'Animate Dead')[0], 'graveyard', { cause: 'destroy' });
+    d.g.refreshDecision();
+    d.answer(d.d);
+    d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step === 'main1');
+    expect(d.bf(p1, 'Grizzly Bears')).toHaveLength(0);
+    expect(d.g.player(p2).graveyard.map((id) => d.g.obj(id).card.name)).toContain('Grizzly Bears');
   });
 });

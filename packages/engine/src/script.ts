@@ -392,6 +392,8 @@ export type Effect =
   | { kind: 'payEnergy'; max: number; key: string }
   /** "For each color among permanents you control, add one mana of that color." */
   | { kind: 'addManaPerColor'; filter: ObjectFilter }
+  /** Animate Dead: put the enchanted graveyard card (or `what`) onto the battlefield under your control attached to this Aura; its controller sacrifices it when the Aura leaves. */
+  | { kind: 'reanimateAura'; what?: Ref; tapped?: boolean }
   | { kind: 'chooseCreatureType'; key: string; /** Which set of types to pick from (default creature subtypes). */ pool?: 'creature' | 'land' | 'cardType' }
   | { kind: 'nameCard'; key: string }
   | { kind: 'setMemory'; key: string; value: unknown; /** Set it on this object instead of the source. */ on?: Ref }

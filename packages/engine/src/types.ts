@@ -345,6 +345,8 @@ export type RuleModification =
 /** Filters describe which objects an effect / trigger / target applies to. */
 export interface ObjectFilter {
   zone?: ZoneName | ZoneName[];
+  /** Only these specific objects ("enchant creature put onto the battlefield with this Aura"). */
+  ids?: ObjectId[];
   types?: string[]; // any of these card types
   notTypes?: string[];
   subtypes?: string[]; // any of these subtypes

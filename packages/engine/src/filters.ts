@@ -20,6 +20,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (!filter) return true;
   const ch = ctx.chOverride ?? g.characteristics(obj.id);
   const zone = ctx.zoneOverride ?? obj.zone;
+  if (filter.ids && !filter.ids.includes(obj.id)) return false;
   if (filter.zone) {
     const zones = Array.isArray(filter.zone) ? filter.zone : [filter.zone];
     if (!zones.includes(zone)) return false;

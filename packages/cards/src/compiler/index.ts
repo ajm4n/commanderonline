@@ -126,6 +126,24 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       line = line.replace(/^Solved — /i, '');
       solvedFrom = abilities.length;
     }
+    // Animate Dead / Dance of the Dead / Necromancy: the whole reanimation trigger is one engine effect.
+    {
+      const rm = line.match(/^When ~ enters, if it is on the battlefield, (?:it loses "enchant creature card in a graveyard" and gains|it becomes an Aura with) "enchant creature put onto the battlefield with ~\." (Return enchanted creature card to the battlefield|Put enchanted creature card onto the battlefield( tapped)?|Put target creature card from a graveyard onto the battlefield) under your control and attach ~ to it\. When ~ leaves the battlefield, that creature's controller sacrifices it\.$/i);
+      if (rm) {
+        const targeted = /^Put target/i.test(rm[1]);
+        abilities.push({
+          kind: 'triggered',
+          text: line,
+          event: 'entersBattlefield',
+          filter: { self: true },
+          condition: { kind: 'inZone', ref: { ref: 'self' }, zone: 'battlefield' },
+          targets: targeted ? [{ description: 'target creature card from a graveyard', kind: 'object', min: 1, max: 1, filter: { types: ['Creature'], zone: 'graveyard' } }] : undefined,
+          effects: [{ kind: 'reanimateAura', what: targeted ? { ref: 'target', slot: 0 } : undefined, tapped: rm[2] ? true : undefined }],
+        });
+        compiledLines.push(line);
+        continue;
+      }
+    }
     // Drop purely informational trailing sentences ("The same is true for …").
     {
       const ss = sentences(line);

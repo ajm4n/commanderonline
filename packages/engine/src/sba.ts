@@ -153,9 +153,10 @@ export function* checkStateBasedActions(g: Game): Gen {
         // Auras
         if (ch.types.includes('Enchantment') && ch.subtypes.includes('Aura')) {
           const host = o.attachedTo !== null ? g.state.objects[o.attachedTo] : null;
-          let illegal = !host || host.zone !== 'battlefield';
+          const spec = auraTargetSpec(o.card.oracleText, o);
+          const hostZone = spec.kind === 'object' && spec.filter.zone ? spec.filter.zone : 'battlefield';
+          let illegal = !host || host.zone !== hostZone;
           if (!illegal && host) {
-            const spec = auraTargetSpec(o.card.oracleText);
             if (spec.kind === 'object') {
               const legal = legalTargets(g, spec, id, o.controller);
               if (!legal.some((t) => t.kind === 'object' && t.id === host.id)) illegal = true;

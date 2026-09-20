@@ -1170,7 +1170,7 @@ export function spellTargets(g: Game, obj: GameObject, script: CardScript, faceI
     if (spell.modes && modes.length) for (const m of modes) specs.push(...(spell.modes[m]?.targets ?? []));
     else specs.push(...(spell.targets ?? []));
   }
-  if (/\bAura\b/.test(face.typeLine)) specs.push(auraTargetSpec(face.oracleText));
+  if (/\bAura\b/.test(face.typeLine)) specs.push(auraTargetSpec(face.oracleText, obj));
   return specs;
 }
 

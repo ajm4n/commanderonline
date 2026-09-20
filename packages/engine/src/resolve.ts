@@ -61,8 +61,8 @@ export function* resolveTopOfStack(g: Game): Gen {
     ctx.targets = dt.map((t) => (t.kind === 'object' && !g.state.objects[t.id] ? { kind: 'none' } : t));
     // A delayed trigger remembers what the original spell referred to; those are not live targets to re-check.
     ctx.targetSlots = undefined;
-    ctx.memory = { ...((item.triggerContext.delayedMemory as Record<string, unknown>) ?? {}) };
   }
+  if (item.triggerContext?.delayedMemory) ctx.memory = { ...(item.triggerContext.delayedMemory as Record<string, unknown>) };
   if (item.triggerContext?.snapshot && !ctx.sourceId) ctx.sourceId = item.sourceId; // LKI source for dies triggers (object may be in graveyard)
   if (!g.state.objects[item.sourceId]) ctx.sourceId = null;
 
