@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -624,5 +624,22 @@ describe('combos and staples played through the engine', () => {
     d.targetObject(bears);
     d.resolve();
     expect(d.g.obj(bears).counters['+1/+1']).toBe(2);
+  });
+  it('Sword of Feast and Famine: the hit player discards and your lands untap', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Forest', 3, { tapped: true });
+    const sword = d.put(p1, C('Sword of Feast and Famine'));
+    const bear = d.put(p1, C('Grizzly Bears'));
+    d.g.applyManual(p1, { kind: 'attach', objectId: sword, to: bear });
+    expect(d.g.obj(sword).attachedTo).toBe(bear);
+    d.g.refreshDecision();
+    const hand2 = d.g.player(p2).hand.length;
+    d.until((x) => x.type === 'declareAttackers');
+    d.submit({ type: 'attackers', attacks: [{ attacker: bear, target: p2 }] });
+    const turn = d.g.state.turn.number;
+    d.until(() => d.g.state.turn.number > turn || (d.g.state.turn.number === turn && d.g.state.turn.step === 'main2' && d.g.state.stack.length === 0));
+    expect(d.g.player(p2).life).toBe(36); // 2/2 + 2/+2
+    expect(d.g.player(p2).hand.length).toBe(hand2 - 1);
+    expect(d.g.state.battlefield.filter((id) => d.g.obj(id).controller === p1 && d.g.obj(id).card.name === 'Forest').every((id) => !d.g.obj(id).tapped)).toBe(true);
   });
 });

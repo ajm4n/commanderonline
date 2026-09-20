@@ -8094,5 +8094,32 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/6/f/6fe6ccad-e303-48f9-9dfa-0db7c1878031.jpg?1783904806"
     }
+  },
+  {
+    "object": "card",
+    "id": "c7710eb5-c56a-437b-8847-2a829c404d47",
+    "oracle_id": "d0901053-6de0-46d0-9ee3-8d40510236c1",
+    "name": "Sword of Feast and Famine",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}",
+    "cmc": 3,
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature gets +2/+2 and has protection from black and from green.\nWhenever equipped creature deals combat damage to a player, that player discards a card and you untap all lands you control.\nEquip {2}",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [
+      "Equip"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/c/7/c7710eb5-c56a-437b-8847-2a829c404d47.jpg?1783930094"
+    }
   }
 ]
