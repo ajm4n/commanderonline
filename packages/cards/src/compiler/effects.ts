@@ -2155,6 +2155,13 @@ const PATTERNS: Pattern[] = [
     return who ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivateAbilities', data: /mana abilities/i.test(m[0]) ? { exceptMana: true } : {} }, on: who, duration: / until end of turn$| this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
   // "you may pay {1}. If you do, copy that ability."
+  // Narset: "Until end of turn, you may cast noncreature spells from among those cards without paying their mana costs."
+  [/^(?:until end of turn, )?you may cast (noncreature|instant and sorcery|instant or sorcery|instant|sorcery|creature|noncreature, nonland) spells from among (?:those cards|them|the exiled cards)(?: this turn| until end of turn)? without paying their mana costs?(?: this turn| until end of turn)?$/i, (m, ctx) => {
+    const k = m[1].toLowerCase();
+    const filter: ObjectFilter = k === 'noncreature' ? { notTypes: ['Creature'] } : k === 'noncreature, nonland' ? { notTypes: ['Creature'], nonland: true } : /instant (?:and|or) sorcery/.test(k) ? { types: ['Instant', 'Sorcery'] } : { types: [k.charAt(0).toUpperCase() + k.slice(1)] };
+    const pool: Ref = ctx.restKey ? { ref: 'chosen', key: ctx.restKey } : { ref: 'lastMoved' };
+    return [{ kind: 'playFromExile', what: pool, duration: 'thisTurn', free: true, filter }];
+  }],
   // Angel's Grace: "You can't lose the game this turn and your opponents can't win the game this turn."
   [/^you cannot lose the game this turn and your opponents cannot win the game this turn$/i, () => [
     { kind: 'grantPlayerRule', rule: { kind: 'cantLose' }, duration: 'thisTurn' },
@@ -9537,8 +9544,18 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ctx.lastPlayer = savedPlayer;
   }
   if ((m = text.match(/^until (?:the end of your next turn|end of turn|your next turn), you may (?:play|cast) (.+)$/i)) && !/ as though (?:they|it) had flash$/i.test(m[1])) {
-    const ref = objRef(m[1], ctx) ?? ctx.lastObj ?? { ref: 'lastMoved' as const };
-    return [{ kind: 'playFromExile', what: ref, duration: /end of turn$/i.test(m[0].split(',')[0]) ? 'thisTurn' : 'permanent' }];
+    // Narset: "… you may cast noncreature spells from among those cards without paying their mana costs."
+    const free = / without paying (?:its|their) mana costs?$/i.test(m[1]);
+    let body = m[1].replace(/ without paying (?:its|their) mana costs?$/i, '');
+    let filter: ObjectFilter | undefined;
+    const km = body.match(/^(noncreature|instant and sorcery|instant or sorcery|instant|sorcery|creature|noncreature, nonland|artifact|enchantment|nonland|permanent) (?:spells|cards) from among (those cards|them|the exiled cards)$/i);
+    if (km) {
+      const k = km[1].toLowerCase();
+      filter = k === 'noncreature' ? { notTypes: ['Creature'] } : k === 'noncreature, nonland' ? { notTypes: ['Creature'], nonland: true } : k === 'nonland' ? { nonland: true } : k === 'permanent' ? { permanentCard: true } : /instant (?:and|or) sorcery/.test(k) ? { types: ['Instant', 'Sorcery'] } : { types: [k.charAt(0).toUpperCase() + k.slice(1)] };
+      body = km[2];
+    }
+    const ref = objRef(body, ctx) ?? ctx.lastObj ?? { ref: 'lastMoved' as const };
+    return [{ kind: 'playFromExile', what: ref, duration: /end of turn$/i.test(m[0].split(',')[0]) ? 'thisTurn' : 'permanent', ...(free ? { free: true } : {}), ...(filter ? { filter } : {}) }];
   }
   // "If <condition>, <effects>" — the condition may itself contain commas ("If you control a God, a
   // Demigod, or a legendary enchantment, ..."), so try every split, real conditions first.

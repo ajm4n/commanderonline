@@ -8447,5 +8447,76 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/c/a/ca7f4fd6-e268-4d15-bfbf-d9f0f95864fc.jpg?1783937281"
     }
+  },
+  {
+    "object": "card",
+    "id": "de4b0d5f-1071-4030-be16-2b4dadbdf9e9",
+    "oracle_id": "aeaf7768-ed67-487d-8506-e667babb88ba",
+    "name": "Narset, Enlightened Master",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{U}{R}{W}",
+    "cmc": 6,
+    "type_line": "Legendary Creature — Human Monk",
+    "oracle_text": "First strike, hexproof\nWhenever Narset attacks, exile the top four cards of your library. Until end of turn, you may cast noncreature spells from among those cards without paying their mana costs.",
+    "colors": [
+      "W",
+      "U",
+      "R"
+    ],
+    "color_identity": [
+      "W",
+      "U",
+      "R"
+    ],
+    "keywords": [
+      "Hexproof",
+      "First strike"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "3",
+    "toughness": "2",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/e/de4b0d5f-1071-4030-be16-2b4dadbdf9e9.jpg?1783915413"
+    }
+  },
+  {
+    "object": "card",
+    "id": "f43748ea-1d65-4ee8-9c66-221412a284c0",
+    "oracle_id": "1f8d4d5f-e82f-45f3-823e-1bb6b536eb18",
+    "name": "Grand Arbiter Augustin IV",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{W}{U}",
+    "cmc": 4,
+    "type_line": "Legendary Creature — Human Advisor",
+    "oracle_text": "White spells you cast cost {1} less to cast.\nBlue spells you cast cost {1} less to cast.\nSpells your opponents cast cost {1} more to cast.",
+    "colors": [
+      "W",
+      "U"
+    ],
+    "color_identity": [
+      "W",
+      "U"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "3",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/4/f43748ea-1d65-4ee8-9c66-221412a284c0.jpg?1783921832"
+    }
   }
 ]

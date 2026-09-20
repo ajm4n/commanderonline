@@ -2879,6 +2879,8 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   }
   // "Artifact and enchantment spells your opponents cast cost {2} more to cast."
   if ((m = L.match(/^(.+?) (?:your opponents|each opponent) casts? cost \{(\d)\} more to cast$/i))) {
+    // "Spells your opponents cast cost {1} more to cast" (Grand Arbiter): every spell.
+    if (/^spells?$/i.test(m[1])) return [{ kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'costIncrease', amount: parseInt(m[2], 10) } }];
     const words = m[1].replace(/ spells?$/i, '').split(/,? and |, /i).map((w) => w.trim()).filter(Boolean);
     const parts = words.map((w) => parseNoun(`a ${w} spell`));
     if (parts.every((x) => x)) {

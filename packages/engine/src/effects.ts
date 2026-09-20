@@ -1708,6 +1708,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     case 'playFromExile':
       for (const o of g.resolveObjects(e.what, ctx)) {
+        if (e.filter && !matchesFilter(g, o, { ...e.filter, zone: undefined }, { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x })) continue;
+        if (e.free) o.memory['freeCast'] = true; // "without paying their mana costs"
         if (e.fromGraveyard) o.memory['castableBy'] = ctx.controller;
         if (e.exileAfter) o.memory['exileOnResolve'] = true;
         o.memory['playableBy'] = e.owner ? o.owner : ctx.controller;

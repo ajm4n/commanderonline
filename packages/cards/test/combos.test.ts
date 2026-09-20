@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -796,5 +796,34 @@ describe('combos and staples played through the engine', () => {
     d.until((x) => (x.type === 'priority' && d.g.state.stack.length === 0) || d.g.state.over);
     expect(d.g.state.over).toBe(false);
     expect(d.g.player(p1).lost).toBe(false);
+  });
+  it('Narset exiles four and lets you cast the noncreature ones free', () => {
+    const { d, p1, p2 } = game();
+    const narset = d.put(p1, C('Narset, Enlightened Master'));
+    const freeze = d.g.createObject(C('Brain Freeze'), p1, 'library', { skipEvents: true }).id;
+    const bears = d.g.createObject(C('Grizzly Bears'), p1, 'library', { skipEvents: true }).id;
+    const lib = d.g.player(p1).library;
+    for (const id of [freeze, bears]) lib.splice(lib.indexOf(id), 1);
+    lib.unshift(freeze, bears); // top two cards
+    d.g.refreshDecision();
+    d.until((x) => x.type === 'declareAttackers');
+    d.submit({ type: 'attackers', attacks: [{ attacker: narset, target: p2 }] });
+    d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step !== 'declareAttackers');
+    expect(d.g.obj(freeze).zone).toBe('exile');
+    expect(d.g.obj(bears).zone).toBe('exile');
+    expect(d.prio().playableCards).toContain(freeze); // free, no lands needed
+    expect(d.prio().playableCards).not.toContain(bears); // creature: not allowed
+  });
+
+  it("Grand Arbiter taxes opponents' spells and discounts your white and blue ones", () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Grand Arbiter Augustin IV'));
+    d.lands(p2, 'Forest', 2);
+    const bears = d.give(p2, C('Grizzly Bears')); // {1}{G} → {2}{G}
+    d.main(p2);
+    expect(d.prio().playableCards).not.toContain(bears);
+    d.lands(p2, 'Forest', 1);
+    d.until((x) => x.type === 'priority' && x.player === p2);
+    expect(d.prio().playableCards).toContain(bears);
   });
 });
