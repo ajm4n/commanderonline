@@ -1,5 +1,5 @@
 /** Sentence → Effect[] parser. */
-import type { Effect, Ref, TargetSpec, TokenSpec, Duration, Color, ObjectFilter, Amount, Condition } from '@commander/engine';
+import type { Effect, Ref, TargetSpec, TokenSpec, Duration, Color, ObjectFilter, Amount, Condition, ManaColor } from '@commander/engine';
 import { TOKEN_PRESETS, parseAddManaText } from '@commander/engine';
 import { wordToNumber, sentences, lc } from './text.js';
 import { parseNoun, toTargetSpec, type ParsedNoun, singularize } from './nouns.js';
@@ -1175,6 +1175,16 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'putOnLibrary', what: ref, position: m[2].toLowerCase() as 'top' | 'bottom' }] : null;
   }],
   [/^(?:(.+?) )?shuffles? (.+?) into (?:its|their|your) (?:owner'?s'? )?librar(?:y|ies)$/i, (m, ctx) => {
+    // "The owner of target permanent shuffles it into their library" (Chaos Warp): "it" is that permanent.
+    const owned = m[1]?.match(/^the owner of (.+)$/i);
+    if (owned && /^(?:it|that card|that permanent|them)$/i.test(m[2])) {
+      const ref = objRef(owned[1], ctx);
+      if (!ref) return null;
+      const owner: Ref = { ref: 'ownerOf', of: ref };
+      ctx.lastPlayer = owner;
+      ctx.lastObj = null; // the shuffled card is gone; a later "it" means whatever comes next
+      return [{ kind: 'moveToZone', what: ref, zone: 'library' }, { kind: 'shuffle', who: owner }];
+    }
     const ref = objRef(m[2], ctx);
     return ref ? [{ kind: 'moveToZone', what: ref, zone: 'library' }, { kind: 'shuffle', who: m[1] ? playerRef(m[1], ctx) ?? undefined : undefined }] : null;
   }],
@@ -1654,6 +1664,18 @@ const PATTERNS: Pattern[] = [
   [/^(tap|untap) (.+)$/i, (m, ctx) => {
     const ref = objRef(m[2], ctx);
     return ref ? [{ kind: m[1].toLowerCase() as 'tap' | 'untap', what: ref }] : null;
+  }],
+  // "…, then reveals the top card of their library" (a third-person subject carried from the previous clause)
+  [/^(?:(.+?) )?reveals? the top card of (their|your|his or her) library$/i, (m, ctx) => {
+    const who = /^your$/i.test(m[2]) && !m[1] ? YOU : subjectPlayer(m[1], ctx);
+    if (!who) return null;
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'revealTop', who, destination: 'stay' }];
+  }],
+  // Mana Drain: "add an amount of {C} equal to that spell's mana value"
+  [/^add an amount of \{([WUBRGC])\} equal to (.+)$/i, (m, ctx) => {
+    const a = amt(m[2], ctx);
+    return a === null ? null : [{ kind: 'addMana', mana: [m[1].toUpperCase() as ManaColor], amount: a }];
   }],
   // Scry / surveil / mill
   [/^scry (\w+|X)$/i, (m) => {
@@ -9931,6 +9953,9 @@ export function substituteX(e: Effect, a: Amount): Effect {
   const rep = (v: unknown): unknown => (v === 'X' ? a : v);
   const out: Record<string, unknown> = { ...e };
   for (const k of ['amount', 'power', 'toughness', 'count']) if (k in out) out[k] = rep(out[k]);
+  // "unless that player pays {X}, where X is …"
+  if (e.kind === 'unlessPays' && e.cost === '{X}') out.cost = { genericMana: a };
+  if (e.kind === 'unlessPays' && Array.isArray(e.effects)) out.effects = e.effects.map((x) => substituteX(x, a));
   return out as unknown as Effect;
 }
 

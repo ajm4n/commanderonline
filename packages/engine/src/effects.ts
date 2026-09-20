@@ -2554,6 +2554,7 @@ export function leaveStackDestination(g: Game, obj: GameObject): 'graveyard' | '
 export function counterStackItem(g: Game, stackId: number, toZone: 'graveyard' | 'exile' | 'hand' | 'libraryTop' | 'libraryBottom' = 'graveyard') {
   const item = g.state.stack.find((s) => s.id === stackId);
   if (!item) return;
+  g.rememberStackItem(item);
   g.state.stack = g.state.stack.filter((s) => s.id !== stackId);
   g.log(`${item.text} is countered.`);
   if (item.kind === 'spell' && !item.copiedCard) {

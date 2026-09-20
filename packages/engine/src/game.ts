@@ -2052,11 +2052,20 @@ export class Game {
       }
     }
   }
+  /** Spell cards of stack items that have left the stack, so "that spell's mana value" still resolves after a counter. */
+  private stackItemSources = new Map<number, ObjectId>();
+  rememberStackItem(item: StackItem) {
+    if (item.kind === 'spell' && !item.copiedCard) this.stackItemSources.set(item.id, item.sourceId);
+  }
   resolveObjects(ref: Ref, ctx: EffectContext): GameObject[] {
     return this.resolveRef(ref, ctx)
-      .filter((t): t is { kind: 'object'; id: ObjectId } => t.kind === 'object')
-      .map((t) => this.state.objects[t.id])
-      .filter(Boolean);
+      .map((t) => (t.kind === 'object' ? this.state.objects[t.id] : t.kind === 'stackItem' ? this.spellObjectOf(t.id) : undefined))
+      .filter((o): o is GameObject => !!o);
+  }
+  private spellObjectOf(stackId: number): GameObject | undefined {
+    const item = this.state.stack.find((s) => s.id === stackId);
+    const id = item ? (item.kind === 'spell' && !item.copiedCard ? item.sourceId : undefined) : this.stackItemSources.get(stackId);
+    return id !== undefined ? this.state.objects[id] : undefined;
   }
   resolvePlayers(ref: Ref, ctx: EffectContext): PlayerId[] {
     return this.resolveRef(ref, ctx)

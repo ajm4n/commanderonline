@@ -419,7 +419,12 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const noun = parseNoun(`a ${oc(m, 1)}`);
     if (noun) return { kind: 'objectMatches', ref: ctx.lastObj ?? { ref: 'triggerObject' }, filter: noun.filter };
   }
-  if ((m = t.match(/^it is (?:a|an) (.+?) card$/)) || (m = t.match(/^it is (?:a|an) (.+)$/))) {
+  if ((m = t.match(/^it is (?:a|an) (.+?) card$/))) {
+    // "it is a permanent card": keep the word "card" so "permanent card" / "creature card" keep their meaning.
+    const noun = parseNoun(`a ${oc(m, 1)} card`) ?? parseNoun(`a ${oc(m, 1)}`);
+    if (noun && noun.confident) return { kind: 'objectMatches', ref: ctx.lastObj ?? { ref: 'lastMoved' }, filter: noun.filter };
+  }
+  if ((m = t.match(/^it is (?:a|an) (.+)$/))) {
     const noun = parseNoun(`a ${oc(m, 1)}`);
     if (noun) return { kind: 'objectMatches', ref: ctx.lastObj ?? { ref: 'lastMoved' }, filter: noun.filter };
   }
@@ -458,7 +463,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   // "If that creature has flying, ..." / "If that land is a Forest, ..." / "If it is a green creature, ..."
   {
     const SUBJ = /^(?:that|the|this|it)(?: (?:creature|land|permanent|card|token|spell|artifact|enchantment|planeswalker|creature card|revealed card|revealed land card|exiled card|sacrificed creature|target|other creature))? /;
-    const sm = t.match(new RegExp(`${SUBJ.source}(is|was|has|have) (.+)$`));
+    const sm = t.replace(/^it's /, 'it is ').match(new RegExp(`${SUBJ.source}(is|was|has|have) (.+)$`));
     if (sm) {
       const verb = sm[1];
       const rest = orig.slice(orig.length - sm[2].length);

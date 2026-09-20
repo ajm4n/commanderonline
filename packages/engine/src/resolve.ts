@@ -33,6 +33,7 @@ function targetsStillLegal(g: Game, item: StackItem): { legal: Target[]; anyIlle
 export function* resolveTopOfStack(g: Game): Gen {
   const item = g.state.stack.pop();
   if (!item) return;
+  g.rememberStackItem(item);
   g.touch();
   const src = g.state.objects[item.sourceId];
   const hadTargets = item.targets.some((t) => t.kind !== 'none');
