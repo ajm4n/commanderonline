@@ -133,7 +133,7 @@ function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -380,5 +380,37 @@ describe('combos and staples played through the engine', () => {
     expect(d.g.player(p1).graveyard.map((id) => d.g.obj(id).card.name)).toContain('Esper Sentinel');
     expect(d.g.player(p1).hand.length).toBe(hand + 2);
     expect(d.g.obj(clamp).attachedTo).toBeNull();
+  });
+  it("Swan Song counters the spell and gives the countered spell's controller a 2/2 Bird", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Island', 1);
+    d.lands(p2, 'Forest', 3);
+    const song = d.give(p1, C('Swan Song'));
+    d.main(p2);
+    const cult = d.give(p2, C('Cultivate'));
+    d.cast(cult);
+    d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 1);
+    d.cast(song);
+    d.until((x) => x.type === 'chooseTargets' || x.type === 'priority');
+    if (d.d.type === 'chooseTargets') d.submit({ type: 'targets', targets: [[d.d.slots[0].legal[0]]] });
+    d.resolve();
+    expect(d.g.player(p2).graveyard.map((id) => d.g.obj(id).card.name)).toContain('Cultivate');
+    expect(d.bf(p2, 'Bird')).toHaveLength(1);
+    expect(d.bf(p1, 'Bird')).toHaveLength(0);
+  });
+
+  it('Aven Mindcensor limits an opposing search to the top four cards', () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Aven Mindcensor'));
+    d.lands(p2, 'Forest', 3);
+    d.main(p2);
+    const cult = d.give(p2, C('Cultivate'));
+    d.cast(cult);
+    d.until((x) => x.type === 'chooseObjects' && x.player === p2);
+    expect(d.d.type).toBe('chooseObjects');
+    if (d.d.type === 'chooseObjects') {
+      expect(d.d.candidates).toHaveLength(4);
+      expect(d.d.candidates).toEqual(d.g.player(p2).library.slice(0, 4));
+    }
   });
 });

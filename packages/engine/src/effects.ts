@@ -1204,7 +1204,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         const n = amt(e.count);
-        const pool = e.zones ? e.zones.flatMap((z) => (z === 'graveyard' ? pl.graveyard : z === 'hand' ? pl.hand : pl.library)) : pl.library;
+        // "If an opponent would search a library, that player searches the top four cards of that library instead."
+        const topOnly = g.playerRules(p).filter((r): r is Extract<typeof r, { kind: 'custom' }> => r.kind === 'custom' && r.tag === 'searchTopN').map((r) => Number((r.data as { n?: number } | undefined)?.n ?? 0)).filter((k) => k > 0);
+        const lib = topOnly.length ? pl.library.slice(0, Math.min(...topOnly)) : pl.library;
+        const pool = e.zones ? e.zones.flatMap((z) => (z === 'graveyard' ? pl.graveyard : z === 'hand' ? pl.hand : lib)) : lib;
         const cands = pool.filter((id) => matchesFilter(g, g.obj(id), { ...e.filter, zone: e.zones ?? 'library' }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }));
         let ids: ObjectId[] = [];
         if (cands.length > 0 && e.random) {

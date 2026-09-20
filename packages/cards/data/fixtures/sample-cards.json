@@ -7579,5 +7579,68 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/f/6/f675f509-4343-4568-96dd-265626cb6c2b.jpg?1783929456"
     }
+  },
+  {
+    "object": "card",
+    "id": "83d0b761-d694-4232-9f40-5bd8c82a05f1",
+    "oracle_id": "8ddfc283-c9b4-41a5-af88-cf0068e986cc",
+    "name": "Swan Song",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{U}",
+    "cmc": 1,
+    "type_line": "Instant",
+    "oracle_text": "Counter target enchantment, instant, or sorcery spell. Its controller creates a 2/2 blue Bird creature token with flying.",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/8/3/83d0b761-d694-4232-9f40-5bd8c82a05f1.jpg?1783906053"
+    }
+  },
+  {
+    "object": "card",
+    "id": "d4cf468f-4e9d-4551-a0ed-10bd6a2316ad",
+    "oracle_id": "d9517c5d-66d0-4178-96fb-a8c04f311ad8",
+    "name": "Aven Mindcensor",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{W}",
+    "cmc": 3,
+    "type_line": "Creature — Bird Wizard",
+    "oracle_text": "Flash\nFlying\nIf an opponent would search a library, that player searches the top four cards of that library instead.",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [
+      "Flying",
+      "Flash"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "1",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/4/d4cf468f-4e9d-4551-a0ed-10bd6a2316ad.jpg?1783922493"
+    }
   }
 ]

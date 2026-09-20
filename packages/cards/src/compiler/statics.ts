@@ -2013,7 +2013,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const n = wordToNumber(m[2]);
     if (typeof n !== 'number') break sx10;
     return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: n } }];
-  }  // "Your opponents cannot cast spells with the chosen name / with mana value 3 or less / during your turn / from anywhere other than their hands."
+  }
+  // "If an opponent would search a library, that player searches the top four cards of that library instead."
+  if ((m = L.match(/^If (an opponent|a player) would search a library, that player searches the top (\w+) cards of that library instead$/i))) {
+    const n = wordToNumber(m[2]);
+    if (typeof n === 'number') return [{ kind: 'static', text: line, ruleAffects: /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'searchTopN', data: { n } } }];
+  }
+  // "Your opponents cannot cast spells with the chosen name / with mana value 3 or less / during your turn / from anywhere other than their hands."
   if ((m = L.match(/^(Your opponents|Each opponent|Players|Each player|You) cannot cast (.+?)(?: (during your turn|during combat|from graveyards|from anywhere other than (?:their|your) hands?|with the chosen name|with the same name as the exiled card))?$/i))) {
     const who = /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers';
     const data: Record<string, unknown> = {};

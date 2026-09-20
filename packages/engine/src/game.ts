@@ -2061,7 +2061,7 @@ export class Game {
       case 'player':
         return plT([ref.id]);
       case 'controllerOf':
-        return plT([...new Set(this.resolveRef(ref.of, ctx).map((t) => (t.kind === 'object' ? this.state.objects[t.id]?.controller : t.kind === 'stackItem' ? this.state.stack.find((s) => s.id === t.id)?.controller : t.kind === 'player' ? t.id : undefined)))]);
+        return plT([...new Set(this.resolveRef(ref.of, ctx).map((t) => (t.kind === 'object' ? this.lastController(this.state.objects[t.id]) : t.kind === 'stackItem' ? this.state.stack.find((s) => s.id === t.id)?.controller ?? this.lastController(this.spellObjectOf(t.id)) : t.kind === 'player' ? t.id : undefined)))]);
       case 'ownerOf':
         return plT([...new Set(this.resolveRef(ref.of, ctx).map((t) => (t.kind === 'object' ? this.state.objects[t.id]?.owner : t.kind === 'player' ? t.id : undefined)))]);
       case 'blockersOf':
@@ -2084,6 +2084,17 @@ export class Game {
     return this.resolveRef(ref, ctx)
       .map((t) => (t.kind === 'object' ? this.state.objects[t.id] : t.kind === 'stackItem' ? this.spellObjectOf(t.id) : undefined))
       .filter((o): o is GameObject => !!o);
+  }
+  /**
+   * "Its controller creates a token": for a permanent or spell that left the battlefield or stack this turn, the
+   * controller it had there (rule 608.2h last known information), not the owner it reverts to in the graveyard.
+   */
+  lastController(o: GameObject | undefined): PlayerId | undefined {
+    if (!o) return undefined;
+    if (o.zone === 'battlefield' || o.zone === 'stack') return o.controller;
+    const lki = o.lastKnownInfo as GameObject | undefined;
+    if (lki && (lki.zone === 'battlefield' || lki.zone === 'stack') && o.lastZoneChange?.turn === this.state.turn.number) return lki.controller;
+    return o.controller;
   }
   private spellObjectOf(stackId: number): GameObject | undefined {
     const item = this.state.stack.find((s) => s.id === stackId);
