@@ -2784,6 +2784,16 @@ const PATTERNS: Pattern[] = [
     ctx.targets.push({ description: 'target face-down creature', kind: 'object', filter: { types: ['Creature'], zone: 'battlefield', faceDown: true } });
     return [{ kind: 'log', text: 'looks at a face-down creature' }];
   }],
+  // "Then discard a card unless you waterbend {2}." (Waterbending Lesson)
+  [/^(?:then )?(.+?) unless you waterbend \{(\d+)\}$/i, (m, ctx) => {
+    const inner = parseSentence(m[1], ctx);
+    return inner ? [{ kind: 'unlessPays', who: YOU, cost: { waterbend: parseInt(m[2], 10) }, effects: inner }] : null;
+  }],
+  // "Then you may pay one or more {E}." (Territorial Aetherkite; the "When you do" sentence checks what was paid)
+  [/^(?:then )?you may pay (any amount of|one or more|\w+) \{E\}$/i, (m) => {
+    const max = /any amount|one or more/i.test(m[1]) ? 99 : wordToNumber(m[1]);
+    return typeof max !== 'number' ? null : [{ kind: 'payEnergy', max, key: 'energyPaid' }];
+  }],
   // "You get {E}{E}, then you may pay any amount of {E}." — the follow-up sentence uses "{E} paid this way".
   [/^(?:you )?gets? ((?:\{E\})+), then you may pay (any amount of|one or more|(?:\w+)) \{E\}$/i, (m) => {
     const got = (m[1].match(/\{E\}/g) ?? []).length;
@@ -10854,12 +10864,32 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // "You get {E}{E}, then you may pay eight {E}. When you do, X": X happens only if the whole amount was paid.
     {
       const lastE = effects[effects.length - 1];
-      if (/^(?:if|when) you do, /i.test(s) && lastE && lastE.kind === 'payEnergy' && lastE.max < 99) {
+      if (/^(?:if|when) you do, /i.test(s) && lastE && lastE.kind === 'payEnergy') {
         const inner = parseSentence(s.replace(/^(?:if|when) you do, /i, ''), ctx);
         if (inner) {
-          effects.push({ kind: 'conditional', if: { kind: 'amount', a: { kind: 'ctxMemory', key: lastE.key }, op: '>=', b: lastE.max }, then: inner });
+          // "one or more {E} … deals that much damage": "that much" is the energy paid.
+          const paid: Amount = { kind: 'ctxMemory', key: lastE.key };
+          const body = lastE.max >= 99 ? (JSON.parse(JSON.stringify(inner).replace(/\{"kind":"triggerAmount"\}/g, JSON.stringify(paid))) as Effect[]) : inner;
+          effects.push({ kind: 'conditional', if: { kind: 'amount', a: paid, op: '>=', b: lastE.max >= 99 ? 1 : lastE.max }, then: body });
           continue;
         }
+      }
+      // "Pay {E}{E}. If you can't, return ~ to its owner's hand and you get {E}." (Greenbelt Rampager)
+      const pe = s.match(/^pay ((?:\{E\})+)$/i);
+      if (pe && sents[i + 1] && /^if you (?:can't|cannot), /i.test(sents[i + 1])) {
+        const inner = parseSentence(sents[i + 1].replace(/^if you (?:can't|cannot), /i, ''), ctx);
+        if (inner) {
+          effects.push({ kind: 'unlessPays', who: YOU, cost: { energy: (pe[1].match(/\{E\}/g) ?? []).length }, effects: inner });
+          i++;
+          continue;
+        }
+      }
+      // "… you may put it onto the battlefield. If you do, repeat this process." (Primal Surge): loop the paragraph while accepted.
+      if (/^if you do, repeat this process$/i.test(s) && effects.length > 0) {
+        const body = effects.splice(0);
+        effects.push({ kind: 'repeatWhile', effects: body, condition: { kind: 'amount', a: { kind: 'ctxMemory', key: 'acceptedCount' }, op: '>=', b: 1 }, checkAfter: true });
+        curStart = 0;
+        continue;
       }
     }
     // Flip a coin. If you win the flip, X. If you lose the flip, Y.

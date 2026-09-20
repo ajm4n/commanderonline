@@ -2085,7 +2085,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     case 'repeatWhile': {
       const max = e.max ?? 50;
       for (let i = 0; i < max; i++) {
-        if (e.condition && !g.checkCondition(e.condition, ctx)) return;
+        if (e.condition && (i > 0 || !e.checkAfter) && !g.checkCondition(e.condition, ctx)) return;
         if (e.optional && i > 0) {
           const r = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: 'Repeat the process again?', sourceId: ctx.sourceId ?? undefined });
           if (r.type !== 'yesNo' || !r.value) return;
@@ -2142,6 +2142,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
               o.counters[d.counter] = (o.counters[d.counter] ?? 0) - d.amount;
               paid = true;
             }
+          }
+        } else if (typeof e.cost === 'object' && 'waterbend' in e.cost) {
+          const srcObj = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : undefined;
+          if (srcObj) {
+            const r = yield* g.ask({ type: 'yesNo', player: p, prompt: e.text ?? `Waterbend {${e.cost.waterbend}}?`, sourceId: ctx.sourceId ?? undefined });
+            if (r.type === 'yesNo' && r.value) paid = yield* payAbilityCost(g, p, srcObj, { waterbend: e.cost.waterbend }, 0);
           }
         } else if (typeof e.cost === 'object' && 'tap' in e.cost) {
           const f = e.cost.tap;
@@ -2316,6 +2322,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
       const payLife = e.payLifeAmount !== undefined ? amt(e.payLifeAmount) : e.payLife;
       const otherwise = function* (): Gen<void> {
+        ctx.memory['acceptedCount'] = 0; // "If you do, repeat this process" stops here
         if (e.else?.length) yield* executeEffects(g, e.else, ctx);
       };
       if (e.energy !== undefined) {
@@ -2323,7 +2330,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${e.energy} energy? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
         if (r.type !== 'yesNo' || !r.value) return yield* otherwise();
         g.player(who).energy -= e.energy;
-        yield* executeEffects(g, e.effects, ctx);
+        { ctx.memory['acceptedCount'] = 1; yield* executeEffects(g, e.effects, ctx); }
         return;
       }
       if (payLife !== undefined) {
@@ -2331,7 +2338,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const r = yield* g.ask({ type: 'yesNo', player: who, prompt: e.text ?? `Pay ${payLife} life? If you do: ${describe(e.effects)}`, sourceId: ctx.sourceId ?? undefined });
         if (r.type !== 'yesNo' || !r.value) return yield* otherwise();
         g.loseLife(who, payLife, ctx.sourceId ?? undefined);
-        yield* executeEffects(g, e.effects, ctx);
+        { ctx.memory['acceptedCount'] = 1; yield* executeEffects(g, e.effects, ctx); }
         return;
       }
       if (e.payCostSpec) {
@@ -2342,12 +2349,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const ok = yield* payAbilityCost(g, who, src, e.payCostSpec, 0);
         // What the cost discarded, sacrificed or exiled is "that card" for the follow-up.
         Object.assign(ctx.memory, costMemory(src));
-        if (ok) yield* executeEffects(g, e.effects, ctx);
+        if (ok) { ctx.memory['acceptedCount'] = 1; yield* executeEffects(g, e.effects, ctx); }
         else yield* otherwise();
         return;
       }
       const paid = yield* offerToPay(g, who, e.cost, e.text ?? `Pay ${e.cost}? If you do: ${describe(e.effects)}`);
-      if (paid) yield* executeEffects(g, e.effects, ctx);
+      if (paid) { ctx.memory['acceptedCount'] = 1; yield* executeEffects(g, e.effects, ctx); }
       else yield* otherwise();
       return;
     }
