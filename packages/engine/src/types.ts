@@ -450,6 +450,8 @@ export interface ObjectFilter {
   exiledWithSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
   damagedBySource?: boolean;
+  /** Its controller was dealt damage this turn by the effect's source ("permanents whose controller was dealt combat damage by ~ this turn"). */
+  controllerDamagedBySource?: 'any' | 'combat';
   /** Was dealt damage this turn by a source matching this ("dealt damage this turn by a source you controlled"). */
   damagedByFilter?: ObjectFilter;
   /** Was dealt damage this turn by the permanent the source is attached to ("dealt damage by enchanted creature this turn"). */

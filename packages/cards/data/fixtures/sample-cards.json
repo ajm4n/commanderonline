@@ -8986,5 +8986,36 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/4/f/4fa2d7f2-05b3-468f-9f2c-a61b46bad88e.jpg?1783911917"
     }
+  },
+  {
+    "object": "card",
+    "id": "63195796-197e-47ec-85f0-d4ec0065f6e6",
+    "oracle_id": "17975a20-2c13-4325-be1e-0bcda5063a2d",
+    "name": "Terastodon",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{6}{G}{G}",
+    "cmc": 8,
+    "type_line": "Creature — Elephant",
+    "oracle_text": "When this creature enters, you may destroy up to three target noncreature permanents. For each permanent put into a graveyard this way, its controller creates a 3/3 green Elephant creature token.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "9",
+    "toughness": "9",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/6/3/63195796-197e-47ec-85f0-d4ec0065f6e6.jpg?1783927528"
+    }
   }
 ]

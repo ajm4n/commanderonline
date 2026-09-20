@@ -188,13 +188,20 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'destroy': {
       let destroyed = 0;
+      const moved: ObjectId[] = [];
       // Everything destroyed by one effect leaves the battlefield simultaneously.
       g.simultaneousZoneChange(() => {
         for (const o of g.resolveObjects(e.what, ctx)) {
           destroyObject(g, o.id, ctx.sourceId, e.cantRegenerate);
-          if (g.state.objects[o.id]?.zone !== 'battlefield') destroyed++;
+          const after = g.state.objects[o.id];
+          if (after?.zone !== 'battlefield') {
+            destroyed++;
+            // "For each permanent put into a graveyard this way": only those that actually went there.
+            if (after?.zone === 'graveyard') moved.push(o.id);
+          }
         }
       });
+      ctx.memory['lastMoved'] = moved;
       ctx.memory['destroyedThisWay'] = ((ctx.memory['destroyedThisWay'] as number) ?? 0) + destroyed;
       return;
     }

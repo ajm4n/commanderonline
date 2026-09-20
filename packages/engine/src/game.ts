@@ -1344,6 +1344,7 @@ export class Game {
     // Unscripted trigger: prompt the player to handle it manually at the right time.
     const isManual = t.ability.effects.length === 1 && t.ability.effects[0].kind === 'manual' && !t.ability.targets?.length;
     let targets: Target[] = (t.context.presetTargets as Target[] | undefined) ?? [];
+    let targetSlots: Target[][] | undefined;
     if (!targets.length && t.ability.targets?.length) {
       const chosen = yield* this.chooseTargets(t.controller, t.sourceId, t.ability.targets, t.context, `${this.nameOf(t.sourceId)}: ${t.ability.text}`);
       if (chosen === null) {
@@ -1351,6 +1352,7 @@ export class Game {
         return;
       }
       targets = chosen;
+      targetSlots = this.lastChosenSlots;
     }
     const item: StackItem = {
       id: this.state.nextStackId++,
@@ -1362,7 +1364,7 @@ export class Game {
       targets,
       targetStamps: this.stampTargets(targets),
       targetSpecs: t.context.presetTargets ? undefined : t.ability.targets,
-      triggerContext: { ...t.context, ability: t.ability, snapshot: t.snapshot, isManual },
+      triggerContext: { ...t.context, ...(targetSlots ? { targetSlots } : {}), ability: t.ability, snapshot: t.snapshot, isManual },
       timestamp: this.now(),
     };
     this.state.stack.push(item);
@@ -1372,6 +1374,8 @@ export class Game {
   }
 
   /** Ask a player to choose targets for a list of specs. Returns null if a required slot has no legal targets. */
+  /** Per-slot targets from the most recent chooseTargets call, so multi-target slots ("up to three target permanents") resolve as a group. */
+  lastChosenSlots: Target[][] | undefined;
   *chooseTargets(player: PlayerId, sourceId: ObjectId | null, specs: TargetSpec[], ctx: Record<string, unknown>, prompt: string, x?: number): Gen<Target[] | null> {
     this.lastTargetChoiceCancelled = false;
     const slots = specs.map((spec) => {
@@ -1404,6 +1408,7 @@ export class Game {
         }
       targets = (resp as { targets: Target[][] }).targets;
     }
+    this.lastChosenSlots = targets;
     // Flatten preserving slot order; pad empty slots with 'none'.
     const flat: Target[] = [];
     for (const slotTargets of targets) {
@@ -2651,6 +2656,7 @@ export class Game {
       if (combat) p.turnStats['combatDamageTaken'] = (p.turnStats['combatDamageTaken'] ?? 0) + dealt;
       if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] = (this.state.turnStats[`damagedPlayer:${sourceId}:${target.id}`] ?? 0) + dealt;
       if (sourceId !== null && sourceId !== undefined) this.state.turnStats[`damageDealtBy:${sourceId}`] = (this.state.turnStats[`damageDealtBy:${sourceId}`] ?? 0) + dealt;
+      if (combat && sourceId !== null && sourceId !== undefined) this.state.turnStats[`combatDamagedPlayer:${sourceId}:${target.id}`] = (this.state.turnStats[`combatDamagedPlayer:${sourceId}:${target.id}`] ?? 0) + dealt;
       this.touch();
       this.emit({ name: 'dealsDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });
       this.emit({ name: 'dealtDamage', sourceId: sourceId ?? undefined, playerId: target.id, amount: dealt, combat, otherPlayerId: controller });

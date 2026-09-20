@@ -1025,6 +1025,13 @@ const PATTERNS: Pattern[] = [
     const ref = objRef(m[1], ctx);
     return ref ? [{ kind: 'applyRule', rule: { kind: 'cantUntap' }, on: ref, duration: 'untilNextUntap' }] : null;
   }],
+  [/^for each (?:permanent|creature|card|land|artifact|enchantment|nonland permanent) (?:put into a graveyard|destroyed|exiled|sacrificed) this way, its (controller|owner) creates? (.+)$/i, (m, ctx) => {
+    const t = parseTokenPhrase(m[2]);
+    if (!t) return null;
+    ctx.lastObj = { ref: 'lastCreated' };
+    const who: Ref = m[1].toLowerCase() === 'owner' ? { ref: 'ownerOf', of: { ref: 'iter' } } : { ref: 'controllerOf', of: { ref: 'iter' } };
+    return [{ kind: 'forEach', over: { ref: 'lastMoved' }, effects: [{ kind: 'createToken', token: t.token, count: t.count, tapped: t.tapped, attacking: t.attacking, who }] }];
+  }],
   [/^for each (.+?) card put into (?:a|your|their) graveyard this way, (?:you )?create (.+)$/i, (m, ctx) => {
     const noun = parseNoun(`a ${m[1]} card`);
     const t = parseTokenPhrase(m[2]);
@@ -1432,6 +1439,12 @@ const PATTERNS: Pattern[] = [
     if (!c) return null;
     (c.pre[0] as { filter: ObjectFilter }).filter = { ...noun.filter, zone: 'graveyard', owner: 'you' };
     return [...c.pre, { kind: 'putIntoHand', what: c.ref }];
+  }],
+  // "Put a +1/+1 counter or a loyalty counter on it" — a +1/+1 counter on a creature, a loyalty counter on a planeswalker.
+  [/^put (?:a|an) \+1\/\+1 counter or (?:a|an) loyalty counter on (.+)$/i, (m, ctx) => {
+    const ref = objRef(m[1], ctx);
+    if (!ref) return null;
+    return [{ kind: 'conditional', if: { kind: 'objectMatches', ref, filter: { types: ['Creature'] } }, then: [{ kind: 'addCounters', counter: '+1/+1', amount: 1, on: ref }], else: [{ kind: 'conditional', if: { kind: 'objectMatches', ref, filter: { types: ['Planeswalker'] } }, then: [{ kind: 'addCounters', counter: 'loyalty', amount: 1, on: ref }] }] }];
   }],
   [/^put (?:a|an|another|(\w+|X|twice X|that many|twice that many)) ([+-]\d+\/[+-]\d+|(?:first |double )?[\w'-]+) counters? on (.+)$/i, (m, ctx) => {
     const n: Amount | null = m[1] ? (/that many/i.test(m[1]) ? amt(m[1], ctx) : /^twice x$/i.test(m[1]) ? { kind: 'times', a: 'X', b: 2 } : wordToNumber(m[1])) : 1;
@@ -6776,9 +6789,16 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'moveToZone', what: ref, zone: 'library' }, { kind: 'shuffle', who: YOU }];
   }],
   // "Until your next turn, spells your opponents cast cost {1} more to cast"
-  [/^(?:until your next turn, )?spells (your opponents|you) casts? cost \{(\d+)\} (more|less) to cast(?: until your next turn)?$/i, (m) => [
-    { kind: 'grantPlayerRule', who: /opponents/i.test(m[1]) ? { ref: 'eachOpponent' } : YOU, rule: { kind: /more/i.test(m[3]) ? 'costIncrease' : 'costReduction', amount: parseInt(m[2], 10) } },
-  ]],
+  [/^(until your next turn, )?(?:(.+?) )?spells (your opponents|you) casts? cost \{(\d+)\} (more|less) to cast( until your next turn| this turn)?$/i, (m) => {
+    let filter: ObjectFilter | undefined;
+    if (m[2]) {
+      const n = parseNoun(`a ${m[2]} spell`);
+      if (!n || !n.confident) return null;
+      filter = { ...n.filter, zone: undefined };
+    }
+    const untilNext = Boolean(m[1] || (m[6] && /next turn/i.test(m[6])));
+    return [{ kind: 'grantPlayerRule', who: /opponents/i.test(m[3]) ? { ref: 'eachOpponent' } : YOU, rule: { kind: /more/i.test(m[5]) ? 'costIncrease' : 'costReduction', amount: parseInt(m[4], 10), ...(filter ? { filter } : {}) }, duration: untilNext ? 'untilYourNextTurn' : 'thisTurn' }];
+  }],
   // "~ deals 2 damage to the creature with the least toughness"
   [/^(.+?) deals (\d+|X) damage to the (.+?) with the (least|greatest|lowest|highest) (power|toughness|mana value)$/i, (m, ctx) => {
     const src = m[1] === '~' ? SELF : objRef(m[1], ctx);
