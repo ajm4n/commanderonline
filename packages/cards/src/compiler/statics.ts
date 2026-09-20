@@ -1,5 +1,5 @@
 /** Static abilities and replacement effects. */
-import type { AbilitySpec, Amount, Condition, Effect, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
+import type { AbilityCost, AbilitySpec, Amount, Condition, Effect, ObjectFilter, Ref, RuleModification, StaticAbilitySpec } from '@commander/engine';
 import { parseNoun, singularize } from './nouns.js';
 import { parseKeywordList, isNoOpSentence, parseEffects, newCtx, parseCopyExceptions, parseTokenPhrase, parseGrantList } from './effects.js';
 import { wordToNumber } from './text.js';
@@ -1856,16 +1856,31 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   // "Once during each of your turns, you may cast an artifact or Human spell from your graveyard with mana value less than or equal to X."
   sx9: {
   if (/^You may cast ~ from your graveyard using its mutate ability$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { nameIs: '~' } } } }];
-  if ((m = L.match(/^(Once during each of your turns, )?[Yy]ou may cast (.+?) (?:spells? )?from your graveyard(?: with mana value (?:less than or equal to|equal to or less than) (.+?))?$/i))) {
-    const noun = parseNoun(`a ${m[2].replace(/^(?:a|an) /i, '').replace(/ spells?$/i, '')} spell`);
-    if (noun) {
+  if ((m = L.match(/^(Once during each of your turns, )?[Yy]ou may (play a land or cast|cast) (.+?) (?:spells? )?from (?:your graveyard|among cards in your graveyard that (.+?))(?: with mana value (?:less than or equal to|equal to or less than) (.+?))?(?: by (.+?) in addition to paying its other costs)?$/i))) {
+    const base = m[3].replace(/^(?:a|an)$/i, '').replace(/^(?:a|an) /i, '').replace(/ spells?$/i, '').trim();
+    // "from among cards in your graveyard that were milled this turn" is a filter on the card.
+    const qual = m[4] ? m[4].replace(/^were milled this turn$/i, 'were put there from your library this turn') : null;
+    const noun = qual ? parseNoun(`a ${base} card that ${qual}`.replace(/  +/g, ' ')) : parseNoun(`a ${base} spell`.replace(/  +/g, ' '));
+    if (noun && noun.confident) {
       const filter = { ...noun.filter, zone: undefined as undefined };
-      if (m[3]) {
-        const amt = parseAmount(m[3], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+      if (m[5]) {
+        const amt = parseAmount(m[5], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
         if (amt === null) break sx9;
         filter.cmcLEAmount = amt;
       }
-      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter, oncePerTurn: !!m[1] || undefined } } }];
+      let extraCost: AbilityCost | undefined;
+      if (m[6]) {
+        const G: Record<string, string> = { paying: 'Pay', discarding: 'Discard', exiling: 'Exile', removing: 'Remove', sacrificing: 'Sacrifice', returning: 'Return', revealing: 'Reveal', tapping: 'Tap', untapping: 'Untap' };
+        const c = parseCost(m[6].replace(/\b(paying|discarding|exiling|removing|sacrificing|returning|revealing|tapping|untapping)\b/gi, (w) => G[w.toLowerCase()]).replace(/^[a-z]/, (ch) => ch.toUpperCase()));
+        if (!c) break sx9;
+        extraCost = c;
+      }
+      const out: AbilitySpec[] = [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter, oncePerTurn: !!m[1] || undefined, extraCost } } }];
+      if (/^play a land or cast$/i.test(m[2])) {
+        const landFilter: ObjectFilter = qual ? { ...(parseNoun(`a land card that ${qual}`)?.filter ?? { types: ['Land'] }), zone: undefined } : { types: ['Land'] };
+        out.push({ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playLandsFromGraveyard', data: { filter: landFilter } } });
+      }
+      return out;
     }
   }
   }

@@ -1516,6 +1516,22 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
       return false;
     }
   }
+  // "You may cast a permanent spell from your graveyard by sacrificing a land in addition to
+  // paying its other costs": the permission that let this spell be cast carries its own cost.
+  if (!opts.free && fromZone === 'graveyard') {
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || r.tag !== 'castFromGraveyard') continue;
+      const d = (r.data as { filter?: import('./types.js').ObjectFilter; extraCost?: AbilityCost } | undefined) ?? {};
+      if (!d.extraCost) continue;
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+      const ok = yield* payAbilityCost(g, p, obj, d.extraCost, x);
+      if (!ok) {
+        revert();
+        return false;
+      }
+      break;
+    }
+  }
   // "costs {1} more to cast for each target beyond the first" / "costs {3} less to cast if it targets a tapped creature"
   for (const mod of script.costModifiers ?? []) {
     if (mod.perExtraTarget) {
