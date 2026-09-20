@@ -585,8 +585,25 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = objectsMatching(g, cost.removeCountersFrom.filter, ctx).filter((o) => (cost.removeCountersFrom!.counter === 'any' ? Object.values(o.counters).reduce((a, b) => a + (b ?? 0), 0) : o.counters[cost.removeCountersFrom!.counter] ?? 0) >= cost.removeCountersFrom!.amount);
     if (!cands.length) return false;
   }
-  // Mana (with X), after any "activated abilities of X cost {N} less to activate" reductions.
+  // "You may pay {0} rather than pay the equip cost of the first equip ability you activate each
+  // turn": the first matching activation this turn skips its mana cost entirely.
+  let freeThisActivation = false;
   if (cost.mana) {
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || r.tag !== 'freeFirstAbilityEachTurn') continue;
+      const d = (r.data as { textPrefix?: string; always?: boolean } | undefined) ?? {};
+      if (d.textPrefix && !new RegExp(`^${d.textPrefix}`, 'i').test(abilityText ?? '')) continue;
+      const key = `freeAbility:${d.textPrefix ?? '*'}:${p}`;
+      if (!d.always) {
+        if (g.state.turnStats[key]) continue;
+        g.state.turnStats[key] = 1;
+      }
+      freeThisActivation = true;
+      break;
+    }
+  }
+  // Mana (with X), after any "activated abilities of X cost {N} less to activate" reductions.
+  if (cost.mana && !freeThisActivation) {
     const parsed = parseManaCost(cost.mana);
     let reduce = 0;
     for (const r of g.playerRules(p)) {

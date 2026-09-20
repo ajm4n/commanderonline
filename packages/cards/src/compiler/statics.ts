@@ -46,6 +46,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const inner = parseStatic(`${m[1].replace(/^you/, 'You')} from among cards exiled with ~`, isCreatureOrPermanent);
     if (inner) return inner;
   }
+  // "You may pay {0} rather than pay the equip cost of the first equip ability you activate each
+  // turn." / "... rather than pay cycling costs."
+  if ((m = L.match(/^You may pay \{0\} rather than pay (?:the ([\w-]+) cost of the first (?:[\w-]+ ability you activate|card you cycle) (?:each turn|during each of your turns)|(?:the )?([\w-]+) costs?(?: for permanents you control)?)$/i)) && !/^mana$/i.test(m[2] ?? '')) {
+    const prefix = (m[1] ?? m[2]).replace(/^\w/, (c) => c.toUpperCase());
+    return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'freeFirstAbilityEachTurn', data: { textPrefix: prefix, always: m[2] ? true : undefined } } }];
+  }
   // "~ and other Vampire creatures you control get +2/+1 and have flying." — the source joins the
   // group, so compile one static per subject.
   if ((m = L.match(/^~ and (.+?) (get|gain|have|are) (.+)$/i))) {

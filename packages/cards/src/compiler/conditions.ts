@@ -706,6 +706,19 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^~ (?:is|was) (saddled|solved)$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: m[1] } };
   if ((m = t.match(/^~ (?:is|was) (renowned|foretold|suspected)$/))) return { kind: 'memoryFlag', key: m[1] };
   if (/^(?:~|it) (?:has|had) (?:a|one or more) counters? on (?:it|them)$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { hasAnyCounter: true } };
+  // "you control a permanent of each color" / "you control a creature of each color"
+  if ((m = t.match(/^you control (?:a|an) (.+?) of each colou?r$/))) {
+    const nc = parseNoun(oc(m, 1));
+    if (nc) {
+      const cs: Condition[] = (['W', 'U', 'B', 'R', 'G'] as const).map((col) => ({
+        kind: 'count',
+        filter: { ...nc.filter, colors: [col], controller: 'you', zone: 'battlefield' },
+        op: '>=',
+        value: 1,
+      }));
+      return { kind: 'and', cs };
+    }
+  }
   // "there are four or more lore counters among Sagas you control"
   if ((m = t.match(/^there (?:is|are) (\w+) or more ([+\-\w\/]+) counters among (.+?)$/)) && !/^or$/i.test(m[2])) {
     const n301b = wordToNumber(m[1]);
