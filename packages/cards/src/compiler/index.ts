@@ -130,7 +130,9 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     {
       const ss = sentences(line);
       const kept = [...ss];
-      while (kept.length > 1 && isTrailingNoise(kept[kept.length - 1])) kept.pop();
+      // "Destroy all creatures. They can't be regenerated.": the rider qualifies the destroy, so keep it for parseEffects.
+      const qualifiesDestroy = (i: number) => /cannot be regenerated/i.test(kept[i]) && /^destroy\b/i.test(kept[i - 1] ?? '');
+      while (kept.length > 1 && isTrailingNoise(kept[kept.length - 1]) && !qualifiesDestroy(kept.length - 1)) kept.pop();
       if (kept.length && kept.length < ss.length) line = kept.length === 1 ? kept[0] : `${kept.join('. ')}.`;
       // A trailing sentence after a closing quote ('… end of turn." It is still a land.') is not
       // split by sentences(), so trim it here.
@@ -1349,7 +1351,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       // Oracle text writes it either way round: "X instead" or "instead X".
       if (lastSpellLine !== null && /\binstead\b/i.test(line) && !/ would /i.test(line)) {
         const fresh = newCtx({ isSpell: true });
-        const r = parseEffects(`${lastSpellLine}. ${line}`, fresh);
+        const r = parseEffects(`${lastSpellLine.replace(/\.$/, '')}. ${line}`, fresh);
         // Only the previous line's effects and targets are replaced; earlier lines stand.
         if (!r.unhandled.length) {
           spellEffects.length = lastSpellStart;

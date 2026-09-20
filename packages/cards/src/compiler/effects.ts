@@ -654,6 +654,12 @@ const REVEAL_UNTIL_PATTERNS: Pattern[] = [
 ];
 
 const PATTERNS: Pattern[] = [
+  [/^each (.+?) deals (?:(\d+|X) damage|damage equal to its (power|toughness)) to (?:its|their) controller$/i, (m) => {
+    const noun = parseNoun(`a ${m[1]}`);
+    if (!noun) return null;
+    const amount: Amount = m[2] ? (m[2].toUpperCase() === 'X' ? 'X' : parseInt(m[2], 10)) : { kind: m[3].toLowerCase() as 'power' | 'toughness', ref: { ref: 'iter' } };
+    return [{ kind: 'forEach', over: { ref: 'all', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } }, effects: [{ kind: 'damage', amount, to: { ref: 'controllerOf', of: { ref: 'iter' } }, source: { ref: 'iter' } }] }];
+  }],
   // "Until your next turn, you may cast sorcery spells as though they had flash." (Teferi, Time Raveler)
   [/^(?:(?:until your next turn|until end of turn|this turn), )?you may cast (.+?) as though (?:they|it) had flash(?: until end of turn| this turn)?$/i, (m) => {
     // "until your next turn" is retimed by the caller from the endOfTurn marker.
@@ -10622,6 +10628,21 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         const last = effects[effects.length - 1];
         if (last && last.kind === 'may') last.effects.push(...inner);
         else effects.push(...inner);
+        continue;
+      }
+    }
+    // "Destroy all creatures. They can't be regenerated." — the second sentence qualifies the first.
+    if (/^(?:it|they|that (?:creature|permanent)|those (?:creatures|permanents)) cannot be regenerated(?: this turn)?$/i.test(s)) {
+      let marked = false;
+      for (let k = lastStart; k < effects.length; k++) {
+        const e = effects[k];
+        if (e.kind === 'destroy') {
+          e.cantRegenerate = true;
+          marked = true;
+        }
+      }
+      if (marked) {
+        curStart = lastStart; // the rider adds no effects: a following "If …, instead …" still replaces the destroy
         continue;
       }
     }
