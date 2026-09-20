@@ -9504,5 +9504,32 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/9/0/9029ff19-753d-4031-a192-d36b165ebfe5.jpg?1783942232"
     }
+  },
+  {
+    "object": "card",
+    "id": "70ffc71f-328d-421d-926b-6f2e45ffb812",
+    "oracle_id": "83b43aba-bf9c-4da2-967d-9daa632e97d2",
+    "name": "Helm of the Host",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}",
+    "cmc": 4,
+    "type_line": "Legendary Artifact — Equipment",
+    "oracle_text": "At the beginning of combat on your turn, create a token that's a copy of equipped creature, except the token isn't legendary. That token gains haste.\nEquip {5}",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [
+      "Equip"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/7/0/70ffc71f-328d-421d-926b-6f2e45ffb812.jpg?1783903218"
+    }
   }
 ]

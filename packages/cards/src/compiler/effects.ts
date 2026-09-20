@@ -1091,7 +1091,7 @@ const PATTERNS: Pattern[] = [
   }],
   [/^(?:until end of turn, )?(.+?) gains? "(.+)"(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'grantAbility', text: m[2], on: ref, duration: 'endOfTurn' }] : null;
+    return ref ? [{ kind: 'grantAbility', text: m[2], on: ref, duration: /until end of turn/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
   [/^(.+?) gains? "(.+)" for as long as (.+)$/i, () => null],
   // "It gains \"At the beginning of your end step, return ~ to its owner's hand.\" Then put the rest ..."
@@ -1587,14 +1587,15 @@ const PATTERNS: Pattern[] = [
     if (!ref) return null;
     const p = m[2].toUpperCase().includes('X') ? (m[2].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[2], 10);
     const t = m[3].toUpperCase().includes('X') ? (m[3].startsWith('-') ? { kind: 'times' as const, a: 'X' as const, b: -1 } : 'X') : parseInt(m[3], 10);
-    const out: Effect[] = [{ kind: 'pump', power: p, toughness: t, on: ref, duration: 'endOfTurn' }];
+    const dur: Duration = / until end of turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent';
+    const out: Effect[] = [{ kind: 'pump', power: p, toughness: t, on: ref, duration: dur }];
     // "gains trample and \"Whenever …\"": the words before the quote are keywords.
     if (m[4]) {
       const kws = parseKeywordList(m[4].replace(/ and $/i, ''));
       if (!kws) return null;
-      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: 'endOfTurn' });
+      out.push({ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur });
     }
-    out.push({ kind: 'grantAbility', text: m[5], on: ref, duration: 'endOfTurn' });
+    out.push({ kind: 'grantAbility', text: m[5], on: ref, duration: dur });
     return out;
   }],
   [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) (.+?)(?: creature)? with base power and toughness (\d+|X)\/(\d+|X)(?:,? and (?:gains )?(.+?)|, (.+?))?(?: until end of turn)?$/i, (m, ctx) => {
@@ -1674,11 +1675,12 @@ const PATTERNS: Pattern[] = [
   }],
   // "Until end of turn, ~ becomes a 3/2 red Goblin creature with \"…\". It is still a land."
   [/^(.+?) becomes? (?:a|an) ([\dX]+\/[\dX]+ .*?creature) with "(.+)"(?: until end of turn)?$/i, (m, ctx) => {
-    const base = parseSentence(`${m[1]} becomes a ${m[2]} until end of turn`, ctx);
+    const temp = / until end of turn$/i.test(m[0]);
+    const base = parseSentence(`${m[1]} becomes a ${m[2]}${temp ? ' until end of turn' : ''}`, ctx);
     if (!base) return null;
     const ref = ctx.lastObj ?? objRef(m[1], ctx);
     if (!ref) return null;
-    return [...base, { kind: 'grantAbility', text: m[3], on: ref, duration: 'endOfTurn' }];
+    return [...base, { kind: 'grantAbility', text: m[3], on: ref, duration: temp ? 'endOfTurn' : 'permanent' }];
   }],
   // "target land becomes a 3/3 creature that is still a land"
   [/^(.+?) (?:loses? all abilities and )?becomes? (?:a|an) ([\dX]+)\/([\dX]+) (.*?)?creature(?: that(?:'s| is) still (?:a |an )?(\w+))?(?: until end of turn)?$/i, (m, ctx) => {
@@ -1740,7 +1742,9 @@ const PATTERNS: Pattern[] = [
     const kws = parseKeywordList(m[2]);
     if (!kws) return null;
     const ref = objRef(m[1], ctx);
-    return ref ? [{ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur ?? 'endOfTurn' }] : null;
+    // No stated duration: the grant lasts indefinitely (CR 611.2a) — "It gains first strike." (Brass-Talon Chimera),
+    // "it loses defender" (Elder Land Wurm), "That token gains haste" (Helm of the Host).
+    return ref ? [{ kind: 'grantKeywords', keywords: kws, on: ref, duration: dur ?? 'permanent' }] : null;
   }],
   [/^(.+?) loses? all abilities(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
