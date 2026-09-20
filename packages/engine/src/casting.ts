@@ -403,7 +403,8 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
   if (cost.untap && !obj.tapped) return false;
   const nx = (v: number | 'X' | 'all' | 'halfUp' | 'halfDown' | undefined): number =>
     v === 'X' ? x : v === 'all' ? (cost.removeCounters ? obj.counters[cost.removeCounters.counter] ?? 0 : 0) : v === 'halfUp' ? Math.ceil(g.player(p).life / 2) : v === 'halfDown' ? Math.floor(g.player(p).life / 2) : (v ?? 0);
-  const cnt = (v: number | 'X' | 'any' | undefined, avail: number, dflt = 1): number => (v === 'X' ? x : v === 'any' ? avail : (v ?? dflt));
+  const cnt = (v: number | 'X' | 'any' | 'all' | 'halfUp' | 'halfDown' | undefined, avail: number, dflt = 1): number =>
+    v === 'X' ? x : v === 'any' || v === 'all' ? avail : v === 'halfUp' ? Math.ceil(avail / 2) : v === 'halfDown' ? Math.floor(avail / 2) : (v ?? dflt);
   if (cost.payLife !== undefined && g.player(p).life < nx(cost.payLife)) return false;
   if (cost.energy !== undefined && g.player(p).energy < (cost.energy === 'X' ? x : cost.energy)) return false;
   if (cost.removeCounters && cost.removeCounters.counter === 'any' && Object.values(obj.counters).reduce((s, v) => s + (v ?? 0), 0) < nx(cost.removeCounters.amount)) return false;
@@ -652,7 +653,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = objectsMatching(g, { ...cost.sacrifice.filter, controller: 'you' }, ctx).map((o) => o.id);
     const n = cnt(cost.sacrifice.count, cands.length);
     let ids = cands;
-    if (cost.sacrifice.count === 'any' || cands.length > n) {
+    if (cost.sacrifice.count === 'any' || (cost.sacrifice.count !== 'all' && cands.length > n)) {
       const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: cost.sacrifice.count === 'any' ? 'Sacrifice any number' : `Sacrifice ${n}`, candidates: cands, min: cost.sacrifice.count === 'any' ? 0 : n, max: cost.sacrifice.count === 'any' ? cands.length : n, sourceId: obj.id });
       if (resp.type !== 'objects') return false;
       ids = resp.ids;

@@ -81,8 +81,25 @@ export function parseCost(text: string): AbilityCost | null {
       if (noun && n !== null && n !== 'X') return { tapUntapped: { filter: { ...noun.filter, zone: 'battlefield' }, count: n } };
     }
   }
+  // "Sacrifice a creature, discard a card, or pay 4 life": a choice among three or more costs.
+  {
+    const om = text.match(/^(.+),? or (.+)$/i);
+    const KW = /^(?:pay|sacrifice|discard|exile|tap|return|remove) /i;
+    if (om && /,/.test(om[1])) {
+      const pieces = [...om[1].split(/,\s*/), om[2]].map((x) => x.trim()).filter(Boolean);
+      if (pieces.length >= 3 && pieces.every((x) => KW.test(x))) {
+        const norm = (x: string) => x.replace(/^pay ((?:\{[^}]+\})+)$/i, '$1').replace(/^[a-z]/, (c) => c.toUpperCase());
+        const opts = pieces.map((x) => parseCost(norm(x)));
+        if (opts.every((o) => o !== null)) return { choice: opts as AbilityCost[] };
+      }
+    }
+  }
   // Split on commas not inside braces (", rounded up" is not a cost separator).
-  const parts = text.replace(/, rounded (up|down)/gi, ' rounded $1').split(/,\s*(?![^{]*\})/).map((p) => p.trim()).filter(Boolean);
+  const parts = text
+    .replace(/, rounded (up|down)/gi, ' rounded $1')
+    .split(/,\s*(?![^{]*\})/)
+    .map((p) => p.trim().replace(/^Pay ((?:\{[^}]+\})+)$/i, '$1'))
+    .filter(Boolean);
   for (const p of parts) {
     let m: RegExpMatchArray | null;
     let matched = false;
@@ -203,6 +220,18 @@ export function parseCost(text: string): AbilityCost | null {
       const noun = parseNoun(`an ${listed} you control`) ?? parseNoun(`a ${listed}`) ?? parseNoun(`a ${m[2]}`);
       if (!noun || n === null || n === 'X') break kp20;
       cost.tapUntapped = { filter: { ...noun.filter, zone: 'battlefield' }, count: n };
+      matched = true;
+    }
+    if (!matched) kp20b: if ((m = p.match(/^Sacrifice half the (.+?) rounded (up|down)$/i))) {
+      const noun = parseNoun(`a ${m[1].replace(/^([\w'-]+)/, (w) => singularize(w))}`);
+      if (!noun || !noun.confident) break kp20b;
+      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: m[2].toLowerCase() === 'up' ? 'halfUp' : 'halfDown' };
+      matched = true;
+    }
+    if (!matched) kp20a: if ((m = p.match(/^Sacrifice all (.+)$/i))) {
+      const noun = parseNoun(`a ${m[1].replace(/^([\w'-]+)/, (w) => singularize(w))}`);
+      if (!noun || !noun.confident) break kp20a;
+      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: 'all' };
       matched = true;
     }
     if (!matched) kp21: if ((m = p.match(/^Sacrifice (?:a|an|another|(\w+)) (.+)$/i))) {

@@ -600,7 +600,8 @@ export interface AbilityCost {
   tap?: boolean;
   untap?: boolean;
   sacrificeSelf?: boolean;
-  sacrifice?: { filter: ObjectFilter; count?: number | 'any' | 'X' };
+  /** 'all': every matching permanent, no choice offered ('Sacrifice all creatures you control'). */
+  sacrifice?: { filter: ObjectFilter; count?: number | 'any' | 'all' | 'halfUp' | 'halfDown' | 'X' };
   /** "Sacrifice a green creature, a white creature, and a blue creature": one per filter. */
   sacrificeEach?: ObjectFilter[];
   payLife?: number | 'X' | 'halfUp' | 'halfDown';
