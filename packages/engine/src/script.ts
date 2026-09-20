@@ -223,6 +223,8 @@ export type Condition =
   | { kind: 'isAttacking'; ref: Ref }
   | { kind: 'isMonarch'; ref: Ref }
   | { kind: 'castFrom'; zone: ZoneName }
+  /** "you've cast another spell named X this game": casts of that name by the controller this game, including the current one. */
+  | { kind: 'castNamedThisGame'; name: string; op: Comparison; value: number }
   | { kind: 'wasKicked' }
   /** "if ~ was kicked with its {2}{B} kicker" on a card offering two. */
   | { kind: 'wasKickedWith'; cost: string }

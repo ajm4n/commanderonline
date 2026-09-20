@@ -1478,6 +1478,10 @@ export class Game {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         return src?.castFromZone === c.zone;
       }
+      case 'castNamedThisGame': {
+        const name = c.name === '~' ? (ctx.sourceId !== null ? this.state.objects[ctx.sourceId]?.card.name : undefined) ?? c.name : c.name;
+        return cmp(this.player(ctx.controller).castCountByName?.[name] ?? 0, c.op, c.value);
+      }
       case 'wasKicked': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         return !!src?.additionalCostsPaid.includes('kicker');

@@ -9398,21 +9398,34 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   // "unless they sacrifice a nonland permanent of their choice or discard a card"
   // "Each opponent loses 3 life unless they discard a card or sacrifice a creature."
-  if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) discards? a card or sacrifices? (?:a|an) (.+?)(?: of (?:their|its) choice)?$/i))) {
-    const who = playerRef(m[2], ctx);
-    const noun = parseNoun(`a ${m[3]}`);
-    const inner = who && noun ? parseSentence(m[1], ctx) : null;
-    if (who && noun && inner) {
-      return [{ kind: 'unlessPays', who, cost: { discard: 1 }, effects: [{ kind: 'unlessPays', who, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' } }, effects: inner }] }];
+  // "Each opponent loses 3 life unless that player …": one decision per opponent, affecting only that opponent.
+  const unlessFor = (head: string, whoText: string, mk: (who: Ref, inner: Effect[]) => Effect): Effect[] | null => {
+    const each = /^each (opponent|player)$/i.exec(whoText) ?? (/^(?:they|that player)$/i.test(whoText) ? /^each (opponent|player)\b/i.exec(head) : null);
+    if (each) {
+      const sub = newCtx({ ...ctx, targets: ctx.targets });
+      sub.lastPlayer = { ref: 'iter' };
+      const inner = parseSentence(head.replace(/^each (?:opponent|player)/i, 'that player'), sub);
+      if (!inner) return null;
+      return [{ kind: 'forEach', over: /opponent/i.test(each[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: [mk({ ref: 'iter' }, inner)] }];
     }
+    const saved = ctx.targets.length;
+    const inner = parseSentence(head, ctx);
+    const who = inner ? playerRef(whoText, ctx) : null;
+    if (!inner || !who) {
+      ctx.targets.length = saved;
+      return null;
+    }
+    return [mk(who, inner)];
+  };
+  if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) discards? a card or sacrifices? (?:a|an) (.+?)(?: of (?:their|its) choice)?$/i))) {
+    const noun = parseNoun(`a ${m[3]}`);
+    const r = noun ? unlessFor(m[1], m[2], (who, inner) => ({ kind: 'unlessPays', who, cost: { discard: 1 }, effects: [{ kind: 'unlessPays', who, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' } }, effects: inner }] })) : null;
+    if (r) return r;
   }
   if ((m = text.match(/^(.+?) unless (they|that player|you|its controller|that opponent|each opponent|an opponent) sacrifices? (?:a|an) (.+?) of (?:their|its) choice or discards? a card$/i))) {
-    const who = playerRef(m[2], ctx);
     const noun = parseNoun(`a ${m[3]}`);
-    const inner = who && noun ? parseSentence(m[1], ctx) : null;
-    if (who && noun && inner) {
-      return [{ kind: 'unlessPays', who, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' } }, effects: [{ kind: 'unlessPays', who, cost: { discard: 1 }, effects: inner }] }];
-    }
+    const r = noun ? unlessFor(m[1], m[2], (who, inner) => ({ kind: 'unlessPays', who, cost: { sacrifice: { ...noun.filter, zone: 'battlefield' } }, effects: [{ kind: 'unlessPays', who, cost: { discard: 1 }, effects: inner }] })) : null;
+    if (r) return r;
   }
   // "unless you exile the top creature card of your graveyard" / "unless you exile a card from your graveyard"
   if ((m = text.match(/^(.+?) unless you exile (?:the top (.+?) card of your graveyard|(?:a|an) (.+?) from your graveyard)$/i))) {

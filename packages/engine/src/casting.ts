@@ -1725,6 +1725,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (energyInsteadOfMana > 0) g.player(p).energy -= energyInsteadOfMana;
   obj.wasCast = true;
   player.spellsCastThisTurn++;
+  player.castCountByName = { ...(player.castCountByName ?? {}), [face.name]: ((player.castCountByName ?? {})[face.name] ?? 0) + 1 };
   if (obj.isCommander && fromZone === 'command') obj.commanderCasts++;
   g.touch();
   const tgt = targets.filter((t) => t.kind !== 'none').map((t) => g.targetName(t));

@@ -181,6 +181,8 @@ export interface Player {
   landsPlayedThisTurn: number;
   maxLandsPerTurn: number;
   spellsCastThisTurn: number;
+  /** Spells cast this game by name (Approach of the Second Sun). */
+  castCountByName?: Record<string, number>;
   lost: boolean;
   lossReason?: string;
   mulligansTaken: number;

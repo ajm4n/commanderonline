@@ -276,6 +276,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   if ((m = t.match(/^(\w+) or more (.+?) entered the battlefield under your control this turn$/))) { const n = wordToNumber(m[1]); if (typeof n === 'number') return { kind: 'amount', a: { kind: 'eventsThisTurn', event: 'entersBattlefield', player: 'you' }, op: '>=', b: n }; }
   if (t === 'you cast it from your hand' || t === 'you cast ~ from your hand' || t === 'it was cast from your hand') return { kind: 'castFrom', zone: 'hand' };
+  // Approach of the Second Sun: the current cast counts, so "another" means at least two this game.
+  if ((m = t.match(/^(?:this spell|~) was cast from your hand and you(?:'ve| have) cast another spell named (.+?) this game$/))) return { kind: 'and', cs: [{ kind: 'castFrom', zone: 'hand' }, { kind: 'castNamedThisGame', name: oc(m, 1), op: '>=', value: 2 }] };
   if ((m = t.match(/^defending player controls (\w+) or more (.+)$/))) {
     const noun = parseNoun(oc(m, 2));
     const n = wordToNumber(m[1]);
