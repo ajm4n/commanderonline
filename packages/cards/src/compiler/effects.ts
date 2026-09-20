@@ -213,6 +213,12 @@ export function playerRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (l === 'each other opponent' || l === 'each of their opponents' || l === 'each other player who is an opponent') return { ref: 'eachOtherOpponent' };
   if (l === 'its controller' || /^(?:that|the) [\w ]+'s controller$/.test(l) || l === 'the controller of that creature' || l === 'the controller of that permanent') return { ref: 'controllerOf', of: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (l === "~'s controller") return { ref: 'controllerOf', of: SELF };
+  if (l === "~'s owner") return { ref: 'ownerOf', of: SELF };
+  // "each of that player's opponents" (Heartwood Storyteller): everyone but that player.
+  if (l === "each of that player's opponents" || l === "that player's opponents" || l === "each of their opponents" && ctx.lastPlayer) {
+    const tp = ctx.lastPlayer ?? (ctx.triggerHasPlayer ? { ref: 'triggerPlayer' as const } : ctx.triggerHasObject ? { ref: 'triggerController' as const } : null);
+    if (tp) return { ref: 'playersExcept', except: tp };
+  }
   // "Target creature's controller reveals a card at random from their hand."
   {
     const tc = phrase.trim().match(/^(target [\w' -]+)'s controller$/i);
@@ -437,6 +443,11 @@ function perEach(phrase: string, ctx: ParseCtx): Amount | null {
     const a = perEach(both[1], ctx);
     const b = a ? perEach(both[2], ctx) : null;
     if (a && b) return { kind: 'sum', parts: [a, b] };
+  }
+  // "for each card discarded this way" / "for each creature sacrificed this way": what this ability just moved.
+  {
+    const tw = phrase.match(/^(?:card|creature|permanent|land|artifact|token)s? (discarded|sacrificed|exiled|destroyed|milled|returned|put into a graveyard|put into your graveyard) this way$/i);
+    if (tw) return /^discarded$/i.test(tw[1]) ? { kind: 'ctxMemory', key: 'discardedCount' } : /^destroyed$/i.test(tw[1]) ? { kind: 'ctxMemory', key: 'destroyedThisWay' } : { kind: 'countRef', ref: { ref: 'lastMoved' } };
   }
   const noun = parseNoun(phrase);
   if (noun && noun.kind !== 'player') {
@@ -9435,7 +9446,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^exile the top (?:card|(\w+|X) cards) of (target player|target opponent|that player|each player|each opponent)'s library(?: face down)?$/i))) {
     const who = playerRef(m[2], ctx);
     const n = m[1] ? wordToNumber(m[1]) : 1;
-    if (who && n !== null) return [{ kind: 'exileTop', who, amount: n }];
+    if (who && n !== null) {
+      ctx.lastObj = { ref: 'lastMoved' }; // "that card" in the next sentence
+      return [{ kind: 'exileTop', who, amount: n }];
+    }
   }
   // "Whenever a creature blocks this turn, X" (a spell setting up a this-turn trigger)
   if ((m = text.match(/^(whenever [^,]+?) this turn, (.+)$/i))) {
@@ -9722,12 +9736,24 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       ctx.targets.length = saved;
     }
   }
-  if ((m = text.match(/^(you|each player|each opponent|target player|target opponent|that player|its controller) may (.+)$/i)) && !/^you may (?:play|cast) /i.test(text)) {
+  if ((m = text.match(/^(you|each player|each opponent|target player|target opponent|that player|that opponent|its controller|its owner|~'s owner|that (?:creature|permanent|card|spell)'s (?:controller|owner)|each of that player's opponents|that player's opponents|defending player|the chosen player) may (.+)$/i)) && !/^you may (?:play|cast) /i.test(text)) {
     const saved = ctx.targets.length;
     const savedPlayer = ctx.lastPlayer;
     const who = playerRef(m[1], ctx);
     if (who && who.ref !== 'controller') ctx.lastPlayer = who;
-    const inner = who ? parseSentence(rephraseFirstPerson(m[2]), ctx) : null;
+    // "its controller may draw a card": the draw is that player's, so parse it with them as the subject first.
+    let inner: Effect[] | null = null;
+    if (who && who.ref !== 'controller' && !/^each /i.test(m[1])) {
+      const afterWho = ctx.targets.length; // keep the subject's own target registration on rollback
+      const sub = newCtx({ ...ctx, targets: ctx.targets });
+      // A "target opponent" subject is already registered: refer back to it instead of registering a second target.
+      const isTarget = /^target /i.test(m[1]);
+      sub.lastPlayer = isTarget ? who : savedPlayer; // otherwise the subject phrase re-resolves "that player" itself
+      inner = parseSentence(`${isTarget ? 'that player' : m[1]} ${m[2]}`, sub);
+      if (inner) ctx.lastObj = sub.lastObj;
+      else ctx.targets.length = afterWho;
+    }
+    if (!inner && who) inner = parseSentence(rephraseFirstPerson(m[2]), ctx);
     if (who && inner) return [{ kind: 'may', effects: inner, who: who.ref === 'controller' ? undefined : who }];
     ctx.targets.length = saved;
     ctx.lastPlayer = savedPlayer;
