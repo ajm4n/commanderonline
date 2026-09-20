@@ -1913,6 +1913,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'manifest': {
+      const manifested: ObjectId[] = [];
       for (const p of playersOf(g, e.who, ctx)) {
         const n = amt(e.amount);
         for (let i = 0; i < n; i++) {
@@ -1936,10 +1937,13 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const entered = yield* enterBattlefield(g, pick, p, { ctx, faceDown: true });
           if (entered) {
             if (e.ward) entered.memory['faceDownWard'] = e.ward;
+            manifested.push(entered.id);
             g.log(`${g.player(p).name} manifests a card face down.`);
           }
         }
       }
+      // "Manifest the top card of your library, then put two +1/+1 counters on it" (Fierce Invocation, Wildcall)
+      if (manifested.length) ctx.memory['lastMoved'] = manifested;
       return;
     }
     case 'unlockDoor': {

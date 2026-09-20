@@ -98,6 +98,13 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
   };
 
   let pendingRoll: { kind: 'rollDie'; sides: number; results: { min: number; max: number; effects: Effect[] }[] } | null = null;
+  // The context of the most recently parsed effects text: die-roll table rows ("1—9 | Return it to its owner's hand")
+  // continue the sentence that set up the roll, so "it"/"that creature"/"its controller" keep their referents.
+  let rowCtx: ParseCtx | null = null;
+  const parseEffectsTracked = (text: string, ctx: ParseCtx) => {
+    rowCtx = ctx;
+    return parseEffects(text, ctx);
+  };
   const findRoll = (effects: Effect[]): typeof pendingRoll => {
     for (const e of effects) {
       if (e.kind === 'rollDie' && e.results.length === 0) return e;
@@ -205,7 +212,8 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       if (!pendingRoll) for (const ab of [...abilities].reverse()) if ('effects' in ab && Array.isArray(ab.effects)) { pendingRoll = findRoll(ab.effects); if (pendingRoll) break; }
       if (!pendingRoll) pendingRoll = findRoll(spellEffects);
       if (pendingRoll) {
-        const ctx = newCtx();
+        const rc = rowCtx as ParseCtx | null;
+        const ctx = rc ? newCtx({ ...rc, targets: rc.targets }) : newCtx();
         const r = parseEffects(m[3], ctx);
         pendingRoll.results.push({ min: parseInt(m[1], 10), max: m[2] ? parseInt(m[2], 10) : parseInt(m[1], 10), effects: r.effects });
         if (r.unhandled.length) unhandledLines.push(...r.unhandled);
@@ -999,7 +1007,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     let maxModesIf: { condition: Condition; max: number } | undefined;
     let repeatable = false;
     if ((m = line.match(/^Choose (one|two|one or both)\. (.+?), then —$/i))) {
-      const r = parseEffects(m[2], spellCtx);
+      const r = parseEffectsTracked(m[2], spellCtx);
       spellEffects.push(...r.effects);
       if (r.unhandled.length) unhandledLines.push(...r.unhandled);
       line = `Choose ${m[1]}`;
@@ -1045,7 +1053,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     // Spree: "+ {2}{B} — Destroy target creature." Each mode has its own additional cost.
     if ((m = line.match(/^\+\s*((?:\{[^}]+\})+)\s*\u2014\s*(.+)$/))) {
       const ctx = newCtx({ isSpell: true });
-      const { effects, unhandled } = parseEffects(m[2], ctx);
+      const { effects, unhandled } = parseEffectsTracked(m[2], ctx);
       if (unhandled.length) {
         unhandledLines.push(...unhandled);
         continue;
@@ -1063,7 +1071,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     if (modal && (m = line.match(/^•\s*(.+)$/))) {
       const ctx = newCtx({ isSpell: true });
-      const { effects, unhandled } = parseEffects(stripModeLabel(m[1]), ctx);
+      const { effects, unhandled } = parseEffectsTracked(stripModeLabel(m[1]), ctx);
       modal.push({ text: m[1], targets: ctx.targets, effects: modalX !== null ? effects.map((e) => substituteX(e, modalX!)) : effects });
       if (unhandled.length) unhandledLines.push(...unhandled);
       else compiledLines.push(line);
@@ -1091,14 +1099,14 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         while (lines[li + 1]?.startsWith('\u2022')) {
           li++;
           const optText = stripModeLabel(lines[li].replace(/^\u2022\s*/, ''));
-          const r = parseEffects(optText, ctx);
+          const r = parseEffectsTracked(optText, ctx);
           options.push({ text: optText, effects: chapterModal.x !== undefined ? r.effects.map((e) => substituteX(e, chapterModal.x!)) : r.effects });
           unhandled.push(...r.unhandled);
           if (!r.unhandled.length) compiledLines.push(lines[li]);
         }
         effects = [{ kind: 'chooseMode', options, count: chapterModal.count, countAmount: chapterModal.xCount, min: chapterModal.min, notChosen: chapterModal.notChosen, random: chapterModal.random }];
       } else {
-        const r = parseEffects(m[2], ctx);
+        const r = parseEffectsTracked(m[2], ctx);
         effects = r.effects;
         unhandled = r.unhandled;
       }
@@ -1118,7 +1126,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     if ((m = line.match(/^([+−-]X): (.+)$/))) {
       const ctx = newCtx();
       const rest = parseActivationRestriction(m[2]);
-      const { effects, unhandled } = parseEffects(rest.text, ctx);
+      const { effects, unhandled } = parseEffectsTracked(rest.text, ctx);
       const up = m[1].startsWith('+');
       abilities.push({ kind: 'activated', text: line, cost: up ? { loyalty: 0, manual: 'Add X loyalty counters' } : { loyalty: 0, removeCounters: { counter: 'loyalty', amount: 'X' } }, targets: ctx.targets, effects, sorcerySpeed: true });
       if (unhandled.length) unhandledLines.push(...unhandled);
@@ -1129,7 +1137,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const n = parseInt(m[1].replace('−', '-'), 10);
       const ctx = newCtx();
       const rest = parseActivationRestriction(m[2]);
-      const { effects, unhandled } = parseEffects(rest.text, ctx);
+      const { effects, unhandled } = parseEffectsTracked(rest.text, ctx);
       abilities.push({ kind: 'activated', text: line, cost: { loyalty: n }, targets: ctx.targets, effects, sorcerySpeed: true });
       if (unhandled.length) unhandledLines.push(...unhandled);
       else compiledLines.push(line);
@@ -1137,7 +1145,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
     }
     // On a spell, "At the beginning of your next upkeep, X" is a delayed trigger the spell sets up.
     if (isSpell && (/^At the beginning of (?:your next|the next) /i.test(line) || /^Whenever [^,]+ this turn, /i.test(line))) {
-      const r = parseEffects(line, spellCtx);
+      const r = parseEffectsTracked(line, spellCtx);
       if (!r.unhandled.length) {
         spellEffects.push(...r.effects);
         compiledLines.push(line);
@@ -1162,7 +1170,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const host = prev.effects ? findHost(prev.effects) : undefined;
       if (host) {
         const ctx = newCtx({ triggerHasObject: false, triggerHasPlayer: true, isSpell });
-        const r = parseEffects(m[1], ctx);
+        const r = parseEffectsTracked(m[1], ctx);
         if (!r.unhandled.length) {
           host.then = [...(host.then ?? []), ...r.effects];
           compiledLines.push(line);
@@ -1178,7 +1186,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       if (prevEffects && noun) {
         const ctx = newCtx({ triggerHasObject: false, triggerHasPlayer: false, isSpell: isSpell || prev?.kind === 'spell' });
         ctx.lastObj = { ref: 'lastMoved' };
-        const r = parseEffects(m[2], ctx);
+        const r = parseEffectsTracked(m[2], ctx);
         if (!r.unhandled.length) {
           prevEffects.push({ kind: 'conditional', if: { kind: 'amount', a: { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 }, then: r.effects });
           if (ctx.targets.length) {
@@ -1197,7 +1205,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       const last = prevEffects?.[prevEffects.length - 1];
       if (last && (last.kind === 'may' || last.kind === 'ifPays')) {
         const ctx = newCtx({ triggerHasObject: true, triggerHasPlayer: true, isSpell: prev.kind === 'spell' });
-        const { effects, unhandled } = parseEffects(m[1], ctx);
+        const { effects, unhandled } = parseEffectsTracked(m[1], ctx);
         if (!unhandled.length) {
           last.effects.push(...effects);
           if (ctx.targets.length && 'targets' in prev) prev.targets = [...(prev.targets ?? []), ...ctx.targets];
@@ -1261,7 +1269,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         while (lines[li + 1]?.startsWith('•')) {
           li++;
           const optText = stripModeLabel(lines[li].replace(/^•\s*/, ''));
-          const r = parseEffects(optText, ctx);
+          const r = parseEffectsTracked(optText, ctx);
           // A mode whose body is itself a triggered ability grants that ability instead.
           if (r.unhandled.length && parseTriggerHead(optText)) {
             options.push({ text: optText, effects: [{ kind: 'grantAbility', text: optText, on: { ref: 'self' }, duration: 'permanent' }] });
@@ -1281,7 +1289,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           }
         }
         if (reflexivePrefix) {
-          const pre = parseEffects(reflexivePrefix, ctx);
+          const pre = parseEffectsTracked(reflexivePrefix, ctx);
           if (pre.unhandled.length) unhandled.push(...pre.unhandled);
           else {
             const last = pre.effects[pre.effects.length - 1];
@@ -1291,7 +1299,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
             } else effects = [...pre.effects, ...effects];
           }
         }
-      } else ({ effects, unhandled } = parseEffects(split.rest, ctx));
+      } else ({ effects, unhandled } = parseEffectsTracked(split.rest, ctx));
       let condition: Condition | undefined = head.stateCondition;
       if (split.condition) condition = parseCondition(split.condition, { self: { ref: 'self' }, lastObj: null, triggerHasObject: head.hasObject, triggerHasPlayer: head.hasPlayer }) ?? { kind: 'manual', text: `Is this true: "${split.condition}"?` };
       if (head.exploit) {
@@ -1338,7 +1346,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           while (lines[li + 1]?.startsWith('•')) {
             li++;
             const optText = stripModeLabel(lines[li].replace(/^•\s*/, ''));
-            const r = parseEffects(optText, ctx);
+            const r = parseEffectsTracked(optText, ctx);
             if (r.unhandled.length && parseTriggerHead(optText)) {
               options.push({ text: optText, effects: [{ kind: 'grantAbility', text: optText, on: { ref: 'self' }, duration: 'permanent' }] });
               continue;
@@ -1347,7 +1355,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
             unhandled.push(...r.unhandled);
           }
           effects = [{ kind: 'chooseMode', options, count: modalHead.count, countAmount: modalHead.xCount, min: modalHead.min, notChosen: modalHead.notChosen, random: modalHead.random }];
-        } else ({ effects, unhandled } = parseEffects(rest.text, ctx));
+        } else ({ effects, unhandled } = parseEffectsTracked(rest.text, ctx));
         // Class cards: "{2}{W}: Level 2" gains the level; abilities after it need that level.
         const lvl = rest.text.match(/^Level (\d+)\.?$/i);
         if (lvl) {
@@ -1396,7 +1404,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       // Oracle text writes it either way round: "X instead" or "instead X".
       if (lastSpellLine !== null && /\binstead\b/i.test(line) && !/ would /i.test(line)) {
         const fresh = newCtx({ isSpell: true });
-        const r = parseEffects(`${lastSpellLine.replace(/\.$/, '')}. ${line}`, fresh);
+        const r = parseEffectsTracked(`${lastSpellLine.replace(/\.$/, '')}. ${line}`, fresh);
         // Only the previous line's effects and targets are replaced; earlier lines stand.
         if (!r.unhandled.length) {
           spellEffects.length = lastSpellStart;
@@ -1410,7 +1418,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       lastSpellStart = spellEffects.length;
       lastSpellTargets = spellCtx.targets.length;
       lastSpellLine = line;
-      const { effects, unhandled } = parseEffects(line, spellCtx);
+      const { effects, unhandled } = parseEffectsTracked(line, spellCtx);
       spellEffects.push(...effects);
       if (unhandled.length) unhandledLines.push(...unhandled);
       else compiledLines.push(line);

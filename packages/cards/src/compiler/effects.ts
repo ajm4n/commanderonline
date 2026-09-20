@@ -4364,12 +4364,18 @@ const PATTERNS: Pattern[] = [
   [/^if it is neither day nor night, it becomes (day|night)(?: as ~ enters)?$/i, (m) => [{ kind: 'setDayNight', to: m[1].toLowerCase() === 'day' ? 'startDay' : 'startNight' }]],
   // Manifest / manifest dread / cloak
   [/^manifest(?: the top card of your library| the top (\w+|X) cards of your library)?$/i, (m, ctx) => {
-    void ctx;
     const n = m[1] ? (m[1].toUpperCase() === 'X' ? 'X' : wordToNumber(m[1])) : 1;
+    ctx.lastObj = { ref: 'lastMoved' }; // "Manifest the top card of your library, then put two +1/+1 counters on it"
     return n === null ? null : [{ kind: 'manifest', amount: n as Amount }];
   }],
-  [/^manifest dread$/i, () => [{ kind: 'manifest', amount: 1, dread: true }]],
-  [/^cloak the top card of your library$/i, () => [{ kind: 'manifest', amount: 1, ward: '{2}' }]],
+  [/^manifest dread$/i, (_m, ctx) => {
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'manifest', amount: 1, dread: true }];
+  }],
+  [/^cloak the top card of your library$/i, (_m, ctx) => {
+    ctx.lastObj = { ref: 'lastMoved' };
+    return [{ kind: 'manifest', amount: 1, ward: '{2}' }];
+  }],
   [/^(?:you may )?turn (~|it|that creature|that permanent|equipped creature|enchanted creature|.+?) face up$/i, (m, ctx) => {
     const ref = /^~$/.test(m[1]) ? SELF : objRef(m[1], ctx);
     if (!ref) return null;
@@ -7887,6 +7893,7 @@ const PATTERNS: Pattern[] = [
   // "Reveal the top card of target opponent's library."
   [/^reveal the top card of (target (?:opponent|player)|that player)'s library$/i, (m, ctx) => {
     const who = playerRef(m[1], ctx);
+    if (who) ctx.lastObj = { ref: 'lastMoved' }; // Prophecy: "If it's a land, you gain 1 life"
     return who ? [{ kind: 'revealTop', who, amount: 1 }] : null;
   }],
   // "Return all artifacts target player owns to their hand."
