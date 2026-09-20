@@ -524,6 +524,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       );
     }
   }
+  // "..., you may cast an instant or sorcery spell from your graveyard. If a spell cast this way would
+  // be put into your graveyard, exile it instead." — spells cast from a graveyard are exiled on
+  // resolution already, so the second sentence adds nothing the permission does not do.
+  if ((m = L.match(/^(.+?)\. If a spell cast this way would be put into (?:your|a|its owner's) graveyard, exile it instead$/i))) {
+    const inner = parseStatic(m[1], isCreatureOrPermanent);
+    if (inner && inner.length && inner.every((x) => x.kind === 'static' && x.rule?.kind === 'custom' && x.rule.tag === 'castFromGraveyard')) return inner;
+  }
   // "During your turn, you may play cards exiled with ~. If you cast a spell this way, pay life
   // equal to its mana value rather than pay its mana cost."
   if ((m = L.match(/^(.+?)\. If you cast a spell this way, (?:you )?pay life equal to (?:its|that spell's|the spell's) mana value rather than pay(?:ing)? its mana cost$/i))) {

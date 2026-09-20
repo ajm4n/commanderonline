@@ -434,6 +434,10 @@ export interface ObjectFilter {
   exiledWithSource?: boolean;
   /** Was dealt damage this turn by the effect's source ("a creature dealt damage by ~ this turn"). */
   damagedBySource?: boolean;
+  /** Was dealt damage this turn by a source matching this ("dealt damage this turn by a source you controlled"). */
+  damagedByFilter?: ObjectFilter;
+  /** Was dealt damage this turn by the permanent the source is attached to ("dealt damage by enchanted creature this turn"). */
+  damagedByHost?: boolean;
   /** Creatures blocking the filter's source object ("creatures blocking it"). */
   blockingSource?: boolean;
   /** The object is blocked by the ability's source ("target creature ~ is blocking"). */
