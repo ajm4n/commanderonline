@@ -8855,5 +8855,74 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/e/4/e4a2d2c6-8eaa-4760-b620-921b807baa2e.jpg?1783933396"
     }
+  },
+  {
+    "object": "card",
+    "id": "e2f12f6f-9383-47e6-a44f-2834ad130e51",
+    "oracle_id": "3f0c9466-5ab9-4205-a84f-b4b27b5a678e",
+    "name": "Bloodbraid Elf",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}{G}",
+    "cmc": 4,
+    "type_line": "Creature — Elf Berserker",
+    "oracle_text": "Haste (This creature can attack and {T} as soon as it comes under your control.)\nCascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)",
+    "colors": [
+      "R",
+      "G"
+    ],
+    "color_identity": [
+      "R",
+      "G"
+    ],
+    "keywords": [
+      "Haste",
+      "Cascade"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "3",
+    "toughness": "2",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/e/2/e2f12f6f-9383-47e6-a44f-2834ad130e51.jpg?1783921848"
+    }
+  },
+  {
+    "object": "card",
+    "id": "22b36ad5-bf4d-436a-9c3c-fa4acd0052fe",
+    "oracle_id": "2bb2eda7-3b38-4c56-870f-c3218a1056f5",
+    "name": "Snapcaster Mage",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{U}",
+    "cmc": 2,
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "Flash\nWhen this creature enters, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. (You may cast that card from your graveyard for its flashback cost. Then exile it.)",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [
+      "Flash"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "1",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/2/2/22b36ad5-bf4d-436a-9c3c-fa4acd0052fe.jpg?1783907976"
+    }
   }
 ]

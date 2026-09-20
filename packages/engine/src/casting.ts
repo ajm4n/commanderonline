@@ -957,13 +957,18 @@ function perTypeGraveyardRule(g: Game, p: PlayerId, tag: 'castFromGraveyard' | '
   return g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === tag && !!(r.data as { perPermanentType?: boolean } | undefined)?.perPermanentType);
 }
 
+/** Flashback printed on the card or granted to it (Snapcaster Mage: "gains flashback until end of turn"). */
+export function hasFlashback(g: Game, obj: GameObject): boolean {
+  return /^Flashback/m.test(obj.card.oracleText) || (obj.zone === 'graveyard' && g.characteristics(obj.id).keywords.has('Flashback'));
+}
+
 /** Zones a player may cast the object from right now. */
 function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (obj.zone === 'library') return playableFromTop(g, p, obj);
   if (obj.owner !== p && obj.zone !== 'exile' && obj.zone !== 'graveyard') return false;
   if (obj.zone === 'hand' || obj.zone === 'command') return true;
   if (obj.zone === 'graveyard') {
-    if ((obj.owner === p && /^Flashback/m.test(obj.card.oracleText)) || obj.memory['castableBy'] === p) return true;
+    if ((obj.owner === p && hasFlashback(g, obj)) || obj.memory['castableBy'] === p) return true;
     if (canEscape(g, p, obj)) return true;
     if (obj.owner !== p) return false;
     for (const r of g.playerRules(p)) {
@@ -1264,7 +1269,7 @@ export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
     if (f && matchesFilter(g, obj, { ...f, zone: undefined }, { sourceId: srcId, controller: p })) return false;
   }
   // Can we afford it?
-  const cost = computeCastCost(g, p, obj, 0, { alternative: obj.zone === 'graveyard' && /^Flashback\b/m.test(obj.card.oracleText) ? 'flashback' : undefined });
+  const cost = computeCastCost(g, p, obj, 0, { alternative: obj.zone === 'graveyard' && hasFlashback(g, obj) ? 'flashback' : undefined });
   const sources = manaSourcesFor(g, p, castingKeywordsOf(g, obj));
   if (!freeFromExile(g, obj) && !payableWithLife(g, p, cost, 0, sources) && availableAlternativeCosts(g, p, obj).length === 0) {
     // Try other faces (MDFC / adventure)
@@ -1733,7 +1738,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     }
   }
   // Escape: exile the other cards from the graveyard as part of the cost (rule 702.138a).
-  if (fromZone === 'graveyard' && !/^Flashback/m.test(face.oracleText) && obj.memory['castableBy'] !== p) {
+  if (fromZone === 'graveyard' && !hasFlashback(g, obj) && obj.memory['castableBy'] !== p) {
     const esc = escapeCost(g, obj);
     if (esc) {
       const ok = yield* payAbilityCost(g, p, obj, { exileObjects: { filter: { zone: 'graveyard', owner: 'you' }, count: esc.exile } }, x);
@@ -1776,7 +1781,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   if (!opts.free) {
     const paid = yield* payCost(g, p, cost, x, id, keywords, !!resp.manualMana);
     if (paid) {
-      if (fromZone === 'graveyard' && !/^Flashback/m.test(face.oracleText) && obj.memory['castableBy'] !== p) {
+      if (fromZone === 'graveyard' && !hasFlashback(g, obj) && obj.memory['castableBy'] !== p) {
         g.state.turnStats[`castFromGy:${p}`] = 1;
         if (perTypeGraveyardRule(g, p, 'castFromGraveyard')) {
           const t = unusedGraveyardType(g, p, obj);
@@ -1842,7 +1847,9 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     if (kws.has('Storm') && stormCount > 0) {
       g.queueTrigger({ sourceId: id, controller: p, ability: { kind: 'triggered', text: `Storm: copy ${face.name} ${stormCount} time${stormCount === 1 ? '' : 's'}`, event: 'cast', effects: [{ kind: 'copySpell', what: { ref: 'stackTarget' }, count: stormCount }] }, context: { triggerObject: id, triggerPlayer: p } });
     }
-    let cascades = kws.has('Cascade') ? Math.max(1, (face.oracleText.match(/^Cascade((?:, cascade)*)/mi)?.[1].match(/cascade/gi) ?? []).length + 1) : 0;
+    // A compiled script may already carry the cascade trigger (single "Cascade" lines); then only extra instances are ours.
+    const compiledCascade = script.abilities.some((a) => a.kind === 'triggered' && a.event === 'cast' && a.effects.some((e) => e.kind === 'discover'));
+    let cascades = kws.has('Cascade') && !compiledCascade ? Math.max(1, (face.oracleText.match(/^Cascade((?:, cascade)*)/mi)?.[1].match(/cascade/gi) ?? []).length + 1) : 0;
     // Yidris: "as you cast spells from your hand this turn, they gain cascade"
     if (fromZone === 'hand' && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'spellsGainCascade')) cascades += 1;
     const mv = g.characteristics(id).manaValue;
