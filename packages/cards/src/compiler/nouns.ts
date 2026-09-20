@@ -869,8 +869,10 @@ export function toTargetSpec(n: ParsedNoun): TargetSpec {
     spec.filter = f;
   }
   if (n.count === 'X') {
-    spec.min = 0;
+    // "X target creatures": exactly X of them ("up to X": any number up to X); the engine reads X when the targets are chosen.
+    spec.min = n.upTo ? 0 : 1;
     spec.max = 20;
+    spec.countX = { upTo: Boolean(n.upTo) };
   }
   return spec;
 }
