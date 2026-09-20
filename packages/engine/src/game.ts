@@ -581,6 +581,8 @@ export class Game {
         hexproofFrom: [],
         power: obj.card.power ? parseInt(obj.card.power, 10) || 0 : null,
         toughness: obj.card.toughness ? parseInt(obj.card.toughness, 10) || 0 : null,
+        basePower: obj.card.power ? parseInt(obj.card.power, 10) || 0 : null,
+        baseToughness: obj.card.toughness ? parseInt(obj.card.toughness, 10) || 0 : null,
         loyalty: null,
         oracleText: obj.card.oracleText,
         rules: [],

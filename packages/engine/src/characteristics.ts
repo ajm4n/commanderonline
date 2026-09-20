@@ -20,6 +20,9 @@ export interface Characteristics {
   hexproofFrom: string[];
   power: number | null;
   toughness: number | null;
+  /** P/T before counters and +N/+N effects — what "greater than its base power" compares against. */
+  basePower: number | null;
+  baseToughness: number | null;
   loyalty: number | null;
   oracleText: string;
   rules: RuleModification[];
@@ -128,6 +131,8 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     hexproofFrom: [],
     power: parsePT(face.power, obj, g),
     toughness: parsePT(face.toughness, obj, g),
+    basePower: null,
+    baseToughness: null,
     loyalty: face.loyalty ? parseInt(face.loyalty, 10) || 0 : null,
     oracleText: face.oracleText,
     rules: [],
@@ -264,6 +269,8 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
     if (e.mod.powerAmount !== undefined) ch.power = g.resolveAmount(e.mod.powerAmount, actx);
     if (e.mod.toughnessAmount !== undefined) ch.toughness = g.resolveAmount(e.mod.toughnessAmount, actx);
   }
+  ch.basePower = ch.power;
+  ch.baseToughness = ch.toughness;
   // Layer 7c: modify P/T (effects + counters)
   if (ch.types.includes('Creature') || ch.power !== null) {
     let dp = 0;

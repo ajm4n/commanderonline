@@ -208,6 +208,12 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
     const has = Object.values(g.state.objects).some((a) => a.attachedTo === obj.id && (filter.hasAttachment === 'any' || g.characteristics(a.id).subtypes.includes(filter.hasAttachment!)));
     if (!has) return false;
   }
+  if (filter.hasAttachmentFilter) {
+    const f = filter.hasAttachmentFilter;
+    const has = Object.values(g.state.objects).some((a) => a.attachedTo === obj.id && matchesFilter(g, a, f, ctx));
+    if (!has) return false;
+  }
+  if (filter.powerGreaterThanBase && !(ch.power !== null && ch.basePower !== null && ch.power > ch.basePower)) return false;
   if (filter.monstrous !== undefined && !!obj.memory['monstrous'] !== filter.monstrous) return false;
   if (filter.attached !== undefined && (obj.attachedTo !== null) !== filter.attached) return false;
   if (filter.cmcGE !== undefined && !(ch.manaValue >= filter.cmcGE)) return false;

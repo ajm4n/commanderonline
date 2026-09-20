@@ -510,6 +510,10 @@ export interface ObjectFilter {
   attached?: boolean;
   /** Has something attached ("is equipped" / "is enchanted"). */
   hasAttachment?: 'Equipment' | 'Aura' | 'any';
+  /** Has something attached that matches this ("with a legendary Equipment attached to it"). */
+  hasAttachmentFilter?: ObjectFilter;
+  /** Power above its base power ("creatures you control with power greater than their base power"). */
+  powerGreaterThanBase?: boolean;
   /** Became monstrous. */
   monstrous?: boolean;
   /** Mana value at most an amount ("with mana value less than or equal to the number of lands you control"). */
