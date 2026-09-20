@@ -9432,9 +9432,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   // "~ gets +1/+0 until end of turn and cannot be blocked this turn"
   if ((m = text.match(/^((~|it|that creature|target creature[^,]*?|enchanted creature|equipped creature) (?:gets?|gains?) .+? until end of turn) and ((?:cannot|can't|must|doesn't|does not) .+?)(?: this turn)?$/i))) {
+    const savedT = ctx.targets.length;
     const a = parseSentence(m[1], ctx);
-    const b = a ? parseSentence(`${m[2]} ${m[3]} this turn`, ctx) ?? parseSentence(`${m[2]} ${m[3]}`, ctx) : null;
+    // The second clause is about the same creature: a "target creature" subject is already registered, so refer back to it.
+    const subj = /^target /i.test(m[2]) && ctx.lastObj ? 'it' : m[2];
+    const b = a ? parseSentence(`${subj} ${m[3]} this turn`, ctx) ?? parseSentence(`${subj} ${m[3]}`, ctx) : null;
     if (a && b) return [...a, ...b];
+    ctx.targets.length = savedT;
   }
   if ((m = text.match(/^(.+?) becomes? the color (?:or colors )?of your choice(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
@@ -9470,11 +9474,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   // "Gain control of target creature for as long as ~ remains tapped" / "... for as long as you control ~"
   if ((m = text.match(/^(.+?) for as long as (~ remains tapped|you control ~|~ remains on the battlefield|~ remains untapped|you control ~ and ~ remains tapped|~ remains tapped and you control ~)$/i))) {
+    const savedT = ctx.targets.length; // a rejected inner parse must not leave its target behind (Hedge Whisperer registered its land twice)
     const inner = parseSentence(m[1], ctx);
     const dur: Duration = /remains tapped/i.test(m[2]) ? 'whileSourceTapped' : /you control/i.test(m[2]) ? 'whileYouControlSource' : 'untilSourceLeaves';
     if (inner && inner.length && inner.every((e) => e.kind === 'gainControl' || e.kind === 'applyRule' || e.kind === 'pump' || e.kind === 'setPT' || e.kind === 'grantKeywords' || e.kind === 'addTypes' || e.kind === 'setSubtypes' || e.kind === 'setColors' || e.kind === 'grantAbility' || e.kind === 'loseAllAbilities')) {
       return inner.map((e) => ('duration' in e ? ({ ...e, duration: dur } as Effect) : e));
     }
+    ctx.targets.length = savedT;
   }
   // "Until end of turn, whenever X, Y": a delayed trigger that fires repeatedly this turn.
   if ((m = text.match(/^until end of turn, (whenever .+)$/i))) {
@@ -9750,6 +9756,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (who && who.ref !== 'controller') ctx.lastPlayer = who;
     // "its controller may draw a card": the draw is that player's, so parse it with them as the subject first.
     let inner: Effect[] | null = null;
+    // "Each player may draw a card": whoever says yes is the one who draws (the engine binds each such player as the iteration item).
+    if (who && /^each /i.test(m[1]) && /^(?:draw|discard|gain|lose|mill|scry|surveil|sacrifice|create|search|exile the top|reveal|look at)\b/i.test(m[2]) && !/copy of/i.test(m[2])) {
+      const afterWho = ctx.targets.length;
+      const sub = newCtx({ ...ctx, targets: ctx.targets });
+      sub.lastPlayer = { ref: 'iter' };
+      inner = parseSentence(`that player ${m[2]}`, sub);
+      if (inner) return [{ kind: 'may', effects: inner, who }];
+      ctx.targets.length = afterWho;
+    }
     if (who && who.ref !== 'controller' && !/^each /i.test(m[1])) {
       const afterWho = ctx.targets.length; // keep the subject's own target registration on rollback
       const sub = newCtx({ ...ctx, targets: ctx.targets });
@@ -9936,8 +9951,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   for (const [re, fn] of POOL_PATTERNS) {
     const pm = text.match(re);
     if (pm) {
+      const saved = ctx.targets.length;
       const r = fn(pm, ctx);
       if (r) return r;
+      ctx.targets.length = saved; // a rejected pattern must not leave its target registered (Architects of Will)
     }
   }
   for (const [re, fn] of PATTERNS) {
@@ -10073,7 +10090,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     for (let pi = 0; pi < parts.length; pi++) {
       const p = parts[pi];
       let r: Effect[] | null = null;
-      if (pi > 0 && sharedSubject && /^(?:then )?(?:loses|gains|deals|draws|discards|mills|sacrifices|puts|exiles|reveals|shuffles|creates|taps|untaps|returns|destroys|searches|scries|surveils|investigates|gets)\b/i.test(p)) r = parseSentence(`${/^target /i.test(sharedSubject) ? 'that player' : sharedSubject} ${p.replace(/^then /i, '')}`, ctx);
+      if (pi > 0 && sharedSubject && /^(?:then )?(?:loses?|gains?|deals?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|search(?:es)?|scr(?:y|ies)|surveils?|investigates?|gets?)\b/i.test(p)) r = parseSentence(`${/^target /i.test(sharedSubject) ? 'that player' : sharedSubject} ${p.replace(/^then /i, '')}`, ctx);
       if (!r) r = parseSentence(p, ctx);
       if (!r && pi > 0 && verb && !/^(you|each player|each opponent|target player|target opponent|that player|those players|it|they|~|its|their)\b/i.test(p)) r = parseSentence(`${verb} ${p}`, ctx);
       // "target creature gains haste and gets +X/+0": the second clause shares the first clause's
