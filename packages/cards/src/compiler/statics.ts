@@ -959,17 +959,32 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'playFromTop', data: { spells: true, oncePerTurn: true, filter: f } } }];
     }
   }
-  // "Once each turn, you may pay {0} rather than pay the mana cost for a spell you cast from exile."
-  if ((m = L.match(/^(Once (?:each turn|during each of your turns), )?you may pay ((?:\{[^}]+\})+) rather than pay the mana cost for (?:a |an )?(.+?) you cast(?: from (your hand|exile|your graveyard))?(?: with mana value (?:X or less|(\d+) or less))?$/i))) {
-    const label = m[3].trim();
+  // "Once during each of your turns, you may cast a spell from your hand by paying life equal to its
+  // mana value rather than paying its mana cost." — an alternative cost granted to the player.
+  if ((m = L.match(/^(Once (?:each turn|during each of your turns), )?you may cast (?:a |an )?(.+?)(?: from your hand)? by paying life equal to (?:its|their) mana values? rather than pay(?:ing)? (?:its|their) mana costs?$/i))) {
+    const label = m[2].trim();
     const noun = /^spells?$/i.test(label) ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label}`) : parseNoun(`a ${label} spell`);
     if (noun && noun.confident) {
+      const f = { ...noun.filter };
+      delete f.zone;
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'altCostForSpells', data: { payLifeEqualToManaValue: true, filter: Object.keys(f).length ? f : undefined, oncePerTurn: !!m[1] || undefined, fromZone: 'hand' } } }];
+    }
+  }
+  // "Once each turn, you may pay {0} rather than pay the mana cost for a spell you cast from exile."
+  if ((m = L.match(/^(Once (?:each turn|during each of your turns), )?you may pay ((?:\{[^}]+\})+|(\w+) \{E\}) rather than pay the mana cost for (?:a |an )?(.+?) you cast(?: from (your hand|exile|your graveyard))?(?: with mana value (?:X or less|(\d+) or less))?$/i))) {
+    const energyN = m[3] ? wordToNumber(m[3]) : null;
+    m = [m[0], m[1], m[2], m[4], m[5], m[6]] as unknown as RegExpMatchArray;
+    const label = m[3].trim();
+    const noun = /^spells?$/i.test(label) ? { filter: {} as ObjectFilter, confident: true } : /\bspells?\b/i.test(label) ? parseNoun(`a ${label}`) : parseNoun(`a ${label} spell`);
+    // An unreadable energy count must not abort the statics that follow, so it just skips this one.
+    if (noun && noun.confident && (energyN === null || typeof energyN === 'number')) {
       const f = { ...noun.filter };
       delete f.zone;
       if (m[5]) f.cmcLE = parseInt(m[5], 10);
       else if (/mana value X or less/i.test(L)) f.cmcLE = 'X';
       const zone = m[4] ? (/exile/i.test(m[4]) ? 'exile' : /graveyard/i.test(m[4]) ? 'graveyard' : 'hand') : undefined;
-      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'altCostForSpells', data: { cost: m[2], filter: Object.keys(f).length ? f : undefined, oncePerTurn: !!m[1] || undefined, fromZone: zone } } }];
+      const data = typeof energyN === 'number' ? { energy: energyN } : { cost: m[2] };
+      return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'altCostForSpells', data: { ...data, filter: Object.keys(f).length ? f : undefined, oncePerTurn: !!m[1] || undefined, fromZone: zone } } }];
     }
   }
   // ---- Round 138 ----

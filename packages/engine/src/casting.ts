@@ -512,6 +512,10 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       g.log(`${g.player(p).name} reveals ${resp.ids.map((i) => g.nameOf(i)).join(', ')}.`);
     }
   }
+  if (cost.revealHand) {
+    const hand = g.player(p).hand;
+    g.log(hand.length ? `${g.player(p).name} reveals their hand: ${hand.map((i) => g.nameOf(i)).join(', ')}.` : `${g.player(p).name} reveals an empty hand.`);
+  }
   if (cost.revealFromHand) {
     const cands = g.player(p).hand.filter((id) => matchesFilter(g, g.obj(id), { ...cost.revealFromHand, zone: 'hand' }, ctx));
     const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Reveal a card from your hand', candidates: cands, min: 1, max: 1, revealToChooser: true, sourceId: obj.id });
@@ -1097,18 +1101,35 @@ export function availableAlternativeCosts(g: Game, p: PlayerId, obj: GameObject)
 }
 
 /** Alternative costs a player rule grants for other players' spells ("you may pay {0} rather than ..."). */
-export function grantedAltCosts(g: Game, p: PlayerId, obj: GameObject): { id: string; label: string; mana: string }[] {
-  const out: { id: string; label: string; mana: string }[] = [];
+export interface GrantedAltCost {
+  id: string;
+  label: string;
+  mana: string;
+  /** "by paying life equal to its mana value rather than paying its mana cost" */
+  payLifeEqualToManaValue?: boolean;
+  /** "You may pay eight {E} rather than pay the mana cost for permanent spells you cast." */
+  energy?: number;
+}
+
+export function grantedAltCosts(g: Game, p: PlayerId, obj: GameObject): GrantedAltCost[] {
+  const out: GrantedAltCost[] = [];
   const rules = g.playerRules(p);
   for (let i = 0; i < rules.length; i++) {
     const r = rules[i];
     if (r.kind !== 'custom' || r.tag !== 'altCostForSpells') continue;
-    const d = r.data as { cost?: string; filter?: import('./types.js').ObjectFilter; oncePerTurn?: boolean; fromZone?: GameObject['zone'] } | undefined;
-    if (!d?.cost) continue;
+    const d = r.data as { cost?: string; payLifeEqualToManaValue?: boolean; energy?: number; filter?: import('./types.js').ObjectFilter; oncePerTurn?: boolean; fromZone?: GameObject['zone'] } | undefined;
+    if (!d || (!d.cost && !d.payLifeEqualToManaValue && d.energy === undefined)) continue;
     if (d.oncePerTurn && g.state.turnStats[`altCost:${p}`]) continue;
     if (d.fromZone && obj.zone !== d.fromZone) continue;
     if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
-    out.push({ id: `plr:${i}`, label: `Pay ${d.cost} instead of this spell's mana cost`, mana: d.cost });
+    if (d.payLifeEqualToManaValue) {
+      const mv = g.characteristics(obj.id).manaValue;
+      if (g.player(p).life < mv) continue;
+      out.push({ id: `plr:${i}`, label: `Pay ${mv} life instead of this spell's mana cost`, mana: '', payLifeEqualToManaValue: true });
+    } else if (d.energy !== undefined) {
+      if (g.player(p).energy < d.energy) continue;
+      out.push({ id: `plr:${i}`, label: `Pay ${d.energy} {E} instead of this spell's mana cost`, mana: '', energy: d.energy });
+    } else out.push({ id: `plr:${i}`, label: `Pay ${d.cost} instead of this spell's mana cost`, mana: d.cost! });
   }
   return out;
 }
@@ -1525,8 +1546,15 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), kickerCosts, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
   // "If you cast a spell this way, pay life equal to its mana value rather than paying its mana cost."
   let lifeInsteadOfMana = 0;
-  if (!opts.free && opts.payLifeInsteadOfMana) {
+  let energyInsteadOfMana = 0;
+  const grantedAlt = altId?.startsWith('plr:') ? grantedAltCosts(g, p, obj).find((a) => a.id === altId) : undefined;
+  if (!opts.free && (opts.payLifeInsteadOfMana || grantedAlt?.payLifeEqualToManaValue)) {
     lifeInsteadOfMana = g.characteristics(obj.id).manaValue;
+    cost = { symbols: [], xCount: cost.xCount };
+  }
+  if (!opts.free && grantedAlt?.energy !== undefined) {
+    if (g.player(p).energy < grantedAlt.energy) return false;
+    energyInsteadOfMana = grantedAlt.energy;
     cost = { symbols: [], xCount: cost.xCount };
   }
   if (!opts.free && !opts.payLifeInsteadOfMana && obj.memory['payLifeToCast']) {
@@ -1656,6 +1684,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   };
   g.state.stack.push(item);
   if (lifeInsteadOfMana > 0) g.loseLife(p, lifeInsteadOfMana, id);
+  if (energyInsteadOfMana > 0) g.player(p).energy -= energyInsteadOfMana;
   obj.wasCast = true;
   player.spellsCastThisTurn++;
   if (obj.isCommander && fromZone === 'command') obj.commanderCasts++;

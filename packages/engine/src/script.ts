@@ -621,6 +621,8 @@ export interface AbilityCost {
   returnSelf?: boolean;
   /** Reveal this card from your hand (free; the ability works from the hand). */
   revealSelf?: boolean;
+  /** "You may reveal your hand rather than pay ~'s mana cost": show the whole hand (free). */
+  revealHand?: boolean;
   /** Waterbend {N}: pay {N}, tapping untapped artifacts and creatures you control for {1} each. */
   waterbend?: number | 'X';
   /** Collect evidence N: exile cards with total mana value N or more from your graveyard (optional when "you may"). */

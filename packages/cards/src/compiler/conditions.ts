@@ -345,6 +345,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if (t === 'you control your commander' || t === 'you control a commander') return { kind: 'controlsCommander' };
   if (t === 'you are the monarch') return { kind: 'isMonarch', ref: { ref: 'controller' } };
   if (t === 'you have no cards in hand') return { kind: 'handSize', ref: { ref: 'controller' }, op: '==', value: 0 };
+  // "you have no land cards in hand"
+  if ((m = t.match(/^you have no (.+?) cards? in (?:your )?hand$/))) {
+    const nh = parseNoun(`a ${oc(m, 1)} card`);
+    if (nh && nh.confident) return { kind: 'count', filter: { ...nh.filter, zone: 'hand', owner: 'you' }, op: '==', value: 0 };
+  }
   if ((m = t.match(/^you have (\w+) or more cards in hand$/))) return { kind: 'handSize', ref: { ref: 'controller' }, op: '>=', value: wordToNumber(m[1]) ?? 1 };
   if ((m = t.match(/^you have (\w+) or fewer cards in hand$/))) return { kind: 'handSize', ref: { ref: 'controller' }, op: '<=', value: wordToNumber(m[1]) ?? 1 };
   if ((m = t.match(/^you control exactly one (.+)$/))) {

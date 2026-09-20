@@ -208,6 +208,10 @@ export function parseCost(text: string): AbilityCost | null {
       cost.payLifeAmount = a;
       matched = true;
     }
+    if (!matched) if (/^Reveal your hand$/i.test(p)) {
+      cost.revealHand = true;
+      matched = true;
+    }
     if (!matched) kp16: if (/^Sacrifice ~$/i.test(p)) {
       cost.sacrificeSelf = true;
       matched = true;
