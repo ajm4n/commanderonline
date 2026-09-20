@@ -2983,7 +2983,12 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   if (/^You have no maximum hand size(?: for as long as you control ~)?$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'noMaxHandSize' } }];
   if (/^You have hexproof$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'hexproof' } }];
   if (/^You have shroud$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'shroud' } }];
-  if (/^You cannot lose the game and your opponents cannot win the game$/i.test(L)) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'cantLose' } }];
+  if (/^You cannot lose the game and your opponents cannot win the game$/i.test(L)) {
+    return [
+      { kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'cantLose' } },
+      { kind: 'static', text: line, ruleAffects: 'opponents', rule: { kind: 'custom', tag: 'cantWin' } },
+    ];
+  }
   if ((m = L.match(/^You may play (?:an additional land|(\w+) additional lands) on each of your turns$/i))) return [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'extraLandDrop', count: m[1] ? (wordToNumber(m[1]) as number) ?? 1 : 1 } }];
   // "White spells you cast cost {W} more to cast."
   if ((m = L.match(/^(.+?) you cast cost ((?:\{[WUBRGC]\})+) more to cast$/i))) {

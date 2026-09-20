@@ -1511,7 +1511,14 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       // Untap creatures that attacked for a true additional combat handled by scripts (e.g. Aggravated Assault untaps all).
       return;
     case 'winGame':
-      for (const p of playersOf(g, e.who, ctx)) for (const o of g.opponentsOf(p)) g.playerLoses(o, `${g.player(p).name} won the game`);
+      for (const p of playersOf(g, e.who, ctx)) {
+        // Platinum Angel / Angel's Grace: "your opponents can't win the game".
+        if (g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'cantWin')) {
+          g.log(`${g.player(p).name} can't win the game.`);
+          continue;
+        }
+        for (const o of g.opponentsOf(p)) g.playerLoses(o, `${g.player(p).name} won the game`);
+      }
       return;
     case 'loseGame':
       for (const p of playersOf(g, e.who, ctx)) g.playerLoses(p, 'effect');

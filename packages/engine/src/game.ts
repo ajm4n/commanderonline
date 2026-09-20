@@ -2267,9 +2267,18 @@ export class Game {
     return null;
   }
 
+  /** Teferi's Protection: "your life total can't change". */
+  lifeLocked(pid: PlayerId): boolean {
+    return this.playerRules(pid).some((r) => r.kind === 'custom' && r.tag === 'lifeCantChange');
+  }
+  /** Teferi's Protection: the player has protection from everything (can't be targeted, all damage to them prevented). */
+  playerProtected(pid: PlayerId): boolean {
+    return this.playerRules(pid).some((r) => r.kind === 'custom' && r.tag === 'protectionFromEverything');
+  }
   gainLife(pid: PlayerId, n: number, sourceId?: ObjectId) {
     if (n <= 0) return;
     const p = this.player(pid);
+    if (this.lifeLocked(pid)) return;
     if (this.playerRules(pid).some((r) => r.kind === 'cantGainLife')) return;
     // "If you would gain life, draw that many cards instead." / "… lose that much life instead."
     for (const r of this.playerRules(pid)) {
@@ -2318,6 +2327,7 @@ export class Game {
   }
 
   loseLife(pid: PlayerId, n: number, sourceId?: ObjectId, opts: { fromDamage?: boolean } = {}) {
+    if (this.lifeLocked(pid)) return;
     if (n <= 0) return;
     const p = this.player(pid);
     // "Damage that would reduce your life total to less than 1 reduces it to 1 instead." (damage only)
@@ -2540,6 +2550,11 @@ export class Game {
           return 0;
         }
       }
+    }
+    // Teferi's Protection: a player with protection from everything takes no damage.
+    if (target.kind === 'player' && this.playerProtected(target.id)) {
+      this.log(`Damage to ${this.player(target.id).name} is prevented (protection from everything).`);
+      return 0;
     }
     {
       const stopped = this.preventedByFog(sourceId, target, combat, amount);

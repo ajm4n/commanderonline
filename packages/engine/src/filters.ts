@@ -452,6 +452,7 @@ export function canTarget(g: Game, target: Target, sourceId: ObjectId | null, co
     const prules = g.playerRules(target.id);
     if ((p.flags['hexproof'] || prules.some((r) => r.kind === 'custom' && r.tag === 'hexproof')) && target.id !== controller) return false;
     if (p.flags['shroud'] || prules.some((r) => r.kind === 'custom' && r.tag === 'shroud')) return false;
+    if (prules.some((r) => r.kind === 'custom' && r.tag === 'protectionFromEverything')) return false;
     return true;
   }
   if (target.kind === 'stackItem') {

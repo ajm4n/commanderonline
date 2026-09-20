@@ -2155,6 +2155,18 @@ const PATTERNS: Pattern[] = [
     return who ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivateAbilities', data: /mana abilities/i.test(m[0]) ? { exceptMana: true } : {} }, on: who, duration: / until end of turn$| this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
   // "you may pay {1}. If you do, copy that ability."
+  // Angel's Grace: "You can't lose the game this turn and your opponents can't win the game this turn."
+  [/^you cannot lose the game this turn and your opponents cannot win the game this turn$/i, () => [
+    { kind: 'grantPlayerRule', rule: { kind: 'cantLose' }, duration: 'thisTurn' },
+    { kind: 'grantPlayerRule', who: { ref: 'eachOpponent' }, rule: { kind: 'custom', tag: 'cantWin' }, duration: 'thisTurn' },
+  ]],
+  // "Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead."
+  [/^(?:until end of turn, )?damage that would reduce your life total to less than (\d+) reduces it to \1 instead(?: until end of turn| this turn)?$/i, (m) => [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'lifeFloor', data: parseInt(m[1], 10) }, duration: 'thisTurn' }]],
+  // Teferi's Protection: "Until your next turn, your life total can't change and you gain protection from everything."
+  [/^(?:until your next turn, )?your life total cannot change and you gain protection from everything(?: until your next turn)?$/i, () => [
+    { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'lifeCantChange' }, duration: 'untilYourNextTurn' },
+    { kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'protectionFromEverything' }, duration: 'untilYourNextTurn' },
+  ]],
   // Chrome Mox: "Add one mana of any of the exiled card's colors."
   [/^add one mana of any of the exiled card's colou?rs$/i, () => [{ kind: 'addMana', mana: 'exiledColors' }]],
   // Thousand-Year Storm: "copy it for each other instant and sorcery spell you've cast before it this turn"

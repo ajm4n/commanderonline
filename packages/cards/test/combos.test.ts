@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -736,5 +736,65 @@ describe('combos and staples played through the engine', () => {
     d.resolve();
     expect(d.g.player(p2).life).toBe(38); // original ping + copy
     expect(d.g.obj(trisk).counters['+1/+1']).toBe(2); // the copy costs no counter
+  });
+  it("Teferi's Protection: no targeting, no damage, no life change until your next turn", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Plains', 3);
+    d.lands(p2, 'Mountain', 1);
+    const prot = d.give(p1, C("Teferi's Protection"));
+    const bolt = d.give(p2, C('Lightning Bolt'));
+    const bear = d.put(p1, C('Grizzly Bears'));
+    d.cast(prot);
+    d.resolve();
+    expect(d.g.obj(bear).phasedOut).toBe(true);
+    expect(d.g.player(p1).exile.map((id) => d.g.obj(id).card.name)).toContain("Teferi's Protection");
+    // The opponent's Bolt cannot target p1 at all now.
+    d.main(p2);
+    d.cast(bolt);
+    d.until((x) => x.type === 'chooseTargets' || x.type === 'priority');
+    expect(d.d.type).toBe('chooseTargets');
+    if (d.d.type === 'chooseTargets') {
+      expect(d.d.slots[0].legal.some((t) => t.kind === 'player' && t.id === p1)).toBe(false);
+      d.submit({ type: 'targets', targets: [[{ kind: 'player', id: p2 }]] });
+    }
+    d.resolve();
+    expect(d.g.player(p2).life).toBe(37);
+    d.g.dealDamage(null, { kind: 'player', id: p1 }, 5, false);
+    expect(d.g.player(p1).life).toBe(40);
+    d.g.loseLife(p1, 3);
+    expect(d.g.player(p1).life).toBe(40);
+    // p1's next turn: the protection has ended and the Bears are back.
+    d.main(p1);
+    expect(d.g.obj(bear).phasedOut).toBeFalsy();
+    d.g.loseLife(p1, 3);
+    expect(d.g.player(p1).life).toBe(37);
+  });
+
+  it("Angel's Grace: you can't lose this turn and damage can't take you below 1", () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Plains', 1);
+    d.g.player(p1).life = 3;
+    const grace = d.give(p1, C("Angel's Grace"));
+    d.cast(grace);
+    d.resolve();
+    d.g.dealDamage(null, { kind: 'player', id: p1 }, 10, false);
+    expect(d.g.player(p1).life).toBe(1);
+    d.g.loseLife(p1, 5); // loss of life is not damage: it goes through
+    expect(d.g.player(p1).life).toBe(-4);
+    d.until((x) => x.type === 'priority');
+    expect(d.g.player(p1).lost).toBe(false); // can't lose this turn
+  });
+
+  it("Platinum Angel stops an opponent's Thassa's Oracle win", () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Platinum Angel'));
+    d.lands(p2, 'Island', 2);
+    d.main(p2);
+    d.clearLibrary(p2); // after p2's draw step, so p2 does not deck out
+    const oracle = d.give(p2, C("Thassa's Oracle"));
+    d.cast(oracle);
+    d.until((x) => (x.type === 'priority' && d.g.state.stack.length === 0) || d.g.state.over);
+    expect(d.g.state.over).toBe(false);
+    expect(d.g.player(p1).lost).toBe(false);
   });
 });

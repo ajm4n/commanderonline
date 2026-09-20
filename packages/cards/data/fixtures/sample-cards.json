@@ -8387,5 +8387,65 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/6/3/63349fa3-4462-413c-bd96-bbc1049165a0.jpg?1783917104"
     }
+  },
+  {
+    "object": "card",
+    "id": "e78e39ea-20be-4196-992c-7ed2cb8150c1",
+    "oracle_id": "66ca8a60-e028-4a5f-8177-860b888cb9d1",
+    "name": "Angel's Grace",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{W}",
+    "cmc": 1,
+    "type_line": "Instant",
+    "oracle_text": "Split second (As long as this spell is on the stack, players can't cast spells or activate abilities that aren't mana abilities.)\nYou can't lose the game this turn and your opponents can't win the game this turn. Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead.",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [
+      "Split second"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/e/7/e78e39ea-20be-4196-992c-7ed2cb8150c1.jpg?1783927886"
+    }
+  },
+  {
+    "object": "card",
+    "id": "ca7f4fd6-e268-4d15-bfbf-d9f0f95864fc",
+    "oracle_id": "b148578c-c0bf-4785-b97c-4b6f83028008",
+    "name": "Platinum Angel",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{7}",
+    "cmc": 7,
+    "type_line": "Artifact Creature — Angel",
+    "oracle_text": "Flying\nYou can't lose the game and your opponents can't win the game.",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [
+      "Flying"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "4",
+    "toughness": "4",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/c/a/ca7f4fd6-e268-4d15-bfbf-d9f0f95864fc.jpg?1783937281"
+    }
   }
 ]
