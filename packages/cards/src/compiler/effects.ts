@@ -654,6 +654,16 @@ const REVEAL_UNTIL_PATTERNS: Pattern[] = [
 ];
 
 const PATTERNS: Pattern[] = [
+  // "Until your next turn, you may cast sorcery spells as though they had flash." (Teferi, Time Raveler)
+  [/^(?:(?:until your next turn|until end of turn|this turn), )?you may cast (.+?) as though (?:they|it) had flash(?: until end of turn| this turn)?$/i, (m) => {
+    // "until your next turn" is retimed by the caller from the endOfTurn marker.
+    const duration: Duration = /^until your next turn/i.test(m[0]) ? 'untilYourNextTurn' : 'endOfTurn';
+    if (/^spells$/i.test(m[1])) return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'castAsThoughFlash' }, duration }];
+    const parts = m[1].split(/ and /i).map((x) => parseNoun(x.replace(/ spells?$/i, ' spell')));
+    if (!parts.every((x) => x)) return null;
+    const f = parts.length === 1 ? { ...parts[0]!.filter, zone: undefined } : { anyOf: parts.map((x) => ({ ...x!.filter, zone: undefined })) };
+    return [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'castAsThoughFlash', data: { filter: f } }, duration }];
+  }],
   // Voting: "Starting with you, each player votes for death or taxes."
   [/^(?:starting with you, )?each player (?:secretly )?votes for (.+?)(?:, then those votes are revealed)?$/i, (m, ctx) => {
     const list = m[1];
@@ -9448,7 +9458,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     ctx.targets.length = saved;
     ctx.lastPlayer = savedPlayer;
   }
-  if ((m = text.match(/^until (?:the end of your next turn|end of turn|your next turn), you may (?:play|cast) (.+)$/i))) {
+  if ((m = text.match(/^until (?:the end of your next turn|end of turn|your next turn), you may (?:play|cast) (.+)$/i)) && !/ as though (?:they|it) had flash$/i.test(m[1])) {
     const ref = objRef(m[1], ctx) ?? ctx.lastObj ?? { ref: 'lastMoved' as const };
     return [{ kind: 'playFromExile', what: ref, duration: /end of turn$/i.test(m[0].split(',')[0]) ? 'thisTurn' : 'permanent' }];
   }

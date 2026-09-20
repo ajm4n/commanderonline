@@ -446,7 +446,7 @@ export type Effect =
   /** ~ gains every activated ability of the matching objects. */
   | { kind: 'grantAllActivatedAbilities'; on: Ref; from: ObjectFilter; duration?: Duration }
   /** Grant a player rule for the rest of the turn. */
-  | { kind: 'grantPlayerRule'; who?: Ref; rule: RuleModification }
+  | { kind: 'grantPlayerRule'; who?: Ref; rule: RuleModification; /** Default ('thisTurn' / 'endOfTurn'): this turn. */ duration?: Duration | 'thisTurn' }
   /** Grant a replacement effect for the rest of the turn ("until end of turn, if you would ..."). */
   | { kind: 'grantReplacement'; who?: Ref; spec: ReplacementSpec }
   /** "Double ~'s power until end of turn." */

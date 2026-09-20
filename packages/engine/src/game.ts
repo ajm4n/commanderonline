@@ -92,7 +92,7 @@ export interface GameState {
   /** turnStats of the previous turn ("if a player cast two or more spells last turn"). */
   lastTurnStats: Record<string, number>;
   /** Player rules granted for the rest of the turn ("You may cast spells this turn as though they had flash"). */
-  turnRules?: { player: PlayerId; rule: import('./types.js').RuleModification }[];
+  turnRules?: { player: PlayerId; rule: import('./types.js').RuleModification; /** Lasts until this player's next turn begins instead of the end of this turn. */ untilNextTurnOf?: PlayerId }[];
   /** Replacement effects granted for the rest of the turn ("until end of turn, if you would ..."). */
   turnReplacements?: { player: PlayerId; spec: import('./script.js').ReplacementSpec }[];
   /** Day/night cycle: undefined until a card starts it. */
@@ -2841,6 +2841,8 @@ export class Game {
     t.skipSteps = [];
     t.attackers = [];
     this.player(pid).lastTurnStarted = t.number;
+    // Rules granted "this turn" end; "until your next turn" rules end only when that player's turn begins.
+    this.state.turnRules = (this.state.turnRules ?? []).filter((r) => r.untilNextTurnOf !== undefined && r.untilNextTurnOf !== pid);
     this.state.turnStats = {};
     for (const p of Object.values(this.state.players)) {
       p.turnStats = {};

@@ -1173,7 +1173,12 @@ export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (!castableFrom(g, p, obj)) return false;
   const ch = g.characteristics(obj.id);
   const face = obj.card;
-  const isInstant = ch.types.includes('Instant') || ch.keywords.has('Flash') || /\bFlash\b/.test(face.oracleText.split('\n')[0] ?? '');
+  const flashGrant = g.playerRules(p).some((r) => {
+    if (r.kind !== 'custom' || r.tag !== 'castAsThoughFlash') return false;
+    const d = (r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+    return !d.filter || matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p });
+  });
+  const isInstant = ch.types.includes('Instant') || ch.keywords.has('Flash') || /\bFlash\b/.test(face.oracleText.split('\n')[0] ?? '') || flashGrant;
   const anyFaceInstant = obj.card.faces?.some((f) => /Instant/.test(f.typeLine) || /^Flash\b/m.test(f.oracleText));
   if (ch.types.includes('Land') && !(obj.card.faces?.some((f) => !/Land/.test(f.typeLine)))) return false; // lands are played, not cast
   const sorceryOnly = obj.memory['sorceryOnly'] === true;

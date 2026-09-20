@@ -590,7 +590,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'grantPlayerRule': {
       g.state.turnRules = g.state.turnRules ?? [];
-      for (const p of playersOf(g, e.who, ctx)) g.state.turnRules.push({ player: p, rule: e.rule });
+      for (const p of playersOf(g, e.who, ctx)) g.state.turnRules.push({ player: p, rule: e.rule, untilNextTurnOf: e.duration === 'untilYourNextTurn' ? ctx.controller : undefined });
       g.touch();
       return;
     }
