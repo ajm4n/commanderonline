@@ -723,11 +723,15 @@ export class Game {
   playerRules(p: PlayerId): import('./types.js').RuleModification[] {
     const out: import('./types.js').RuleModification[] = [];
     for (const src of Object.values(this.state.objects)) {
-      if (src.zone !== 'battlefield' && src.zone !== 'command') continue;
+      const onField = src.zone === 'battlefield' || src.zone === 'command';
+      // Squee: "You may cast this card from your graveyard": a static that works from another zone.
+      if (!onField && src.zone !== 'graveyard' && src.zone !== 'exile') continue;
       const script = this.scriptFor(src);
       for (const ab of script.abilities) {
         if (ab.kind !== 'static' || !ab.rule) continue;
-        if ((ab.zone ?? 'battlefield') !== src.zone) continue;
+        const zones = ab.zone ? (Array.isArray(ab.zone) ? ab.zone : [ab.zone]) : ['battlefield'];
+        if (!zones.includes(src.zone)) continue;
+        if (!onField && src.owner !== p) continue;
         const who = ab.ruleAffects;
         const applies =
           (who === 'controller' && src.controller === p) ||

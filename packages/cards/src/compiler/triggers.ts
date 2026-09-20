@@ -69,6 +69,7 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
     .replace(/^Whenever ~ attack, /, 'Whenever ~ attacks, ')
     .replace(/^Whenever you attack a player with /i, 'Whenever you attack with ')
     .replace(/^Whenever ~ attacks while saddled, /i, 'Whenever ~ attacks, if ~ is saddled, ')
+    .replace(/^(Whenever (?:a player|an opponent|you) activates? an ability), if it (?:is not|isn't) a mana ability, /i, '$1 that is not a mana ability, ')
     .replace(/^Whenever ~ attacks for the first time each turn, /i, 'Whenever ~ attacks, ')
     .replace(/^At the beginning of combat on each player's turn, /i, 'At the beginning of combat on each turn, ')
     .replace(/deals (combat )?damage to (a player|an opponent) or battle\b/i, 'deals $1damage to $2')

@@ -21,7 +21,7 @@ const byName = (name: string): ScryfallCard => {
 
 describe('fixture', () => {
   it('contains the expected cards and every one is playable', () => {
-    expect(raw.length).toBe(149);
+    expect(raw.length).toBe(152);
     expect(raw.every(isPlayableCard)).toBe(true);
     expect(raw.filter((c) => c.card_faces).map((c) => c.layout).sort()).toEqual(['adventure', 'flip', 'modal_dfc', 'split', 'transform']);
   });
@@ -210,8 +210,8 @@ describe('CardDb', () => {
   const db = loadFixtureDb();
 
   it('loads the fixture synchronously', () => {
-    expect(db.size).toBe(149);
-    expect(db.all()).toHaveLength(149);
+    expect(db.size).toBe(152);
+    expect(db.all()).toHaveLength(152);
     expect(db.all()).not.toBe(db.all()); // defensive copy
   });
 
@@ -298,7 +298,7 @@ describe('CardDb', () => {
 
     const sol = db.search('sol').map((c) => c.name);
     expect(sol).toEqual(['Sol Ring', 'Solemn Simulacrum']);
-    expect(db.search('ring').map((c) => c.name)).toEqual(['Smothering Tithe', 'Sol Ring']); // both substring hits, alphabetical
+    expect(db.search('ring').map((c) => c.name)).toEqual(['Rings of Brighthearth', 'Smothering Tithe', 'Sol Ring']); // prefix hit first, then substring hits alphabetical
   });
 
   it('search matches face names, dedupes, and respects the limit', () => {
@@ -333,7 +333,7 @@ describe('loadCardDb', () => {
     const file = join(dir, 'cards.json');
     writeFileSync(file, JSON.stringify(loadFixtureDb().all()));
     const db = await loadCardDb(file);
-    expect(db.size).toBe(149);
+    expect(db.size).toBe(152);
     expect(db.byName('Counterspell')?.oracleText).toBe('Counter target spell.');
   });
 });

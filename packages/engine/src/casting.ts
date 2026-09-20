@@ -971,7 +971,7 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
       if (d.oncePerTurn && g.state.turnStats[`castFromGy:${p}`]) continue;
       if (d.yourTurnOnly && g.state.turn.activePlayer !== p) continue;
       if (d.perPermanentType && unusedGraveyardType(g, p, obj) === undefined) continue;
-      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: (r as { sourceId?: ObjectId }).sourceId ?? null, controller: p })) continue;
       return true;
     }
     return false;
@@ -999,6 +999,14 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
   }
   // "You may cast ~ from exile." (the permission is printed on the card itself)
   if (obj.zone === 'exile' && obj.owner === p && /^You may cast .+ from exile\.?$/mi.test(obj.card.oracleText)) return true;
+  if (obj.zone === 'exile' && obj.owner === p) {
+    for (const r of g.playerRules(p)) {
+      if (r.kind !== 'custom' || r.tag !== 'castFromExile') continue;
+      const d = (r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
+      if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: (r as { sourceId?: ObjectId }).sourceId ?? null, controller: p })) continue;
+      return true;
+    }
+  }
   if (obj.zone === 'exile' && obj.memory['playableBy'] !== p) {
     // "You may play cards you don't own with stash counters on them from exile" style permissions.
     for (const r of g.playerRules(p)) {

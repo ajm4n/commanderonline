@@ -706,8 +706,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "You may cast ~ from your graveyard or from exile." / "You may cast ~ from your graveyard."
-  if (/^You may cast ~ from your graveyard(?: or from exile)?(?:, but not from anywhere else)?$/i.test(L)) {
-    const out: AbilitySpec[] = [{ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { nameIs: '~' } } } }];
+  if ((m = L.match(/^You may cast ~ from your graveyard( or from exile)?(?:, but not from anywhere else)?$/i))) {
+    // The permission is printed on the card, so it has to work while the card sits in the graveyard (or exile).
+    const out: AbilitySpec[] = [{ kind: 'static', text: line, ruleAffects: 'controller', zone: 'graveyard', rule: { kind: 'custom', tag: 'castFromGraveyard', data: { filter: { nameIs: '~' } } } }];
+    if (m[1]) out.push({ kind: 'static', text: line, ruleAffects: 'controller', zone: 'exile', rule: { kind: 'custom', tag: 'castFromExile', data: { filter: { nameIs: '~' } } } });
     return out;
   }
   // ---- Round 152 ----

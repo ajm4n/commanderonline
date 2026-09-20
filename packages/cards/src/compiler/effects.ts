@@ -2030,6 +2030,8 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'changeTargets', what: ref }];
   }],
   [/^copy (.+?)(?:,? except (?:that )?the copy is (?:white|blue|black|red|green|colorless|not legendary|legendary))?(?:\. You may choose new targets for the copy)?$/i, (m, ctx) => {
+    // "copy that ability": the activated or triggered ability on the stack, not the permanent that has it.
+    if (/^(?:that|the) (?:activated |triggered |activated or triggered )?ability$/i.test(m[1])) return [{ kind: 'copySpell', what: { ref: 'triggerStackItem' } }];
     const isCard = /\bcards?\b|^(?:the exiled card|that card|the revealed card|it)$/i.test(m[1]) && !/\bspell\b/i.test(m[1]);
     const ref = objRef(m[1], ctx);
     if (!ref) return null;

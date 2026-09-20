@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -701,5 +701,40 @@ describe('combos and staples played through the engine', () => {
     const after = d.prio().activatableAbilities.filter((a) => a.objectId === tower).map((a) => a.text);
     expect(after).toEqual(['{T}: Add {R}.']);
     expect(d.g.characteristics(tower).subtypes).toEqual(['Mountain']);
+  });
+  it('Squee, the Immortal can be cast from the graveyard and from exile', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Mountain', 3);
+    const squee = d.g.createObject(C('Squee, the Immortal'), p1, 'graveyard', { skipEvents: true }).id;
+    d.g.refreshDecision();
+    d.until((x) => x.type === 'priority' && x.player === p1);
+    expect(d.prio().playableCards).toContain(squee);
+    d.cast(squee);
+    d.resolve();
+    expect(d.bf(p1, 'Squee, the Immortal')).toHaveLength(1);
+    const onField = d.bf(p1, 'Squee, the Immortal')[0];
+    d.lands(p1, 'Mountain', 3); // the first three are tapped from the cast
+    d.g.moveObject(onField, 'exile', { cause: 'exile' });
+    d.g.refreshDecision();
+    d.until((x) => x.type === 'priority' && x.player === p1);
+    expect(d.prio().playableCards).toContain(onField);
+  });
+
+  it('Rings of Brighthearth copies a non-mana activated ability for {2}', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Plains', 2);
+    d.put(p1, C('Rings of Brighthearth'));
+    const trisk = d.put(p1, C('Triskelion'));
+    d.g.obj(trisk).counters['+1/+1'] = 3;
+    d.g.refreshDecision();
+    const ping = d.prio().activatableAbilities.find((a) => a.objectId === trisk);
+    expect(ping).toBeDefined();
+    d.yesNo = () => true; // pay {2} for the copy
+    d.enemy = p2;
+    d.submit({ type: 'activate', objectId: trisk, abilityIndex: ping!.abilityIndex });
+    d.targetPlayer(p2);
+    d.resolve();
+    expect(d.g.player(p2).life).toBe(38); // original ping + copy
+    expect(d.g.obj(trisk).counters['+1/+1']).toBe(2); // the copy costs no counter
   });
 });

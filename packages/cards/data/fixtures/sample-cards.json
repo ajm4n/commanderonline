@@ -8304,5 +8304,88 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/d/0/d072e9ca-aae7-45dc-8025-3ce590bae63f.jpg?1783930171"
     }
+  },
+  {
+    "object": "card",
+    "id": "a8232acd-4645-489c-8cf1-4efdc75d9322",
+    "oracle_id": "481fb71a-11b9-462e-a4da-ca35ffd1bd22",
+    "name": "Squee, the Immortal",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}{R}",
+    "cmc": 3,
+    "type_line": "Legendary Creature — Goblin",
+    "oracle_text": "You may cast this card from your graveyard or from exile.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "1",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/a/8/a8232acd-4645-489c-8cf1-4efdc75d9322.jpg?1783923257"
+    }
+  },
+  {
+    "object": "card",
+    "id": "838ffc87-517a-4d94-8ce0-bc9ed01ecc52",
+    "oracle_id": "bbf9494c-c4bb-4d36-98fe-8387846b342e",
+    "name": "Rings of Brighthearth",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}",
+    "cmc": 3,
+    "type_line": "Artifact",
+    "oracle_text": "Whenever you activate an ability, if it isn't a mana ability, you may pay {2}. If you do, copy that ability. You may choose new targets for the copy.",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/8/3/838ffc87-517a-4d94-8ce0-bc9ed01ecc52.jpg?1783928748"
+    }
+  },
+  {
+    "object": "card",
+    "id": "63349fa3-4462-413c-bd96-bbc1049165a0",
+    "oracle_id": "74f67dcf-5afb-45aa-8d4b-3cdb23f6f2a1",
+    "name": "Triskelion",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{6}",
+    "cmc": 6,
+    "type_line": "Artifact Creature — Construct",
+    "oracle_text": "This creature enters with three +1/+1 counters on it.\nRemove a +1/+1 counter from this creature: It deals 1 damage to any target.",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "1",
+    "toughness": "1",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/6/3/63349fa3-4462-413c-bd96-bbc1049165a0.jpg?1783917104"
+    }
   }
 ]
