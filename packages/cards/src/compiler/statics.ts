@@ -511,6 +511,53 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return out;
     }
   }
+  // "Equipped creature has lifelink if you control a Cleric, deathtouch if you control a Rogue,
+  // ..." — one static per clause. A clause conditioned on the subject itself ("vigilance if it is
+  // white") becomes a filter on the subject instead, so it is judged per affected object.
+  if ((m = L.match(/^(.+?) (has|have) ([\w' -]+ if [^,]+(?:, (?:and )?[\w' -]+ if [^,]+)+)$/i))) {
+    const clauses = m[3].split(/, (?:and )?/).map((x) => x.trim()).filter(Boolean);
+    if (clauses.length >= 2) {
+      const outs = clauses.map((cl) => {
+        const cm = cl.match(/^([\w' -]+) if (.+)$/i);
+        if (!cm) return null;
+        return /^it /i.test(cm[2])
+          ? parseStatic(`${m![1]} ${cm[2].replace(/^it /i, 'that ')} ${m![2]} ${cm[1]}`, isCreatureOrPermanent)
+          : parseStatic(`${m![1]} ${m![2]} ${cm[1]} if ${cm[2]}`, isCreatureOrPermanent);
+      });
+      if (outs.every((o) => o !== null)) return outs.flat() as AbilitySpec[];
+    }
+  }
+  // "~ attacks each combat if able unless you control a creature named Advocate of the Beast."
+  if ((m = L.match(/^(.+?) unless (you control .+|an opponent controls .+)$/i))) {
+    const inner = parseStatic(m[1], isCreatureOrPermanent);
+    const c = parseCondition(m[2], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
+    if (inner && c && c.kind !== 'manual' && inner.every((x) => x.kind === 'static' && !x.condition))
+      return inner.map((x) => (x.kind === 'static' ? { ...x, condition: { kind: 'not' as const, c } } : x));
+  }
+  // "Enchanted land loses all land types and abilities and has "{T}: Add {C}" and "{T}, Pay 1
+  // life: Add one mana of any color.""
+  if ((m = L0.replace(/\.$/, '').match(/^(Enchanted \w+|Equipped \w+|~) loses all (?:(\w+) types and )?abilities and has ((?:"[^"]+"(?:,? and )?)+)$/i))) {
+    const a = affectsOf(m[1]);
+    const quotes = [...m[3].matchAll(/"([^"]+)"/g)].map((q) => q[1]);
+    if (a.ok && quotes.length) {
+      const out: AbilitySpec[] = [];
+      if (m[2]) out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setSubtypes: [] } });
+      out.push({ kind: 'static', text: line, affects: a.affects, modification: { layer: 6, loseAllAbilities: true, addAbilityText: quotes } });
+      return out;
+    }
+  }
+  // "Enchanted permanent is a Treasure artifact with "{T}, Sacrifice ~: Add one mana of any
+  // color," and it loses all other abilities."
+  if ((m = L0.replace(/\.$/, '').match(/^(Enchanted \w+|Equipped \w+|~) (?:is|are) (?:a|an) ([\w' -]+) with "(.+?),?"(,? and it loses all other abilities)?$/i))) {
+    const a = affectsOf(m[1]);
+    const probe = parseNoun(`a ${m[2]}`);
+    if (a.ok && probe && probe.confident && probe.filter.types?.length) {
+      return [
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 4, setTypes: probe.filter.types, setSubtypes: probe.filter.subtypes ?? [] } },
+        { kind: 'static', text: line, affects: a.affects, modification: { layer: 6, loseAllAbilities: m[4] ? true : undefined, addAbilityText: [m[3]] } },
+      ];
+    }
+  }
   // "Enchanted permanent is a colorless Forest land."
   if ((m = L.match(/^(Enchanted \w+|Equipped \w+|~) (?:is|are) (?:a|an) ([\w' -]+)$/i))) {
     const a = affectsOf(m[1]);

@@ -864,6 +864,7 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   }
   if ((m = t.match(/^you sacrificed (?:a|an) (.+?) this turn$/))) return { kind: 'eventThisTurn', event: 'sacrifice', player: 'you' };
   if ((m = t.match(/^(?:~|it) attacked during your last turn$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { attackedThisTurn: true } };
+  if (/^(?:~|it) attacked during (?:its|their) controller's last turn$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { custom: 'attackedLastTurn' } };
   if (t === 'there are no cards in your graveyard') return { kind: 'graveyard', ref: { ref: 'controller' }, op: '==', value: 0 };
   if ((m = t.match(/^there are (\w+) or more cards in your graveyard$/))) {
     const n = wordToNumber(m[1]);
