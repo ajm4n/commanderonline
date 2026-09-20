@@ -9048,5 +9048,63 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/9/1/912b94c9-7200-452d-940f-df0a7cceb377.jpg?1783909612"
     }
+  },
+  {
+    "object": "card",
+    "id": "f8d70b3b-f6f9-4b3c-ad70-0ce369e812b5",
+    "oracle_id": "623903de-3c04-4745-9af3-d7ec9fb2574d",
+    "name": "Bite Down",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{G}",
+    "cmc": 2,
+    "type_line": "Instant",
+    "oracle_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/8/f8d70b3b-f6f9-4b3c-ad70-0ce369e812b5.jpg?1783909062"
+    }
+  },
+  {
+    "object": "card",
+    "id": "dbe1bfe0-0be7-496d-94db-e8028d4d9493",
+    "oracle_id": "42fb1a1c-ab3d-4cdc-a6ff-a591f7481583",
+    "name": "Warstorm Surge",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{5}{R}",
+    "cmc": 6,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature you control enters, it deals damage equal to its power to any target.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/b/dbe1bfe0-0be7-496d-94db-e8028d4d9493.jpg?1783922416"
+    }
   }
 ]

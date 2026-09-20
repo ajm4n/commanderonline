@@ -138,6 +138,11 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
     const moved = /\b(?:sacrificed|destroyed|exiled|discarded|revealed) (?:creature|card|permanent)/i.test(text);
     if (pw && (pw[2] || /^(its|that|the sacrificed|the destroyed)/i.test(text.trim()))) return { kind: pw[1].toLowerCase() === 'power' ? 'power' : pw[1].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref: moved ? { ref: 'lastMoved' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
   }
+  // "the amassed Army's power": you normally control exactly one Army.
+  {
+    const am = text.trim().match(/^the amassed Army's (power|toughness)$/i);
+    if (am) return { kind: am[1].toLowerCase() as 'power', ref: { ref: 'all', filter: { subtypes: ['Army'], controller: 'you', zone: 'battlefield' } } };
+  }
   if (/^(?:the number of )?colors (?:that spell|it|that card|that permanent) is$/i.test(text.trim())) return { kind: 'colorCount', ref: ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'self' }) };
   if (/^(?:that|the) (?:card|creature|permanent|spell|revealed card|exiled card|discarded card|sacrificed creature|sacrificed permanent)'s mana value$/i.test(text.trim())) return { kind: 'manaValue', ref: /\b(?:sacrificed|exiled|discarded|revealed)\b/i.test(text) ? { ref: 'lastMoved' } : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : { ref: 'lastMoved' }) };
   {
@@ -207,7 +212,12 @@ export function parseAmount(text: string, ctx: RefCtx): Amount | null {
   // "the number of red mana symbols in the mana cost of ~"
   if ((m = t.match(/^(?:the number of )?(white|blue|black|red|green) mana symbols in (?:the mana costs? of|its mana cost) ?(.*)$/))) {
     const col = ({ white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' } as const)[m[1] as 'white'];
-    const ref: Ref = !m[2] || /^~$/.test(m[2].trim()) ? { ref: 'self' } : ctx.lastObj ?? { ref: 'self' };
+    let ref: Ref = !m[2] || /^~$/.test(m[2].trim()) ? { ref: 'self' } : ctx.lastObj ?? { ref: 'self' };
+    if (m[2] && !/^(?:~|it|that (?:card|spell|creature|permanent))$/i.test(m[2].trim())) {
+      // "… in the mana costs of permanents you control": count over everything matching the noun.
+      const noun = parseNoun(`a ${singularize(m[2].trim())}`);
+      if (noun && noun.confident) ref = { ref: 'all', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
+    }
     return { kind: 'manaSymbolCount', ref, color: col };
   }
   if (/^(?:the number of )?counters? removed(?: this way)?$/.test(t)) return { kind: 'ctxMemory', key: 'countersRemovedThisWay' };

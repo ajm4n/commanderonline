@@ -2035,6 +2035,8 @@ export class Game {
         return objT((ctx.memory['lastMoved'] as ObjectId[]) ?? []);
       case 'lastDiscarded':
         return objT((ctx.memory['lastDiscarded'] as ObjectId[]) ?? []);
+      case 'lastDamaged':
+        return objT((ctx.memory['lastDamaged'] as ObjectId[]) ?? []);
       case 'lastRevealed':
         return objT((ctx.memory['lastRevealed'] as ObjectId[]) ?? (ctx.memory['lastMoved'] as ObjectId[]) ?? []);
       case 'memory': {

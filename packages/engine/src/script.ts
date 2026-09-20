@@ -131,6 +131,8 @@ export type Ref =
   | { ref: 'lastCreated' }
   | { ref: 'lastMoved' }
   | { ref: 'lastDiscarded' }
+  /** Objects the resolving effect has dealt damage to so far ("each of those creatures"). */
+  | { ref: 'lastDamaged' }
   | { ref: 'lastRevealed' }
   /** Objects remembered under a memory key by an earlier effect in the same resolution. */
   | { ref: 'memory'; key: string }

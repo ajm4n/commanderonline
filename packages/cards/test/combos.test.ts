@@ -1,8 +1,9 @@
 /** Well-known Commander interactions, compiled from oracle text and played through the engine. */
 import { describe, it, expect } from 'vitest';
-import { Game, buildPriorityDecision, type CardData, type Decision, type PlayerSetup, type Response, type PlayerId, type ObjectId, type Target } from '@commander/engine';
+import { Game, buildPriorityDecision, type CardData, type Decision, type PlayerSetup, type Response, type PlayerId, type ObjectId, type Target, type AbilitySpec, type Effect } from '@commander/engine';
 import { loadFixtureDb } from '../src/db-node.js';
 import { scriptFor } from '../src/index.js';
+import { compileCard } from '../src/compiler/index.js';
 
 const db = loadFixtureDb();
 const C = (n: string): CardData => {
@@ -133,7 +134,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed', 'Bloodbraid Elf', 'Snapcaster Mage', 'Deep Analysis', "Mizzix's Mastery", 'Terastodon', 'Light Up the Stage', 'Bite Down', 'Warstorm Surge'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -970,6 +971,16 @@ describe('combos and staples played through the engine', () => {
     d.resolve();
     expect(d.g.player(p2).library.length).toBe(lib2 - 6); // Brain Freeze plus its storm copy (Snapcaster was cast before it)
     expect(d.g.obj(freeze).zone).toBe('exile'); // flashback exiles it
+  });
+  it('"deals damage equal to its power" measures the subject, not the victim', () => {
+    const bite = compileCard(C('Bite Down')).script.abilities[0] as Extract<AbilitySpec, { kind: 'spell' }>;
+    const dmg = bite.effects[0] as Extract<Effect, { kind: 'damage' }>;
+    expect(dmg.amount).toEqual({ kind: 'power', ref: { ref: 'target', slot: 0 } });
+    expect(dmg.to).toEqual({ ref: 'target', slot: 1 });
+    const surge = compileCard(C('Warstorm Surge')).script.abilities[0] as Extract<AbilitySpec, { kind: 'triggered' }>;
+    const sd = surge.effects[0] as Extract<Effect, { kind: 'damage' }>;
+    expect(sd.amount).toEqual({ kind: 'power', ref: { ref: 'triggerObject' } });
+    expect(sd.to).toEqual({ ref: 'target', slot: 0 });
   });
   it('Terastodon: each destroyed permanent\'s controller gets an Elephant', () => {
     const { d, p1, p2 } = game();

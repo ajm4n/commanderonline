@@ -121,6 +121,8 @@ export function objRef(phrase: string, ctx: ParseCtx): Ref | null {
   if (/^each of (?:them|those (?:creatures|permanents|cards|tokens|lands))$/.test(l)) return ctx.lastObj ?? { ref: 'lastMoved' };
   if ((m0 = l.match(/^the player or planeswalker (it|that creature|~) is attacking$/))) return { ref: 'defenderOf', of: m0[1] === '~' ? SELF : ctx.lastObj ?? (ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF) };
   if (/^(each creature|all creatures|creatures) blocking (?:it|~|that creature)$/.test(l)) return { ref: 'blockersOf', of: l.endsWith('~') ? SELF : ctx.lastObj ?? SELF };
+  // After a bare "Choose target X." sentence, "that creature" is that chosen target even when later sentences moved "it".
+  if (ctx.anyTarget && /^that (?:creature|permanent|player|opponent|planeswalker|creature or planeswalker|permanent or player)$/.test(l)) return ctx.anyTarget;
   if (/^(?:the|a|an|one of the) (?:card|creature card|permanent card)s? exiled with (?:~|it)$/.test(l) || /^the exiled cards?$/.test(l) || /^cards exiled with ~$/.test(l) || /^(?:a|the) card (?:you )?exiled with cards named ~$/.test(l)) return { ref: 'chosen', key: 'exiled' };
   if (/^the creature that attacked$/.test(l)) return ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF;
   if (/^(it|them|they|that (creature|permanent|card|artifact|enchantment|land|planeswalker|token|spell)|those (creatures|permanents|cards|tokens|lands|artifacts|enchantments|planeswalkers|spells)|the (creature|permanent|card)|that object|the (?:returned|chosen) cards?)$/.test(l) || /^that [A-Z]\w+$/i.test(t)) {
@@ -9177,7 +9179,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   }
   if ((m = text.match(/^choose ((?:any number of|up to \w+|\w+) target .+)$/i))) {
     const ref = objRef(m[1], ctx);
-    if (ref) return [];
+    if (ref) {
+      ctx.anyTarget = ref; // later "that creature"/"that permanent" means this choice
+      return [];
+    }
   }
   if ((m = text.match(/^(.+?) becomes? the (basic land type|creature type) of your choice(?: until end of turn)?$/i))) {
     const ref = objRef(m[1], ctx);
@@ -9260,12 +9265,31 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     }
   }
   // "~ deals damage equal to the discarded card's mana value to that permanent or player" → "~ deals X damage to ..., where X is ..."
-  if ((m = text.match(/^(.+?) deals damage equal to (.+?) to (.+)$/i)) && !/\bwhere X is\b/i.test(text) && !/\. |, /.test(m[1])) {
+  if ((m = text.match(/^(.+?) deals damage equal to (.+?) to (.+)$/i)) && !/\bwhere X is\b/i.test(text) && !/\. |, | and /.test(m[1])) {
     // Resolve the subject, then the amount, then the damage target: "its power" is the subject's
     // (Soul's Fire) and "that card's mana value" is what an earlier sentence set up (Kindle the
     // Carnage), not the creature being damaged.
     const saved = ctx.targets.length;
     const savedLast = ctx.lastObj;
+    // "Each creature you control with a +1/+1 counter on it deals damage equal to its power to that creature":
+    // one damage event per creature, each measured on itself.
+    const each = m[1].match(/^each (?:of )?(.+)$/i);
+    if (each && /^its\b/i.test(m[2])) {
+      let over: Ref | null = null;
+      if (/^(?:those creatures|them)$/i.test(each[1])) over = { ref: 'lastDamaged' };
+      else {
+        const noun = parseNoun(`a ${singularize(each[1])}`);
+        if (noun && noun.confident && !noun.target) over = { ref: 'all', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } };
+      }
+      if (over) {
+        const sub = newCtx({ ...ctx, targets: ctx.targets });
+        sub.lastObj = { ref: 'iter' };
+        const a = amt(m[2], sub);
+        const inner = a !== null ? damageTo(m[3], a, sub, { ref: 'iter' }) : null;
+        if (inner) return [{ kind: 'forEach', over, effects: inner }];
+        ctx.targets.length = saved;
+      }
+    }
     // A "~" subject must not become "that card": keep whatever an earlier sentence set up.
     const src = m[1] === '~' ? SELF : objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
     let a: Amount | null = null;
@@ -9283,7 +9307,27 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const r = parseSentence(`${m[1]} deals X damage to ${m[3]}, where X is ${m[2]}`, ctx);
     if (r) return r;
   }
-  if ((m = text.match(/^(.+?) deals damage to (.+?) equal to (.+)$/i)) && !/\bwhere X is\b/i.test(text)) {
+  if ((m = text.match(/^(.+?) deals damage to (.+?) equal to (.+)$/i)) && !/\bwhere X is\b/i.test(text) && !/\. |, /.test(m[1])) {
+    // Same ordering as above: subject, then amount, then the damage target (Undying Flames: "deals damage to any
+    // target equal to that card's mana value" is the exiled card's, not the target's).
+    const saved = ctx.targets.length;
+    const savedLast = ctx.lastObj;
+    const src = m[1] === '~' ? SELF : objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
+    let direct: Effect[] | null = null;
+    if (src && /\b(?:that player|that opponent|their|its|that creature's|that permanent's|they)\b/i.test(m[3])) {
+      // "deals damage to target player equal to the number of cards in that player's hand": the amount names the target.
+      direct = damageTo(m[2], 0, ctx, src);
+      const a = direct ? amt(m[3], ctx) : null;
+      if (direct && a !== null) {
+        for (const e of direct) if (e.kind === 'damage') e.amount = a;
+      } else direct = null;
+    } else if (src) {
+      const a = amt(m[3], ctx);
+      direct = a !== null ? damageTo(m[2], a, ctx, src) : null;
+    }
+    if (direct) return direct;
+    ctx.targets.length = saved;
+    ctx.lastObj = savedLast;
     const r = parseSentence(`${m[1]} deals X damage to ${m[2]}, where X is ${m[3]}`, ctx);
     if (r) return r;
   }
@@ -9428,7 +9472,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^(?:you may )?((?:tap|discard|sacrifice|exile|return|reveal|remove) .+?)\. if you do, (.+)$/i))) {
     const cost = parseCost(m[1].replace(/^[a-z]/, (c) => c.toUpperCase()));
     // "Discard a card at random. If you do, ~ deals damage equal to that card's mana value": "that card" is what the cost moved.
-    if (/\bthat card\b/i.test(m[2])) {
+    if (/\bthat (?:card|creature|permanent)\b/i.test(m[2])) {
       if (cost?.discard) ctx.lastObj = { ref: 'lastDiscarded' };
       else if (cost?.sacrifice || cost?.exileObjects || cost?.exileFromGraveyard) ctx.lastObj = { ref: 'lastMoved' };
     }
@@ -9472,13 +9516,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (inner) return [{ kind: 'delayedTrigger', event: 'endOfCombat', effects: inner, text, once: true }];
   }
   // "When you discard a nonland card this way, X" (same paragraph as the discard): X happens if a matching card moved.
-  if ((m = text.match(/^when (?:you )?(?:discard|exile|sacrifice|reveal|mill|destroy|return) (?:a|an|one or more) (.+?) this way, (.+)$/i))) {
-    const noun = parseNoun(`a ${m[1].replace(/ cards?$/i, ' card')}`);
+  if ((m = text.match(/^(?:when|if) (?:you )?(discard|exile|sacrifice|reveal|mill|destroy|return) (?:a|an|one or more) (.+?) this way, (.+)$/i))) {
+    const noun = parseNoun(`a ${m[2].replace(/ cards?$/i, ' card')}`);
     if (noun) {
       const saved = ctx.lastObj;
-      ctx.lastObj = { ref: 'lastMoved' };
-      const inner = parseSentence(m[2], ctx);
-      if (inner) return [{ kind: 'conditional', if: { kind: 'amount', a: { kind: 'countRef', ref: { ref: 'lastMoved' }, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 }, then: inner }];
+      // "If you discard a creature card this way, ~ deals damage equal to that card's power": the card just discarded.
+      const moved: Ref = m[1].toLowerCase() === 'discard' ? { ref: 'lastDiscarded' } : { ref: 'lastMoved' };
+      ctx.lastObj = moved;
+      const inner = parseSentence(m[3], ctx);
+      if (inner) return [{ kind: 'conditional', if: { kind: 'amount', a: { kind: 'countRef', ref: moved, filter: { ...noun.filter, zone: undefined } }, op: '>=', b: 1 }, then: inner }];
       ctx.lastObj = saved;
     }
   }
@@ -9764,8 +9810,19 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     // "…deals X damage…, where X is the number of…" → substitute amount.
     // Fall through when either half fails: a later pattern may take the whole sentence.
     const saved = ctx.targets.length;
+    const lastBefore = ctx.lastObj;
     const inner = parseSentence(m[1], ctx);
+    // "~ deals X damage to any target, where X is the sacrificed creature's power / that spell's mana value": the
+    // amount refers to what came before the sentence, not to the thing just damaged. Only "its …" / "that
+    // creature's …" name the object the effect itself just pointed at.
+    const lastAfter = ctx.lastObj;
+    const itsAmt = /^its\b/i.test(m[2].trim());
+    // The subject of the clause that deals X damage ("… and that creature deals X damage to you").
+    const subj = m[1].match(/(?:^|,? and |, then |\. )(~|it|this creature|that creature|[^.,]+?) deals X damage\b/i)?.[1];
+    if (inner && itsAmt && subj && /^(?:~|it|this creature)$/i.test(subj)) ctx.lastObj = /^it$/i.test(subj) && ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF; // "~ deals X damage …, where X is its power"
+    else if (inner && !itsAmt && (lastBefore || !/^that (?:creature|permanent)'s\b/i.test(m[2].trim()))) ctx.lastObj = lastBefore;
     const a = inner ? amt(m[2], ctx) : null;
+    ctx.lastObj = lastAfter;
     if (inner && a !== null) {
       ctx.boundX = a;
       return inner.map((e) => substituteX(e, a));
