@@ -1902,10 +1902,12 @@ export class Game {
   /** Bind a filter's `controllerRef` to a concrete player for this effect context. */
   bindFilter(filter: import('./types.js').ObjectFilter, ctx: EffectContext): import('./types.js').ObjectFilter {
     if (!filter.controllerRef) return filter;
-    const p = this.resolvePlayers(filter.controllerRef, ctx)[0];
+    const ps = this.resolvePlayers(filter.controllerRef, ctx);
     const { controllerRef: _cr, ...rest } = filter;
     void _cr;
-    return p ? { ...rest, controller: p } : { ...rest, controller: '__nobody__' };
+    // "creatures each player controls": any of the bound players, not just the first.
+    if (ps.length > 1) return { ...rest, controllerIn: ps };
+    return ps.length ? { ...rest, controller: ps[0] } : { ...rest, controller: '__nobody__' };
   }
 
   /** Resolve a Ref to concrete targets (objects and/or players). */
@@ -2145,13 +2147,14 @@ export class Game {
           continue;
         }
         if (repl.ab.effects?.length) {
+          const owner = repl.sourceId >= 0 ? this.state.objects[repl.sourceId]?.controller ?? pid : pid;
           if (repl.ab.optional) {
-            this.pendingTriggers.push({ sourceId: repl.sourceId, controller: pid, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', optional: true, effects: repl.ab.effects }, context: { playerId: pid } });
+            this.pendingTriggers.push({ sourceId: repl.sourceId, controller: owner, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', optional: true, effects: repl.ab.effects }, context: { playerId: pid } });
             this.state.turnStats[`drawReplaced:${pid}`] = (this.state.turnStats[`drawReplaced:${pid}`] ?? 0) + 1;
             continue;
           }
           this.state.turnStats[`drawReplaced:${pid}`] = (this.state.turnStats[`drawReplaced:${pid}`] ?? 0) + 1;
-          this.pendingTriggers.push({ sourceId: repl.sourceId, controller: pid, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', effects: repl.ab.effects }, context: { playerId: pid } });
+          this.pendingTriggers.push({ sourceId: repl.sourceId, controller: owner, ability: { kind: 'triggered', text: repl.ab.text, event: 'drawCard', effects: repl.ab.effects }, context: { playerId: pid } });
           continue;
         }
         if (repl.ab.draws !== undefined && repl.ab.draws !== 1) {
@@ -2173,6 +2176,7 @@ export class Game {
       o.timestamp = this.now();
       p.hand.push(id);
       drawn.push(id);
+      if (this.state.turn.step === 'draw' && this.state.turn.activePlayer === pid) p.turnStats['drawStepDraws'] = (p.turnStats['drawStepDraws'] ?? 0) + 1;
       this.touch();
       this.emit({ name: 'drawCard', objectId: id, playerId: pid, fromZone: 'library', toZone: 'hand' });
     }
@@ -2203,7 +2207,7 @@ export class Game {
         const applies = ab.who === 'any' || (ab.who === 'you' && src.controller === pid) || (ab.who === 'opponent' && src.controller !== pid);
         if (!applies) continue;
         if (ab.condition && !this.checkCondition(ab.condition, { sourceId: id, controller: pid })) continue;
-        if (ab.exceptFirstEachDrawStep && !(this.player(pid).turnStats['drawCard'] ?? 0)) continue;
+        if (ab.exceptFirstEachDrawStep && this.state.turn.step === 'draw' && this.state.turn.activePlayer === pid && !(this.player(pid).turnStats['drawStepDraws'] ?? 0)) continue;
         return { ab, sourceId: id };
       }
     }

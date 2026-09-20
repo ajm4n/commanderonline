@@ -133,7 +133,7 @@ function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -305,5 +305,36 @@ describe('combos and staples played through the engine', () => {
     d.until(() => d.g.state.turn.number > turn || (d.g.state.turn.number === turn && d.g.state.turn.step === 'main2' && d.g.state.stack.length === 0));
     expect(d.g.player(p2).life).toBe(36);
     expect(d.bf(p1, 'Treasure').length).toBe(2);
+  });
+
+  it('Living Death swaps graveyards and battlefields', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Swamp', 5);
+    const bears = d.give(p1, C('Grizzly Bears'));
+    d.g.applyManual(p1, { kind: 'moveObject', objectId: bears, toZone: 'graveyard' });
+    const serra = d.put(p2, C('Serra Angel'));
+    const death = d.give(p1, C('Living Death'));
+    d.g.refreshDecision();
+    d.cast(death);
+    d.resolve();
+    expect(d.g.obj(bears).zone).toBe('battlefield');
+    expect(d.g.obj(bears).controller).toBe(p1);
+    expect(d.g.obj(serra).zone).toBe('graveyard');
+  });
+
+  it("Notion Thief steals an opponent's extra draws but not their draw-step draw", () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Notion Thief'));
+    d.lands(p2, 'Island', 3);
+    const div = d.give(p2, C('Divination'));
+    const h1 = d.g.player(p1).hand.length;
+    // Advance into p2's turn: the draw-step draw is exempt.
+    d.until((x) => x.type === 'priority' && d.g.state.turn.activePlayer === p2 && d.g.state.turn.step === 'main1' && d.g.state.stack.length === 0);
+    const h2 = d.g.player(p2).hand.length;
+    expect(d.g.player(p1).hand.length).toBe(h1); // p2's draw-step draw was not replaced
+    d.cast(div);
+    d.resolve();
+    expect(d.g.player(p2).hand.length).toBe(h2 - 1); // Divination left the hand, both draws were stolen
+    expect(d.g.player(p1).hand.length).toBe(h1 + 2);
   });
 });

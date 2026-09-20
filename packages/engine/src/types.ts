@@ -359,6 +359,8 @@ export interface ObjectFilter {
   colorCount?: number;
   multicolored?: boolean;
   controller?: 'you' | 'opponent' | 'any' | PlayerId;
+  /** Controlled by any of these players (a bound "each player" / "each opponent" reference). */
+  controllerIn?: PlayerId[];
   owner?: 'you' | 'opponent' | 'any';
   /** The owner must be one of the players this ref resolves to. */
   ownerRef?: import('./script.js').Ref;

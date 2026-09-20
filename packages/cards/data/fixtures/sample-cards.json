@@ -7515,5 +7515,69 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/3/8/38326f48-548c-4b18-9ad2-0b7c23385deb.jpg?1783922451"
     }
+  },
+  {
+    "object": "card",
+    "id": "4ac29c46-f8ee-42ba-a98c-d785ba65485e",
+    "oracle_id": "9e6a3df4-67a3-452e-a6ef-f04dbadb21ef",
+    "name": "Living Death",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{B}{B}",
+    "cmc": 5,
+    "type_line": "Sorcery",
+    "oracle_text": "Each player exiles all creature cards from their graveyard, then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/4/a/4ac29c46-f8ee-42ba-a98c-d785ba65485e.jpg?1783907088"
+    }
+  },
+  {
+    "object": "card",
+    "id": "f675f509-4343-4568-96dd-265626cb6c2b",
+    "oracle_id": "f8dab16e-1d50-443e-9431-8b6f1cf61c9c",
+    "name": "Notion Thief",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{U}{B}",
+    "cmc": 4,
+    "type_line": "Creature — Human Rogue",
+    "oracle_text": "Flash\nIf an opponent would draw a card except the first one they draw in each of their draw steps, instead that player skips that draw and you draw a card.",
+    "colors": [
+      "U",
+      "B"
+    ],
+    "color_identity": [
+      "U",
+      "B"
+    ],
+    "keywords": [
+      "Flash"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "3",
+    "toughness": "1",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/6/f675f509-4343-4568-96dd-265626cb6c2b.jpg?1783929456"
+    }
   }
 ]

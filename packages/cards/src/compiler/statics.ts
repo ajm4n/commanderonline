@@ -2210,7 +2210,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
   sx15: {
   if ((m = L.match(/^If it is neither day nor night, it becomes (day|night) as ~ enters$/i))) return [{ kind: 'replacement', text: line, event: 'entersBattlefield', self: true, effects: [{ kind: 'setDayNight', to: m[1].toLowerCase() === 'day' ? 'startDay' : 'startNight' }] }];
   // Draw replacements: "If you would draw a card, draw two cards instead."
-  if ((m = L.match(/^If (you|a player|an opponent|each opponent) would draw (?:a card|(\w+) or more cards)(?: (while .+?|except the first one you draw in each of your draw steps))?, (?:instead (.+?)|(.+?) instead)$/i))) {
+  if ((m = L.match(/^If (you|a player|an opponent|each opponent) would draw (?:a card|(\w+) or more cards)(?: (while .+?|except the first one (?:you|they) draws? in each of (?:your|their) draw steps))?, (?:instead (.+?)|(.+?) instead)$/i))) {
     const who: 'you' | 'opponent' | 'any' = /^you$/i.test(m[1]) ? 'you' : /opponent/i.test(m[1]) ? 'opponent' : 'any';
     const spec: Extract<import('@commander/engine').ReplacementSpec, { event: 'drawCard' }> = { kind: 'replacement', text: line, event: 'drawCard', who };
     if (m[3] && /^except the first/i.test(m[3])) spec.exceptFirstEachDrawStep = true;
@@ -2219,7 +2219,8 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       if (!cond || cond.kind === 'manual') break sx15;
       spec.condition = cond;
     }
-    const tail = (m[4] ?? m[5]).replace(/^(?:instead )?/i, '').trim();
+    // Notion Thief: "instead that player skips that draw and you draw a card" — the skip is the replacement itself.
+    const tail = (m[4] ?? m[5]).replace(/^(?:instead )?/i, '').replace(/^that player skips that draw(?:,| and) /i, '').trim();
     const dm = tail.match(/^draw (\w+) cards?$/i);
     if (dm) {
       const n = wordToNumber(dm[1]);

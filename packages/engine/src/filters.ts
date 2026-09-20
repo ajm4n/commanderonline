@@ -40,6 +40,7 @@ export function matchesFilter(g: Game, obj: GameObject, filter: ObjectFilter | u
   if (filter.notAllColors && (['W', 'U', 'B', 'R', 'G'] as const).every((c) => ch.colors.includes(c))) return false;
   if (filter.monocolored && ch.colors.length !== 1) return false;
   if (filter.multicolored && ch.colors.length < 2) return false;
+  if (filter.controllerIn && !filter.controllerIn.includes(obj.controller)) return false;
   if (filter.controller) {
     if (filter.controller === 'you' && obj.controller !== ctx.controller) return false;
     if (filter.controller === 'opponent' && obj.controller === ctx.controller) return false;

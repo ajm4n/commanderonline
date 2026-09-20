@@ -2638,14 +2638,17 @@ const PATTERNS: Pattern[] = [
   [/^for each color among permanents you control, add one mana of that color$/i, () => [{ kind: 'addManaPerColor', filter: { controller: 'you', zone: 'battlefield' } }]],
   [/^players cannot gain life this turn$/i, () => [{ kind: 'grantPlayerRule', who: { ref: 'eachPlayer' }, rule: { kind: 'cantGainLife' } }]],
   [/^put all cards exiled with ~ into their owner(?:'s|s'|s)? hands?$/i, () => [{ kind: 'putIntoHand', what: { ref: 'memory', key: 'exiled' } }]],
-  [/^exile all (.+?) from (target player's|that player's|each player's|your) graveyard$/i, (m, ctx) => {
-    const noun = parseNoun(`all ${m[1]}`) ?? parseNoun(m[1]);
+  [/^(?:each player exiles all (.+?) from their graveyards?|exile all (.+?) from (target player's|that player's|each player's|your) graveyard)$/i, (m, ctx) => {
+    const what = m[1] ?? m[2];
+    const noun = parseNoun(`all ${what}`) ?? parseNoun(what);
     if (!noun) return null;
-    const owner = /^your$/i.test(m[2]) ? YOU : m[2].toLowerCase().startsWith('each') ? ({ ref: 'eachPlayer' } as Ref) : playerRef(m[2].replace(/'s$/, ''), ctx);
+    const owner = m[1] ? ({ ref: 'eachPlayer' } as Ref) : /^your$/i.test(m[3]) ? YOU : m[3].toLowerCase().startsWith('each') ? ({ ref: 'eachPlayer' } as Ref) : playerRef(m[3].replace(/'s$/, ''), ctx);
     if (!owner) return null;
     ctx.lastObj = { ref: 'lastMoved' };
-    return [{ kind: 'exile', what: { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', ownerRef: owner } } }];
+    return [{ kind: 'exile', what: { ref: 'all', filter: { ...noun.filter, zone: 'graveyard', ownerRef: owner } }, remember: 'exiled' }];
   }],
+  // Living Death: "…, then puts all cards they exiled this way onto the battlefield"
+  [/^(?:each player |that player |they |you )?puts? all (?:the )?cards (?:they|you) exiled this way onto the battlefield(?: under (?:their|its) owner's control)?$/i, () => [{ kind: 'returnToBattlefield', what: { ref: 'chosen', key: 'exiled' }, controller: 'owner' }]],
   // "Until end of turn, ~ loses defender and gains flying."
   [/^(~|it|that creature|target creature|enchanted creature|equipped creature) loses (.+?) and gains (.+?)(?: until end of turn)?$/i, (m, ctx) => {
     const ref = /^~$/i.test(m[1]) ? SELF : objRef(m[1], ctx) ?? ctx.lastObj;
