@@ -1235,6 +1235,19 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           g.touch();
           continue;
         }
+        if (manaKind === 'exiledColors') {
+          const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
+          const opts = exiledColors(g, src);
+          if (!opts.length) continue; // nothing imprinted: no mana
+          let color: ManaColor = opts[0];
+          if (opts.length > 1) {
+            const resp = yield* g.ask({ type: 'chooseOption', player: p, prompt: `Choose a color of mana${n > 1 ? ` (×${n})` : ''}`, options: opts.map((c) => ({ id: c, label: c })), min: 1, max: 1, sourceId: ctx.sourceId ?? undefined });
+            if (resp.type === 'options') color = resp.ids[0] as ManaColor;
+          }
+          pool[color] += n;
+          g.touch();
+          continue;
+        }
         if (manaKind === 'anyColor' || manaKind === 'anyOneColor' || manaKind === 'commanderColors') {
           const opts = manaKind === 'commanderColors' ? g.colorsOfCommander(p) : COLORS;
           const choices = (opts.length ? opts : COLORS).map((c) => ({ id: c, label: c }));
@@ -2892,6 +2905,17 @@ function* offerSoulbond(g: Game, id: ObjectId, controller: PlayerId): Gen<void> 
 }
 
 /** Aura "Enchant X" → target spec. */
+/** Colors among the cards exiled with this object (Chrome Mox's imprint). */
+export function exiledColors(g: Game, src: GameObject | null | undefined): ManaColor[] {
+  const ids = (src?.memory['exiled'] as ObjectId[] | undefined) ?? [];
+  const set = new Set<ManaColor>();
+  for (const id of ids) {
+    const o = g.state.objects[id];
+    if (o && o.zone === 'exile') for (const c of g.characteristics(o.id).colors) set.add(c as ManaColor);
+  }
+  return [...set];
+}
+
 export function auraTargetSpec(text: string, aura?: GameObject) {
   // Animate Dead once it has done its work: "enchant creature put onto the battlefield with this Aura".
   const reanimated = aura?.memory['reanimated'];

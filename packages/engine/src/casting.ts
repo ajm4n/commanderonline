@@ -8,7 +8,7 @@ import type { ActivatedAbilitySpec, AbilityCost, CardScript, TargetSpec, Effect 
 import { type ManaCost, type ManaSourceOption, parseManaCost, solvePayment, adjustGeneric, maxX, expandRequirements, parseAddManaText, formatCost, adjustSymbols } from './mana.js';
 import { BASIC_LAND_TYPES } from './typeline.js';
 import { matchesFilter, objectsMatching } from './filters.js';
-import { executeEffects, enterBattlefield, auraTargetSpec, type EffectContext } from './effects.js';
+import { executeEffects, enterBattlefield, auraTargetSpec, exiledColors, type EffectContext } from './effects.js';
 
 // ---------------------------------------------------------------------------
 // Abilities of an object (scripted + synthesized from card data)
@@ -117,6 +117,7 @@ function manaFromAbility(g: Game, obj: GameObject, ab: ActivatedAbilitySpec): Ma
     if (n <= 0) continue;
     if (e.mana === 'anyColor' || e.mana === 'anyOneColor') for (const c of ['W', 'U', 'B', 'R', 'G'] as ManaColor[]) alts.push(new Array(n).fill(c));
     else if (e.mana === 'commanderColors') for (const c of g.colorsOfCommander(obj.controller)) alts.push(new Array(n).fill(c));
+    else if (e.mana === 'exiledColors') for (const c of exiledColors(g, obj)) alts.push(new Array(n).fill(c));
     else {
       const arr: ManaColor[] = [];
       for (let i = 0; i < n; i++) arr.push(...(e.mana as ManaColor[]));
@@ -1875,7 +1876,7 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
   // Mana abilities resolve immediately.
   if (spec.manaAbility) {
     const alts = manaFromAbility(g, obj, spec);
-    if (alts.length === 1 && !spec.effects.some((e) => e.kind === 'addMana' && (e.mana === 'anyColor' || e.mana === 'anyOneColor' || e.mana === 'commanderColors'))) {
+    if (alts.length === 1 && !spec.effects.some((e) => e.kind === 'addMana' && (e.mana === 'anyColor' || e.mana === 'anyOneColor' || e.mana === 'commanderColors' || e.mana === 'exiledColors'))) {
       const ok = yield* payAbilityCost(g, p, obj, spec.cost, 0, spec.text);
       if (!ok) return false;
       for (const c of alts[0]) g.player(p).manaPool[c]++;

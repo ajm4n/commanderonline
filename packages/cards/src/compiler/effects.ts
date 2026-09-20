@@ -2155,6 +2155,8 @@ const PATTERNS: Pattern[] = [
     return who ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivateAbilities', data: /mana abilities/i.test(m[0]) ? { exceptMana: true } : {} }, on: who, duration: / until end of turn$| this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
   // "you may pay {1}. If you do, copy that ability."
+  // Chrome Mox: "Add one mana of any of the exiled card's colors."
+  [/^add one mana of any of the exiled card's colou?rs$/i, () => [{ kind: 'addMana', mana: 'exiledColors' }]],
   // Thousand-Year Storm: "copy it for each other instant and sorcery spell you've cast before it this turn"
   [/^copy (?:it|that spell) for each other (instant and sorcery|instant or sorcery|instant|sorcery|creature|noncreature) spell you(?:'ve| have) cast before it this turn(?:\. you may choose new targets for the cop(?:y|ies))?$/i, (m) => {
     const kind = m[1].toLowerCase();
@@ -8387,7 +8389,7 @@ const PATTERNS: Pattern[] = [
     return [{ kind: 'chooseObjects', filter: f, count: n, key, random: true }];
   }],
   // "An opponent chooses one of them." / "An opponent chooses a creature card from among them."
-  [/^(an opponent|target opponent|each opponent|that player|target player) chooses (?:a|an|one|(\w+)) (?:of (?:them|those cards|the piles)|(.+?) from among them)$/i, (m, ctx) => {
+  [/^(an opponent|target opponent|each opponent|that player|target player) chooses (?:a|an|one|(\w+))(?: (?:of (?:them|those cards|the piles)|(.+?) from among them))?$/i, (m, ctx) => {
     const who = playerRef(m[1].toLowerCase() === 'an opponent' ? 'target opponent' : m[1], ctx);
     if (!who) return null;
     const n = m[2] ? wordToNumber(m[2]) : 1;
@@ -10150,6 +10152,8 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
   const effects: Effect[] = [];
   const unhandled: string[] = [];
   let m: RegExpMatchArray | null;
+  // "Count the number of cards in your library. Your life total becomes that number." → inline the count.
+  if ((m = text.match(/^Count (the number of [^.]+)\. (.+)$/i)) && /\bthat number\b/i.test(m[2])) text = m[2].replace(/\bthat number\b/gi, m[1]);
   // Whole-ability engine primitives.
   if (/^Exile any number of cards from your hand face down\. Put that many cards from the top of your library into your hand\. Then look at the exiled cards and put them on top of your library in any order\.?$/i.test(text.trim())) {
     return { effects: [{ kind: 'scrollRack' }], unhandled: [] };
@@ -10692,6 +10696,19 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         const last = effects[effects.length - 1];
         if (last && last.kind === 'may') last.effects.push(...inner);
         else effects.push(...inner);
+        continue;
+      }
+    }
+    // "Each player chooses a creature they control. Destroy the rest." — everything matching the choice's filter that wasn't chosen.
+    {
+      const rm = s.match(/^(destroy|exile|sacrifice) the rest$/i);
+      const last = effects[effects.length - 1];
+      if (rm && last && last.kind === 'chooseObjects' && last.key) {
+        const { controllerRef: _cr, ...base } = last.filter;
+        void _cr;
+        const rest: Ref = { ref: 'all', filter: { ...base, zone: base.zone ?? 'battlefield', notChosenKey: last.key } };
+        const act = rm[1].toLowerCase();
+        effects.push(act === 'destroy' ? { kind: 'destroy', what: rest } : act === 'exile' ? { kind: 'exile', what: rest } : { kind: 'sacrifice', what: rest });
         continue;
       }
     }
