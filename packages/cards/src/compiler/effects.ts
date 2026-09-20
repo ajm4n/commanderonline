@@ -4970,15 +4970,15 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'playFromExile', what: ref, duration: 'permanent', forCost: '{0}' }] : null;
   }],
   // "You may cast a spell from among cards exiled with ~ without paying its mana cost."
-  [/^you may cast (?:a|an) (.+?) from among (?:the )?cards exiled with (?:~|it) without paying its mana cost$/i, (m, ctx) => {
-    const noun = parseNoun(`a ${m[1]}`);
+  [/^(you may )?cast (?:a|an) (.+?) from among (?:the )?(?:other )?cards exiled with (?:~|it)(?: this turn)?( without paying its mana cost)?$/i, (m, ctx) => {
+    const noun = parseNoun(`a ${m[2]}`);
     if (!noun) return null;
     const key = `castEx${ctx.targets.length}`;
     const f = { ...noun.filter };
     delete f.zone;
     return [
       { kind: 'chooseObjects', who: YOU, filter: { ...f, zone: 'exile', exiledWithSource: true }, count: 1, key, upTo: true },
-      { kind: 'castFrom', what: { ref: 'chosen', key }, free: true },
+      { kind: 'castFrom', what: { ref: 'chosen', key }, free: m[3] ? true : undefined },
     ];
   }],
   // "Each of them is a 1/1 Spirit with flying in addition to its other types."

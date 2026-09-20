@@ -40,6 +40,21 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const a = affectsOf(who);
     return a.ok ? [{ kind: 'static', text: line, affects: a.affects, rule }] : null;
   };
+  // "You may look at the cards exiled with ~, and you may play lands and cast spells from among
+  // those cards." — looking is public information here; the permission is what matters.
+  if ((m = L.match(/^You may look at the cards exiled with (?:~|it), and (you may .+?) from among those cards$/i))) {
+    const inner = parseStatic(`${m[1].replace(/^you/, 'You')} from among cards exiled with ~`, isCreatureOrPermanent);
+    if (inner) return inner;
+  }
+  // "~ and other Vampire creatures you control get +2/+1 and have flying." — the source joins the
+  // group, so compile one static per subject.
+  if ((m = L.match(/^~ and (.+?) (get|gain|have|are) (.+)$/i))) {
+    const one: Record<string, string> = { get: 'gets', gain: 'gains', have: 'has', are: 'is' };
+    const tail = m[3].replace(/\band (get|gain|have|are) /gi, (_x, v: string) => `and ${one[v.toLowerCase()]} `);
+    const a = parseStatic(`~ ${one[m[2].toLowerCase()]} ${tail}`, isCreatureOrPermanent);
+    const b = a ? parseStatic(`${m[1].replace(/^\w/, (c) => c.toUpperCase())} ${m[2]} ${m[3]}`, isCreatureOrPermanent) : null;
+    if (a && b) return [...a, ...b];
+  }
   // ---- Round 157 ----
   // "You and Humans you control have hexproof."
   // ---- Round 199b ----

@@ -706,6 +706,24 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^~ (?:is|was) (saddled|solved)$/))) return { kind: 'objectMatches', ref: ctx.self, filter: { customRule: m[1] } };
   if ((m = t.match(/^~ (?:is|was) (renowned|foretold|suspected)$/))) return { kind: 'memoryFlag', key: m[1] };
   if (/^(?:~|it) (?:has|had) (?:a|one or more) counters? on (?:it|them)$/.test(t)) return { kind: 'objectMatches', ref: ctx.self, filter: { hasAnyCounter: true } };
+  // "there are four or more lore counters among Sagas you control"
+  if ((m = t.match(/^there (?:is|are) (\w+) or more ([+\-\w\/]+) counters among (.+?)$/)) && !/^or$/i.test(m[2])) {
+    const n301b = wordToNumber(m[1]);
+    const noun301b = parseNoun(`all ${oc(m, 3)}`) ?? parseNoun(oc(m, 3));
+    if (typeof n301b === 'number' && noun301b)
+      return { kind: 'amount', a: { kind: 'countersOn', ref: { ref: 'all', filter: { ...noun301b.filter, zone: 'battlefield' } }, counter: m[2] }, op: '>=', b: n301b };
+  }
+  // "there are fewer than eight cards in your graveyard"
+  if ((m = t.match(/^there are fewer than (\w+) (?:(.+?) )?(?:cards )?in your graveyard$/))) {
+    const nfg = wordToNumber(m[1]);
+    const nounfg = m[2] ? parseNoun(oc(m, 2)) : null;
+    if (typeof nfg === 'number' && (!m[2] || nounfg)) return { kind: 'graveyard', ref: { ref: 'controller' }, op: '<', value: nfg, filter: nounfg?.filter };
+  }
+  // "there are three or more cards exiled with ~"
+  if ((m = t.match(/^there are (\w+) or more cards exiled with (?:~|it)$/))) {
+    const nex = wordToNumber(m[1]);
+    if (typeof nex === 'number') return { kind: 'count', filter: { zone: 'exile', exiledWithSource: true }, op: '>=', value: nex };
+  }
   // "there are two or more counters among creatures you control"
   if ((m = t.match(/^there (?:is|are) (\w+) or more counters among (.+?)$/))) {
     const n301 = wordToNumber(m[1]);
