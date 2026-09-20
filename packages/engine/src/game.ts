@@ -3018,6 +3018,10 @@ export class Game {
         yield* this.priorityRound();
         return;
       case 'beginCombat':
+        // "if it's the first combat phase of the turn" (Karlach, Fury of Avernus)
+        this.player(pid).turnStats['combatPhases'] = (this.player(pid).turnStats['combatPhases'] ?? 0) + 1;
+        yield* runCombatStep(this, step);
+        return;
       case 'declareAttackers':
       case 'declareBlockers':
       case 'firstStrikeDamage':

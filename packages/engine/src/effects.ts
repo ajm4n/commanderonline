@@ -1340,16 +1340,20 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'unattach': {
+      const hosts: ObjectId[] = [];
       for (const o of g.resolveObjects(e.what, ctx)) {
         if (o.attachedTo === null) continue;
         const host = g.state.objects[o.attachedTo];
         if (host) host.attachments = host.attachments.filter((id) => id !== o.id);
+        hosts.push(o.attachedTo);
         o.attachedTo = null;
         g.emit({ name: 'becomesUnattached', objectId: o.id, playerId: o.controller });
         // Drop any continuous type change this object gave itself (the Licid Aura effect).
         g.state.continuousEffects = g.state.continuousEffects.filter((ce) => !(ce.sourceId === o.id && ce.affected.kind === 'fixed' && ce.affected.ids.includes(o.id) && ce.modification.layer === 4));
         g.touch();
       }
+      // "If you do, tap that creature": what it was attached to.
+      if (hosts.length) ctx.memory['unattachedFrom'] = hosts;
       return;
     }
     case 'attach': {

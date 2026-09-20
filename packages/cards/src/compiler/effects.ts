@@ -3673,6 +3673,7 @@ const PATTERNS: Pattern[] = [
   [/^(?:you may )?unattach (?:a|an) (Equipment|Aura) from (?:a|an) (.+)$/i, (m, ctx) => {
     const c = chooseRef(`an ${m[1]} attached to a ${m[2]}`, ctx, YOU, /you may/i.test(m[0]));
     if (!c) return null;
+    ctx.lastObj = { ref: 'memory', key: 'unattachedFrom' }; // "If you do, tap that creature": the creature it came off
     return [...c.pre, { kind: 'unattach', what: c.ref }];
   }],
   // "An opponent chooses a creature card from among them"

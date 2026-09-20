@@ -662,6 +662,8 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   // ---- Round 107 ----
   if (/^(?:its controller|that player|they|the player|its owner) is poisoned$/.test(t)) return { kind: 'playerStat', stat: 'poison', ref: ctx.lastPlayer ?? { ref: 'triggerPlayer' }, op: '>=', value: 1 };
   if (/^you are poisoned$/.test(t)) return { kind: 'playerStat', stat: 'poison', ref: { ref: 'controller' }, op: '>=', value: 1 };
+  if (/^it is the first combat phase of the turn$/.test(t)) return { kind: 'turnStat', key: 'combatPhases', op: '<=', value: 1 };
+  if (/^it is not the first combat phase of the turn$/.test(t)) return { kind: 'turnStat', key: 'combatPhases', op: '>=', value: 2 };
   if (/^(?:~|it) is not attacking or blocking$/.test(t)) return { kind: 'not', c: { kind: 'objectMatches', ref: ctx.lastObj ?? ctx.self, filter: { attackingOrBlocking: true } } };
   if (/^(?:~|it) is attacking or blocking$/.test(t)) return { kind: 'objectMatches', ref: ctx.lastObj ?? ctx.self, filter: { attackingOrBlocking: true } };
   if ((m = t.match(/^an opponent controls (?:at least )?(\w+) or more (.+?) than you$/)) || (m = t.match(/^an opponent controls (?:at least )?(\w+) more (.+?) than you$/))) {
