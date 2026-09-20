@@ -802,8 +802,22 @@ const PATTERNS: Pattern[] = [
     return who ? [{ kind: 'revealHand', who }] : null;
   }],
   [/^put a number of ([+-]\d\/[+-]\d|\w+) counters on (.+?) equal to (.+)$/i, (m, ctx) => {
+    // "on ~ equal to that spell's mana value / half that card's mana value": the amount refers to what came before,
+    // unless it says "its", which is the thing getting the counters.
+    const itsAmt = /^(?:half )?its\b/i.test(m[3]);
+    // "on each other creature you control equal to that creature's toughness": one amount per creature.
+    if (/^each /i.test(m[2]) && /^(?:half )?(?:its|that (?:creature|permanent)'s)\b/i.test(m[3])) {
+      const noun = parseNoun(`a ${singularize(m[2].replace(/^each /i, ''))}`);
+      if (noun && noun.confident && !noun.target) {
+        const sub = newCtx({ ...ctx, targets: ctx.targets });
+        sub.lastObj = { ref: 'iter' };
+        const a = amt(m[3], sub);
+        if (a !== null) return [{ kind: 'forEach', over: { ref: 'all', filter: noun.filter.zone ? noun.filter : { ...noun.filter, zone: 'battlefield' } }, effects: [{ kind: 'addCounters', counter: m[1], amount: a, on: { ref: 'iter' } }] }];
+      }
+    }
+    let a: Amount | null = itsAmt ? null : amt(m[3], ctx);
     const ref = objRef(m[2], ctx);
-    const a = ref ? amt(m[3], ctx) : null;
+    if (itsAmt && ref) a = amt(m[3], ctx);
     return ref && a !== null ? [{ kind: 'addCounters', counter: m[1], amount: a, on: ref }] : null;
   }],
   [/^(.+?) reveals cards from the top of their library until (?:they reveal|revealing) (?:a|an) (.+?) card\.? (?:put|that player puts|they put) (?:that card|it) (into their hand|onto the battlefield( tapped)?|into their graveyard)(?: and (?:put )?the rest|\. put the rest| and the rest) (on the bottom of their library in (?:a random|any) order|into their graveyard)$/i, (m, ctx) => {
@@ -9314,6 +9328,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const savedLast = ctx.lastObj;
     const src = m[1] === '~' ? SELF : objRef(m[1], ctx) ?? (/^(it|that creature)$/i.test(m[1]) ? SELF : null);
     let direct: Effect[] | null = null;
+    if (src && /^each (player|opponent)$/i.test(m[2].trim()) && /\b(?:that player|that opponent|their|they)\b/i.test(m[3])) {
+      // "deals damage to each player equal to half that player's life total": one damage event per player.
+      const sub = newCtx({ ...ctx, targets: ctx.targets });
+      sub.lastPlayer = { ref: 'iter' };
+      const a = amt(m[3], sub);
+      if (a !== null) return [{ kind: 'forEach', over: /opponent/i.test(m[2]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: [{ kind: 'damage', amount: a, to: { ref: 'iter' }, ...(src.ref === 'self' ? {} : { source: src }) }] }];
+    }
     if (src && /\b(?:that player|that opponent|their|its|that creature's|that permanent's|they)\b/i.test(m[3])) {
       // "deals damage to target player equal to the number of cards in that player's hand": the amount names the target.
       direct = damageTo(m[2], 0, ctx, src);
@@ -9821,6 +9842,13 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const subj = m[1].match(/(?:^|,? and |, then |\. )(~|it|this creature|that creature|[^.,]+?) deals X damage\b/i)?.[1];
     if (inner && itsAmt && subj && /^(?:~|it|this creature)$/i.test(subj)) ctx.lastObj = /^it$/i.test(subj) && ctx.triggerHasObject ? { ref: 'triggerObject' } : SELF; // "~ deals X damage …, where X is its power"
     else if (inner && !itsAmt && (lastBefore || !/^that (?:creature|permanent)'s\b/i.test(m[2].trim()))) ctx.lastObj = lastBefore;
+    else if (inner && !itsAmt && ctx.triggerHasObject) {
+      // "put X counters on ~, where X is that creature's power" in an ETB/dies trigger: the creature that triggered it,
+      // unless the sentence itself just named a target of that kind ("put X counters on target creature, where X is that creature's power").
+      const word = m[2].trim().match(/^that (creature|permanent|card|spell|land|artifact|player)'s/i)?.[1];
+      const desc = lastAfter?.ref === 'target' ? ctx.targets[lastAfter.slot ?? 0]?.description ?? '' : '';
+      if (!(lastAfter?.ref === 'target' && word && new RegExp(word, 'i').test(desc))) ctx.lastObj = { ref: 'triggerObject' };
+    }
     const a = inner ? amt(m[2], ctx) : null;
     ctx.lastObj = lastAfter;
     if (inner && a !== null) {
