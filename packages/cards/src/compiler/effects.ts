@@ -417,6 +417,12 @@ function amt(text: string, ctx: ParseCtx) {
 
 /** "for each X": a count of matching objects, or any other amount phrase. */
 function perEach(phrase: string, ctx: ParseCtx): Amount | null {
+  // "each Aura and Equipment attached to it": the trailing qualifier belongs to both nouns,
+  // so let the amount parser see the whole phrase before splitting on "and".
+  if (/ attached to (?:it|~|that creature|that permanent)$/i.test(phrase)) {
+    const whole = amt(phrase, ctx);
+    if (whole) return whole;
+  }
   const both = phrase.match(/^(.+?) and (?:each |for each )?(.+)$/i);
   if (both && !/\b(and|or)\b/i.test(both[1])) {
     const a = perEach(both[1], ctx);
