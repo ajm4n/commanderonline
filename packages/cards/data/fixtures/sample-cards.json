@@ -9166,5 +9166,39 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/7/b/7b3ff07c-9653-4197-ad3d-638e712e8465.jpg?1783915651"
     }
+  },
+  {
+    "object": "card",
+    "id": "696a9fe1-ce63-4638-8793-5187fc726731",
+    "oracle_id": "6c54fc14-2af8-46e8-a4dc-b2a0a88ef2e1",
+    "name": "Yawgmoth Demon",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}{B}{B}",
+    "cmc": 6,
+    "type_line": "Creature — Phyrexian Demon",
+    "oracle_text": "Flying (This creature can't be blocked except by creatures with flying or reach.)\nFirst strike (This creature deals combat damage before creatures without first strike.)\nAt the beginning of your upkeep, you may sacrifice an artifact. If you don't, tap this creature and it deals 2 damage to you.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [
+      "Flying",
+      "First strike"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "6",
+    "toughness": "6",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/6/9/696a9fe1-ce63-4638-8793-5187fc726731.jpg?1783943978"
+    }
   }
 ]
