@@ -409,7 +409,7 @@ function amt(text: string, ctx: ParseCtx) {
   }
   // Scapeshift: "Sacrifice any number of lands. Search your library for up to that many land cards": the count of what
   // the previous effect moved, not a trigger's amount.
-  if (/^that many$/i.test(text.trim()) && ctx.lastObj && !ctx.triggerHasObject && !ctx.triggerHasPlayer) return { kind: 'countRef', ref: ctx.lastObj };
+  if (/^that many$/i.test(text.trim()) && ctx.lastObj && !ctx.triggerHasObject && !ctx.triggerHasPlayer) return { kind: 'countRef', ref: ctx.lastObj as Ref } as Amount;
   const hm = text.trim().match(/^the number of cards in (target (?:player|opponent))'s (hand|graveyard)$/i);
   if (hm) {
     const who = playerRef(hm[1], ctx);
@@ -2203,6 +2203,10 @@ const PATTERNS: Pattern[] = [
       { kind: 'returnToBattlefield', what: { ref: 'chosen', key }, controller: 'you', ...(m[2] ? { tapped: true } : {}) },
     ];
   }],
+  // Yidris: "as you cast spells from your hand this turn, they gain cascade"
+  [/^as you cast spells from your hand this turn, they gain cascade$/i, () => [{ kind: 'grantPlayerRule', rule: { kind: 'custom', tag: 'spellsGainCascade' }, duration: 'thisTurn' }]],
+  // Feather: "exile that card instead of putting it into your graveyard as it resolves"
+  [/^exile (?:that card|that spell|it) instead of putting it into (?:your|its owner's) graveyard as it resolves$/i, () => [{ kind: 'setMemory', key: 'exileOnResolve', value: true, on: { ref: 'triggerObject' } }]],
   // Chrome Mox: "Add one mana of any of the exiled card's colors."
   [/^add one mana of any of the exiled card's colou?rs$/i, () => [{ kind: 'addMana', mana: 'exiledColors' }]],
   // Thousand-Year Storm: "copy it for each other instant and sorcery spell you've cast before it this turn"
@@ -4865,7 +4869,7 @@ const PATTERNS: Pattern[] = [
       : [{ kind: 'moveToZone', what: ref, zone: 'exile' }, { kind: 'moveToZone', what: all, zone: 'exile' }];
   }],
   // "You may cast any number of spells from among those nonland cards without paying their mana costs."
-  [/^you may cast any number of (.+?) from among (?:those .+? cards|them|the exiled cards) without paying (?:their|its) mana costs?$/i, (m, ctx) => {
+  [/^you may cast any number of (.+?) from among (?:those (?:.+? )?cards|them|the exiled cards) without paying (?:their|its) mana costs?$/i, (m, ctx) => {
     const noun = /^spells$/i.test(m[1]) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(`a ${singularize(m[1])}`);
     if (!noun || !noun.confident) return null;
     const key = `anyNum${ctx.targets.length}`;
@@ -10239,6 +10243,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       const d = deriveDifference(s, ctx);
       if (d) ctx.difference = d;
     }
+    if (process.env.COMPILER_TRACE) console.error(`[sentence] ${s}`);
     // A sentence that failed rolls ctx.targets back; don't let a stale "last" ref
     // keep pointing at a target slot that no longer exists.
     if (ctx.lastObj?.ref === 'target' && (ctx.lastObj.slot ?? 0) >= ctx.targets.length) ctx.lastObj = null;
@@ -10437,7 +10442,7 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     }
     // Merge "You may pay X." + "If you do, Y."
     // "Tap three untapped creatures you control." + "If you do, Y." — only when the merge parses.
-    if (/^(?:you may )?(?:tap|discard|sacrifice|exile|reveal|remove) /i.test(s) && sents[i + 1] && /^(?:if|when) you do, /i.test(sents[i + 1])) {
+    if (/^(?:you may )?(?:tap|discard|sacrifice|exile|reveal|remove) /i.test(s) && sents[i + 1] && /^(?:if|when) you do, /i.test(sents[i + 1]) && !/ instead of putting it into (?:your|its owner's) graveyard as it resolves$/i.test(s)) {
       const merged = `${s}. ${sents[i + 1].replace(/^when you do, /i, 'If you do, ')}`;
       const savedT = ctx.targets.length;
       const tryIt = parseSentence(merged, ctx);
@@ -10762,6 +10767,12 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
         else effects.push(...inner);
         continue;
       }
+    }
+    // Feather: "exile that card instead … as it resolves. If you do, return it to your hand at the beginning of the next end step."
+    // Marking the spell always succeeds, so the follow-up is unconditional.
+    {
+      const last = effects[effects.length - 1];
+      if (/^if you do, /i.test(s) && last && last.kind === 'setMemory' && last.key === 'exileOnResolve') s = s.replace(/^if you do, /i, '');
     }
     // "Each player chooses a creature they control. Destroy the rest." — everything matching the choice's filter that wasn't chosen.
     {

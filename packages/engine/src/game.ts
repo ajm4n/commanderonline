@@ -1129,11 +1129,13 @@ export class Game {
         continue;
       }
       if (dt.filter && !this.triggerMatches(dt.filter, event, evalObj, dt.controller, lkiCh)) continue;
+      // The firing event fills in what the delayed trigger didn't capture; what it did capture ("that card") wins.
+      const fromEvent = Object.fromEntries(Object.entries(this.triggerContextFrom(event)).filter(([, v]) => v !== undefined));
       this.pendingTriggers.push({
         sourceId: dt.sourceId,
         controller: dt.controller,
         ability: { kind: 'triggered', text: dt.text, event: dt.event, effects: dt.effects },
-        context: { ...dt.context, ...this.triggerContextFrom(event) },
+        context: { ...fromEvent, ...dt.context },
         delayedId: dt.id,
       });
       if (dt.once) this.state.delayedTriggers = this.state.delayedTriggers.filter((x) => x.id !== dt.id);

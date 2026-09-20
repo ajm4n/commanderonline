@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales', 'Yorion, Sky Nomad', 'Elesh Norn, Mother of Machines', 'Grapeshot', 'Maelstrom Wanderer', 'Feather, the Redeemed'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -677,7 +677,7 @@ describe('combos and staples played through the engine', () => {
     d.cast(f2);
     d.targetPlayer(p2);
     d.resolve();
-    expect(d.g.player(p2).library.length).toBe(lib2 - 9); // original + one copy
+    expect(d.g.player(p2).library.length).toBe(lib2 - 12); // original + Thousand-Year Storm copy + storm copy (one spell before it)
   });
   it("Thalia taxes opponents' noncreature spells too", () => {
     const { d, p1, p2 } = game();
@@ -881,5 +881,56 @@ describe('combos and staples played through the engine', () => {
     d.answer(d.d);
     d.until((x) => x.type === 'priority' && d.g.state.stack.length === 0);
     expect(d.g.player(p1).life).toBe(40); // no Impact Tremors damage
+  });
+  it('Storm copies Grapeshot once per spell cast before it this turn', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Mountain', 4);
+    d.lands(p1, 'Island', 2);
+    const f1 = d.give(p1, C('Brain Freeze'));
+    const shot = d.give(p1, C('Grapeshot'));
+    d.cast(f1);
+    d.targetPlayer(p2);
+    d.resolve();
+    d.cast(shot);
+    d.targetPlayer(p2);
+    d.enemy = p2;
+    d.until((x) => x.type === 'priority' && d.g.state.stack.length === 0 && x.player === p1, 400);
+    expect(d.g.player(p2).life).toBe(38); // Grapeshot + one storm copy
+  });
+
+  it('Cascade exiles until a cheaper nonland card and lets you cast it free', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Forest', 6);
+    d.lands(p1, 'Island', 1);
+    d.lands(p1, 'Mountain', 1);
+    const bears = d.g.createObject(C('Grizzly Bears'), p1, 'library', { skipEvents: true }).id;
+    const lib = d.g.player(p1).library;
+    lib.splice(lib.indexOf(bears), 1);
+    lib.splice(2, 0, bears); // third from the top, under two Plains
+    d.g.refreshDecision();
+    const libBefore = lib.length;
+    const wanderer = d.give(p1, C('Maelstrom Wanderer'));
+    d.cast(wanderer);
+    d.yesNo = () => true;
+    d.until((x) => x.type === 'priority' && d.g.state.stack.length === 0 && x.player === p1, 400);
+    expect(d.bf(p1, 'Grizzly Bears')).toHaveLength(1); // cast for free off the first cascade
+    expect(d.bf(p1, 'Maelstrom Wanderer')).toHaveLength(1);
+    expect(d.g.player(p1).exile).toHaveLength(0); // everything else went to the bottom
+    expect(d.g.player(p1).library.length).toBe(libBefore - 1);
+  });
+
+  it('Feather returns a spell that targeted your creature to your hand at end step', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Forest', 2);
+    d.put(p1, C('Feather, the Redeemed'));
+    const bear = d.put(p1, C('Grizzly Bears'));
+    const gg = d.give(p1, C('Giant Growth'));
+    d.cast(gg);
+    d.targetObject(bear);
+    d.resolve();
+    d.until(() => d.g.obj(gg).zone === 'exile', 50);
+    expect(d.g.obj(gg).zone).toBe('exile');
+    d.until(() => d.g.obj(gg).zone === 'hand', 400);
+    expect(d.g.obj(gg).zone).toBe('hand');
   });
 });

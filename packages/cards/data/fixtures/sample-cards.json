@@ -8752,5 +8752,108 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/9/7/97eb1804-6fd8-4917-af36-87fdfce39d3a.jpg?1783931012"
     }
+  },
+  {
+    "object": "card",
+    "id": "e3e2d90a-3557-49d5-9986-cb50fd31f396",
+    "oracle_id": "ebd2d760-5ad8-4027-b124-171822f3edfe",
+    "name": "Grapeshot",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}",
+    "cmc": 2,
+    "type_line": "Sorcery",
+    "oracle_text": "Grapeshot deals 1 damage to any target.\nStorm (When you cast this spell, copy it for each spell cast before it this turn. You may choose new targets for the copies.)",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [
+      "Storm"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/e/3/e3e2d90a-3557-49d5-9986-cb50fd31f396.jpg?1783903011"
+    }
+  },
+  {
+    "object": "card",
+    "id": "5685b28a-b943-4143-b9ed-4796c1ffbf9c",
+    "oracle_id": "ad9b7fbc-61c8-43ee-a65c-99206fd1e4df",
+    "name": "Maelstrom Wanderer",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{5}{G}{U}{R}",
+    "cmc": 8,
+    "type_line": "Legendary Creature — Elemental",
+    "oracle_text": "Creatures you control have haste.\nCascade, cascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order. Then do it again.)",
+    "colors": [
+      "U",
+      "R",
+      "G"
+    ],
+    "color_identity": [
+      "U",
+      "R",
+      "G"
+    ],
+    "keywords": [
+      "Cascade"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "7",
+    "toughness": "5",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/5/6/5685b28a-b943-4143-b9ed-4796c1ffbf9c.jpg?1783904536"
+    }
+  },
+  {
+    "object": "card",
+    "id": "e4a2d2c6-8eaa-4760-b620-921b807baa2e",
+    "oracle_id": "aa219936-661b-4ccb-8741-78b70cff2b1a",
+    "name": "Feather, the Redeemed",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{R}{W}{W}",
+    "cmc": 3,
+    "type_line": "Legendary Creature — Angel",
+    "oracle_text": "Flying\nWhenever you cast an instant or sorcery spell that targets a creature you control, exile that card instead of putting it into your graveyard as it resolves. If you do, return it to your hand at the beginning of the next end step.",
+    "colors": [
+      "W",
+      "R"
+    ],
+    "color_identity": [
+      "W",
+      "R"
+    ],
+    "keywords": [
+      "Flying"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "3",
+    "toughness": "4",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/e/4/e4a2d2c6-8eaa-4760-b620-921b807baa2e.jpg?1783933396"
+    }
   }
 ]

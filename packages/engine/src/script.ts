@@ -517,7 +517,7 @@ export type Effect =
   /** "You get an emblem with '...'" */
   | { kind: 'emblem'; text: string; who?: Ref }
   /** Discover N / cascade: exile from the top until a nonland card with mana value <= N; cast it free or put it in hand. */
-  | { kind: 'discover'; amount: Amount }
+  | { kind: 'discover'; amount: Amount; /** Cascade: a declined card goes to the bottom with the rest instead of your hand. */ cascade?: boolean }
   /** Turn-wide flags such as "Damage can't be prevented this turn". */
   | { kind: 'turnFlag'; flag: 'noPrevention' | 'keepMana' }
   /** Fog effects: "Prevent all (combat) damage that would be dealt this turn [by X] [to Y]". */

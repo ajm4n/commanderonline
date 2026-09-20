@@ -1835,6 +1835,21 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     const i = rules.findIndex((t) => t.player === p && t.rule.kind === 'custom' && t.rule.tag === 'nextSpellCostReduction' && nextSpellReductionApplies(g, obj, p, t.rule.data));
     if (i >= 0) rules.splice(i, 1);
   }
+  // Keyword cast triggers (rule 702.40 storm, 702.85 cascade). They trigger on casting, so they go on the stack above the spell.
+  {
+    const kws = g.characteristics(id).keywords;
+    const stormCount = player.spellsCastThisTurn - 1; // spells cast before this one this turn
+    if (kws.has('Storm') && stormCount > 0) {
+      g.queueTrigger({ sourceId: id, controller: p, ability: { kind: 'triggered', text: `Storm: copy ${face.name} ${stormCount} time${stormCount === 1 ? '' : 's'}`, event: 'cast', effects: [{ kind: 'copySpell', what: { ref: 'stackTarget' }, count: stormCount }] }, context: { triggerObject: id, triggerPlayer: p } });
+    }
+    let cascades = kws.has('Cascade') ? Math.max(1, (face.oracleText.match(/^Cascade((?:, cascade)*)/mi)?.[1].match(/cascade/gi) ?? []).length + 1) : 0;
+    // Yidris: "as you cast spells from your hand this turn, they gain cascade"
+    if (fromZone === 'hand' && g.playerRules(p).some((r) => r.kind === 'custom' && r.tag === 'spellsGainCascade')) cascades += 1;
+    const mv = g.characteristics(id).manaValue;
+    for (let i = 0; i < cascades; i++) {
+      g.queueTrigger({ sourceId: id, controller: p, ability: { kind: 'triggered', text: `Cascade (${face.name})`, event: 'cast', effects: [{ kind: 'discover', amount: mv - 1, cascade: true }] }, context: { triggerObject: id, triggerPlayer: p } });
+    }
+  }
   g.emit({ name: 'cast', objectId: id, playerId: p, fromZone, data: { targets } });
   return true;
 }

@@ -1999,15 +1999,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         }
       }
       if (hit !== null) {
-        const resp = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: `Discover: cast ${g.nameOf(hit)} without paying its mana cost? (No puts it into your hand.)`, sourceId: ctx.sourceId ?? undefined });
+        const resp = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: e.cascade ? `Cascade: cast ${g.nameOf(hit)} without paying its mana cost? (No puts it on the bottom with the rest.)` : `Discover: cast ${g.nameOf(hit)} without paying its mana cost? (No puts it into your hand.)`, sourceId: ctx.sourceId ?? undefined });
         let cast = false;
         if (resp.type === 'yesNo' && resp.value) {
           const { castSpell } = await_casting();
           cast = yield* castSpell(g, ctx.controller, hit, { type: 'cast', objectId: hit }, { free: true });
         }
-        if (!cast && g.state.objects[hit]?.zone === 'exile') g.moveObject(hit, 'hand', { skipEvents: true });
+        if (!cast && !e.cascade && g.state.objects[hit]?.zone === 'exile') g.moveObject(hit, 'hand', { skipEvents: true });
       }
-      const rest = exiled.filter((id) => id !== hit && g.state.objects[id]?.zone === 'exile');
+      const rest = exiled.filter((id) => g.state.objects[id]?.zone === 'exile' && (id !== hit || e.cascade));
       for (const id of g.rng.shuffle(rest)) g.moveObject(id, 'library', { position: 'bottom', skipEvents: true });
       return;
     }
@@ -2270,6 +2270,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'exileTop': {
+      const allMoved: ObjectId[] = []; // Etali: "exile the top card of each player's library … from among those cards"
       for (const p of playersOf(g, e.who, ctx)) {
         const pl = g.player(p);
         const n = amt(e.amount);
@@ -2280,14 +2281,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const r = g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined, faceDown: e.faceDown });
           if (r) moved.push(r.id);
         }
-        ctx.memory['lastMoved'] = moved;
-        if (e.key) ctx.memory[e.key] = moved;
+        allMoved.push(...moved);
         if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) {
           const src = g.state.objects[ctx.sourceId];
           src.memory['exiled'] = [...((src.memory['exiled'] as ObjectId[]) ?? []), ...moved];
         }
         if (moved.length) g.log(`${pl.name} exiles the top ${moved.length === 1 ? 'card' : `${moved.length} cards`} of their library: ${moved.map((id) => g.nameOf(id)).join(', ')}.`);
       }
+      ctx.memory['lastMoved'] = allMoved;
+      if (e.key) ctx.memory[e.key] = allMoved;
       return;
     }
     case 'revealHand': {
