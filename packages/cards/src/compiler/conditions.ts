@@ -901,6 +901,13 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const c: Condition = { kind: 'isTapped', ref: { ref: 'attachedTo' } };
     return m[1] === 'tapped' ? c : { kind: 'not', c };
   }
+  // Odric: "a creature you control has first strike"
+  if ((m = t.match(/^(?:a|an) (creature|permanent|artifact|enchantment|land) you control has ([\w -]+)$/))) {
+    const kw = m[2].trim();
+    const cap = kw.charAt(0).toUpperCase() + kw.slice(1);
+    const types = m[1] === 'permanent' ? undefined : [m[1].charAt(0).toUpperCase() + m[1].slice(1)];
+    return { kind: 'count', filter: { ...(types ? { types } : {}), controller: 'you', zone: 'battlefield', keywords: [cap] }, op: '>=', value: 1 };
+  }
   // Guardian Project: "it does not have the same name as another creature you control or a creature card in your graveyard"
   if (/^it does not have the same name as another creature you control or a creature card in your graveyard$/.test(t)) {
     const ref: import('@commander/engine').Ref = ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.lastObj ?? ctx.self;

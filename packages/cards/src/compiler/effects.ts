@@ -547,7 +547,7 @@ const POOL_PATTERNS: Pattern[] = [
     return out;
   }],
   // "Put the rest on the bottom of your library in a random order" / "Exile the rest" / "and the rest into your graveyard"
-  [new RegExp(String.raw`^(?:then )?(?:and )?(?:put )?the rest ${DEST_RE}$|^(?:then )?exile the rest$|^(?:then )?put the rest into exile$`, 'i'), (m, ctx) => {
+  [new RegExp(String.raw`^(?:then )?(?:and )?(?:put )?the rest(?: of (?:the|those) cards)? ${DEST_RE}$|^(?:then )?exile the rest(?: of (?:the|those) cards)?$|^(?:then )?put the rest(?: of (?:the|those) cards)? into exile$`, 'i'), (m, ctx) => {
     if (!ctx.restKey) return null;
     const to = restDest(m[1] ?? 'exile');
     return to ? [{ kind: 'moveRest', key: ctx.restKey, to }] : null;

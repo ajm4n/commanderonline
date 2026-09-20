@@ -144,6 +144,17 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
         continue;
       }
     }
+    // Odric: "creatures you control gain first strike until end of turn if a creature you control has first strike.
+    // The same is true for flying, deathtouch, …" → one sentence per keyword.
+    {
+      const om = line.match(/^(.*?)(creatures you control gain )([\w -]+?)( until end of turn if a creature you control has )\3\. The same is true for (.+?)\.?$/i);
+      if (om) {
+        // Only plain keywords expand; "protection" (needs a quality) and quoted abilities are left as informational text.
+        const kws = om[5].split(/,\s*(?:and\s+)?|\s+and\s+/).map((k) => k.trim()).filter((k) => /^[a-z][a-z -]*$/i.test(k) && !/^protection$/i.test(k));
+        const sentence = (kw: string) => `${om[2]}${kw}${om[4]}${kw}`;
+        line = `${om[1]}${[om[3], ...kws].map(sentence).join('. ')}.`;
+      }
+    }
     // Drop purely informational trailing sentences ("The same is true for …").
     {
       const ss = sentences(line);
