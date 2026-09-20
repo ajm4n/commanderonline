@@ -1332,7 +1332,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const moved: ObjectId[] = [];
         for (const id of ids) {
           if (e.destination === 'battlefield') {
-            const r = yield* enterBattlefield(g, id, p, { tapped: e.tapped, ctx });
+            const r = yield* enterBattlefield(g, id, e.controller === 'you' ? ctx.controller : p, { tapped: e.tapped, ctx });
             if (r) moved.push(r.id);
           } else if (e.destination === 'top') {
             // stays; moved to top after shuffle

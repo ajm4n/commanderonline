@@ -1919,7 +1919,9 @@ const PATTERNS: Pattern[] = [
       if (!who) return null;
     }
     const dest = m[6] ? 'exile' : /hand/.test(m[4]) ? 'hand' : /battlefield/.test(m[4]) ? 'battlefield' : /top/.test(m[4]) ? 'top' : 'graveyard';
-    return [{ kind: 'searchLibrary', who, filter: { ...noun.filter, zone: 'library' }, count: n, destination: dest, tapped: !!m[5], reveal: /reveal/i.test(m[0]), shuffle: true }];
+    // Bribery: searching another player's library and putting the card "onto the battlefield under your control".
+    const yours = who && dest === 'battlefield' && /under your control/i.test(m[0]);
+    return [{ kind: 'searchLibrary', who, filter: { ...noun.filter, zone: 'library' }, count: n, destination: dest, tapped: !!m[5], reveal: /reveal/i.test(m[0]), shuffle: true, ...(yours ? { controller: 'you' as const } : {}) }];
   }],
   [/^search your ((?:library|graveyard|hand)(?:(?:,|,? and|,? and\/or|,? or|\/or) (?:your )?(?:library|graveyard|hand))*) for (?:a|an) (.+?)(?:, reveal (?:it|them|that card),?)?(?:,? and| then)? put (?:it|that card) (into your hand|onto the battlefield( tapped)?)(?:\. if you search your library this way, shuffle| and shuffle| then shuffle|, then shuffle|, then shuffle your library)?$/i, (m, ctx) => {
     const zones = [...new Set((m[1].match(/library|graveyard|hand/gi) ?? []).map((z) => z.toLowerCase()))] as ('library' | 'graveyard' | 'hand')[];
