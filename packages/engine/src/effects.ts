@@ -876,7 +876,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
             if (who === 'you' && src.controller !== p) continue;
             if (who === 'opponent' && src.controller === p) continue;
             if (ab.creatureOnly && !isCreatureToken) continue;
-            count += ab.extra * n;
+            // Each doubler applies to the event as already modified (rule 616.1): two doublers make four.
+            count = count * (1 + ab.extra) + (ab.plus ?? 0);
             if (ab.half) count = ab.half === 'up' ? Math.ceil(count / 2) : Math.floor(count / 2);
             if (ab.alsoToken) alsoTokens.push(ab.alsoToken);
             if (ab.replaceToken) tokenSpec = ab.replaceToken;
@@ -884,7 +885,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         }
         for (const ab of g.turnReplacementsFor(p, 'tokenCreated')) {
           if (ab.creatureOnly && !isCreatureToken) continue;
-          count += ab.extra * n;
+          count = count * (1 + ab.extra) + (ab.plus ?? 0);
           if (ab.half) count = ab.half === 'up' ? Math.ceil(count / 2) : Math.floor(count / 2);
           if (ab.alsoToken) alsoTokens.push(ab.alsoToken);
           if (ab.replaceToken) tokenSpec = ab.replaceToken;

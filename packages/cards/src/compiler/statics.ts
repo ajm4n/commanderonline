@@ -1027,7 +1027,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const how = m[2].toLowerCase();
     const plus = m[3] ? wordToNumber(m[3]) : 0;
     if (typeof plus === 'number') {
-      return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: /twice/.test(how) ? 1 : plus, half: /half/.test(how) ? (m[4]?.toLowerCase() === 'up' ? 'up' : 'down') : undefined, who }];
+      return [{ kind: 'replacement', text: line, event: 'tokenCreated', extra: /twice/.test(how) ? 1 : 0, plus: !/twice/.test(how) && plus > 0 ? plus : undefined, half: /half/.test(how) ? (m[4]?.toLowerCase() === 'up' ? 'up' : 'down') : undefined, who }];
     }
   }
   // "If you would lose the game, instead exile ~ and your life total becomes 1."

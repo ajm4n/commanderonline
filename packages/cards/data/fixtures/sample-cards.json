@@ -7949,5 +7949,150 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/e/5/e5142b7a-e580-4737-a4aa-2590f6610ceb.jpg?1783921788"
     }
+  },
+  {
+    "object": "card",
+    "id": "9a52c265-6920-4929-ba0a-70da08df01f1",
+    "oracle_id": "7246d45b-2185-4cdd-981b-5419b7d52bce",
+    "name": "Anointed Procession",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{W}",
+    "cmc": 4,
+    "type_line": "Enchantment",
+    "oracle_text": "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/9/a/9a52c265-6920-4929-ba0a-70da08df01f1.jpg?1783936544"
+    }
+  },
+  {
+    "object": "card",
+    "id": "01033dae-fec1-41f2-b7f2-cc6a43331790",
+    "oracle_id": "84dc94b2-95fb-4d53-aaa2-191cb645639f",
+    "name": "Parallel Lives",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{G}",
+    "cmc": 4,
+    "type_line": "Enchantment",
+    "oracle_text": "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/0/1/01033dae-fec1-41f2-b7f2-cc6a43331790.jpg?1783940912"
+    }
+  },
+  {
+    "object": "card",
+    "id": "f2c4f80e-84a0-463b-82c3-5c6503809351",
+    "oracle_id": "01546b7d-a233-4176-8843-d732074dc5b6",
+    "name": "Doubling Season",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}{G}",
+    "cmc": 5,
+    "type_line": "Enchantment",
+    "oracle_text": "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.\nIf an effect would put one or more counters on a permanent you control, it puts twice that many of those counters on that permanent instead.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/2/f2c4f80e-84a0-463b-82c3-5c6503809351.jpg?1783909062"
+    }
+  },
+  {
+    "object": "card",
+    "id": "d0b7cecf-b51b-4d30-b7e9-cd7976271e07",
+    "oracle_id": "9242cd3e-1a71-4700-8182-9c1005616033",
+    "name": "Impact Tremors",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}",
+    "cmc": 2,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature you control enters, this enchantment deals 1 damage to each opponent.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/0/d0b7cecf-b51b-4d30-b7e9-cd7976271e07.jpg?1783908891"
+    }
+  },
+  {
+    "object": "card",
+    "id": "6fe6ccad-e303-48f9-9dfa-0db7c1878031",
+    "oracle_id": "c7f33cea-2ec8-4081-9208-a5b1d86721b3",
+    "name": "Bastion of Remembrance",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{B}",
+    "cmc": 3,
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, create a 1/1 white Human Soldier creature token.\nWhenever a creature you control dies, each opponent loses 1 life and you gain 1 life.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/6/f/6fe6ccad-e303-48f9-9dfa-0db7c1878031.jpg?1783904806"
+    }
   }
 ]

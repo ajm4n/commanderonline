@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -594,5 +594,35 @@ describe('combos and staples played through the engine', () => {
     d.resolve();
     expect(d.bf(p2, 'Sol Ring')).toHaveLength(0);
     expect(buildPriorityDecision(d.g, p2).activatableAbilities.some((a) => a.objectId === top)).toBe(true);
+  });
+  it('token doublers multiply: Procession + Parallel Lives + Doubling Season make eight tokens from one', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Swamp', 4);
+    d.put(p1, C('Anointed Procession'));
+    d.put(p1, C('Parallel Lives'));
+    d.put(p1, C('Doubling Season'));
+    d.put(p1, C('Impact Tremors'));
+    const life = d.g.player(p2).life;
+    const bastion = d.give(p1, C('Bastion of Remembrance'));
+    d.cast(bastion);
+    d.resolve();
+    d.answer(d.d);
+    d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step === 'main1');
+    expect(d.bf(p1, 'Human Soldier')).toHaveLength(8);
+    expect(d.g.player(p2).life).toBe(life - 8); // Impact Tremors once per token
+  });
+
+  it('Doubling Season doubles counters placed on your permanents', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Forest', 2);
+    d.put(p1, C('Doubling Season'));
+    const bears = d.put(p1, C('Grizzly Bears'));
+    const kenrith = d.put(p1, C('Kenrith, the Returned King'));
+    const ab = d.prio().activatableAbilities.find((a) => a.objectId === kenrith && /\+1\/\+1 counter/.test(a.text));
+    expect(ab).toBeDefined();
+    d.submit({ type: 'activate', objectId: kenrith, abilityIndex: ab!.abilityIndex });
+    d.targetObject(bears);
+    d.resolve();
+    expect(d.g.obj(bears).counters['+1/+1']).toBe(2);
   });
 });
