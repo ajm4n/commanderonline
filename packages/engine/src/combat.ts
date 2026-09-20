@@ -480,7 +480,20 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
   if (!assignments.length) return;
   // All combat damage is dealt simultaneously.
   if (firstStrikeStep) g.state.turn.dealtFirstStrike = [...new Set([...(g.state.turn.dealtFirstStrike ?? []), ...assignments.map((a) => a.source)])];
-  for (const a of assignments) g.dealDamage(a.source, a.target, a.amount, true);
+  // "Whenever one or more creatures you control deal combat damage to a player" fires once per player per controller.
+  const batches = new Map<string, { player: PlayerId; controller: PlayerId; amount: number; sources: ObjectId[] }>();
+  for (const a of assignments) {
+    const dealt = g.dealDamage(a.source, a.target, a.amount, true);
+    if (a.target.kind !== 'player' || dealt <= 0) continue;
+    const controller = g.state.objects[a.source]?.controller;
+    if (!controller) continue;
+    const key = `${a.target.id}::${controller}`;
+    const b = batches.get(key) ?? { player: a.target.id, controller, amount: 0, sources: [] };
+    b.amount += dealt;
+    b.sources.push(a.source);
+    batches.set(key, b);
+  }
+  for (const b of batches.values()) g.emit({ name: 'combatDamageToPlayerBatch', playerId: b.player, otherPlayerId: b.controller, amount: b.amount, combat: true, data: { sources: b.sources } });
   if (g.pendingInitiative) {
     const who = g.pendingInitiative;
     g.pendingInitiative = null;

@@ -7482,5 +7482,38 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/5/2/5272436e-74f0-44c4-a291-ea8ebc3f1525.jpg?1783930088"
     }
+  },
+  {
+    "object": "card",
+    "id": "38326f48-548c-4b18-9ad2-0b7c23385deb",
+    "oracle_id": "89738595-dafb-400a-bfba-91a53a37e717",
+    "name": "Grim Hireling",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{B}",
+    "cmc": 4,
+    "type_line": "Creature — Tiefling Rogue",
+    "oracle_text": "Whenever one or more creatures you control deal combat damage to a player, create two Treasure tokens.\n{B}, Sacrifice X Treasures: Target creature gets -X/-X until end of turn. Activate only as a sorcery.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [
+      "Treasure"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "3",
+    "toughness": "2",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/3/8/38326f48-548c-4b18-9ad2-0b7c23385deb.jpg?1783922451"
+    }
   }
 ]

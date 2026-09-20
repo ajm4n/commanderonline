@@ -595,6 +595,8 @@ export type GameEventName =
   | 'dealsCombatDamage'
   | 'dealtDamage'
   | 'dealtCombatDamageToPlayer'
+  /** Once per player dealt combat damage this step by one controller's creatures ("whenever one or more creatures you control deal combat damage to a player"); otherPlayerId is that controller, amount the total. */
+  | 'combatDamageToPlayerBatch'
   | 'lifeGained'
   | 'lifeLost'
   | 'finishedVoting'

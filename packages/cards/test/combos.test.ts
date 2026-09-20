@@ -133,7 +133,7 @@ function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -292,5 +292,18 @@ describe('combos and staples played through the engine', () => {
     d.resolve();
     expect(d.g.player(p2).life).toBe(39);
     expect(d.g.obj(ballista).counters['+1/+1']).toBe(1);
+  });
+
+  it('Grim Hireling triggers once per player however many creatures connect', () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Grim Hireling'));
+    const b1 = d.put(p1, C('Grizzly Bears'));
+    const b2 = d.put(p1, C('Grizzly Bears'));
+    d.until((x) => x.type === 'declareAttackers');
+    d.submit({ type: 'attackers', attacks: [{ attacker: b1, target: p2 }, { attacker: b2, target: p2 }] });
+    const turn = d.g.state.turn.number;
+    d.until(() => d.g.state.turn.number > turn || (d.g.state.turn.number === turn && d.g.state.turn.step === 'main2' && d.g.state.stack.length === 0));
+    expect(d.g.player(p2).life).toBe(36);
+    expect(d.bf(p1, 'Treasure').length).toBe(2);
   });
 });

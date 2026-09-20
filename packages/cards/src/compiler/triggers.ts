@@ -67,6 +67,9 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
     .replace(/deals (combat )?damage to (a player|an opponent) or battle\b/i, 'deals $1damage to $2')
     .replace(/deals (combat )?damage to a player or planeswalker\b/i, 'deals $1damage to a player');
   {
+    // "Whenever one or more creatures you control deal combat damage to a player": once per player, however many creatures connected.
+    const bm = line.match(/^Whenever one or more creatures you control deal combat damage to (an opponent|a player|one or more players|one or more opponents), (.+)$/i);
+    if (bm) return { event: 'combatDamageToPlayerBatch', filter: { player: /opponent/i.test(bm[1]) ? 'opponent' : 'any', otherPlayer: 'you' }, hasObject: false, hasPlayer: true, rest: bm[2] };
     const sm = line.match(/^Whenever (?:a|an|one or more) (.+?) you control deals? (combat )?damage to (an opponent|a player), (.+)$/i);
     if (sm) {
       const noun = parseNoun(`a ${sm[1]}`);
