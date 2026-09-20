@@ -1075,6 +1075,45 @@ describe('combos and staples played through the engine', () => {
     expect(d.g.state.objects[elves]?.zone).toBe('graveyard'); // 1 damage kills the 1/1
     expect(d.g.obj(bears).damage).toBe(1);
   });
+  it('Impossible Man: the copy lasts until end of turn, then he is himself again', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Island', 3);
+    const man = d.put(p1, C('Impossible Man'));
+    const bears = d.put(p2, C('Grizzly Bears'));
+    d.put(p2, C('Llanowar Elves')); // a second legal target so the choice is real
+    d.g.refreshDecision();
+    const ab = d.prio().activatableAbilities.find((a) => a.objectId === man);
+    expect(ab).toBeDefined();
+    d.submit({ type: 'activate', objectId: man, abilityIndex: ab!.abilityIndex });
+    d.targetObject(bears);
+    d.resolve();
+    // "except his name is Impossible Man": a Grizzly Bears copy that keeps his name.
+    expect(d.g.characteristics(man).name).toBe('Impossible Man');
+    expect(d.g.characteristics(man).power).toBe(2);
+    expect(d.g.characteristics(man).subtypes).not.toContain('Alien');
+    const turn = d.g.state.turn.number;
+    d.until(() => d.g.state.turn.number > turn, 400);
+    expect(d.g.characteristics(man).power).toBe(parseInt(d.g.obj(man).card.power!, 10));
+    expect(d.g.characteristics(man).subtypes).toContain('Alien');
+  });
+  it('Old Man of the Sea keeps the creature only while it stays tapped', () => {
+    const { d, p1, p2 } = game();
+    const oldMan = d.put(p1, C('Old Man of the Sea'));
+    const bears = d.put(p2, C('Grizzly Bears'));
+    d.put(p2, C('Llanowar Elves'));
+    d.g.refreshDecision();
+    const ab = d.prio().activatableAbilities.find((a) => a.objectId === oldMan);
+    expect(ab).toBeDefined();
+    d.submit({ type: 'activate', objectId: oldMan, abilityIndex: ab!.abilityIndex });
+    d.targetObject(bears);
+    d.resolve();
+    expect(d.g.obj(bears).controller).toBe(p1);
+    // Untapping Old Man of the Sea ends the effect at once.
+    d.g.obj(oldMan).tapped = false;
+    d.g.refreshDecision();
+    d.until(() => d.g.obj(bears).controller === p2, 50);
+    expect(d.g.obj(bears).controller).toBe(p2);
+  });
   it('Comet Storm: one extra target per kick, X damage to each', () => {
     const storm = compileCard(C('Comet Storm')).script.abilities.find((a) => a.kind === 'spell') as Extract<AbilitySpec, { kind: 'spell' }>;
     expect(storm.targets).toHaveLength(2);

@@ -861,6 +861,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const own = g.scriptFor(o).abilities.find((a): a is Extract<AbilitySpec, { kind: 'triggered' | 'activated' }> => (a.kind === 'triggered' || a.kind === 'activated') && /becomes? a copy of/i.test(a.text));
           if (own) ex = { ...ex, keywords: [...(ex.keywords ?? []), own.text] };
         }
+        // "except its name is Impossible Man": the card text names ~, meaning the copying permanent's own name.
+        if (ex?.name === '~') ex = { ...ex, name: o.card.name };
         const card = applyCopyExceptions(copiableCard(src), ex);
         if (e.duration) {
           g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids: [o.id] }, duration: durationOf(e.duration), modification: { layer: 'copy', card } });
