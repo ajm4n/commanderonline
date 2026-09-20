@@ -1187,7 +1187,10 @@ export class Game {
     if (f.attachedToSource) {
       const src = this.state.objects[obj.id] ?? obj;
       const attachedTo = src.attachedTo ?? (src.lastKnownInfo as GameObject | undefined)?.attachedTo ?? null;
-      if (e.objectId === undefined || attachedTo !== e.objectId) return false;
+      // "Whenever equipped creature dies": the creature has already left and the Equipment was detached as it went,
+      // so the creature's last known information decides whether this was attached to it (rule 603.10a).
+      const wasAttached = e.objectId !== undefined && (attachedTo === e.objectId || (((e.snapshot as GameObject | undefined)?.attachments ?? []).includes(obj.id) && e.objectId === (e.snapshot as GameObject).id));
+      if (!wasAttached) return false;
     }
     if (f.sourceAttachedTo) {
       const src = this.state.objects[obj.id] ?? obj;

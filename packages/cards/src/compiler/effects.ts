@@ -9618,6 +9618,15 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
       const inner = parseSentence(m[2].replace(/\bthat (player|opponent)\b/gi, 'that player'), sub);
       if (inner) return [{ kind: 'forEach', over: /opponent/i.test(m[1]) ? { ref: 'eachOpponent' } : { ref: 'eachPlayer' }, effects: inner }];
     }
+    // "For each color among permanents you control, add one mana of that color": one mana of each such color,
+    // not a free choice repeated once per color.
+    {
+      const col = m[1].match(/^colou?r among (.+)$/i);
+      if (col && /^add one mana of that colou?r$/i.test(m[2])) {
+        const noun = parseNoun(col[1]);
+        if (noun) return [{ kind: 'addManaPerColor', filter: { ...noun.filter, zone: noun.filter.zone ?? 'battlefield' } }];
+      }
+    }
     // "For each counter removed this way, ~ gets +1/+0 until end of turn": a countable quantity.
     {
       const times = amt(m[1], ctx) ?? amt(`the number of ${m[1]}`, ctx);

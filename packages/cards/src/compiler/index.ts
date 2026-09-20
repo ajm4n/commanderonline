@@ -1315,7 +1315,7 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
           compiledLines.push(line);
           continue;
         }
-        const isMana = effects.length > 0 && effects.every((e) => e.kind === 'addMana' || (e.kind === 'chooseMode' && e.options.every((o) => o.effects.every((x) => x.kind === 'addMana')))) && ctx.targets.length === 0;
+        const isMana = effects.length > 0 && effects.every((e) => e.kind === 'addMana' || e.kind === 'addManaPerColor' || (e.kind === 'chooseMode' && e.options.every((o) => o.effects.every((x) => x.kind === 'addMana')))) && ctx.targets.length === 0;
         const conds: Condition[] = [];
         if (rest.yourTurn) conds.push({ kind: 'yourTurn' });
         if (rest.condition) conds.push(rest.condition);

@@ -133,7 +133,7 @@ function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -364,5 +364,21 @@ describe('combos and staples played through the engine', () => {
     expect(d.g.player(p2).exile.map((id) => d.g.obj(id).card.name)).toContain('Grizzly Bears');
     expect(d.g.player(p2).life).toBe(life + 2);
     expect(d.g.player(p1).life).toBe(40);
+  });
+  it('Skullclamp on a 1/1 kills it and draws two cards', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Plains', 1);
+    const clamp = d.put(p1, C('Skullclamp'));
+    const sentinel = d.put(p1, C('Esper Sentinel'));
+    const hand = d.g.player(p1).hand.length;
+    const equip = d.prio().activatableAbilities.find((a) => a.objectId === clamp && /Equip/.test(a.text));
+    expect(equip).toBeDefined();
+    d.submit({ type: 'activate', objectId: clamp, abilityIndex: equip!.abilityIndex });
+    d.targetObject(sentinel);
+    d.resolve();
+    expect(d.bf(p1, 'Esper Sentinel')).toHaveLength(0);
+    expect(d.g.player(p1).graveyard.map((id) => d.g.obj(id).card.name)).toContain('Esper Sentinel');
+    expect(d.g.player(p1).hand.length).toBe(hand + 2);
+    expect(d.g.obj(clamp).attachedTo).toBeNull();
   });
 });
