@@ -1040,7 +1040,7 @@ describe('combos and staples played through the engine', () => {
   it('Comet Storm: one extra target per kick, X damage to each', () => {
     const storm = compileCard(C('Comet Storm')).script.abilities.find((a) => a.kind === 'spell') as Extract<AbilitySpec, { kind: 'spell' }>;
     expect(storm.targets).toHaveLength(2);
-    expect(storm.targets[1].countAmount).toEqual({ kind: 'kickCount' });
+    expect(storm.targets![1].countAmount).toEqual({ kind: 'kickCount' });
     expect(storm.effects.filter((e) => e.kind === 'damage').map((e) => (e as Extract<Effect, { kind: 'damage' }>).to)).toEqual([{ ref: 'target', slot: 0 }, { ref: 'target', slot: 1 }]);
   });
   it('Heartless Hidetsugu halves each player\'s own life total', () => {
