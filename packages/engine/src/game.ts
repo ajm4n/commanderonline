@@ -1403,8 +1403,8 @@ export class Game {
   // Conditions, amounts, refs
   // -------------------------------------------------------------------------
 
-  checkCondition(c: Condition, ctx: { sourceId: ObjectId | null; controller: PlayerId; triggerContext?: Record<string, unknown>; targets?: Target[]; x?: number; modes?: number[] }): boolean {
-    const ectx: EffectContext = { sourceId: ctx.sourceId, controller: ctx.controller, targets: ctx.targets ?? [], triggerContext: ctx.triggerContext ?? {}, x: ctx.x ?? 0, modes: ctx.modes ?? [], memory: {} };
+  checkCondition(c: Condition, ctx: { sourceId: ObjectId | null; controller: PlayerId; triggerContext?: Record<string, unknown>; targets?: Target[]; targetSlots?: Target[][]; x?: number; modes?: number[]; /** The resolving effect's memory, so "if it is a permanent card" can look at the card just revealed. */ memory?: Record<string, unknown> }): boolean {
+    const ectx: EffectContext = { sourceId: ctx.sourceId, controller: ctx.controller, targets: ctx.targets ?? [], targetSlots: ctx.targetSlots, triggerContext: ctx.triggerContext ?? {}, x: ctx.x ?? 0, modes: ctx.modes ?? [], memory: ctx.memory ?? {} };
     const cmp = (a: number, op: string, b: number) => (op === '>=' ? a >= b : op === '<=' ? a <= b : op === '==' ? a === b : op === '>' ? a > b : op === '<' ? a < b : a !== b);
     switch (c.kind) {
       case 'count':

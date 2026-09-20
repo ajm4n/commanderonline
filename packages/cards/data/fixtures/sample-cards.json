@@ -7184,5 +7184,303 @@
     ],
     "digital": false,
     "reserved": false
+  },
+  {
+    "object": "card",
+    "id": "0e8ccfa7-4178-476a-a155-0ca1c98556c9",
+    "oracle_id": "8f933fae-6c0c-42d7-a817-14760d8285cd",
+    "name": "Exquisite Blood",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}{B}",
+    "cmc": 5,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever an opponent loses life, you gain that much life.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/0/e/0e8ccfa7-4178-476a-a155-0ca1c98556c9.jpg?1783913874"
+    }
+  },
+  {
+    "object": "card",
+    "id": "f5a4970b-2ba6-4c91-a301-369369cdf360",
+    "oracle_id": "6f4ac4a4-53ec-4bc9-8f5c-d4b801d867b2",
+    "name": "Grave Pact",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{B}{B}{B}",
+    "cmc": 4,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature you control dies, each other player sacrifices a creature of their choice.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/5/f5a4970b-2ba6-4c91-a301-369369cdf360.jpg?1783915673"
+    }
+  },
+  {
+    "object": "card",
+    "id": "8f42d773-c742-4465-b6d5-31feaba49146",
+    "oracle_id": "24227761-b50e-4b9e-93a2-e82d053b3e3d",
+    "name": "Fling",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}",
+    "cmc": 2,
+    "type_line": "Instant",
+    "oracle_text": "As an additional cost to cast this spell, sacrifice a creature.\nFling deals damage equal to the sacrificed creature's power to any target.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/8/f/8f42d773-c742-4465-b6d5-31feaba49146.jpg?1783930394"
+    }
+  },
+  {
+    "object": "card",
+    "id": "fb8d8106-b9bd-405c-886e-72fc301c65e1",
+    "oracle_id": "07a0cba9-8768-4fd9-a3d5-b0f83b4bf8e8",
+    "name": "Chaos Warp",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}",
+    "cmc": 3,
+    "type_line": "Instant",
+    "oracle_text": "The owner of target permanent shuffles it into their library, then reveals the top card of their library. If it's a permanent card, they put it onto the battlefield.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/b/fb8d8106-b9bd-405c-886e-72fc301c65e1.jpg?1787743253"
+    }
+  },
+  {
+    "object": "card",
+    "id": "3c429c40-2389-41e5-8681-4bb274e25eba",
+    "oracle_id": "74d3277a-38e5-4732-afed-084a56148f20",
+    "name": "Mana Drain",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{U}{U}",
+    "cmc": 2,
+    "type_line": "Instant",
+    "oracle_text": "Counter target spell. At the beginning of your next main phase, add an amount of {C} equal to that spell's mana value.",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/3/c/3c429c40-2389-41e5-8681-4bb274e25eba.jpg?1783921913"
+    }
+  },
+  {
+    "object": "card",
+    "id": "2597050f-6b1b-474e-aa16-33fd154628ca",
+    "oracle_id": "a8abd966-de7b-46a3-8ac7-8747ab35653a",
+    "name": "Wheel of Fortune",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}",
+    "cmc": 3,
+    "type_line": "Sorcery",
+    "oracle_text": "Each player discards their hand, then draws seven cards.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/2/5/2597050f-6b1b-474e-aa16-33fd154628ca.jpg?1783939263"
+    }
+  },
+  {
+    "object": "card",
+    "id": "611c8fa2-b53f-483b-9efa-759ac59dc30f",
+    "oracle_id": "0bd67481-6bd9-48d6-92bd-8933b5ea1eae",
+    "name": "Peregrine Drake",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}{U}",
+    "cmc": 5,
+    "type_line": "Creature — Drake",
+    "oracle_text": "Flying\nWhen this creature enters, untap up to five lands.",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [
+      "Flying"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "3",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/6/1/611c8fa2-b53f-483b-9efa-759ac59dc30f.jpg?1783918487"
+    }
+  },
+  {
+    "object": "card",
+    "id": "a2ff0ee3-9600-4c7d-acec-6ec90595384e",
+    "oracle_id": "a34b7416-cfe3-4a1e-a8c1-a3056b747519",
+    "name": "Kiki-Jiki, Mirror Breaker",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{R}{R}{R}",
+    "cmc": 5,
+    "type_line": "Legendary Creature — Goblin Shaman",
+    "oracle_text": "Haste\n{T}: Create a token that's a copy of target nonlegendary creature you control, except it has haste. Sacrifice it at the beginning of the next end step.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [
+      "Haste"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "2",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/a/2/a2ff0ee3-9600-4c7d-acec-6ec90595384e.jpg?1783935527"
+    }
+  },
+  {
+    "object": "card",
+    "id": "f3537373-ef54-4578-9d05-6216420ee349",
+    "oracle_id": "5def9f38-0a0b-4e8d-9f9d-29dcb46520b4",
+    "name": "Esper Sentinel",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{W}",
+    "cmc": 1,
+    "type_line": "Artifact Creature — Human Soldier",
+    "oracle_text": "Whenever an opponent casts their first noncreature spell each turn, draw a card unless that player pays {X}, where X is this creature's power.",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "1",
+    "toughness": "1",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/f/3/f3537373-ef54-4578-9d05-6216420ee349.jpg?1783926893"
+    }
+  },
+  {
+    "object": "card",
+    "id": "5272436e-74f0-44c4-a291-ea8ebc3f1525",
+    "oracle_id": "4b515bb0-f275-4400-8032-3173b799ab40",
+    "name": "Walking Ballista",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{X}{X}",
+    "cmc": 0,
+    "type_line": "Artifact Creature — Construct",
+    "oracle_text": "This creature enters with X +1/+1 counters on it.\n{4}: Put a +1/+1 counter on this creature.\nRemove a +1/+1 counter from this creature: It deals 1 damage to any target.",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "0",
+    "toughness": "0",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/5/2/5272436e-74f0-44c4-a291-ea8ebc3f1525.jpg?1783930088"
+    }
   }
 ]

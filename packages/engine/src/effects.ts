@@ -1938,7 +1938,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       if (e.if.kind === 'manual') {
         const resp = yield* g.ask({ type: 'yesNo', player: ctx.controller, prompt: e.if.text, sourceId: ctx.sourceId ?? undefined });
         ok = resp.type === 'yesNo' && resp.value;
-      } else ok = g.checkCondition(e.if, { sourceId: ctx.sourceId, controller: ctx.controller, triggerContext: ctx.triggerContext, targets: ctx.targets, x: ctx.x, modes: ctx.modes });
+      } else ok = g.checkCondition(e.if, { sourceId: ctx.sourceId, controller: ctx.controller, triggerContext: ctx.triggerContext, targets: ctx.targets, targetSlots: ctx.targetSlots, x: ctx.x, modes: ctx.modes, memory: ctx.memory });
       yield* executeEffects(g, ok ? e.then : e.else ?? [], ctx);
       return;
     }

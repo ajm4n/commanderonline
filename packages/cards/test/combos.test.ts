@@ -1,0 +1,296 @@
+/** Well-known Commander interactions, compiled from oracle text and played through the engine. */
+import { describe, it, expect } from 'vitest';
+import { Game, type CardData, type Decision, type PlayerSetup, type Response, type PlayerId, type ObjectId, type Target } from '@commander/engine';
+import { loadFixtureDb } from '../src/db-node.js';
+import { scriptFor } from '../src/index.js';
+
+const db = loadFixtureDb();
+const C = (n: string): CardData => {
+  const c = db.byName(n);
+  if (!c) throw new Error(`missing ${n}`);
+  return c;
+};
+type Prio = Extract<Decision, { type: 'priority' }>;
+
+class D {
+  /** The player our target choices point at when a spell or trigger asks for a player. */
+  enemy: PlayerId | null = null;
+  yesNo: (prompt: string) => boolean = () => true;
+  constructor(public g: Game) {}
+  get d() {
+    return this.g.pending!;
+  }
+  submit(r: Response) {
+    this.g.submit(this.g.pending!.player, r);
+  }
+  until(pred: (d: Decision) => boolean, max = 3000) {
+    for (let i = 0; i < max; i++) {
+      const d = this.g.pending;
+      if (!d || pred(d)) return;
+      this.answer(d);
+    }
+    throw new Error('never matched: ' + JSON.stringify(this.g.pending).slice(0, 300));
+  }
+  answer(d: Decision) {
+    switch (d.type) {
+      case 'mulligan':
+        return this.submit({ type: 'mulligan', keep: true });
+      case 'priority':
+        return this.submit({ type: 'pass' });
+      case 'yesNo':
+        return this.submit({ type: 'yesNo', value: this.yesNo(d.prompt) });
+      case 'declareAttackers':
+        return this.submit({ type: 'attackers', attacks: [] });
+      case 'declareBlockers':
+        return this.submit({ type: 'blockers', blocks: [] });
+      case 'chooseObjects': {
+        // Tapped permanents first, so "untap up to five lands" picks the lands that need it.
+        const cands = [...d.candidates].sort((a, b) => Number(this.g.obj(b).tapped) - Number(this.g.obj(a).tapped));
+        return this.submit({ type: 'objects', ids: cands.slice(0, Math.min(d.max, cands.length)) });
+      }
+      case 'chooseOption':
+        return this.submit({ type: 'options', ids: d.options.filter((o) => !o.disabled).slice(0, Math.max(1, d.min)).map((o) => o.id) });
+      case 'orderObjects':
+        return this.submit({ type: 'order', ids: d.items ? d.items.map((i) => i.id) : d.objectIds });
+      case 'chooseTargets':
+        return this.submit({
+          type: 'targets',
+          targets: d.slots.map((s) => {
+            const pick = s.legal.find((t) => t.kind === 'player' && t.id === this.enemy) ?? s.legal[0];
+            return (pick ? [pick] : []).slice(0, Math.max(s.min, 1)) as Target[];
+          }),
+        });
+      case 'chooseNumber':
+        return this.submit({ type: 'number', value: d.max });
+      case 'distribute': {
+        const a = d.targets.map(() => d.minPer);
+        a[0] += d.amount - a.reduce((x, y) => x + y, 0);
+        return this.submit({ type: 'distribute', amounts: a });
+      }
+      case 'manualTrigger':
+        return this.submit({ type: 'manualDone' });
+      case 'payMana':
+        return this.submit({ type: 'payMana', tap: [], auto: true });
+    }
+  }
+  give(p: PlayerId, c: CardData): ObjectId {
+    const o = this.g.createObject(c, p, 'hand', { skipEvents: true });
+    this.g.refreshDecision();
+    return o.id;
+  }
+  put(p: PlayerId, c: CardData, opts: { tapped?: boolean } = {}): ObjectId {
+    const o = this.g.createObject(c, p, 'battlefield', { skipEvents: true, tapped: opts.tapped });
+    o.controlSinceTurn = -1;
+    o.enteredThisTurn = false;
+    this.g.refreshDecision();
+    return o.id;
+  }
+  lands(p: PlayerId, name: string, n: number, opts: { tapped?: boolean } = {}) {
+    for (let i = 0; i < n; i++) this.put(p, C(name), opts);
+  }
+  main(p: PlayerId) {
+    this.until((d) => d.type === 'priority' && d.player === p && this.g.state.turn.activePlayer === p && this.g.state.turn.step === 'main1' && this.g.state.stack.length === 0);
+  }
+  resolve() {
+    this.until((d) => d.type === 'priority' && this.g.state.stack.length === 0);
+  }
+  cast(id: ObjectId, extra: Partial<Extract<Response, { type: 'cast' }>> = {}) {
+    this.submit({ type: 'cast', objectId: id, ...extra });
+  }
+  targetPlayer(p: PlayerId) {
+    this.until((x) => x.type === 'chooseTargets' || x.type === 'priority');
+    if (this.d.type === 'chooseTargets') this.submit({ type: 'targets', targets: [[{ kind: 'player', id: p }]] });
+  }
+  targetObject(id: ObjectId) {
+    this.until((x) => x.type === 'chooseTargets' || x.type === 'priority');
+    if (this.d.type === 'chooseTargets') this.submit({ type: 'targets', targets: [[{ kind: 'object', id }]] });
+  }
+  prio(): Prio {
+    return this.d as Prio;
+  }
+  bf(p: PlayerId, name: string): ObjectId[] {
+    return this.g.state.battlefield.filter((id) => this.g.obj(id).controller === p && this.g.obj(id).card.name === name);
+  }
+  clearLibrary(p: PlayerId) {
+    for (const id of [...this.g.player(p).library]) this.g.applyManual(p, { kind: 'moveObject', objectId: id, toZone: 'exile' });
+    this.g.refreshDecision();
+  }
+}
+
+function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
+  const setups: PlayerSetup[] = [
+    { id: 'a', name: 'A', deck: { mainboard: Array.from({ length: 40 }, () => C('Plains')), commanders: [] } },
+    { id: 'b', name: 'B', deck: { mainboard: Array.from({ length: 40 }, () => C('Forest')), commanders: [] } },
+  ];
+  const g = new Game(setups, { seed }, scriptFor);
+  g.start();
+  const d = new D(g);
+  const [p1, p2] = g.state.playerOrder;
+  d.enemy = p2;
+  d.main(p1);
+  return { d, p1, p2 };
+}
+
+describe('combos and staples played through the engine', () => {
+  it('every card in the suite compiles fully', () => {
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista'];
+    const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
+    expect(notFull).toEqual([]);
+  });
+
+  it("Thassa's Oracle wins the game with an empty library", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Island', 2);
+    d.clearLibrary(p1);
+    const oracle = d.give(p1, C("Thassa's Oracle"));
+    d.cast(oracle);
+    d.until((x) => x.type === 'priority' && d.g.state.stack.length === 0 || d.g.state.over);
+    expect(d.g.state.over).toBe(true);
+    expect(d.g.player(p2).lost).toBe(true);
+    expect(d.g.player(p1).lost).toBe(false);
+  });
+
+  it('Blood Artist and Zulaport Cutthroat both see every creature dying to Wrath of God', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Plains', 4);
+    d.put(p1, C('Blood Artist'));
+    d.put(p1, C('Zulaport Cutthroat'));
+    d.put(p1, C('Grizzly Bears'));
+    d.put(p1, C('Grizzly Bears'));
+    const wrath = d.give(p1, C('Wrath of God'));
+    d.cast(wrath);
+    d.resolve();
+    // Four creatures died: Blood Artist drains 1 each (targeting the opponent), Zulaport drains 1 each.
+    expect(d.g.player(p2).life).toBe(40 - 8);
+    expect(d.g.player(p1).life).toBe(40 + 8);
+  });
+
+  it('Sanguine Bond + Exquisite Blood loops until the opponent loses', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Mountain', 1);
+    d.put(p1, C('Sanguine Bond'));
+    d.put(p1, C('Exquisite Blood'));
+    d.put(p1, C('Blood Artist'));
+    const bears = d.put(p1, C('Grizzly Bears'));
+    const bolt = d.give(p1, C('Lightning Bolt'));
+    d.cast(bolt);
+    d.targetObject(bears);
+    d.until(() => d.g.state.over, 20000);
+    expect(d.g.player(p2).lost).toBe(true);
+    expect(d.g.player(p2).life).toBeLessThanOrEqual(0);
+  });
+
+  it("Fling deals damage equal to the sacrificed creature's power, and Grave Pact makes the opponent sacrifice", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Mountain', 2);
+    d.put(p1, C('Grave Pact'));
+    d.put(p1, C('Grizzly Bears'));
+    const serra = d.put(p2, C('Serra Angel'));
+    const fling = d.give(p1, C('Fling'));
+    d.cast(fling);
+    d.targetPlayer(p2);
+    d.resolve();
+    expect(d.g.player(p2).life).toBe(38);
+    expect(d.g.obj(serra).zone).toBe('graveyard');
+  });
+
+  it("Chaos Warp shuffles the target away and puts the owner's revealed permanent onto the battlefield", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Mountain', 3);
+    const serra = d.put(p2, C('Serra Angel'));
+    const warp = d.give(p1, C('Chaos Warp'));
+    d.cast(warp);
+    d.targetObject(serra);
+    d.resolve();
+    expect(d.g.obj(serra).zone).toBe('library');
+    expect(d.g.obj(serra).owner).toBe(p2);
+    // The top card of a mono-Forest library is a Forest: a permanent card, so it enters under its owner's control.
+    expect(d.bf(p2, 'Forest').length).toBe(1);
+  });
+
+  it('Wheel of Fortune makes each player discard and draw seven', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Mountain', 3);
+    const wheel = d.give(p1, C('Wheel of Fortune'));
+    d.cast(wheel);
+    d.resolve();
+    expect(d.g.player(p1).hand.length).toBe(7);
+    expect(d.g.player(p2).hand.length).toBe(7);
+  });
+
+  it('Peregrine Drake untaps up to five lands', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Island', 5, { tapped: true });
+    d.lands(p1, 'Island', 5);
+    const drake = d.give(p1, C('Peregrine Drake'));
+    d.cast(drake); // taps the five untapped Islands
+    d.resolve();
+    // All ten were tapped when the trigger resolved; it untaps five of them.
+    expect(d.bf(p1, 'Island').filter((id) => !d.g.obj(id).tapped).length).toBe(5);
+  });
+
+  it("Mana Drain counters the spell and adds mana equal to its mana value in the caster's next main phase", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Forest', 2);
+    d.lands(p2, 'Island', 2);
+    const drain = d.give(p2, C('Mana Drain'));
+    const bears = d.give(p1, C('Grizzly Bears'));
+    d.cast(bears);
+    d.until((x) => x.type === 'priority' && x.player === p2);
+    d.cast(drain);
+    d.resolve();
+    expect(d.g.obj(bears).zone).toBe('graveyard');
+    d.until((x) => x.type === 'priority' && d.g.state.turn.activePlayer === p2 && d.g.state.turn.step === 'main1' && d.g.state.stack.length === 0);
+    expect(d.g.player(p2).manaPool.C).toBe(2);
+  });
+
+  it('Esper Sentinel taxes the first noncreature spell: the opponent declines to pay and its controller draws', () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Esper Sentinel'));
+    d.lands(p2, 'Mountain', 1);
+    const bolt = d.give(p2, C('Lightning Bolt'));
+    const hand = d.g.player(p1).hand.length;
+    d.yesNo = (prompt) => !/^Pay /.test(prompt);
+    d.submit({ type: 'pass' });
+    d.until((x) => x.type === 'priority' && x.player === p2);
+    d.cast(bolt);
+    d.targetPlayer(p1);
+    d.resolve();
+    expect(d.g.player(p1).life).toBe(37);
+    expect(d.g.player(p1).hand.length).toBe(hand + 1);
+  });
+
+  it('Kiki-Jiki copies a creature with haste and the copy is sacrificed at the next end step', () => {
+    const { d, p1 } = game();
+    const kiki = d.put(p1, C('Kiki-Jiki, Mirror Breaker'));
+    const bears = d.put(p1, C('Grizzly Bears'));
+    const ab = d.prio().activatableAbilities.find((a) => a.objectId === kiki);
+    expect(ab).toBeDefined();
+    d.submit({ type: 'activate', objectId: kiki, abilityIndex: ab!.abilityIndex });
+    d.targetObject(bears);
+    d.resolve();
+    const tokens = d.bf(p1, 'Grizzly Bears').filter((id) => id !== bears);
+    expect(tokens.length).toBe(1);
+    expect(d.g.characteristics(tokens[0]).keywords.has('Haste')).toBe(true);
+    const turn = d.g.state.turn.number;
+    d.until(() => d.g.state.turn.number > turn);
+    expect(d.g.state.objects[tokens[0]]).toBeUndefined();
+    expect(d.g.obj(bears).zone).toBe('battlefield');
+  });
+
+  it('Walking Ballista enters with X counters and pings by removing them', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Plains', 4);
+    const ballista = d.give(p1, C('Walking Ballista'));
+    d.cast(ballista, { xValue: 2 });
+    d.resolve();
+    expect(d.g.obj(ballista).counters['+1/+1']).toBe(2);
+    const ab = d.prio().activatableAbilities.find((a) => a.objectId === ballista && /damage/.test(a.text));
+    expect(ab).toBeDefined();
+    d.submit({ type: 'activate', objectId: ballista, abilityIndex: ab!.abilityIndex });
+    d.targetPlayer(p2);
+    d.resolve();
+    expect(d.g.player(p2).life).toBe(39);
+    expect(d.g.obj(ballista).counters['+1/+1']).toBe(1);
+  });
+});
