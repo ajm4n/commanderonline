@@ -3365,9 +3365,10 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     if (c310 && c310.kind !== 'manual')
       return [{ kind: 'static', text: line, affects: 'self', rule: { kind: 'custom', tag: 'cantAttackAlone' }, condition: { kind: 'not', c: c310 } }];
   }
-  // "As long as ~ has a counter on it, it can attack as though it didn't have defender."
-  // A leading condition applies to whatever static follows it.
-  if ((m = L.match(/^As long as (.+?), (.+)$/i))) {
+  // "As long as ~ has a counter on it, it can attack as though it didn't have defender." /
+  // "If there are three or more Lesson cards in your graveyard, you may cast ~ as though it had
+  // flash." A leading condition applies to whatever static follows it.
+  if ((m = L.match(/^(?:As long as|While|If) (.+?), (.+)$/i))) {
     const cond301 = parseCondition(m[1], { self: { ref: 'self' }, lastObj: null, triggerHasObject: false });
     if (cond301 && cond301.kind !== 'manual') {
       const rest = m[2];
