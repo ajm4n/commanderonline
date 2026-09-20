@@ -94,7 +94,10 @@ export function* checkStateBasedActions(g: Game): Gen {
     for (const pid of g.activePlayers()) {
       const p = g.player(pid);
       const cantLose = g.playerRules(pid).some((r) => r.kind === 'cantLose') || p.flags['cantLose'];
-      if (cantLose) continue;
+      if (cantLose) {
+        p.attemptedDrawFromEmpty = false; // CR 704.5b: only a draw attempted since the last check counts
+        continue;
+      }
       if (p.life <= 0) {
         g.playerLoses(pid, `life total ${p.life}`);
         changed = true;
@@ -102,6 +105,7 @@ export function* checkStateBasedActions(g: Game): Gen {
         g.playerLoses(pid, 'ten poison counters');
         changed = true;
       } else if (p.attemptedDrawFromEmpty) {
+        p.attemptedDrawFromEmpty = false;
         g.playerLoses(pid, 'drew from an empty library');
         changed = true;
       } else {

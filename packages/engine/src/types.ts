@@ -185,6 +185,8 @@ export interface Player {
   keptHand: boolean;
   /** Whether this player has drawn a card from an empty library (SBA loss). */
   attemptedDrawFromEmpty: boolean;
+  /** Turn number at which this player's most recent turn began (CR 302.6 summoning sickness). */
+  lastTurnStarted?: number;
   /** Player-level "flags" for effects like "you can't lose the game". */
   flags: Record<string, unknown>;
   /** Turn-scoped stats used by triggers ("first time each turn"). */
@@ -225,6 +227,8 @@ export interface TurnState {
   skipSteps: Step[];
   /** Whether combat damage has happened this combat (for first strike). */
   firstStrikeHappened: boolean;
+  /** Creatures that dealt damage in the first-strike step (CR 702.7c: they deal none in the regular step unless they have double strike). */
+  dealtFirstStrike?: ObjectId[];
   /** Attackers declared this combat. */
   attackers: ObjectId[];
 }

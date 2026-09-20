@@ -94,9 +94,8 @@ export function summoningSick(g: Game, obj: GameObject): boolean {
     const f = ((r.data as { filter?: import('./types.js').ObjectFilter } | undefined) ?? {}).filter;
     if (!f || matchesFilter(g, obj, { ...f, zone: 'battlefield' }, { sourceId: null, controller: obj.controller })) return false;
   }
-  // A creature is sick unless controlled continuously since the start of its controller's most recent turn.
-  if (g.state.turn.activePlayer !== obj.controller) return obj.controlSinceTurn >= g.state.turn.number;
-  return obj.controlSinceTurn >= g.state.turn.number;
+  // A creature is sick unless controlled continuously since the start of its controller's most recent turn (CR 302.6).
+  return obj.controlSinceTurn >= (g.player(obj.controller).lastTurnStarted ?? 0);
 }
 
 function canUseTapAbility(g: Game, obj: GameObject): boolean {

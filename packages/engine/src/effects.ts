@@ -290,19 +290,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'removeFromCombat': {
-      for (const o of g.resolveObjects(e.what, ctx)) {
-        o.attacking = null;
-        o.blocking = [];
-        o.blockedBy = [];
-        g.state.turn.attackers = g.state.turn.attackers.filter((id) => id !== o.id);
-        for (const other of g.state.battlefield) {
-          const a = g.state.objects[other];
-          if (a) {
-            a.blockedBy = a.blockedBy.filter((id) => id !== o.id);
-            a.blocking = a.blocking.filter((id) => id !== o.id);
-          }
-        }
-      }
+      for (const o of g.resolveObjects(e.what, ctx)) removeFromCombat(g, o);
       g.touch();
       return;
     }
@@ -667,7 +655,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (r && e.attacking) {
           const src = ctx.sourceId !== null ? g.state.objects[ctx.sourceId] : null;
           const entered = g.state.objects[o.id];
-          if (entered && entered.zone === 'battlefield') entered.attacking = src?.attacking ?? g.opponentsOf(controller)[0] ?? null;
+          const atk = src?.attacking ?? g.opponentsOf(controller)[0] ?? null;
+          if (entered && entered.zone === 'battlefield' && atk !== null) g.markAttacking(entered, atk);
         }
         if (r) {
           moved.push(r.id);
@@ -2489,6 +2478,21 @@ export function describe(effects: Effect[]): string {
     .join(', ');
 }
 
+/** Remove a creature from combat (CR 506.4): it stops attacking/blocking and everything it was paired with forgets it. */
+export function removeFromCombat(g: Game, o: GameObject) {
+  o.attacking = null;
+  o.blocking = [];
+  o.blockedBy = [];
+  g.state.turn.attackers = g.state.turn.attackers.filter((id) => id !== o.id);
+  for (const other of g.state.battlefield) {
+    const a = g.state.objects[other];
+    if (a) {
+      a.blockedBy = a.blockedBy.filter((id) => id !== o.id);
+      a.blocking = a.blocking.filter((id) => id !== o.id);
+    }
+  }
+}
+
 export function destroyObject(g: Game, id: ObjectId, sourceId: ObjectId | null, cantRegenerate = false) {
   const o = g.state.objects[id];
   if (!o || o.zone !== 'battlefield') return;
@@ -2505,8 +2509,7 @@ export function destroyObject(g: Game, id: ObjectId, sourceId: ObjectId | null, 
       o.tapped = true;
       o.damage = 0;
       o.deathtouchDamage = false;
-      o.attacking = null;
-      o.blocking = [];
+      removeFromCombat(g, o); // CR 701.15a
       g.touch();
       g.log(`${g.nameOf(id)} regenerates.`);
       return;

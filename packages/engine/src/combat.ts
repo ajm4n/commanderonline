@@ -368,13 +368,7 @@ function* declareBlockers(g: Game): Gen {
   }
   // "Whenever ~ attacks and isn't blocked"
   for (const a of attackers) if (!a.blockedBy.length && !a.wasBlocked && a.attacking !== null) g.emit({ name: 'attacksUnblocked', objectId: a.id, playerId: a.controller, otherPlayerId: defenderOf(g, a.attacking), combat: true });
-  // Damage assignment order for attackers blocked by multiple creatures.
-  for (const a of attackers) {
-    if (a.blockedBy.length > 1) {
-      const resp = yield* g.ask({ type: 'orderObjects', player: a.controller, prompt: `Order blockers for ${g.nameOf(a.id)} (damage assigned in this order)`, objectIds: [...a.blockedBy], context: 'damageAssignment' });
-      if (resp.type === 'order') a.blockedBy = resp.ids;
-    }
-  }
+  // No damage assignment order any more (CR 510.1c, Foundations): the attacker divides damage as it chooses.
 }
 
 interface DamageAssignment {
@@ -385,14 +379,16 @@ interface DamageAssignment {
 
 function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
   const assignments: DamageAssignment[] = [];
+  // CR 702.7c: in the regular step a creature deals damage unless it already dealt first-strike damage,
+  // regardless of whether it has first strike now; double strike always deals in both steps.
+  const dealtFS = g.state.turn.dealtFirstStrike ?? [];
   const dealsNow = (o: GameObject) => {
     const ch = g.characteristics(o.id);
     const fs = ch.keywords.has('First strike');
     const ds = ch.keywords.has('Double strike');
     if (firstStrikeStep) return fs || ds;
     if (ds) return true;
-    if (fs) return false; // already dealt in first-strike step
-    return true;
+    return !dealtFS.includes(o.id);
   };
   const attackers = g.state.turn.attackers.map((id) => g.state.objects[id]).filter((o): o is GameObject => !!o && o.zone === 'battlefield' && o.attacking !== null);
   for (const a of attackers) {
@@ -401,7 +397,7 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
     const power = assignedPower(ch);
     if (power <= 0) continue;
     const deathtouch = ch.keywords.has('Deathtouch');
-    const blockers = a.blockedBy.map((id) => g.state.objects[id]).filter((b): b is GameObject => !!b && b.zone === 'battlefield');
+    const blockers = a.blockedBy.map((id) => g.state.objects[id]).filter((b): b is GameObject => !!b && b.zone === 'battlefield' && b.blocking.includes(a.id));
     let asUnblocked = false;
     if (a.wasBlocked && a.attacking !== null && ch.rules.some((r) => r.kind === 'custom' && r.tag === 'assignAsUnblocked')) {
       const r = yield* g.ask({ type: 'yesNo', player: a.controller, prompt: `${g.nameOf(a.id)}: assign its combat damage as though it weren't blocked?`, sourceId: a.id });
@@ -450,19 +446,12 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
       let amounts = plan;
       const canChoose = blockers.length > 1; // single blocker (+ trample): lethal first, excess tramples over
       if (canChoose && targets.length > 1) {
-        const resp = yield* g.ask({ type: 'distribute', player: a.controller, prompt: `Assign ${power} combat damage from ${g.nameOf(a.id)} (lethal damage must be assigned in order${ch.keywords.has('Trample') ? '; excess may trample over' : ''})`, amount: power, targets, minPer: 0, sourceId: a.id });
+        const resp = yield* g.ask({ type: 'distribute', player: a.controller, prompt: `Assign ${power} combat damage from ${g.nameOf(a.id)}${ch.keywords.has('Trample') ? ' (every blocker needs lethal before any tramples over)' : ''}`, amount: power, targets, minPer: 0, sourceId: a.id });
         if (resp.type === 'distribute') {
-          // Validate ordering: each blocker before the last assigned must have lethal.
-          let ok = true;
-          let seenShort = false;
-          for (let i = 0; i < blockers.length; i++) {
-            const lethal = lethalFor(blockers[i]);
-            if (seenShort && resp.amounts[i] > 0) ok = false;
-            if (resp.amounts[i] < lethal) seenShort = true;
-          }
-          if (defender && seenShort && resp.amounts[blockers.length] > 0) ok = false;
-          if (ok) amounts = resp.amounts;
-          else g.log('Damage assignment must give lethal damage in order; using default assignment.');
+          // CR 702.19b: trample may assign to the defender only once every blocker has lethal damage.
+          const shortBlocker = blockers.some((b, i) => resp.amounts[i] < lethalFor(b));
+          if (defender && shortBlocker && resp.amounts[blockers.length] > 0) g.log('Every blocker must be assigned lethal damage before any tramples over; using default assignment.');
+          else amounts = resp.amounts;
         }
       }
       targets.forEach((t, i) => {
@@ -479,7 +468,7 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
     const bch = g.characteristics(b.id);
     const power = assignedPower(bch);
     if (power <= 0) continue;
-    const alive = b.blocking.filter((aid) => g.state.objects[aid]?.zone === 'battlefield');
+    const alive = b.blocking.filter((aid) => g.state.objects[aid]?.zone === 'battlefield' && g.state.objects[aid].blockedBy.includes(b.id));
     if (!alive.length) continue;
     if (alive.length === 1) assignments.push({ source: b.id, target: { kind: 'object', id: alive[0] }, amount: power });
     else {
@@ -490,6 +479,7 @@ function* dealCombatDamage(g: Game, firstStrikeStep: boolean): Gen {
   }
   if (!assignments.length) return;
   // All combat damage is dealt simultaneously.
+  if (firstStrikeStep) g.state.turn.dealtFirstStrike = [...new Set([...(g.state.turn.dealtFirstStrike ?? []), ...assignments.map((a) => a.source)])];
   for (const a of assignments) g.dealDamage(a.source, a.target, a.amount, true);
   if (g.pendingInitiative) {
     const who = g.pendingInitiative;

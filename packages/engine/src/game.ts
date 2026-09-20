@@ -143,6 +143,8 @@ export class Game {
   /** Whether the last target choice was declined rather than impossible (for the log). */
   private lastTargetChoiceCancelled = false;
   /** Run `fn` treating every battlefield departure inside it as simultaneous. */
+  /** Tokens that left the battlefield during the current batch; they cease to exist once every trigger has seen the batch (CR 603.10a). */
+  private pendingCease: ObjectId[] = [];
   simultaneousZoneChange<T>(fn: () => T): T {
     if (this.leavingTogether) return fn();
     this.leavingTogether = new Map();
@@ -150,6 +152,15 @@ export class Game {
       return fn();
     } finally {
       this.leavingTogether = null;
+      if (this.pendingCease.length) {
+        for (const id of this.pendingCease.splice(0)) {
+          const o = this.state.objects[id];
+          if (!o) continue;
+          this.removeFromZone(o);
+          delete this.state.objects[id];
+        }
+        this.touch();
+      }
     }
   }
   /** Queue a trigger from outside (state-based actions). */
@@ -476,6 +487,11 @@ export class Game {
   }
   touch() {
     this.state.version++;
+  }
+  /** A creature put onto the battlefield attacking is an attacking creature (CR 508.4): it can be blocked and deals combat damage. */
+  markAttacking(obj: GameObject, target: PlayerId | ObjectId) {
+    obj.attacking = target;
+    if (!this.state.turn.attackers.includes(obj.id)) this.state.turn.attackers.push(obj.id);
   }
   /** Serialise everything a cancelled action must undo (CR 730.1). */
   snapshotState(): string {
@@ -899,7 +915,7 @@ export class Game {
     // Insert into destination.
     if (toZone === 'battlefield') {
       this.state.battlefield.push(id);
-      if (opts.attackingFor !== undefined) obj.attacking = opts.attackingFor;
+      if (opts.attackingFor !== undefined) this.markAttacking(obj, opts.attackingFor);
       // Planeswalkers enter with loyalty counters.
       const ch = this.characteristics(id);
       if (ch.types.includes('Planeswalker') && obj.card.loyalty && !obj.counters['loyalty']) obj.counters['loyalty'] = parseInt(obj.card.loyalty, 10) || 0;
@@ -937,7 +953,12 @@ export class Game {
     pruneFixed();
 
     if (willCease) {
-      // Remove after triggers were collected (they hold a snapshot).
+      // Remove after triggers were collected (they hold a snapshot). Inside a simultaneous batch the
+      // token must still see the other objects leaving with it, so it ceases when the batch ends.
+      if (this.leavingTogether) {
+        this.pendingCease.push(id);
+        return null;
+      }
       this.removeFromZone(obj);
       delete this.state.objects[id];
       this.touch();
@@ -961,7 +982,7 @@ export class Game {
     this.touch();
     if (zone === 'battlefield') {
       this.state.battlefield.push(id);
-      if (opts.attacking !== undefined) obj.attacking = opts.attacking;
+      if (opts.attacking !== undefined) this.markAttacking(obj, opts.attacking);
       if (!opts.skipEvents) {
         if (card.isToken) this.emit({ name: 'tokenCreated', objectId: id, playerId: obj.controller });
         this.emit({ name: 'entersBattlefield', objectId: id, toZone: 'battlefield', playerId: obj.controller });
@@ -1047,7 +1068,8 @@ export class Game {
           if (this.state.turnStats[k]) continue;
           this.state.turnStats[k] = 1;
         }
-        this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: this.triggerContextFrom(event), snapshot: isSelfLeaving ? event.snapshot : undefined });
+        // A permanent that left together with the event's object may already be gone (a token): keep its snapshot as LKI.
+        this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: this.triggerContextFrom(event), snapshot: isSelfLeaving ? event.snapshot : together });
         // Panharmonicon-style: "that ability triggers an additional time".
         for (const r of this.playerRules(controller)) {
           if (r.kind !== 'custom' || r.tag !== 'doubleTriggers') continue;
@@ -1058,7 +1080,7 @@ export class Game {
             const eo = event.objectId !== undefined ? this.state.objects[event.objectId] ?? (event.snapshot as GameObject | undefined) : undefined;
             if (!eo || !matchesFilter(this, eo, { ...d.eventObject, zone: undefined }, { sourceId: obj.id, controller })) continue;
           }
-          this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: this.triggerContextFrom(event), snapshot: isSelfLeaving ? event.snapshot : undefined });
+          this.pendingTriggers.push({ sourceId: obj.id, controller, ability: ab, context: this.triggerContextFrom(event), snapshot: isSelfLeaving ? event.snapshot : together });
         }
       }
     }
@@ -2211,12 +2233,12 @@ export class Game {
     this.emit({ name: 'lifeGained', playerId: pid, amount, sourceId });
   }
 
-  loseLife(pid: PlayerId, n: number, sourceId?: ObjectId) {
+  loseLife(pid: PlayerId, n: number, sourceId?: ObjectId, opts: { fromDamage?: boolean } = {}) {
     if (n <= 0) return;
     const p = this.player(pid);
-    // "Damage that would reduce your life total to less than 1 reduces it to 1 instead."
+    // "Damage that would reduce your life total to less than 1 reduces it to 1 instead." (damage only)
     let floor: number | null = null;
-    for (const r of this.playerRules(pid)) if (r.kind === 'custom' && r.tag === 'lifeFloor' && typeof r.data === 'number') floor = Math.max(floor ?? 0, r.data);
+    if (opts.fromDamage) for (const r of this.playerRules(pid)) if (r.kind === 'custom' && r.tag === 'lifeFloor' && typeof r.data === 'number') floor = Math.max(floor ?? 0, r.data);
     // "If an opponent would lose life during your turn, they lose twice that much life instead."
     for (const src of this.state.battlefield.map((id) => this.obj(id))) {
       for (const ab of this.scriptFor(src).abilities) {
@@ -2495,8 +2517,9 @@ export class Game {
       } else {
         // "Damage doesn't cause you to lose life": the damage is still dealt, but no life is lost.
         const noLifeLoss = this.playerRules(target.id).some((r) => r.kind === 'custom' && r.tag === 'damageNoLifeLoss');
-        if (!noLifeLoss) p.life -= dealt;
-        this.log(`${src ? this.nameOf(src.id) : 'Something'} deals ${dealt} damage to ${p.name} (${p.life}).`, { kind: 'damage', data: { player: target.id, amount: dealt, sourceId } });
+        this.log(`${src ? this.nameOf(src.id) : 'Something'} deals ${dealt} damage to ${p.name}.`, { kind: 'damage', data: { player: target.id, amount: dealt, sourceId } });
+        // CR 120.3a: damage dealt to a player causes that player to lose that much life.
+        if (!noLifeLoss) this.loseLife(target.id, dealt, sourceId ?? undefined, { fromDamage: true });
         if (combat && src?.isCommander) {
           p.commanderDamage[src.id] = (p.commanderDamage[src.id] ?? 0) + dealt;
         }
@@ -2545,6 +2568,7 @@ export class Game {
         obj.counters['defense'] = Math.max(0, (obj.counters['defense'] ?? 0) - dealt);
       } else if (sch?.keywords.has('Infect') || sch?.keywords.has('Wither')) {
         obj.counters['-1/-1'] = (obj.counters['-1/-1'] ?? 0) + dealt;
+        if (sch?.keywords.has('Deathtouch')) obj.deathtouchDamage = true; // CR 702.2b: any damage from a deathtouch source is lethal
       } else {
         obj.damage += dealt;
         if (sch?.keywords.has('Deathtouch')) obj.deathtouchDamage = true;
@@ -2784,6 +2808,7 @@ export class Game {
     t.activePlayer = pid;
     t.skipSteps = [];
     t.attackers = [];
+    this.player(pid).lastTurnStarted = t.number;
     this.state.turnStats = {};
     for (const p of Object.values(this.state.players)) {
       p.turnStats = {};
@@ -2857,6 +2882,7 @@ export class Game {
     switch (step) {
       case 'untap': {
         this.state.turn.firstStrikeHappened = false;
+        this.state.turn.dealtFirstStrike = [];
         for (const id of [...this.state.battlefield]) {
           const o = this.obj(id);
           if (o.controller !== pid) continue;
