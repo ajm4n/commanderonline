@@ -34,7 +34,7 @@ import { matchesFilter, objectsMatching, legalTargets, sameTarget, type FilterCo
 import { parseTypeLine } from './typeline.js';
 import { ENFORCED_KEYWORDS } from './keywords.js';
 import { executeEffects, enterBattlefield, type EffectContext } from './effects.js';
-import { buildPriorityDecision, castSpell, activateAbility, playLand, abilitiesOf } from './casting.js';
+import { buildPriorityDecision, castSpell, activateAbility, playLand, abilitiesOf, wardTriggers } from './casting.js';
 import { resolveTopOfStack } from './resolve.js';
 import { runCombatStep } from './combat.js';
 import { checkStateBasedActions } from './sba.js';
@@ -477,6 +477,19 @@ export class Game {
   touch() {
     this.state.version++;
   }
+  /** Serialise everything a cancelled action must undo (CR 730.1). */
+  snapshotState(): string {
+    return JSON.stringify({ state: this.state, pending: this.pendingTriggers, returns: this.pendingReturns });
+  }
+  restoreState(snap: string) {
+    const s = JSON.parse(snap) as { state: GameState; pending: PendingTrigger[]; returns: ObjectId[] };
+    const v = this.state.version;
+    this.state = s.state;
+    this.pendingTriggers = s.pending;
+    this.pendingReturns = s.returns;
+    this.state.version = Math.max(v, this.state.version) + 1;
+    this.chCache.clear();
+  }
   now(): number {
     return this.state.timestamp++;
   }
@@ -866,6 +879,8 @@ export class Game {
       else obj.memory = Object.fromEntries(Object.entries(obj.memory).filter(([k]) => ['playableBy', 'playableUntil', 'plotted', 'freeCast', 'sorceryOnly', 'adventureExiled', 'exileOnResolve'].includes(k)));
       obj.chosen = {};
       if (toZone !== 'exile' || !opts.sourceId) obj.faceIndex = 0;
+      // 903.9: a commander put into a graveyard, exile, hand or library may go to the command zone instead (offered by the SBA check).
+      if (obj.isCommander && (toZone === 'graveyard' || toZone === 'exile' || toZone === 'hand' || toZone === 'library')) obj.memory['commanderZoneOffered'] = false;
     } else if (opts.controller) {
       obj.controller = opts.controller;
       obj.baseController = opts.controller;
@@ -1263,8 +1278,8 @@ export class Game {
     const src = this.state.objects[t.sourceId];
     // Unscripted trigger: prompt the player to handle it manually at the right time.
     const isManual = t.ability.effects.length === 1 && t.ability.effects[0].kind === 'manual' && !t.ability.targets?.length;
-    let targets: Target[] = [];
-    if (t.ability.targets?.length) {
+    let targets: Target[] = (t.context.presetTargets as Target[] | undefined) ?? [];
+    if (!targets.length && t.ability.targets?.length) {
       const chosen = yield* this.chooseTargets(t.controller, t.sourceId, t.ability.targets, t.context, `${this.nameOf(t.sourceId)}: ${t.ability.text}`);
       if (chosen === null) {
         this.log(this.lastTargetChoiceCancelled ? `${this.nameOf(t.sourceId)}'s controller chose no target, so the trigger is removed.` : `${this.nameOf(t.sourceId)}'s trigger has no legal targets and is removed.`);
@@ -1281,10 +1296,12 @@ export class Game {
       abilityRef: t.ability.text,
       targets,
       targetStamps: this.stampTargets(targets),
+      targetSpecs: t.context.presetTargets ? undefined : t.ability.targets,
       triggerContext: { ...t.context, ability: t.ability, snapshot: t.snapshot, isManual },
       timestamp: this.now(),
     };
     this.state.stack.push(item);
+    wardTriggers(this, item);
     this.log(`Trigger: ${item.text}`, { kind: 'trigger', data: { sourceId: t.sourceId, controller: t.controller } });
     this.touch();
   }

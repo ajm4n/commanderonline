@@ -2,8 +2,8 @@ import { costMemory } from './casting.js';
 import type { Game, Gen } from './game.js';
 import type { StackItem, Target, ZoneName } from './types.js';
 import type { TriggeredAbilitySpec, ActivatedAbilitySpec, SpellAbilitySpec } from './script.js';
-import { canTarget } from './filters.js';
-import { enterBattlefield, executeEffects, attach, type EffectContext } from './effects.js';
+import { canTarget, legalTargets } from './filters.js';
+import { enterBattlefield, executeEffects, attach, leaveStackDestination, type EffectContext } from './effects.js';
 
 function targetsStillLegal(g: Game, item: StackItem): { legal: Target[]; anyIllegal: boolean } {
   const legal: Target[] = [];
@@ -16,7 +16,11 @@ function targetsStillLegal(g: Game, item: StackItem): { legal: Target[]; anyIlle
     }
     const stamp = item.targetStamps?.[i];
     const sameObject = t.kind !== 'object' || (g.state.objects[t.id] !== undefined && (stamp === undefined || stamp === null || g.state.objects[t.id].timestamp === stamp));
-    const ok = sameObject && canTarget(g, t, g.state.objects[item.sourceId] ? item.sourceId : null, item.controller);
+    const srcId = g.state.objects[item.sourceId] ? item.sourceId : null;
+    // CR 608.2b: the target must still meet the targeting requirement ("creature you control", "tapped creature"…).
+    const spec = item.targetSpecs?.[i];
+    const stillFits = !spec || legalTargets(g, spec, srcId, item.controller, item.xValue).some((l) => l.kind === t.kind && l.id === t.id);
+    const ok = sameObject && stillFits && canTarget(g, t, srcId, item.controller);
     if (ok) legal.push(t);
     else {
       anyIllegal = true;
@@ -35,7 +39,7 @@ export function* resolveTopOfStack(g: Game): Gen {
   const { legal, anyIllegal } = targetsStillLegal(g, item);
   if (hadTargets && legal.every((t) => t.kind === 'none')) {
     g.log(`${item.text} fizzles (all targets illegal).`);
-    if (item.kind === 'spell' && src && src.zone === 'stack' && !item.copiedCard) g.moveObject(item.sourceId, 'graveyard', { cause: 'countered' });
+    if (item.kind === 'spell' && src && src.zone === 'stack' && !item.copiedCard) g.moveObject(item.sourceId, leaveStackDestination(g, src), { cause: 'countered' });
     return;
   }
   if (anyIllegal) g.log(`Some targets of ${item.text} became illegal.`);

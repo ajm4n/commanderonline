@@ -285,7 +285,7 @@ export function* payCost(g: Game, p: PlayerId, cost: ManaCost, x: number, source
       let dropped = 0;
       const reduced: ManaCost = { symbols: cost.symbols.filter((sy) => (sy.kind === 'phyrexian' && dropped < k ? (dropped++, false) : true)), xCount: cost.xCount };
       const sol = solvePayment(reduced, x, player.manaPool, sources);
-      if (sol && player.life > 2 * k) {
+      if (sol && player.life >= 2 * k) {
         const r = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay ${2 * k} life for ${k} Phyrexian mana symbol${k === 1 ? '' : 's'}?`, sourceId: sourceId ?? undefined });
         if (r.type !== 'yesNo' || !r.value) return false;
         g.loseLife(p, 2 * k, sourceId ?? undefined);
@@ -1002,25 +1002,26 @@ function faceOf(obj: GameObject, faceIndex: number) {
 }
 
 /** Compute the total mana cost to cast, including commander tax and reductions. */
-export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex: number, opts: { kicker?: boolean; kicks?: number; alternative?: string; kickerCosts?: string[] } = {}): ManaCost {
+export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex: number, opts: { kicker?: boolean; kicks?: number; alternative?: string; kickerCosts?: string[]; /** Zone the card is being cast from (it is already on the stack while costs are computed). */ fromZone?: ZoneName } = {}): ManaCost {
   const face = faceOf(obj, faceIndex);
+  const zone = opts.fromZone ?? obj.zone;
   let cost: ManaCost;
   const script = g.scriptFor({ ...obj, faceIndex });
   const alt = opts.alternative ? script.alternativeCosts?.find((a) => a.id === opts.alternative) : undefined;
   const granted = opts.alternative?.startsWith('plr:') ? grantedAltCosts(g, p, obj).find((a) => a.id === opts.alternative) : undefined;
   if (granted) cost = parseManaCost(granted.mana);
   else if (alt) cost = parseManaCost(alt.cost.mana ?? '');
-  else if (opts.alternative === 'flashback' && obj.zone === 'graveyard') {
+  else if (opts.alternative === 'flashback' && zone === 'graveyard') {
     const fb = obj.card.oracleText.match(/Flashback (\{[^\n]+?\})(?:\s|$)/);
     cost = parseManaCost(fb?.[1] ?? face.manaCost);
-  } else if (typeof obj.memory['playForCost'] === 'string' && obj.zone === 'exile') {
+  } else if (typeof obj.memory['playForCost'] === 'string' && zone === 'exile') {
     // Airbend and similar: cast it from exile for a fixed cost instead of its mana cost.
     cost = parseManaCost(obj.memory['playForCost'] as string);
-  } else if (obj.zone === 'exile' && typeof obj.memory['foretellCost'] === 'string') {
+  } else if (zone === 'exile' && typeof obj.memory['foretellCost'] === 'string') {
     // Foretold: the only cost it can be cast for is its foretell cost.
     cost = parseManaCost(obj.memory['foretellCost'] as string);
   } else cost = parseManaCost(face.manaCost);
-  if (obj.isCommander && obj.zone === 'command') cost = adjustGeneric(cost, obj.commanderCasts * 2);
+  if (obj.isCommander && zone === 'command') cost = adjustGeneric(cost, obj.commanderCasts * 2);
   if (opts.kickerCosts?.length) {
     // "Kicker {2}{B} and/or {2}{R}": only the kickers actually chosen are added.
     const extra = opts.kickerCosts.flatMap((c) => parseManaCost(c).symbols);
@@ -1156,6 +1157,19 @@ export function spellTargets(g: Game, obj: GameObject, script: CardScript, faceI
   return specs;
 }
 
+/** Can `cost` be paid, counting 2 life per Phyrexian symbol the player cannot cover with mana (CR 107.4f)? */
+export function payableWithLife(g: Game, p: PlayerId, cost: ManaCost, x: number, sources: ManaSourceOption[]): boolean {
+  const pl = g.player(p);
+  if (solvePayment(cost, x, pl.manaPool, sources)) return true;
+  const phy = cost.symbols.filter((sy) => sy.kind === 'phyrexian').length;
+  for (let k = 1; k <= phy; k++) {
+    let dropped = 0;
+    const reduced: ManaCost = { symbols: cost.symbols.filter((sy) => (sy.kind === 'phyrexian' && dropped < k ? (dropped++, false) : true)), xCount: cost.xCount };
+    if (pl.life >= 2 * k && solvePayment(reduced, x, pl.manaPool, sources)) return true;
+  }
+  return false;
+}
+
 export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (!castableFrom(g, p, obj)) return false;
   const ch = g.characteristics(obj.id);
@@ -1179,9 +1193,9 @@ export function canCastNow(g: Game, p: PlayerId, obj: GameObject): boolean {
     if (f && matchesFilter(g, obj, { ...f, zone: undefined }, { sourceId: srcId, controller: p })) return false;
   }
   // Can we afford it?
-  const cost = computeCastCost(g, p, obj, 0);
+  const cost = computeCastCost(g, p, obj, 0, { alternative: obj.zone === 'graveyard' && /^Flashback\b/m.test(obj.card.oracleText) ? 'flashback' : undefined });
   const sources = manaSourcesFor(g, p, castingKeywordsOf(g, obj));
-  if (!freeFromExile(g, obj) && !solvePayment(cost, 0, g.player(p).manaPool, sources) && availableAlternativeCosts(g, p, obj).length === 0) {
+  if (!freeFromExile(g, obj) && !payableWithLife(g, p, cost, 0, sources) && availableAlternativeCosts(g, p, obj).length === 0) {
     // Try other faces (MDFC / adventure)
     if (obj.card.faces) {
       for (let i = 1; i < obj.card.faces.length; i++) {
@@ -1438,9 +1452,16 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
 
   // 601.2a: move to the stack
   obj.faceIndex = faceIndex;
+  // Non-mana additional costs (sacrifice, discard…) are paid before the mana; if the mana then cannot
+  // be paid the whole cast is undone (CR 730.1), so keep a snapshot to restore.
+  const snap = script.additionalCost ? g.snapshotState() : null;
   g.moveObject(id, 'stack', { controller: p, skipEvents: true });
   obj.castFromZone = fromZone;
   const revert = () => {
+    if (snap) {
+      g.restoreState(snap);
+      return;
+    }
     const back = g.moveObject(id, fromZone, { skipEvents: true, position: fromZone === 'library' ? originalIndex : undefined });
     if (back) {
       back.faceIndex = 0;
@@ -1553,7 +1574,7 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   }
 
   // X
-  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), kickerCosts, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
+  let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), kickerCosts, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined), fromZone });
   // "If you cast a spell this way, pay life equal to its mana value rather than paying its mana cost."
   let lifeInsteadOfMana = 0;
   let energyInsteadOfMana = 0;
@@ -1687,12 +1708,14 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     text: face.name,
     targets,
     targetStamps: g.stampTargets(targets),
+    targetSpecs: specs,
     modes,
     xValue: x,
     timestamp: g.now(),
     triggerContext: targetSlots ? { targetSlots } : undefined,
   };
   g.state.stack.push(item);
+  wardTriggers(g, item);
   if (lifeInsteadOfMana > 0) g.loseLife(p, lifeInsteadOfMana, id);
   if (energyInsteadOfMana > 0) g.player(p).energy -= energyInsteadOfMana;
   obj.wasCast = true;
@@ -1813,11 +1836,13 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
     abilityRef: String(abilityIndex),
     targets,
     targetStamps: g.stampTargets(targets),
+    targetSpecs: spec.targets,
     xValue: x,
     timestamp: g.now(),
     triggerContext: { ability: spec, targetSlots: slots, costMemory: costMemory(obj) },
   };
   g.state.stack.push(item);
+  wardTriggers(g, item);
   g.touch();
   g.log(`${g.player(p).name} activates ${item.text}`, { kind: 'activate', data: { player: p, objectId: id } });
   g.emit({ name: 'abilityActivated', objectId: id, playerId: p, data: { stackItemId: item.id, abilityText: spec.text, ...(spec.exhaust ? { exhaust: true } : {}) } });
@@ -1835,4 +1860,34 @@ export function availableMana(g: Game, p: PlayerId): number {
   for (const c of Object.values(g.player(p).manaPool)) n += c;
   for (const s of manaSourcesFor(g, p)) n += Math.max(...s.alternatives.map((a) => a.length));
   return n;
+}
+
+/**
+ * Ward (CR 702.21a): whenever a permanent with ward becomes the target of a spell or ability an
+ * opponent controls, counter it unless that player pays the ward cost. Queued right after the
+ * targeting spell or ability is put on the stack, so it resolves first.
+ */
+export function wardTriggers(g: Game, item: StackItem) {
+  const all = ((item.triggerContext?.targetSlots as Target[][] | undefined)?.flat() ?? []).concat(item.targets);
+  const seen = new Set<ObjectId>();
+  for (const t of all) {
+    if (t.kind !== 'object' || seen.has(t.id)) continue;
+    seen.add(t.id);
+    const o = g.state.objects[t.id];
+    if (!o || o.zone !== 'battlefield' || o.controller === item.controller) continue;
+    const ward = g.characteristics(o.id).wardCost;
+    if (!ward) continue;
+    let cost: Extract<Effect, { kind: 'unlessPays' }>['cost'] | null = null;
+    const life = ward.match(/^Pay (\d+) life$/i);
+    if (/^(?:\{[^}]+\})+$/.test(ward)) cost = ward;
+    else if (life) cost = { payLife: parseInt(life[1], 10) };
+    else if (/^Discard a card$/i.test(ward)) cost = { discard: 1 };
+    else continue;
+    g.queueTrigger({
+      sourceId: o.id,
+      controller: o.controller,
+      ability: { kind: 'triggered', text: `Ward — ${ward}`, event: 'becomesTarget', effects: [{ kind: 'unlessPays', who: { ref: 'triggerPlayer' }, cost, effects: [{ kind: 'counterSpell', what: { ref: 'stackTarget' } }] }] },
+      context: { triggerPlayer: item.controller, triggerObject: o.id, presetTargets: [{ kind: 'stackItem', id: item.id }] },
+    });
+  }
 }

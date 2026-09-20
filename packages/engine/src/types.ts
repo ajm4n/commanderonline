@@ -243,6 +243,8 @@ export interface StackItem {
   targets: Target[];
   /** Object timestamps when targeted; a changed timestamp means the target left its zone (new object). */
   targetStamps?: (number | null)[];
+  /** The targeting requirements, one per slot, re-checked on resolution (CR 608.2b). */
+  targetSpecs?: import('./script.js').TargetSpec[];
   /** Chosen modes for modal abilities. */
   modes?: number[];
   xValue?: number;

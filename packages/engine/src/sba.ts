@@ -236,9 +236,10 @@ export function* checkStateBasedActions(g: Game): Gen {
 
     // Commanders in graveyard / exile → command zone (903.9a)
     for (const o of Object.values(g.state.objects)) {
-      if (!o.isCommander || (o.zone !== 'graveyard' && o.zone !== 'exile') || o.memory['commanderZoneOffered']) continue;
+      if (!o.isCommander || o.memory['commanderZoneOffered'] !== false || (o.zone !== 'graveyard' && o.zone !== 'exile' && o.zone !== 'hand' && o.zone !== 'library')) continue;
       o.memory['commanderZoneOffered'] = true;
-      const resp = yield* g.ask({ type: 'yesNo', player: o.owner, prompt: `${o.card.name} is in ${o.zone === 'graveyard' ? 'your graveyard' : 'exile'}. Move it to the command zone?`, yesLabel: 'Command zone', noLabel: `Leave in ${o.zone}`, sourceId: o.id });
+      const where = o.zone === 'graveyard' ? 'your graveyard' : o.zone === 'exile' ? 'exile' : o.zone === 'hand' ? 'your hand' : 'your library';
+      const resp = yield* g.ask({ type: 'yesNo', player: o.owner, prompt: `${o.card.name} is in ${where}. Move it to the command zone?`, yesLabel: 'Command zone', noLabel: `Leave in ${o.zone}`, sourceId: o.id });
       if (resp.type === 'yesNo' && resp.value) {
         g.moveObject(o.id, 'command', { skipEvents: true });
         g.log(`${o.card.name} returns to the command zone.`);

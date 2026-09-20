@@ -109,7 +109,7 @@ export function adjustSymbols(cost: ManaCost, symbols: string, times: number): M
         else if (sym.kind === 'color' || sym.kind === 'generic') {
           // No such colored symbol left: reduce generic instead (rule 601.2f lets reductions of a color only remove that color, so this is a fallback).
           const g = out.findIndex((s) => s.kind === 'generic');
-          if (g >= 0 && sym.kind === 'generic') (out[g] as { amount: number }).amount = Math.max(0, (out[g] as { amount: number }).amount - sym.amount);
+          if (g >= 0) (out[g] as { amount: number }).amount = Math.max(0, (out[g] as { amount: number }).amount - (sym.kind === 'generic' ? sym.amount : 1));
         }
       }
     }
@@ -204,6 +204,22 @@ export function expandRequirements(cost: ManaCost, x: number, allowPhyrexianLife
  * this is fast in practice. Returns null if unpayable.
  */
 export function solvePayment(cost: ManaCost, x: number, pool: ManaPool, sources: ManaSourceOption[], opts: { payLifeForPhyrexian?: boolean; life?: number } = {}): Payment | null {
+  // {2/W} is paid with either {W} or two generic (CR 107.4e): try each combination, colour first.
+  const mono = cost.symbols.map((s, i) => (s.kind === 'monoHybrid' ? i : -1)).filter((i) => i >= 0);
+  if (!mono.length) return solvePaymentExact(cost, x, pool, sources, opts);
+  for (let mask = 0; mask < 1 << mono.length; mask++) {
+    const symbols: ManaSymbol[] = cost.symbols.map((s, i) => {
+      const k = mono.indexOf(i);
+      if (k < 0 || s.kind !== 'monoHybrid') return s;
+      return (mask >> k) & 1 ? { kind: 'generic', amount: 2 } : { kind: 'color', color: s.color as ManaColor };
+    });
+    const sol = solvePaymentExact({ symbols, xCount: cost.xCount }, x, pool, sources, opts);
+    if (sol) return sol;
+  }
+  return null;
+}
+
+function solvePaymentExact(cost: ManaCost, x: number, pool: ManaPool, sources: ManaSourceOption[], opts: { payLifeForPhyrexian?: boolean; life?: number } = {}): Payment | null {
   const reqs = expandRequirements(cost, x, opts.payLifeForPhyrexian ?? false);
   const poolLeft = clonePool(pool);
   const fromPool = emptyPool();

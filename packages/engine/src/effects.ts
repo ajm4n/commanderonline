@@ -2516,6 +2516,12 @@ export function destroyObject(g: Game, id: ObjectId, sourceId: ObjectId | null, 
   g.moveObject(id, 'graveyard', { cause: 'destroy', sourceId: sourceId ?? undefined });
 }
 
+/** Where a spell card goes when it leaves the stack without being put somewhere specific: flashback and
+ * 'exile it instead' permissions exile it wherever it would go (CR 702.34a). */
+export function leaveStackDestination(g: Game, obj: GameObject): 'graveyard' | 'exile' {
+  return obj.castFromZone === 'graveyard' || obj.memory['exileOnResolve'] ? 'exile' : 'graveyard';
+}
+
 export function counterStackItem(g: Game, stackId: number, toZone: 'graveyard' | 'exile' | 'hand' | 'libraryTop' | 'libraryBottom' = 'graveyard') {
   const item = g.state.stack.find((s) => s.id === stackId);
   if (!item) return;
@@ -2526,7 +2532,7 @@ export function counterStackItem(g: Game, stackId: number, toZone: 'graveyard' |
     if (o && o.zone === 'stack') {
       if (toZone === 'hand') g.moveObject(item.sourceId, 'hand', { cause: 'countered' });
       else if (toZone === 'libraryTop' || toZone === 'libraryBottom') g.moveObject(item.sourceId, 'library', { cause: 'countered', position: toZone === 'libraryTop' ? 'top' : 'bottom' });
-      else g.moveObject(item.sourceId, toZone, { cause: 'countered' });
+      else g.moveObject(item.sourceId, toZone === 'graveyard' ? leaveStackDestination(g, o) : toZone, { cause: 'countered' });
     }
   }
   g.emit({ name: 'countered', objectId: item.sourceId, playerId: item.controller });
