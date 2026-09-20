@@ -19,6 +19,9 @@ export function ContextMenu({ at, title, onClose, children }: { at: MenuPosition
   }, [at]);
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      // The button that opened the menu toggles it on click; closing on its mousedown would reopen it.
+      if (t?.closest?.('[data-menu-anchor]')) return;
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {

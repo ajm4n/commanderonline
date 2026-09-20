@@ -63,9 +63,12 @@ export const CardText = memo(function CardText({ obj, big }: { obj: ObjectView; 
 
 export const Card = memo(function Card(props: CardProps) {
   const { obj, count, tappedCount, onClick, onContextMenu, onHover, children, className, noRotate, showCoverage } = props;
-  const [imgFailed, setImgFailed] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
   const img = obj.faceIndex > 0 && obj.backImageUri ? obj.backImageUri : obj.imageUri;
+  // Keyed by URL so a flip, transform or late-arriving art starts its own load/fail cycle.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const imgLoaded = !!img && loadedSrc === img;
+  const imgFailed = !!img && failedSrc === img;
   const isCreature = obj.types.includes('Creature');
   const showPT = isCreature || (obj.power !== null && obj.toughness !== null && obj.zone === 'battlefield');
   const printed = showPT ? printedPT(obj) : null;
@@ -106,7 +109,7 @@ export const Card = memo(function Card(props: CardProps) {
       onMouseLeave={() => onHover?.(null)}
     >
       {!obj.hidden && (!img || imgFailed || !imgLoaded) && <CardText obj={obj} />}
-      {!obj.hidden && img && !imgFailed && <img className={imgLoaded ? 'loaded' : ''} src={img} alt={obj.name} loading="lazy" draggable={false} onLoad={() => setImgLoaded(true)} onError={() => setImgFailed(true)} />}
+      {!obj.hidden && img && !imgFailed && <img key={img} className={imgLoaded ? 'loaded' : ''} src={img} alt={obj.name} loading="lazy" draggable={false} onLoad={() => setLoadedSrc(img)} onError={() => setFailedSrc(img)} />}
       {obj.attacking !== null && obj.attacking !== undefined && obj.zone === 'battlefield' && !obj.hidden && (
         <span className="ov atk" title="Attacking">
           ⚔

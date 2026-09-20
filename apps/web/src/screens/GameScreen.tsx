@@ -216,6 +216,7 @@ export function GameScreen() {
         <button
           className={`sm manual-btn ${ui.menu?.kind === 'manual' ? 'active' : ''}`}
           data-testid="manual-menu"
+          data-menu-anchor
           title="Manual actions: tokens, mana, draw, mill, shuffle"
           onClick={(e) => {
             const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
