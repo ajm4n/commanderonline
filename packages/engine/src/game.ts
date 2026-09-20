@@ -97,7 +97,7 @@ export interface GameState {
   turnReplacements?: { player: PlayerId; spec: import('./script.js').ReplacementSpec }[];
   /** Day/night cycle: undefined until a card starts it. */
   dayNight?: 'day' | 'night';
-  preventions: { effects?: import('./script.js').Effect[]; /** Only damage from these specific sources. */ sourceIds?: ObjectId[]; /** Shield: prevents at most this much, then wears off. */ amount?: number; combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[]; /** The prevented damage is dealt to these instead. */ redirectIds?: ObjectId[]; redirectPlayers?: PlayerId[]; redirectToSourceController?: boolean }[];
+  preventions: { effects?: import('./script.js').Effect[]; /** Only damage from these specific sources. */ sourceIds?: ObjectId[]; /** Shield: prevents at most this much, then wears off. */ amount?: number; combat: boolean; source?: import('./types.js').ObjectFilter; to: 'all' | 'you' | 'creaturesYouControl' | 'youAndCreaturesYouControl' | 'youAndPlaneswalkersYouControl' | 'players' | 'creatures' | import('./types.js').ObjectFilter; controller: PlayerId; sourceId: ObjectId | null; once?: boolean; /** Specific recipients ("prevent all damage that would be dealt to target creature this turn by red sources"). */ ids?: ObjectId[]; playerIds?: PlayerId[]; /** The prevented damage is dealt to these instead. */ redirectIds?: ObjectId[]; redirectPlayers?: PlayerId[]; redirectToSourceController?: boolean; /** Not limited to this turn ("prevent the next 3 damage that would be dealt to it"). */ permanent?: boolean }[];
   log: LogEntry[];
   monarch: PlayerId | null;
   initiative: PlayerId | null;
@@ -172,6 +172,10 @@ export class Game {
   /** Player who dealt combat damage to the initiative holder this damage step; takes the initiative afterwards. */
   pendingInitiative: PlayerId | null = null;
   private computing = new Set<ObjectId>();
+  /** Counts re-entrancy fallbacks, so results that depended on one are not cached. */
+  private chFallbacks = 0;
+  /** Results computed from a fallback, valid only while the outermost computation runs. */
+  private chProvisional = new Map<ObjectId, Characteristics>();
   /** Hook for tests / UI: called after each mutation batch. */
   onChange: (() => void) | null = null;
   private setups: PlayerSetup[];
@@ -594,7 +598,9 @@ export class Game {
     const cached = this.chCache.get(id);
     if (cached && cached.v === this.state.version) return cached.ch;
     if (this.computing.has(id)) {
-      // Re-entrancy guard (e.g. P/T defined by counting creatures): return base.
+      // Re-entrancy guard (e.g. P/T defined by counting creatures): return base. Anything computed from this
+      // fallback is provisional and must not be cached.
+      this.chFallbacks++;
       const obj = this.obj(id);
       const parsed = parseTypeLine(obj.card.typeLine);
       return {
@@ -619,13 +625,19 @@ export class Game {
         controller: obj.controller,
       };
     }
+    const provisional = this.chProvisional.get(id);
+    if (provisional && this.computing.size > 0) return provisional;
     this.computing.add(id);
+    const fallbacksBefore = this.chFallbacks;
     try {
       const ch = computeCharacteristics(this, id);
-      this.chCache.set(id, { v: this.state.version, ch });
+      // A result that depended on a re-entrancy fallback is only kept for the rest of this outermost computation.
+      if (this.chFallbacks === fallbacksBefore) this.chCache.set(id, { v: this.state.version, ch });
+      else this.chProvisional.set(id, ch);
       return ch;
     } finally {
       this.computing.delete(id);
+      if (this.computing.size === 0) this.chProvisional.clear();
     }
   }
 
@@ -634,7 +646,7 @@ export class Game {
     const text = obj.card.oracleText;
     const ctx: FilterContext = { sourceId: obj.id, controller: obj.controller };
     let m: RegExpMatchArray | null;
-    if ((m = text.match(/power and toughness are each equal to the number of (\w+)s? you control/i))) {
+    if ((m = text.match(/power and toughness are each equal to the number of (\w+?)s? you control/i))) {
       const word = m[1];
       const typeWord = word.charAt(0).toUpperCase() + word.slice(1);
       const isCardType = ['Creature', 'Artifact', 'Enchantment', 'Land', 'Planeswalker'].includes(typeWord);
@@ -880,6 +892,7 @@ export class Game {
     obj.phasedOut = false;
     obj.faceDown = opts.faceDown ?? false;
     obj.copyOf = undefined;
+    obj.attachedTimestamp = undefined;
     obj.flipped = false;
     obj.enteredThisTurn = toZone === 'battlefield';
     obj.controlSinceTurn = this.state.turn.number;
@@ -1046,9 +1059,12 @@ export class Game {
       if (obj.phasedOut) continue;
       // A face-down permanent has no abilities, so it triggers nothing.
       if (obj.faceDown && obj.zone === 'battlefield') continue;
+      // Likewise one that has lost all abilities (Humility); a permanent leaving uses its last known characteristics.
+      if (obj.zone === 'battlefield' && this.characteristics(obj.id).lostAllAbilities) continue;
       const script = this.scriptFor(obj);
       for (const ab of script.abilities) {
         if (ab.kind !== 'triggered' || ab.event !== event.name) continue;
+        if (event.objectId === obj.id && event.fromZone === 'battlefield' && lkiCh?.lostAllAbilities) continue;
         const zones = ab.zone ? (Array.isArray(ab.zone) ? ab.zone : [ab.zone]) : ['battlefield'];
         const isSelfLeaving = event.objectId === obj.id && event.snapshot && event.fromZone === 'battlefield' && (event.name === 'dies' || event.name === 'leavesBattlefield' || event.name === 'exiled' || event.name === 'putIntoGraveyard');
         const isSelfEntering = event.objectId === obj.id && event.name === 'entersBattlefield';
@@ -2322,7 +2338,10 @@ export class Game {
       }
     }
     if (!this.state.preventions.length) return 0;
-    for (const pv of this.state.preventions) {
+    // CR 616.1: every applicable prevention effect gets to apply; shields are consumed in order until the damage is gone.
+    let total = 0;
+    for (const pv of [...this.state.preventions]) {
+      if (amount - total <= 0) break;
       if (pv.combat && !combat) continue;
       if (pv.sourceIds && (sourceId === null || !pv.sourceIds.includes(sourceId))) continue;
       if (pv.source && (!src || !matchesFilter(this, src, { ...pv.source, zone: undefined }, { sourceId: pv.sourceId, controller: pv.controller }))) continue;
@@ -2342,7 +2361,7 @@ export class Game {
       }
       if (!hit) continue;
       // A shield prevents at most `amount` and wears off once used up.
-      const stopped = pv.amount === undefined ? Infinity : Math.min(pv.amount, amount);
+      const stopped = pv.amount === undefined ? Infinity : Math.min(pv.amount, amount - total);
       if (pv.amount !== undefined) {
         pv.amount -= stopped;
         if (pv.amount <= 0) this.state.preventions = this.state.preventions.filter((x) => x !== pv);
@@ -2364,9 +2383,10 @@ export class Game {
         const prevented = stopped === Infinity ? amount : stopped;
         this.pendingTriggers.push({ sourceId: pv.sourceId ?? -1, controller: pv.controller, ability: { kind: 'triggered', text: 'Prevention follow-up', event: 'dealtDamage', effects: pv.effects }, context: { triggerAmount: prevented, amount: prevented, sourceId: pv.sourceId ?? undefined } });
       }
-      return stopped;
+      if (stopped === Infinity) return Infinity;
+      total += stopped;
     }
-    return 0;
+    return total;
   }
 
   /** Apply one "would deal damage" modification rule to a damage amount. */
@@ -2996,7 +3016,7 @@ export class Game {
   private *cleanup(): Gen {
     const pid = this.state.turn.activePlayer;
     const p = this.player(pid);
-    this.state.preventions = [];
+    this.state.preventions = this.state.preventions.filter((pv) => pv.permanent);
     for (;;) {
       // Discard to hand size
       const rules = this.playerRules(pid);

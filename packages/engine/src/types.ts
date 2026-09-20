@@ -109,6 +109,8 @@ export interface GameObject {
   damage: number;
   deathtouchDamage: boolean;
   attachedTo: ObjectId | null;
+  /** When it last became attached: an Aura or Equipment gets a new timestamp then (CR 613.7e). */
+  attachedTimestamp?: number;
   attachments: ObjectId[];
   /** Soulbond: the creature this one is paired with. */
   pairedWith?: ObjectId | null;

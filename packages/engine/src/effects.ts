@@ -45,14 +45,22 @@ export function applyCopyExceptions(base: CardData, ex: TokenSpec['exceptions'] 
   return { ...base, oracleId: `${base.oracleId}:x`, name: ex.name ?? base.name, typeLine, oracleText: extraText.length ? `${kept}\n${extraText.join('\n')}` : kept, power: ex.power ?? base.power, toughness: ex.toughness ?? base.toughness, colors: ex.colors ?? base.colors };
 }
 
+/** A face-down permanent's copiable values: a nameless colorless 2/2 creature with no text (CR 708.2). */
+const FACE_DOWN_CARD: CardData = { oracleId: 'face-down', scryfallId: 'face-down', layout: 'normal', name: '', manaCost: '', cmc: 0, typeLine: 'Creature', oracleText: '', colors: [], colorIdentity: [], keywords: [], power: '2', toughness: '2' };
+
+/** The values a copy effect copies from `src` (CR 707.2): the printed card or what it already copies, never granted abilities. */
+export function copiableCard(src: GameObject): CardData {
+  if (src.faceDown) return FACE_DOWN_CARD;
+  return src.copyOf ?? src.card;
+}
+
 export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardData {
   const preset = spec.preset ? TOKEN_PRESETS[spec.preset] : undefined;
   const merged: TokenSpec = { ...(preset ?? {}), ...spec, name: spec.name || preset?.name || 'Token', typeLine: spec.typeLine || preset?.typeLine || 'Creature', colors: spec.colors ?? preset?.colors ?? [] };
   if (spec.copyOf) {
     const src = g.resolveObjects(spec.copyOf, ctx)[0];
     if (src) {
-      const ch = g.characteristics(src.id);
-      const base = src.copyOf ?? src.card;
+      const base = copiableCard(src);
       const ex = spec.exceptions;
       let typeLine = base.typeLine;
       if (ex?.notLegendary) typeLine = typeLine.replace(/^Legendary /, '');
@@ -61,7 +69,7 @@ export function tokenCard(spec: TokenSpec, g: Game, ctx: EffectContext): CardDat
       if (ex?.addSubtypes?.length) typeLine = typeLine.includes(' — ') ? `${typeLine} ${ex.addSubtypes.join(' ')}` : `${typeLine} — ${ex.addSubtypes.join(' ')}`;
       const extraLines = [...(ex?.keywords ?? []), ...(ex?.abilities ?? [])];
       const extraText = extraLines.length ? `\n${extraLines.join('\n')}` : '';
-      return { ...base, isToken: true, oracleId: `${base.oracleId}${ex ? ':x' : ''}`, name: ex?.name ?? (ch.name || base.name), typeLine, oracleText: `${base.oracleText}${extraText}`, power: ex?.power ?? base.power, toughness: ex?.toughness ?? base.toughness, colors: ex?.colors ?? base.colors, keywords: [...ch.keywords, ...(ex?.keywords ?? [])] };
+      return { ...base, isToken: true, oracleId: `${base.oracleId}${ex ? ':x' : ''}`, name: ex?.name ?? base.name, typeLine, oracleText: `${base.oracleText}${extraText}`, power: ex?.power ?? base.power, toughness: ex?.toughness ?? base.toughness, colors: ex?.colors ?? base.colors, keywords: [...(base.keywords ?? []), ...(ex?.keywords ?? [])] };
     }
   }
   const text = [merged.oracleText, ...(merged.keywords ?? [])].filter(Boolean).join('\n');
@@ -217,6 +225,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       });
       return;
     case 'sacrificeChoice': {
+      // CR 101.4 / 700.4: every player chooses first, then all the sacrifices happen at once.
+      const chosen: ObjectId[] = [];
       for (const p of g.resolvePlayers(e.who, ctx)) {
         const n = amt(e.count);
         const cands = objectsMatching(g, { ...e.filter, controller: p }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }).map((o) => o.id);
@@ -230,11 +240,15 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Sacrifice ${k}`, candidates: cands, min: k, max: k, sourceId: ctx.sourceId ?? undefined });
           ids = resp.type === 'objects' ? resp.ids : cands.slice(0, k);
         }
-        for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+        chosen.push(...ids);
       }
+      g.simultaneousZoneChange(() => {
+        for (const id of chosen) if (g.state.objects[id]?.zone === 'battlefield') g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: ctx.sourceId ?? undefined });
+      });
       return;
     }
     case 'exileChoice': {
+      const chosen: ObjectId[] = [];
       for (const p of g.resolvePlayers(e.who, ctx)) {
         const n = amt(e.count);
         const cands = objectsMatching(g, { ...e.filter, controller: p }, { sourceId: ctx.sourceId, controller: p, x: ctx.x }).map((o) => o.id);
@@ -245,9 +259,12 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Exile ${k}`, candidates: cands, min: k, max: k, sourceId: ctx.sourceId ?? undefined });
           ids = resp.type === 'objects' ? resp.ids : cands.slice(0, k);
         }
-        for (const id of ids) g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
-        ctx.memory['lastMoved'] = ids;
+        chosen.push(...ids);
       }
+      g.simultaneousZoneChange(() => {
+        for (const id of chosen) if (g.state.objects[id]?.zone === 'battlefield') g.moveObject(id, 'exile', { cause: 'exile', sourceId: ctx.sourceId ?? undefined });
+      });
+      if (chosen.length) ctx.memory['lastMoved'] = chosen;
       return;
     }
     case 'revealRandomFromHand': {
@@ -749,7 +766,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           const own = g.scriptFor(o).abilities.find((a): a is Extract<AbilitySpec, { kind: 'triggered' | 'activated' }> => (a.kind === 'triggered' || a.kind === 'activated') && /becomes? a copy of/i.test(a.text));
           if (own) ex = { ...ex, keywords: [...(ex.keywords ?? []), own.text] };
         }
-        o.copyOf = applyCopyExceptions(src.copyOf ?? src.card, ex);
+        o.copyOf = applyCopyExceptions(copiableCard(src), ex);
         o.faceIndex = 0;
         g.log(`${g.nameOf(o.id)} becomes a copy of ${g.nameOf(src.id)}.`);
       }
@@ -1451,9 +1468,18 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       }
       return;
     case 'preventDamage': {
-      const ids = g.resolveObjects(e.to, ctx).map((o) => o.id);
-      if (ids.length) g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 'rule', rule: { kind: 'damagePrevention', amount: e.amount === 'all' ? 'all' : amt(e.amount) } } });
-      for (const t of g.resolveRef(e.to, ctx)) if (t.kind === 'player') g.player(t.id).flags['preventDamageThisTurn'] = e.amount;
+      const ts = g.resolveRef(e.to, ctx);
+      const ids = ts.filter((t) => t.kind === 'object').map((t) => (t as { id: ObjectId }).id);
+      const playerIds = ts.filter((t) => t.kind === 'player').map((t) => (t as { id: PlayerId }).id);
+      if (e.amount === 'all') {
+        // "Prevent all damage that would be dealt to it this turn": a rule on the recipient for the duration.
+        if (ids.length) g.addContinuousEffect({ sourceId: ctx.sourceId, controller: ctx.controller, fromStatic: false, affected: { kind: 'fixed', ids }, duration: durationOf(e.duration), modification: { layer: 'rule', rule: { kind: 'damagePrevention', amount: 'all' } } });
+        if (playerIds.length) g.state.preventions.push({ combat: false, to: 'all', controller: ctx.controller, sourceId: ctx.sourceId, playerIds, permanent: e.duration !== undefined && e.duration !== 'endOfTurn' });
+        return;
+      }
+      // CR 615.7: a shield that prevents "the next N damage" is reduced by what it prevents and ends when used up.
+      if (!ids.length && !playerIds.length) return;
+      g.state.preventions.push({ combat: false, to: 'all', controller: ctx.controller, sourceId: ctx.sourceId, amount: amt(e.amount), ids: ids.length ? ids : undefined, playerIds: playerIds.length ? playerIds : undefined, permanent: e.duration !== undefined && e.duration !== 'endOfTurn' });
       return;
     }
     case 'lookAtTop': {
@@ -2550,6 +2576,7 @@ export function attach(g: Game, whatId: ObjectId, toId: ObjectId) {
     if (host) host.attachments = host.attachments.filter((x) => x !== whatId);
   }
   what.attachedTo = toId;
+  if (wasOn !== toId) what.attachedTimestamp = g.now(); // CR 613.7e
   const to = g.obj(toId);
   if (!to.attachments.includes(whatId)) to.attachments.push(whatId);
   g.touch();

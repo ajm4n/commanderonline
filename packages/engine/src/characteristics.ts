@@ -75,7 +75,7 @@ function layerOrder(m: Modification): number {
 export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
   const obj = g.state.objects[id];
   /** `applies` re-evaluates the effect's filter against a working set of characteristics (for dependency ordering). */
-  const effects: { mod: Modification; ts: number; sourceId: ObjectId | null; applies?: (ch: Characteristics) => boolean }[] = [];
+  let effects: { mod: Modification; ts: number; sourceId: ObjectId | null; applies?: (ch: Characteristics) => boolean; /** One of this object's own static abilities. */ fromSelf?: boolean }[] = [];
 
   // Stored effects
   for (const ce of g.state.continuousEffects) {
@@ -96,7 +96,8 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
       if (!staticAffects(g, ab, src, obj)) continue;
       const target = ab.affects ?? ab.ruleAffects;
       const applies = target && typeof target === 'object' ? (ch: Characteristics) => matchesFilter(g, obj, target as ObjectFilter, { sourceId: src.id, controller: src.controller, chOverride: ch }) : undefined;
-      if (ab.modification) effects.push({ mod: ab.modification, ts: src.timestamp, sourceId: src.id, applies });
+      const ts = src.attachedTo !== null && src.attachedTimestamp !== undefined ? src.attachedTimestamp : src.timestamp; // CR 613.7e
+      if (ab.modification) effects.push({ mod: ab.modification, ts, sourceId: src.id, applies, fromSelf: src.id === id });
       if (ab.rule) {
         // "is goaded" from a static: goaded by the source's controller.
         const rule =
@@ -107,7 +108,7 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
               : ab.rule.kind === 'custom' && ab.rule.tag === 'mustBlockSource'
                 ? { ...ab.rule, data: ab.rule.data === '__attached__' ? src.attachedTo ?? -1 : src.id }
                 : ab.rule;
-        effects.push({ mod: { layer: 'rule', rule }, ts: src.timestamp, sourceId: src.id, applies });
+        effects.push({ mod: { layer: 'rule', rule }, ts, sourceId: src.id, applies, fromSelf: src.id === id });
       }
     }
   }
@@ -259,6 +260,12 @@ export function computeCharacteristics(g: Game, id: ObjectId): Characteristics {
   for (const e of orderLayer(5, applyColors)) applyColorsFor(ch, e.mod, e.sourceId ?? null);
   // Layer 6: abilities
   for (const e of orderLayer(6, (c, m) => applyAbilities(c, m))) applyAbilities(ch, e.mod);
+  if (ch.lostAllAbilities && !obj.faceDown) {
+    // CR 613.1f / 604.3: an object's own static abilities and its "*" P/T definition were removed with its abilities.
+    effects = effects.filter((e) => !(e.fromSelf && (e.mod.layer === '7b' || e.mod.layer === '7c' || e.mod.layer === '7d' || e.mod.layer === 'rule')));
+    if (face.power !== undefined && /\*/.test(face.power)) ch.power = parseInt(face.power, 10) || 0;
+    if (face.toughness !== undefined && /\*/.test(face.toughness)) ch.toughness = parseInt(face.toughness, 10) || 0;
+  }
   // Layer 7b: set P/T
   for (const e of effects) {
     if (e.mod.layer !== '7b') continue;
