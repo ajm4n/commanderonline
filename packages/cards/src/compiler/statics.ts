@@ -1131,7 +1131,7 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     }
   }
   // "If one or more +1/+1 counters would be put on ~, that many plus one +1/+1 counters are put on it instead."
-  if ((m = L.match(/^If one or more (?:([+\-\w\/]+) )?counters would be put on (.+?), (twice that many|half that many|that many plus (?:one|two|three)|that many minus one|(?:three times|twice) that many)(?: of (?:those|each of those kinds of)? ?counters)?(?: ?[+\-\w\/]+)? counters are put on (?:it|that \w+|them|that permanent or player) instead(?:, rounded (up|down))?$/i))) {
+  if ((m = L.match(/^If one or more (?:([+\-\w\/]+) )?counters would be put on (.+?), (twice that many|half that many|that many plus (?:one|two|three)|that many minus one|(?:three times|twice) that many)(?: of (?:those|each of those kinds of)? ?counters| (?:[+\-\w\/]+ )?counters)? (?:are|is) put on (?:it|that \w+|them|that permanent or player) instead(?:, rounded (up|down))?$/i))) {
     const who = m[2].trim();
     const noun = /^~$/.test(who) ? { filter: { self: true } as ObjectFilter, confident: true } : /^(?:a permanent or player|a permanent)$/i.test(who) ? { filter: {} as ObjectFilter, confident: true } : parseNoun(who);
     if (noun && noun.confident) {
@@ -2017,6 +2017,13 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     const n = wordToNumber(m[2]);
     if (typeof n !== 'number') break sx10;
     return [{ kind: 'static', text: line, ruleAffects: /^you$/i.test(m[1]) ? 'controller' : /opponent/i.test(m[1]) ? 'opponents' : 'allPlayers', rule: { kind: 'custom', tag: 'maxSpellsPerTurn', data: n } }];
+  }
+  // Winding Constrictor: "If you would get one or more counters, you get that many plus one of each of those kinds of counters instead."
+  if ((m = L.match(/^If (you|an opponent) would get one or more counters, (?:you|they) get (twice that many|that many plus (\w+)) of each of those kinds of counters instead$/i))) {
+    const plus = m[3] ? wordToNumber(m[3]) : null;
+    if (/twice/i.test(m[2]) || typeof plus === 'number') {
+      return [{ kind: 'replacement', text: line, event: 'counterAdded', extra: /twice/i.test(m[2]) ? 0 : (plus as number), multiply: /twice/i.test(m[2]) ? 2 : undefined, who: /^you$/i.test(m[1]) ? 'you' : 'opponent', forPlayers: true }];
+    }
   }
   // Muldrotha: "During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard."
   if (/^During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard$/i.test(L)) {

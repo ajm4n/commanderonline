@@ -893,7 +893,7 @@ export class Game {
     obj.tapped = opts.tapped ?? false;
     obj.damage = 0;
     obj.deathtouchDamage = false;
-    obj.counters = opts.counters ? { ...opts.counters } : {};
+    obj.counters = opts.counters ? (toZone === 'battlefield' ? this.enteringCounters(obj, opts.counters, opts.controller ?? obj.controller) : { ...opts.counters }) : {};
     obj.attacking = null;
     obj.blocking = [];
     obj.blockedBy = [];
@@ -996,7 +996,7 @@ export class Game {
     obj.controller = opts.controller ?? owner;
     obj.baseController = obj.controller;
     obj.tapped = opts.tapped ?? false;
-    obj.counters = opts.counters ? { ...opts.counters } : {};
+    obj.counters = opts.counters ? (zone === 'battlefield' ? this.enteringCounters(obj, opts.counters, obj.controller) : { ...opts.counters }) : {};
     obj.timestamp = this.now();
     obj.enteredThisTurn = zone === 'battlefield';
     obj.controlSinceTurn = this.state.turn.number;
@@ -1505,6 +1505,12 @@ export class Game {
       case 'wasKicked': {
         const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
         return !!src?.additionalCostsPaid.includes('kicker');
+      }
+      case 'altCostPaid': {
+        const src = ctx.sourceId !== null ? this.state.objects[ctx.sourceId] : null;
+        if (!src) return false;
+        const alt = this.scriptFor(src).alternativeCosts?.find((a) => (a.cost.mana ?? '').replace(/\s/g, '') === c.mana.replace(/\s/g, ''));
+        return !!alt && src.additionalCostsPaid.includes(alt.id);
       }
       case 'modeChosen':
         return (ctx.modes ?? []).includes(c.mode);
@@ -2703,30 +2709,45 @@ export class Game {
     this.touch();
     this.emit({ name: 'untapped', objectId: id, playerId: o.controller });
   }
-  addCounters(id: ObjectId, type: string, n: number, sourceId?: ObjectId) {
-    const o = this.state.objects[id];
-    if (!o || n <= 0) return;
-    // Counter-doubling replacements (e.g. Doubling Season / Hardened Scales)
+  /** Counters a player would get (poison, experience, energy) after Vorinclex / Winding Constrictor style replacements. */
+  playerCounterAmount(pid: PlayerId, type: string, n: number): number {
     let amount = n;
-    // "~ can't have counters put on it."
-    for (const r of this.characteristics(id).rules) {
-      if (r.kind !== 'custom' || r.tag !== 'noCounters') continue;
-      const d = (r.data as { counter?: string } | undefined) ?? {};
-      if (!d.counter || d.counter === type) return;
+    for (const src of this.state.battlefield.map((x) => this.obj(x))) {
+      for (const ab of this.scriptFor(src).abilities) {
+        if (ab.kind !== 'replacement' || ab.event !== 'counterAdded') continue;
+        if (!(ab.forPlayers || (!ab.filter && !ab.counterType))) continue; // "a permanent or player"
+        const who = ab.who ?? 'you';
+        if (who === 'you' && src.controller !== pid) continue;
+        if (who === 'opponent' && src.controller === pid) continue;
+        if (ab.counterType && ab.counterType !== type) continue;
+        if (ab.multiply) amount *= ab.multiply;
+        if (ab.half) amount = ab.half === 'up' ? Math.ceil(amount / 2) : Math.floor(amount / 2);
+        amount += ab.extra;
+        if (ab.minus) amount -= ab.minus;
+        if (amount < 0) amount = 0;
+      }
     }
-    // "If you would put one or more counters on a permanent, put twice/half that many instead."
-    for (const r of this.playerRules(o.controller)) {
+    return amount;
+  }
+  /**
+   * How many counters actually land on `o` when `n` counters of `type` would be put on it (Doubling Season, Hardened
+   * Scales, Vorinclex …). Also used for counters a permanent enters the battlefield with (rule 614.1c).
+   */
+  counterAmountFor(o: GameObject, type: string, n: number, controller: PlayerId = o.controller): number {
+    let amount = n;
+    for (const r of this.playerRules(controller)) {
       if (r.kind !== 'custom' || r.tag !== 'counterMultiplier' || typeof r.data !== 'number') continue;
       amount = r.data >= 1 ? amount * r.data : Math.floor(amount * r.data);
     }
     for (const src of this.state.battlefield.map((x) => this.obj(x))) {
       for (const ab of this.scriptFor(src).abilities) {
         if (ab.kind === 'replacement' && ab.event === 'counterAdded') {
+          if (ab.forPlayers) continue; // "If you would get one or more counters": players only
           const who = ab.who ?? 'you';
-          if (who === 'you' && src.controller !== o.controller) continue;
-          if (who === 'opponent' && src.controller === o.controller) continue;
+          if (who === 'you' && src.controller !== controller) continue;
+          if (who === 'opponent' && src.controller === controller) continue;
           if (ab.counterType && ab.counterType !== type) continue;
-          if (ab.filter && !matchesFilter(this, o, ab.filter, { sourceId: src.id, controller: src.controller })) continue;
+          if (ab.filter && !matchesFilter(this, o, { ...ab.filter, zone: o.zone === 'battlefield' ? ab.filter.zone : undefined }, { sourceId: src.id, controller: src.controller })) continue;
           if (ab.multiply) amount *= ab.multiply;
           if (ab.half) amount = ab.half === 'up' ? Math.ceil(amount / 2) : Math.floor(amount / 2);
           amount += ab.extra;
@@ -2735,15 +2756,36 @@ export class Game {
         }
       }
     }
-    for (const ab of this.turnReplacementsFor(o.controller, 'counterAdded')) {
+    for (const ab of this.turnReplacementsFor(controller, 'counterAdded')) {
       if (ab.counterType && ab.counterType !== type) continue;
-      if (ab.filter && !matchesFilter(this, o, ab.filter, { sourceId: null, controller: o.controller })) continue;
+      if (ab.filter && !matchesFilter(this, o, { ...ab.filter, zone: o.zone === 'battlefield' ? ab.filter.zone : undefined }, { sourceId: null, controller })) continue;
       if (ab.multiply) amount *= ab.multiply;
       if (ab.half) amount = ab.half === 'up' ? Math.ceil(amount / 2) : Math.floor(amount / 2);
       amount += ab.extra;
       if (ab.minus) amount -= ab.minus;
       if (amount < 0) amount = 0;
     }
+    return amount;
+  }
+  /** Counters a permanent enters with, after replacement effects (Hardened Scales makes Walking Ballista X+1). */
+  enteringCounters(o: GameObject, counters: Record<string, number>, controller: PlayerId): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [type, n] of Object.entries(counters)) {
+      const amount = n > 0 ? this.counterAmountFor(o, type, n, controller) : n;
+      if (amount > 0) out[type] = amount;
+    }
+    return out;
+  }
+  addCounters(id: ObjectId, type: string, n: number, sourceId?: ObjectId) {
+    const o = this.state.objects[id];
+    if (!o || n <= 0) return;
+    // "~ can't have counters put on it."
+    for (const r of this.characteristics(id).rules) {
+      if (r.kind !== 'custom' || r.tag !== 'noCounters') continue;
+      const d = (r.data as { counter?: string } | undefined) ?? {};
+      if (!d.counter || d.counter === type) return;
+    }
+    const amount = this.counterAmountFor(o, type, n);
     if (amount <= 0) return;
     o.counters[type] = (o.counters[type] ?? 0) + amount;
     this.touch();

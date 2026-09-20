@@ -226,6 +226,8 @@ export type Condition =
   /** "you've cast another spell named X this game": casts of that name by the controller this game, including the current one. */
   | { kind: 'castNamedThisGame'; name: string; op: Comparison; value: number }
   | { kind: 'wasKicked' }
+  /** "If the {1}{B} cost was paid": the alternative cost with this mana cost was chosen. */
+  | { kind: 'altCostPaid'; mana: string }
   /** "if ~ was kicked with its {2}{B} kicker" on a card offering two. */
   | { kind: 'wasKickedWith'; cost: string }
   /** Gift: an opponent was promised a gift as this spell was cast. */
@@ -444,7 +446,7 @@ export type Effect =
   /** A player picks one of the two piles; it becomes memory key chosenPile, the other otherPile. */
   | { kind: 'choosePile'; by: Ref }
   /** "Double the number of each kind of counter on target permanent." */
-  | { kind: 'doubleCounters'; on: Ref }
+  | { kind: 'doubleCounters'; on: Ref; /** Only this kind of counter (default: every kind). */ counter?: string }
   /** "Remove it from combat." */
   | { kind: 'removeFromCombat'; what: Ref }
   /** "Suspect target creature." (it gets menace and can't block) */
@@ -788,7 +790,7 @@ export type ReplacementSpec =
   | { kind: 'replacement'; text: string; event: 'lifeLoss'; multiply?: number; add?: number; who: 'you' | 'opponent' | 'any'; yourTurnOnly?: boolean }
   /** "If an opponent would mill one or more cards, they mill twice that many cards instead." */
   | { kind: 'replacement'; text: string; event: 'mill'; multiply?: number; add?: number; who: 'you' | 'opponent' | 'any' }
-  | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; /** "half that many … rounded down" */ half?: 'up' | 'down'; /** "that many minus one" */ minus?: number; filter?: ObjectFilter; counterType?: CounterType; /** Whose counter placement is replaced (default: the holder's own). */ who?: 'you' | 'opponent' | 'any' }
+  | { kind: 'replacement'; text: string; event: 'counterAdded'; extra: number; multiply?: number; /** "half that many … rounded down" */ half?: 'up' | 'down'; /** "that many minus one" */ minus?: number; filter?: ObjectFilter; counterType?: CounterType; /** Whose counter placement is replaced (default: the holder's own). */ who?: 'you' | 'opponent' | 'any'; /** Also applies to counters a player gets (poison, experience, energy). */ forPlayers?: boolean }
   | { kind: 'replacement'; text: string; event: 'tokenCreated'; /** Multiplier minus one: "twice that many" is 1, "three times" is 2 (applied to the running count, so doublers stack multiplicatively). */ extra: number; /** "that many plus one": a flat addition. */ plus?: number; /** "those tokens plus a Clue token are created instead" */ alsoToken?: TokenSpec; /** "that many 4/4 white Angel creature tokens are created instead": the tokens created change. */ replaceToken?: TokenSpec; /** "half that many of each of those kinds of tokens instead, rounded down" */ half?: 'up' | 'down'; /** Whose token creation is replaced (default: the holder's own). */ who?: 'you' | 'opponent' | 'any'; /** Only replaces creature-token creation. */ creatureOnly?: boolean }
   | { kind: 'replacement'; text: string; event: 'wouldLoseGame'; instead: Effect[] }
   | { kind: 'replacement'; text: string; event: 'custom'; tag: string };

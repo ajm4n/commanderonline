@@ -374,7 +374,11 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         if (t.kind === 'object') {
           const o = g.state.objects[t.id];
           if (!o) continue;
-          for (const [k, v] of Object.entries(o.counters)) if ((v ?? 0) > 0) o.counters[k] = (v ?? 0) * 2;
+          for (const [k, v] of Object.entries(o.counters)) {
+            if ((v ?? 0) <= 0) continue;
+            if (e.counter && e.counter !== 'any' && k !== e.counter) continue; // "double the number of +1/+1 counters" only
+            g.addCounters(o.id, k as never, v ?? 0, ctx.sourceId ?? undefined); // doubling puts counters, so Hardened Scales & co. apply
+          }
         } else if (t.kind === 'player') {
           const pl = g.player(t.id);
           pl.poison *= 2;
@@ -955,10 +959,10 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       for (const t of g.resolveRef(e.on, ctx)) {
         if (t.kind !== 'player') continue;
         const pl = g.player(t.id);
-        if (e.counter === 'poison') pl.poison += amt(e.amount);
-        else if (e.counter === 'experience') pl.experience += amt(e.amount);
+        if (e.counter === 'poison') pl.poison += g.playerCounterAmount(t.id, 'poison', amt(e.amount));
+        else if (e.counter === 'experience') pl.experience += g.playerCounterAmount(t.id, 'experience', amt(e.amount));
         else if (e.counter === 'energy') {
-          let en = amt(e.amount);
+          let en = g.playerCounterAmount(t.id, 'energy', amt(e.amount));
           for (const r of g.playerRules(t.id)) {
             if (r.kind === 'custom' && r.tag === 'energyMultiplier' && typeof r.data === 'number') en *= r.data;
           }

@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round', 'Thalia, Guardian of Thraben', 'Blood Moon', 'Squee, the Immortal', 'Rings of Brighthearth', 'Triskelion', "Teferi's Protection", "Angel's Grace", 'Platinum Angel', 'Narset, Enlightened Master', 'Grand Arbiter Augustin IV', 'Kalonian Hydra', 'Winding Constrictor', 'Hardened Scales'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -825,5 +825,29 @@ describe('combos and staples played through the engine', () => {
     d.lands(p2, 'Forest', 1);
     d.until((x) => x.type === 'priority' && x.player === p2);
     expect(d.prio().playableCards).toContain(bears);
+  });
+  it('Kalonian Hydra doubles each creature\'s own counters, with Hardened Scales adding one per creature', () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Hardened Scales'));
+    const hydra = d.put(p1, C('Kalonian Hydra'));
+    d.g.obj(hydra).counters['+1/+1'] = 4;
+    const bear = d.put(p1, C('Grizzly Bears'));
+    d.g.obj(bear).counters['+1/+1'] = 1;
+    d.g.refreshDecision();
+    d.until((x) => x.type === 'declareAttackers');
+    d.submit({ type: 'attackers', attacks: [{ attacker: hydra, target: p2 }] });
+    d.until((x) => x.type === 'priority' && d.g.state.stack.length === 0 && d.g.state.turn.step !== 'declareAttackers');
+    expect(d.g.obj(hydra).counters['+1/+1']).toBe(9); // 4 + (4 + 1 from Scales)
+    expect(d.g.obj(bear).counters['+1/+1']).toBe(3); // 1 + (1 + 1)
+  });
+
+  it('Winding Constrictor adds a counter to every batch of counters on your artifacts and creatures', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Forest', 5);
+    d.put(p1, C('Winding Constrictor'));
+    const hydra = d.give(p1, C('Kalonian Hydra'));
+    d.cast(hydra);
+    d.resolve();
+    expect(d.g.obj(d.bf(p1, 'Kalonian Hydra')[0]).counters['+1/+1']).toBe(5);
   });
 });

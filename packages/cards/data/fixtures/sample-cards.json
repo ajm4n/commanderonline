@@ -8518,5 +8518,101 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/f/4/f43748ea-1d65-4ee8-9c66-221412a284c0.jpg?1783921832"
     }
+  },
+  {
+    "object": "card",
+    "id": "1d21ae20-2ef5-4dc0-aced-97497e6a8025",
+    "oracle_id": "7bd36106-04fe-481f-b16e-e076dcbb183b",
+    "name": "Kalonian Hydra",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{G}{G}",
+    "cmc": 5,
+    "type_line": "Creature — Hydra",
+    "oracle_text": "Trample\nThis creature enters with four +1/+1 counters on it.\nWhenever this creature attacks, double the number of +1/+1 counters on each creature you control.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [
+      "Trample",
+      "Double"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "0",
+    "toughness": "0",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/1/d/1d21ae20-2ef5-4dc0-aced-97497e6a8025.jpg?1783917137"
+    }
+  },
+  {
+    "object": "card",
+    "id": "107c8aa8-c8f8-4cbf-821b-bd2cb33354f0",
+    "oracle_id": "c9404d7d-a026-4082-9fcb-1ab571a136b5",
+    "name": "Winding Constrictor",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{B}{G}",
+    "cmc": 2,
+    "type_line": "Creature — Snake",
+    "oracle_text": "If one or more counters would be put on an artifact or creature you control, that many plus one of each of those kinds of counters are put on that permanent instead.\nIf you would get one or more counters, you get that many plus one of each of those kinds of counters instead.",
+    "colors": [
+      "B",
+      "G"
+    ],
+    "color_identity": [
+      "B",
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "power": "2",
+    "toughness": "3",
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/1/0/107c8aa8-c8f8-4cbf-821b-bd2cb33354f0.jpg?1783936732"
+    }
+  },
+  {
+    "object": "card",
+    "id": "99cfd1a8-49fd-4cc0-96f2-f9f159ce5d55",
+    "oracle_id": "a1f3da21-af6d-450e-bf0b-985d158418e6",
+    "name": "Hardened Scales",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{G}",
+    "cmc": 1,
+    "type_line": "Enchantment",
+    "oracle_text": "If one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on it instead.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/9/9/99cfd1a8-49fd-4cc0-96f2-f9f159ce5d55.jpg?1783903765"
+    }
   }
 ]

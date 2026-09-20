@@ -987,6 +987,19 @@ const PATTERNS: Pattern[] = [
     return ref ? [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }, { kind: 'gainControl', what: ref, who: { ref: 'chosen', key: 'opponent' } }] : null;
   }],
   [/^choose an opponent$/i, () => [{ kind: 'choosePlayer', key: 'opponent', who: 'opponent' }]],
+  // Baleful Mastery: "an opponent draws a card" — you choose which opponent.
+  [/^an opponent (draws? .+|discards? .+|gains? \d+ life|loses? \d+ life)$/i, (m, ctx) => {
+    const key = `opp_${Math.random().toString(36).slice(2, 6)}`;
+    const who: Ref = { ref: 'chosen', key };
+    const saved = ctx.lastPlayer;
+    ctx.lastPlayer = who;
+    const inner = parseSentence(`that player ${m[1]}`, ctx);
+    if (!inner) {
+      ctx.lastPlayer = saved;
+      return null;
+    }
+    return [{ kind: 'choosePlayer', key, who: 'opponent' }, ...inner];
+  }],
   [/^choose a nonland card name$/i, () => [{ kind: 'nameCard', key: 'cardName' }]],
   [/^switch (.+?)'s power and toughness(?: until end of turn)?$/i, (m, ctx) => {
     const ref = objRef(m[1], ctx);
@@ -9221,8 +9234,9 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (ref) return [{ kind: 'applyRule', rule: { kind: 'cantAttack' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'cantBlock' }, on: ref, duration: 'untilYourNextTurn' }, { kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivate' }, on: ref, duration: 'untilYourNextTurn' }];
   }
   if ((m = text.match(/^double the number of ([+\-\w\/]+) counters on (.+)$/i))) {
+    // Kalonian Hydra: each creature's own count is doubled, not the total across all of them.
     const ref = objRef(m[2], ctx);
-    if (ref) return [{ kind: 'addCounters', counter: m[1], amount: { kind: 'countersOn', ref, counter: m[1] }, on: ref }];
+    if (ref) return [{ kind: 'doubleCounters', counter: m[1], on: ref }];
   }
   // "destroy that creature at end of combat" / "sacrifice it at end of combat"
   if ((m = text.match(/^(.+?) at (?:the )?end of combat$/i))) {
@@ -9694,6 +9708,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     if (!mm) continue;
     const saved = ctx.targets.length;
     const r = fn(mm, ctx);
+    if (r && process.env.COMPILER_TRACE) console.error(`[pattern] ${re.source.slice(0, 100)}  <=  ${text}`);
     if (r) return r;
     ctx.targets.length = saved;
   }
