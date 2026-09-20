@@ -407,6 +407,9 @@ function amt(text: string, ctx: ParseCtx) {
     const ref = objRef(tm[1], ctx);
     if (ref) return { kind: tm[2].toLowerCase() === 'power' ? 'power' : tm[2].toLowerCase() === 'toughness' ? 'toughness' : 'manaValue', ref } as Amount;
   }
+  // Scapeshift: "Sacrifice any number of lands. Search your library for up to that many land cards": the count of what
+  // the previous effect moved, not a trigger's amount.
+  if (/^that many$/i.test(text.trim()) && ctx.lastObj && !ctx.triggerHasObject && !ctx.triggerHasPlayer) return { kind: 'countRef', ref: ctx.lastObj };
   const hm = text.trim().match(/^the number of cards in (target (?:player|opponent))'s (hand|graveyard)$/i);
   if (hm) {
     const who = playerRef(hm[1], ctx);
@@ -1902,7 +1905,8 @@ const PATTERNS: Pattern[] = [
     const noun = /^cards?$/i.test(m[3]) ? { filter: {} as ObjectFilter } : parseNoun(/\bcards?\b/i.test(nounText) ? nounText : `${nounText} card`);
     ctx.lastObj = { ref: 'lastMoved' };
     if (!noun) return null;
-    const n: Amount | null = m[2] ? (/that many/i.test(m[2]) ? { kind: 'triggerAmount' } : wordToNumber(m[2])) : /any number of/i.test(m[0]) ? 20 : 1;
+    // "up to that many": what the previous sentence sacrificed/discarded (Scapeshift), else the trigger's amount.
+    const n: Amount | null = m[2] ? (/that many/i.test(m[2]) ? (ctx.lastObj && !ctx.triggerHasObject && !ctx.triggerHasPlayer ? { kind: 'countRef', ref: ctx.lastObj } : { kind: 'triggerAmount' }) : wordToNumber(m[2])) : /any number of/i.test(m[0]) ? 20 : 1;
     if (n === null) return null;
     const whose = m[1].toLowerCase();
     let who: Ref | undefined;
