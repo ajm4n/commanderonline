@@ -901,6 +901,17 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
     const c: Condition = { kind: 'isTapped', ref: { ref: 'attachedTo' } };
     return m[1] === 'tapped' ? c : { kind: 'not', c };
   }
+  // Guardian Project: "it does not have the same name as another creature you control or a creature card in your graveyard"
+  if (/^it does not have the same name as another creature you control or a creature card in your graveyard$/.test(t)) {
+    const ref: import('@commander/engine').Ref = ctx.triggerHasObject ? { ref: 'triggerObject' } : ctx.lastObj ?? ctx.self;
+    return {
+      kind: 'and',
+      cs: [
+        { kind: 'count', filter: { types: ['Creature'], controller: 'you', zone: 'battlefield', sameNameAs: ref }, op: '<=', value: 1 },
+        { kind: 'count', filter: { types: ['Creature'], owner: 'you', zone: 'graveyard', sameNameAs: ref }, op: '==', value: 0 },
+      ],
+    };
+  }
   if ((m = t.match(/^you control (\w+) or more (.+?) with the same name$/))) {
     const n = wordToNumber(m[1]);
     const noun = parseNoun(oc(m, 2));

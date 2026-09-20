@@ -522,6 +522,58 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       g.touch();
       return;
     }
+    case 'scrollRack': {
+      const p = ctx.controller;
+      const pl = g.player(p);
+      if (!pl.hand.length) return;
+      const resp = yield* g.ask({ type: 'chooseObjects', player: p, prompt: 'Scroll Rack: exile any number of cards from your hand face down', candidates: [...pl.hand], min: 0, max: pl.hand.length, sourceId: ctx.sourceId ?? undefined });
+      const ids = resp.type === 'objects' ? resp.ids.filter((id) => pl.hand.includes(id)) : [];
+      if (!ids.length) return;
+      for (const id of ids) g.moveObject(id, 'exile', { faceDown: true, cause: 'exile', skipEvents: true });
+      const n = Math.min(ids.length, pl.library.length);
+      for (let i = 0; i < n; i++) {
+        const top = pl.library.shift()!;
+        const o = g.obj(top);
+        o.zone = 'hand';
+        o.timestamp = g.now();
+        pl.hand.push(top);
+      }
+      g.log(`${pl.name} puts ${n} card${n === 1 ? '' : 's'} from the top of their library into their hand.`);
+      let order = ids;
+      if (ids.length > 1) {
+        const r = yield* g.ask({ type: 'orderObjects', player: p, prompt: 'Scroll Rack: order the exiled cards on top of your library (first = top)', objectIds: ids, context: 'libraryTop' });
+        if (r.type === 'order') order = r.ids;
+      }
+      for (const id of [...order].reverse()) g.moveObject(id, 'library', { position: 'top', skipEvents: true });
+      g.touch();
+      return;
+    }
+    case 'sylvanLibrary': {
+      const p = ctx.controller;
+      const pl = g.player(p);
+      const draws = e.draws ?? 2;
+      const life = e.life ?? 4;
+      const want = yield* g.ask({ type: 'yesNo', player: p, prompt: `Draw ${draws} additional cards? (then pay ${life} life each or put back cards drawn this turn)`, sourceId: ctx.sourceId ?? undefined });
+      if (!(want.type === 'yesNo' && want.value)) return;
+      const before = pl.hand.length;
+      g.drawCards(p, draws);
+      const actuallyDrew = pl.hand.length - before;
+      if (actuallyDrew <= 0) return;
+      const drawnThisTurn = pl.hand.filter((id) => g.obj(id).memory['drawnTurn'] === g.state.turn.number);
+      const k = Math.min(draws, drawnThisTurn.length);
+      if (k === 0) return;
+      let chosen = drawnThisTurn.slice(0, k);
+      if (drawnThisTurn.length > k) {
+        const r = yield* g.ask({ type: 'chooseObjects', player: p, prompt: `Choose ${k} cards drawn this turn`, candidates: drawnThisTurn, min: k, max: k, sourceId: ctx.sourceId ?? undefined });
+        if (r.type === 'objects' && r.ids.length === k) chosen = r.ids;
+      }
+      for (const id of chosen) {
+        const pay = yield* g.ask({ type: 'yesNo', player: p, prompt: `Pay ${life} life to keep ${g.nameOf(id)}? (No: put it on top of your library)`, sourceId: ctx.sourceId ?? undefined });
+        if (pay.type === 'yesNo' && pay.value && pl.life >= 0) g.loseLife(p, life, ctx.sourceId ?? undefined);
+        else g.moveObject(id, 'library', { position: 'top', skipEvents: true });
+      }
+      return;
+    }
     case 'reanimateAura': {
       // Animate Dead / Dance of the Dead / Necromancy: put the card onto the battlefield under your control,
       // attach this Aura to it, and have its controller sacrifice it when the Aura leaves.

@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = []): { d: D; p1: PlayerId; p2: 
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -512,5 +512,65 @@ describe('combos and staples played through the engine', () => {
     d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step === 'main1');
     expect(d.bf(p1, 'Grizzly Bears')).toHaveLength(0);
     expect(d.g.player(p2).graveyard.map((id) => d.g.obj(id).card.name)).toContain('Grizzly Bears');
+  });
+  it('Guardian Project draws only for creatures with a new name', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Forest', 4);
+    d.put(p1, C('Guardian Project'));
+    const hand0 = d.g.player(p1).hand.length;
+    const settle = () => {
+      d.resolve();
+      d.answer(d.d); // pass once so pending triggers reach the stack
+      d.until((x) => x.type === 'priority' && x.player === p1 && d.g.state.stack.length === 0 && d.g.state.turn.step === 'main1');
+    };
+    const b1 = d.give(p1, C('Grizzly Bears'));
+    d.cast(b1);
+    settle();
+    expect(d.g.player(p1).hand.length).toBe(hand0 + 1); // cast one, drew one
+    const b2 = d.give(p1, C('Grizzly Bears'));
+    d.cast(b2);
+    settle();
+    expect(d.g.player(p1).hand.length).toBe(hand0 + 1); // second Bears: same name as another creature you control, no draw
+  });
+
+  it('Sylvan Library draws two extra and charges 4 life per kept card', () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Sylvan Library'));
+    d.main(p2);
+    const hand = d.g.player(p1).hand.length;
+    d.yesNo = () => true; // draw the extra cards and pay for both
+    d.until((x) => x.type === 'priority' && d.g.state.turn.activePlayer === p1 && d.g.state.turn.step === 'main1' && d.g.state.stack.length === 0);
+    expect(d.g.player(p1).hand.length).toBe(hand + 3); // draw step + two extra (one discarded to hand size later, not yet)
+    expect(d.g.player(p1).life).toBe(32);
+  });
+
+  it('Sylvan Library puts unpaid cards back on top', () => {
+    const { d, p1, p2 } = game();
+    d.put(p1, C('Sylvan Library'));
+    d.main(p2);
+    const hand = d.g.player(p1).hand.length;
+    d.yesNo = (prompt) => !/Pay 4 life/.test(prompt);
+    d.until((x) => x.type === 'priority' && d.g.state.turn.activePlayer === p1 && d.g.state.turn.step === 'main1' && d.g.state.stack.length === 0);
+    expect(d.g.player(p1).hand.length).toBe(hand + 1);
+    expect(d.g.player(p1).life).toBe(40);
+  });
+
+  it('Scroll Rack swaps hand cards for the top of the library', () => {
+    const { d, p1 } = game();
+    d.lands(p1, 'Plains', 1);
+    const rack = d.put(p1, C('Scroll Rack'));
+    const hand = [...d.g.player(p1).hand];
+    const top = d.g.player(p1).library.slice(0, 2);
+    const ab = d.prio().activatableAbilities.find((a) => a.objectId === rack);
+    expect(ab).toBeDefined();
+    d.submit({ type: 'activate', objectId: rack, abilityIndex: ab!.abilityIndex });
+    d.until((x) => x.type === 'chooseObjects' && x.player === p1 && /Scroll Rack/.test(x.prompt));
+    if (d.d.type === 'chooseObjects') d.submit({ type: 'objects', ids: hand.slice(0, 2) });
+    d.resolve();
+    const now = d.g.player(p1).hand;
+    expect(now).toHaveLength(hand.length);
+    expect(now).toEqual(expect.arrayContaining(top));
+    expect(now).not.toContain(hand[0]);
+    expect(d.g.player(p1).library.slice(0, 2).sort()).toEqual(hand.slice(0, 2).sort());
   });
 });

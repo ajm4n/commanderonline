@@ -347,6 +347,8 @@ export interface ObjectFilter {
   zone?: ZoneName | ZoneName[];
   /** Only these specific objects ("enchant creature put onto the battlefield with this Aura"). */
   ids?: ObjectId[];
+  /** Name is one of these (bound from `sameNameAs` when the reference is only known at evaluation time). */
+  nameIn?: string[];
   types?: string[]; // any of these card types
   notTypes?: string[];
   subtypes?: string[]; // any of these subtypes

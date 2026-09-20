@@ -392,6 +392,10 @@ export type Effect =
   | { kind: 'payEnergy'; max: number; key: string }
   /** "For each color among permanents you control, add one mana of that color." */
   | { kind: 'addManaPerColor'; filter: ObjectFilter }
+  /** Scroll Rack: exile any number of cards from your hand face down, draw that many from the top, then put the exiled cards on top in any order. */
+  | { kind: 'scrollRack' }
+  /** Sylvan Library: you may draw two more; if you do, for two cards drawn this turn pay 4 life each or put them back on top. */
+  | { kind: 'sylvanLibrary'; draws?: number; life?: number }
   /** Animate Dead: put the enchanted graveyard card (or `what`) onto the battlefield under your control attached to this Aura; its controller sacrifices it when the Aura leaves. */
   | { kind: 'reanimateAura'; what?: Ref; tapped?: boolean }
   | { kind: 'chooseCreatureType'; key: string; /** Which set of types to pick from (default creature subtypes). */ pool?: 'creature' | 'land' | 'cardType' }

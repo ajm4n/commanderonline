@@ -1924,6 +1924,13 @@ export class Game {
 
   /** Bind a filter's `controllerRef` to a concrete player for this effect context. */
   bindFilter(filter: import('./types.js').ObjectFilter, ctx: EffectContext): import('./types.js').ObjectFilter {
+    // "with the same name as <that creature>": the reference needs this context, which the filter matcher lacks.
+    if (filter.sameNameAs) {
+      const names = this.resolveRef(filter.sameNameAs, ctx).map((t) => (t.kind === 'object' ? this.characteristics(t.id).name : t.kind === 'stackItem' ? this.state.stack.find((si) => si.id === t.id)?.text ?? '' : '')).filter(Boolean);
+      const { sameNameAs: _sn, ...rest } = filter;
+      void _sn;
+      filter = { ...rest, nameIn: names.length ? names : ['__no such name__'] };
+    }
     if (!filter.controllerRef) return filter;
     const ps = this.resolvePlayers(filter.controllerRef, ctx);
     const { controllerRef: _cr, ...rest } = filter;
@@ -2215,6 +2222,7 @@ export class Game {
       const o = this.obj(id);
       o.zone = 'hand';
       o.timestamp = this.now();
+      o.memory['drawnTurn'] = this.state.turn.number; // "cards in your hand drawn this turn" (Sylvan Library)
       p.hand.push(id);
       drawn.push(id);
       if (this.state.turn.step === 'draw' && this.state.turn.activePlayer === pid) p.turnStats['drawStepDraws'] = (p.turnStats['drawStepDraws'] ?? 0) + 1;

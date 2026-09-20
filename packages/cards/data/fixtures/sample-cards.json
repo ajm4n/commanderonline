@@ -7778,5 +7778,88 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/c/c/cc0c2bab-4392-4e7b-9d14-2901f4ffbae8.jpg?1783903787"
     }
+  },
+  {
+    "object": "card",
+    "id": "dfaaa58d-89bb-4cb3-96a6-b480e6f6954e",
+    "oracle_id": "648bd03d-247e-4d6f-87a9-12a67688cbf5",
+    "name": "Scroll Rack",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}",
+    "cmc": 2,
+    "type_line": "Artifact",
+    "oracle_text": "{1}, {T}: Exile any number of cards from your hand face down. Put that many cards from the top of your library into your hand. Then look at the exiled cards and put them on top of your library in any order.",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/d/f/dfaaa58d-89bb-4cb3-96a6-b480e6f6954e.jpg?1783928747"
+    }
+  },
+  {
+    "object": "card",
+    "id": "6ada256f-2e55-4c1f-b4d3-d7b10b498956",
+    "oracle_id": "92eed395-62ca-4293-882b-8565c40daab5",
+    "name": "Sylvan Library",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{G}",
+    "cmc": 2,
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your draw step, you may draw two additional cards. If you do, choose two cards in your hand drawn this turn. For each of those cards, pay 4 life or put the card on top of your library.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/6/a/6ada256f-2e55-4c1f-b4d3-d7b10b498956.jpg?1783918436"
+    }
+  },
+  {
+    "object": "card",
+    "id": "2c523ef7-d6c4-4887-9a4e-0c2bc6f63676",
+    "oracle_id": "4f9e07ae-6341-4b46-9f77-f17ab659d266",
+    "name": "Guardian Project",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{3}{G}",
+    "cmc": 4,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a nontoken creature you control enters, if it doesn't have the same name as another creature you control or a creature card in your graveyard, draw a card.",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/2/c/2c523ef7-d6c4-4887-9a4e-0c2bc6f63676.jpg?1783913302"
+    }
   }
 ]

@@ -10137,6 +10137,14 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
   const effects: Effect[] = [];
   const unhandled: string[] = [];
   let m: RegExpMatchArray | null;
+  // Whole-ability engine primitives.
+  if (/^Exile any number of cards from your hand face down\. Put that many cards from the top of your library into your hand\. Then look at the exiled cards and put them on top of your library in any order\.?$/i.test(text.trim())) {
+    return { effects: [{ kind: 'scrollRack' }], unhandled: [] };
+  }
+  if ((m = text.trim().match(/^you may draw (\w+) additional cards?\. If you do, choose (\w+) cards? in your hand drawn this turn\. For each of those cards, pay (\d+) life or put the card on top of your library\.?$/i))) {
+    const n = wordToNumber(m[1]);
+    if (typeof n === 'number' && wordToNumber(m[2]) === n) return { effects: [{ kind: 'sylvanLibrary', draws: n, life: parseInt(m[3], 10) }], unhandled: [] };
+  }
   const sents = sentences(text);
   let lastStart = 0;
   let curStart = 0;
