@@ -26,6 +26,7 @@ import {
   type Color,
   DEFAULT_CONFIG,
   emptyPool,
+  ManaColor,
 } from './types.js';
 import { Rng } from './rng.js';
 import { type Characteristics, computeCharacteristics } from './characteristics.js';
