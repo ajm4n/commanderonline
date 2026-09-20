@@ -581,3 +581,35 @@ describe('timing and priority', () => {
     expect(d.g.state.turn.step).toBe('main1');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Rebound (CR 702.88)
+// ---------------------------------------------------------------------------
+
+const REBOUND_DRAW = card({ name: 'Rebound Draw', typeLine: 'Sorcery', manaCost: '{U}', cmc: 1, oracleText: 'Draw a card.\nRebound', keywords: ['Rebound'], colors: ['U'], colorIdentity: ['U'] });
+SCRIPTS['Rebound Draw'] = { name: 'Rebound Draw', coverage: 'full', origin: 'hand', abilities: [{ kind: 'spell', effects: [E.draw(1)] }] };
+
+describe('rebound (CR 702.88)', () => {
+  it('a rebound spell cast from hand is exiled as it resolves and may be cast free at the next upkeep', () => {
+    const d = newGame([setup('A', deck([ISLAND], 40)), setup('B', deck([FOREST], 40))]);
+    d.toMainPhase('A');
+    d.put('A', ISLAND);
+    d.give('A', REBOUND_DRAW);
+    const handBefore = d.g.player('A').hand.length;
+    d.cast('A', 'Rebound Draw');
+    d.resolveAll();
+    expect(d.g.player('A').hand.length).toBe(handBefore); // cast one, drew one
+    expect(d.g.player('A').exile.map((id) => d.g.obj(id).card.name)).toContain('Rebound Draw');
+    expect(d.g.player('A').graveyard.map((id) => d.g.obj(id).card.name)).not.toContain('Rebound Draw');
+    // B's turn passes with nothing happening.
+    d.toMainPhase('B');
+    expect(d.g.player('A').exile.map((id) => d.g.obj(id).card.name)).toContain('Rebound Draw');
+    const afterCleanup = d.g.player('A').hand.length; // A discarded to seven at cleanup
+    // A's next upkeep: the delayed trigger offers the free cast (default answer: yes).
+    d.toMainPhase('A');
+    expect(d.g.player('A').exile.map((id) => d.g.obj(id).card.name)).not.toContain('Rebound Draw');
+    expect(d.g.player('A').graveyard.map((id) => d.g.obj(id).card.name)).toContain('Rebound Draw'); // second resolution: graveyard, not exile
+    expect(d.g.player('A').hand.length).toBe(afterCleanup + 2); // draw step + rebound draw
+    expect(d.g.state.delayedTriggers.filter((t) => /Rebound/.test(t.text))).toHaveLength(0);
+  });
+});

@@ -133,7 +133,7 @@ function game(seed = 3): { d: D; p1: PlayerId; p2: PlayerId } {
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -336,5 +336,33 @@ describe('combos and staples played through the engine', () => {
     d.resolve();
     expect(d.g.player(p2).hand.length).toBe(h2 - 1); // Divination left the hand, both draws were stolen
     expect(d.g.player(p1).hand.length).toBe(h1 + 2);
+  });
+  it('Dockside Extortionist counts only artifacts and enchantments on the battlefield', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Mountain', 2);
+    d.put(p2, C('Sol Ring'));
+    d.put(p2, C('Rhystic Study'));
+    d.give(p2, C('Sol Ring')); // in hand: not counted
+    d.g.createObject(C('Sol Ring'), p2, 'graveyard', { skipEvents: true }); // in graveyard: not counted
+    d.put(p1, C('Sol Ring')); // yours: not counted
+    const dock = d.give(p1, C('Dockside Extortionist'));
+    d.cast(dock);
+    d.resolve();
+    expect(d.bf(p1, 'Treasure')).toHaveLength(2);
+  });
+
+  it("Swords to Plowshares exiles the creature and its controller gains life equal to its power", () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Plains', 1);
+    const bear = d.put(p2, C('Grizzly Bears'));
+    const life = d.g.player(p2).life;
+    const swords = d.give(p1, C('Swords to Plowshares'));
+    d.cast(swords);
+    d.targetObject(bear);
+    d.resolve();
+    expect(d.bf(p2, 'Grizzly Bears')).toHaveLength(0);
+    expect(d.g.player(p2).exile.map((id) => d.g.obj(id).card.name)).toContain('Grizzly Bears');
+    expect(d.g.player(p2).life).toBe(life + 2);
+    expect(d.g.player(p1).life).toBe(40);
   });
 });

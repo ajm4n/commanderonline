@@ -1407,8 +1407,10 @@ export class Game {
     const ectx: EffectContext = { sourceId: ctx.sourceId, controller: ctx.controller, targets: ctx.targets ?? [], targetSlots: ctx.targetSlots, triggerContext: ctx.triggerContext ?? {}, x: ctx.x ?? 0, modes: ctx.modes ?? [], memory: ctx.memory ?? {} };
     const cmp = (a: number, op: string, b: number) => (op === '>=' ? a >= b : op === '<=' ? a <= b : op === '==' ? a === b : op === '>' ? a > b : op === '<' ? a < b : a !== b);
     switch (c.kind) {
-      case 'count':
-        return cmp(objectsMatching(this, this.bindFilter(c.filter, ectx), { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }).length, c.op, this.resolveAmount(c.value, ectx));
+      case 'count': {
+        const f = c.filter.zone || c.filter.zoneIn ? c.filter : { ...c.filter, zone: 'battlefield' as const };
+        return cmp(objectsMatching(this, this.bindFilter(f, ectx), { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x }).length, c.op, this.resolveAmount(c.value, ectx));
+      }
       case 'life': {
         const ps = this.resolvePlayers(c.ref, ectx);
         return ps.every((p) => cmp(this.player(p).life, c.op, this.resolveAmount(c.value, ectx)));
@@ -1627,8 +1629,11 @@ export class Game {
     if (a === 'X') return ctx.x;
     const fctx: FilterContext = { sourceId: ctx.sourceId, controller: ctx.controller, x: ctx.x };
     switch (a.kind) {
-      case 'count':
-        return objectsMatching(this, this.bindFilter(a.filter, ctx), fctx).length + (a.plus ?? 0);
+      case 'count': {
+        // "the number of artifacts your opponents control": an unzoned count is a battlefield count (rule 109.2).
+        const f = a.filter.zone || a.filter.zoneIn ? a.filter : { ...a.filter, zone: 'battlefield' as const };
+        return objectsMatching(this, this.bindFilter(f, ctx), fctx).length + (a.plus ?? 0);
+      }
       case 'countersOn':
         return this.resolveObjects(a.ref, ctx).reduce((s, o) => s + (a.counter === 'any' ? Object.values(o.counters).reduce((t, v) => t + (v ?? 0), 0) : (o.counters[a.counter] ?? 0)), 0);
       case 'power':

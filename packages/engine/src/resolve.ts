@@ -184,7 +184,24 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
       }
       return;
     }
-    g.moveObject(obj.id, dest, { cause: 'resolve' });
+    const rebound = dest === 'exile' && /^Rebound\b/m.test(face.oracleText) && obj.castFromZone === 'hand' && !obj.memory['exileOnResolve'];
+    const moved = g.moveObject(obj.id, dest, { cause: 'resolve' });
+    if (rebound && moved) {
+      // Rule 702.88: at the beginning of its owner's next upkeep, they may cast it from exile without paying its mana cost.
+      moved.memory['castableBy'] = item.controller;
+      g.state.delayedTriggers.push({
+        id: g.state.nextEffectId++,
+        event: 'beginningOfUpkeep',
+        filter: { player: 'you' },
+        effects: [{ kind: 'may', prompt: `Rebound: cast ${face.name} from exile without paying its mana cost?`, effects: [{ kind: 'castFrom', what: { ref: 'self' }, free: true }] }],
+        text: `Rebound: cast ${face.name}`,
+        controller: item.controller,
+        sourceId: moved.id,
+        once: true,
+        context: {},
+        sourceZone: 'exile',
+      });
+    }
   }
 }
 
