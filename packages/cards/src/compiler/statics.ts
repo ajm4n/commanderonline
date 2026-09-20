@@ -35,6 +35,8 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
     .replace(/\.$/, '')
     .replace(/\. This effect (?:does not|doesn't) remove .+$/i, '')
     .replace(/\bloses? all other abilities\b/i, (w) => w.replace(/ other/, ''))
+    // Jetmir: "Creatures you control also get +1/+0 and have trample as long as …" — "also" adds nothing.
+    .replace(/^(.+?) also (gets?|has|have) /i, '$1 $2 ')
     .replace(/ and cannot have or gain \w+$/i, '');
   const objRule = (who: string, rule: RuleModification): AbilitySpec[] | null => {
     const a = affectsOf(who);
