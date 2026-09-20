@@ -41,13 +41,14 @@ export function parseCost(text: string): AbilityCost | null {
   // "{2}{W}, {T}, Sacrifice a green creature, a white creature, and a blue creature": one of each,
   // read whole because the list's commas would otherwise split it into separate costs.
   {
-    const se = text.match(/^(?:(.+?),\s*)?Sacrifice ((?:a|an) [\w -]+(?:, (?:a|an) [\w -]+)+,? and (?:a|an) [\w -]+)$/i);
+    const se = text.match(/^(?:(.+?),\s*)?Sacrifice ((?:a|an) [\w -]+(?:, (?:a|an) [\w -]+)*,? and (?:(?:a|an) [\w -]+|~))$/i);
     if (se) {
       const parts = se[2].split(/,? and |, /i).map((x) => x.trim()).filter(Boolean);
-      const nouns = parts.map((x) => parseNoun(x));
+      const self = parts.includes('~');
+      const nouns = parts.filter((x) => x !== '~').map((x) => parseNoun(x));
       const pre = se[1] ? parseCost(se[1]) : {};
-      if (pre && nouns.every((n) => n && n.confident)) {
-        return { ...pre, sacrificeEach: nouns.map((n) => ({ ...n!.filter, zone: 'battlefield' as const })) };
+      if (pre && nouns.length >= 2 && nouns.every((n) => n && n.confident)) {
+        return { ...pre, sacrificeSelf: self || undefined, sacrificeEach: nouns.map((n) => ({ ...n!.filter, zone: 'battlefield' as const })) };
       }
     }
   }
@@ -211,11 +212,19 @@ export function parseCost(text: string): AbilityCost | null {
       cost.sacrificeSelf = true;
       matched = true;
     }
-    if (!matched) kp17: if ((m = p.match(/^Sacrifice ~ and (?:a|an|another) (.+)$/i))) {
-      const noun = parseNoun(`a ${m[1]}`);
-      if (!noun) break kp17;
+    if (!matched) kp17: if ((m = p.match(/^Sacrifice ~ and (any number of|a|an|another|(\w+)) (.+)$/i))) {
+      const noun = parseNoun(`a ${singularize(m[3].replace(/^([\w'-]+)/, (w) => w))}`) ?? parseNoun(`a ${m[3]}`);
+      const n17 = /^any number of$/i.test(m[1]) ? 'any' : m[2] ? wordToNumber(m[2]) : 1;
+      if (!noun || n17 === null || n17 === 'X') break kp17;
       cost.sacrificeSelf = true;
-      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: 1 };
+      cost.sacrifice = { filter: { ...noun.filter, zone: 'battlefield' }, count: n17 };
+      matched = true;
+    }
+    // "Tap any number of untapped creatures you control other than ~ with total power 10 or greater"
+    if (!matched) kp17b: if ((m = p.match(/^Tap any number of untapped (.+?)(?: you control)?( other than ~)? with total power (\d+|X) or greater$/i))) {
+      const noun = parseNoun(`a ${singularize(m[1])}`) ?? parseNoun(`a ${m[1]}`);
+      if (!noun || !noun.confident || m[3] === 'X') break kp17b;
+      cost.tapUntappedTotalPower = { filter: { ...noun.filter, controller: 'you', zone: 'battlefield', other: m[2] ? true : undefined }, power: parseInt(m[3], 10) };
       matched = true;
     }
     if (!matched) kp18: if ((m = p.match(/^Sacrifice (?:a|an) (.+?) attached to ~$/i))) {

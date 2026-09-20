@@ -24,7 +24,8 @@ const TYPE_WORDS: Record<string, string> = {
   kindred: 'Kindred',
   tribal: 'Kindred',
 };
-const SUBTYPE_ALIASES: Record<string, string> = { Aura: 'Aura', Auras: 'Aura', Equipment: 'Equipment', Vehicle: 'Vehicle', Vehicles: 'Vehicle', Saga: 'Saga', Sagas: 'Saga', Treasure: 'Treasure', Treasures: 'Treasure', Food: 'Food', Foods: 'Food', Clue: 'Clue', Clues: 'Clue', Gate: 'Gate', Gates: 'Gate', Desert: 'Desert', Deserts: 'Desert' };
+// Artifact/enchantment token subtypes; without these the "token" head treats them as creature types.
+const SUBTYPE_ALIASES: Record<string, string> = { Blood: 'Blood', Bloods: 'Blood', Powerstone: 'Powerstone', Powerstones: 'Powerstone', Map: 'Map', Maps: 'Map', Incubator: 'Incubator', Incubators: 'Incubator', Junk: 'Junk', Junks: 'Junk', Shard: 'Shard', Shards: 'Shard', Gold: 'Gold', Golds: 'Gold', Lander: 'Lander', Landers: 'Lander', Role: 'Role', Roles: 'Role', Aura: 'Aura', Auras: 'Aura', Equipment: 'Equipment', Vehicle: 'Vehicle', Vehicles: 'Vehicle', Saga: 'Saga', Sagas: 'Saga', Treasure: 'Treasure', Treasures: 'Treasure', Food: 'Food', Foods: 'Food', Clue: 'Clue', Clues: 'Clue', Gate: 'Gate', Gates: 'Gate', Desert: 'Desert', Deserts: 'Desert' };
 const BASIC_TYPES = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
 
 export interface ParsedNoun {
