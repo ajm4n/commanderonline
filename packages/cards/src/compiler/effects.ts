@@ -10890,6 +10890,26 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
           continue;
         }
       }
+      // "You may sacrifice a creature. If you do, X. If you don't, Y" (Crovax, Entrails Feaster): Y is the cost block's else branch.
+      {
+        const lastP = effects[effects.length - 1];
+        if (/^if you (?:don't|do not), /i.test(s) && lastP && lastP.kind === 'ifPays' && !lastP.else?.length) {
+          const inner = parseSentence(s.replace(/^if you (?:don't|do not), /i, ''), ctx);
+          if (inner) {
+            lastP.else = inner;
+            continue;
+          }
+        }
+        // "Sacrifice a creature. If you can't, sacrifice this artifact." (Eldrazi Monument): the forced sacrifice needs a candidate.
+        if (/^if you (?:can't|cannot), /i.test(s) && lastP && lastP.kind === 'sacrificeChoice' && typeof lastP.count === 'number' && (!lastP.who || lastP.who.ref === 'controller')) {
+          const inner = parseSentence(s.replace(/^if you (?:can't|cannot), /i, ''), ctx);
+          if (inner) {
+            effects.pop();
+            effects.push({ kind: 'conditional', if: { kind: 'count', filter: { ...lastP.filter, controller: 'you', zone: 'battlefield' }, op: '>=', value: lastP.count }, then: [lastP], else: inner });
+            continue;
+          }
+        }
+      }
       // "Remove a pupa counter from ~. If you can't, sacrifice it, …" (Cocoon): the removal only happens when a counter is there.
       const lastR = effects[effects.length - 1];
       if (/^if you (?:can't|cannot), /i.test(s) && lastR && lastR.kind === 'removeCounters' && typeof lastR.amount === 'number' && lastR.counter !== 'any') {
