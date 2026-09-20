@@ -2410,7 +2410,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'chooseObjects': {
       const who = e.who ? g.resolvePlayers(e.who, ctx)[0] ?? ctx.controller : ctx.controller;
-      let cands = e.from ? g.resolveObjects(e.from, ctx).filter((o) => matchesFilter(g, o, { ...e.filter, zone: e.filter.zone ?? o.zone }, { sourceId: ctx.sourceId, controller: who, x: ctx.x })).map((o) => o.id) : objectsMatching(g, e.filter, { sourceId: ctx.sourceId, controller: who, x: ctx.x }, e.filter.zone ? undefined : ['battlefield']).map((o) => o.id);
+      // "creatures they control" inside a for-each-player loop: bind controllerRef (and the like) to this iteration first.
+      const bound = g.bindFilter(e.filter, ctx);
+      let cands = e.from ? g.resolveObjects(e.from, ctx).filter((o) => matchesFilter(g, o, { ...bound, zone: bound.zone ?? o.zone }, { sourceId: ctx.sourceId, controller: who, x: ctx.x })).map((o) => o.id) : objectsMatching(g, bound, { sourceId: ctx.sourceId, controller: who, x: ctx.x }, bound.zone ? undefined : ['battlefield']).map((o) => o.id);
       if (e.owner) {
         const owners = new Set(g.resolvePlayers(e.owner, ctx));
         cands = cands.filter((id) => owners.has(g.obj(id).owner));
@@ -2423,8 +2425,9 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const resp = yield* g.ask({ type: 'chooseObjects', player: who, prompt: `Choose ${e.upTo ? 'up to ' : ''}${n}`, candidates: cands, min: e.upTo ? 0 : n, max: n, revealToChooser: true, sourceId: ctx.sourceId ?? undefined });
         ids = resp.type === 'objects' ? resp.ids : cands.slice(0, n);
       }
-      ctx.memory[e.key] = ids;
-      if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) g.state.objects[ctx.sourceId].memory[e.key] = ids;
+      const kept = e.append ? [...((ctx.memory[e.key] as ObjectId[] | undefined) ?? []), ...ids] : ids;
+      ctx.memory[e.key] = kept;
+      if (ctx.sourceId !== null && g.state.objects[ctx.sourceId]) g.state.objects[ctx.sourceId].memory[e.key] = kept;
       return;
     }
     case 'chooseMode': {

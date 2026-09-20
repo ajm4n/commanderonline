@@ -9231,5 +9231,34 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/f/2/f241e5f7-3168-4bd2-b586-185aad3ae9d9.jpg?1783939580"
     }
+  },
+  {
+    "object": "card",
+    "id": "713160be-bcfd-4ef5-9457-c02b926ba06e",
+    "oracle_id": "b0479ca4-e925-4aa7-a4fa-f7e01f899ac5",
+    "name": "Cataclysm",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{2}{W}{W}",
+    "cmc": 4,
+    "type_line": "Sorcery",
+    "oracle_text": "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest.",
+    "colors": [
+      "W"
+    ],
+    "color_identity": [
+      "W"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/7/1/713160be-bcfd-4ef5-9457-c02b926ba06e.jpg?1783938511"
+    }
   }
 ]

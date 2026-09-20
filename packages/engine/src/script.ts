@@ -477,7 +477,7 @@ export type Effect =
   | { kind: 'revealRandomFromHand'; who: Ref; count: Amount }
   | { kind: 'exileTop'; amount: Amount; who?: Ref; faceDown?: boolean; /** Remember the exiled cards under this memory key. */ key?: string }
   | { kind: 'revealHand'; who: Ref; /** Look at only this many cards, chosen at random. */ count?: number; random?: boolean }
-  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref; /** Pick at random instead of choosing. */ random?: boolean }
+  | { kind: 'chooseObjects'; who?: Ref; filter: ObjectFilter; count: Amount; key: string; upTo?: boolean; owner?: Ref; /** Restrict candidates to the objects of a Ref (a previously chosen set). */ from?: Ref; /** Pick at random instead of choosing. */ random?: boolean; /** Add to what earlier choices under this key already hold instead of replacing them ("choose an artifact, a creature, … then sacrifice the rest"). */ append?: boolean }
   | { kind: 'discardObjects'; what: Ref }
   | { kind: 'ringTempts'; who?: Ref }
   | { kind: 'takeInitiative'; who?: Ref }

@@ -8334,7 +8334,7 @@ const PATTERNS: Pattern[] = [
     if (!noun || !noun.confident || typeof n !== 'number') return null;
     const key = 'chosenCards';
     ctx.lastObj = { ref: 'chosen', key };
-    return [{ kind: 'chooseObjects', who: YOU, filter: noun.filter, count: n, key }];
+    return [{ kind: 'chooseObjects', who: YOU, filter: noun.filter, count: n, key, append: true }]; // a second "choose" in the same ability adds to "those cards"
   }],
   // "Exile all cards from target player's hand and graveyard." / "... from all hands and graveyards."
   [/^exile all (.+?) from (all hands and graveyards|.+?'s hand and graveyard|.+? hand and graveyard)$/i, (m, ctx) => {
@@ -8373,6 +8373,7 @@ const PATTERNS: Pattern[] = [
       count: 1,
       key,
       upTo: true,
+      append: true, // one pick per group, all returned together
     }));
     effects.push(/your hand/i.test(m[3]) ? { kind: 'returnToHand', what: { ref: 'chosen', key } } : { kind: 'returnToBattlefield', what: { ref: 'chosen', key } });
     return effects;
@@ -11247,6 +11248,7 @@ function buildKeepList(whoWord: string, baseText: string, listText: string, act:
     count: 1,
     key,
     upTo: true,
+    append: true, // every kept pick survives; only the rest is sacrificed
   }));
   const rest: Ref = { ref: 'all', filter: { ...base.filter, zone: 'battlefield', controllerRef: { ref: 'iter' }, notChosenKey: key } };
   effects.push(act.toLowerCase() === 'exiles' ? { kind: 'exile', what: rest } : { kind: 'sacrifice', what: rest });
