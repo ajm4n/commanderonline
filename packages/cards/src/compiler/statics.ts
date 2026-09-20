@@ -511,6 +511,18 @@ export function parseStatic(line: string, isCreatureOrPermanent: boolean): Abili
       return out;
     }
   }
+  // "During your turn, you may play cards exiled with ~. If you cast a spell this way, pay life
+  // equal to its mana value rather than pay its mana cost."
+  if ((m = L.match(/^(.+?)\. If you cast a spell this way, (?:you )?pay life equal to (?:its|that spell's|the spell's) mana value rather than pay(?:ing)? its mana cost$/i))) {
+    const inner = parseStatic(m[1], isCreatureOrPermanent);
+    if (inner && inner.length && inner.every((x) => x.kind === 'static' && x.rule?.kind === 'custom')) {
+      return inner.map((x) =>
+        x.kind === 'static' && x.rule?.kind === 'custom'
+          ? { ...x, rule: { ...x.rule, data: { ...((x.rule.data as Record<string, unknown>) ?? {}), payLifeEqualToManaValue: true } } }
+          : x,
+      );
+    }
+  }
   // "Equipped creature has lifelink if you control a Cleric, deathtouch if you control a Rogue,
   // ..." — one static per clause. A clause conditioned on the subject itself ("vigilance if it is
   // white") becomes a filter on the subject instead, so it is judged per affected object.

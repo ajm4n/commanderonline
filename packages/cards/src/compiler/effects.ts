@@ -8558,6 +8558,24 @@ const PATTERNS: Pattern[] = [
  * "…and you may spend mana as though it were mana of any color to cast it": mark the
  * play-from-exile (or cast) effect this rider belongs to. Returns false when there is none.
  */
+/** "If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost." */
+function setPayLife(list: Effect[]): boolean {
+  for (let k = list.length - 1; k >= 0; k--) {
+    const e = list[k];
+    if (e.kind === 'playFromExile') {
+      e.payLife = true;
+      return true;
+    }
+    if (e.kind === 'castFrom') {
+      e.payLifeInsteadOfMana = true;
+      return true;
+    }
+    const nested = (e as { effects?: Effect[] }).effects;
+    if (Array.isArray(nested) && setPayLife(nested)) return true;
+  }
+  return false;
+}
+
 function setAnyMana(list: Effect[]): boolean {
   for (let k = list.length - 1; k >= 0; k--) {
     const e = list[k];
@@ -9909,6 +9927,8 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
     // "If you cast a spell this way, you may spend mana as though it were mana of any color to
     // cast it." — a rider on the play-from-exile effect before it.
     if (/^(?:if you cast a spell this way, )?(?:you|they) may spend mana as though it (?:were|was) mana of any (?:colou?r|type) to (?:cast|pay)\b/i.test(s) && setAnyMana(effects)) continue;
+    // "If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost."
+    if (/^if you cast a spell this way, (?:you )?pay life equal to (?:its|that spell's|the spell's) mana value rather than pay(?:ing)? its mana cost$/i.test(s) && setPayLife(effects)) continue;
     // "Any player may pay 5 life. If a player does, counter ~." — the follow-up hangs off the offer.
     if ((m = s.match(/^if (?:a|any) player does, (.+?)\.?$/i))) {
       const host = [...effects].reverse().find((e) => e.kind === 'anyPlayerMay' || e.kind === 'anyPlayerMaySacrifice') as
@@ -10424,6 +10444,12 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       }
     }
     let r = parseSentence(s, ctx);
+    // "You may cast that card by paying life equal to its mana value rather than paying its mana
+    // cost": the alternative cost rides on whatever permission the rest of the sentence grants.
+    if (!r && (m = s.match(/^(.+?) by paying life equal to (?:its|that spell's|the spell's) mana value rather than pay(?:ing)? its mana cost$/i))) {
+      const inner = parseSentence(m[1], ctx);
+      if (inner && setPayLife(inner)) r = inner;
+    }
     // "~ has base power and toughness 4/2 until end of turn and gains first strike until end of
     // turn": one subject, two effects, each carrying its own duration.
     if (!r && (m = s.match(/^(.+?) (until end of turn|until your next turn) and ((?:gains?|has|have|gets?|becomes?) .+)$/i))) {

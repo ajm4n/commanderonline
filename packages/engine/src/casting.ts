@@ -977,6 +977,8 @@ export interface CastOptions {
   faceIndex?: number;
   /** Mana of any type may be spent (colored symbols become generic). */
   anyMana?: boolean;
+  /** "by paying life equal to its mana value rather than paying its mana cost" */
+  payLifeInsteadOfMana?: boolean;
 }
 
 /** The face being cast. */
@@ -1513,9 +1515,19 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
   let cost = opts.free ? { symbols: [], xCount: 0 } : computeCastCost(g, p, obj, faceIndex, { kicker, kicks: Math.max(1, kicks), kickerCosts, alternative: altId ?? (fromZone === 'graveyard' ? 'flashback' : undefined) });
   // "If you cast a spell this way, pay life equal to its mana value rather than paying its mana cost."
   let lifeInsteadOfMana = 0;
-  if (!opts.free && fromZone === 'library') {
+  if (!opts.free && opts.payLifeInsteadOfMana) {
+    lifeInsteadOfMana = g.characteristics(obj.id).manaValue;
+    cost = { symbols: [], xCount: cost.xCount };
+  }
+  if (!opts.free && !opts.payLifeInsteadOfMana && obj.memory['payLifeToCast']) {
+    lifeInsteadOfMana = g.characteristics(obj.id).manaValue;
+    cost = { symbols: [], xCount: cost.xCount };
+  }
+  if (!opts.free && !opts.payLifeInsteadOfMana && !lifeInsteadOfMana) {
+    // The permission that let this spell be cast may charge life instead of mana.
+    const zoneTag: Record<string, ZoneName> = { playFromTop: 'library', playExiledWithSource: 'exile', castExiledWithSource: 'exile', castFromGraveyard: 'graveyard', playLandsFromGraveyard: 'graveyard' };
     for (const r of g.playerRules(p)) {
-      if (r.kind !== 'custom' || r.tag !== 'playFromTop') continue;
+      if (r.kind !== 'custom' || zoneTag[r.tag] !== fromZone) continue;
       const d = (r.data as { payLifeEqualToManaValue?: boolean; filter?: import('./types.js').ObjectFilter } | undefined) ?? {};
       if (!d.payLifeEqualToManaValue) continue;
       if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: p })) continue;

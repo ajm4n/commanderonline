@@ -1550,7 +1550,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         const { castSpell } = await_casting();
         o.memory['castableBy'] = ctx.controller;
         if (e.exileAfter) o.memory['exileOnResolve'] = true;
-        const ok = yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: e.free, anyMana: e.anyManaType });
+        const ok = yield* castSpell(g, ctx.controller, o.id, { type: 'cast', objectId: o.id }, { free: e.free, anyMana: e.anyManaType, payLifeInsteadOfMana: e.payLifeInsteadOfMana });
         if (!ok) {
           delete o.memory['castableBy'];
           delete o.memory['exileOnResolve'];
@@ -1565,6 +1565,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
         o.memory['playableUntil'] = e.duration === 'permanent' ? 'permanent' : g.state.turn.number;
         if (e.forCost) o.memory['playForCost'] = e.forCost;
         if (e.anyMana) o.memory['playAnyMana'] = true;
+        if (e.payLife) o.memory['payLifeToCast'] = true;
       }
       return;
     case 'moveAll': {
