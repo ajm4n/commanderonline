@@ -8,6 +8,8 @@ export interface RefCtx {
   triggerHasObject: boolean;
   /** Bound by a sentence whose comparison defines "the difference". */
   difference?: Amount;
+  /** What "X" stands for once a "where X is …" sentence has defined it. */
+  boundX?: Amount;
   lastPlayer?: Ref | null;
   triggerHasPlayer?: boolean;
   /** Resolve a player phrase ("target player") to a Ref, registering targets when the caller can. */

@@ -116,6 +116,11 @@ export function parseCondition(text: string, ctx: RefCtx): Condition | null {
   if ((m = t.match(/^you have exactly (\w+) cards in hand$/))) return { kind: 'handSize', ref: { ref: 'controller' }, op: '==', value: wordToNumber(m[1]) as number };
   if ((m = t.match(/^you have (\w+) or more opponents$/))) return { kind: 'amount', a: { kind: 'opponents' }, op: '>=', b: wordToNumber(m[1]) ?? 2 };
   if ((m = t.match(/^a player has (\d+) or (less|more) life$/))) return { kind: 'or', cs: [{ kind: 'life', ref: { ref: 'controller' }, op: m[2] === 'less' ? '<=' : '>=', value: parseInt(m[1], 10) }, { kind: 'life', ref: { ref: 'eachOpponent' }, op: m[2] === 'less' ? '<=' : '>=', value: parseInt(m[1], 10) }] };
+  if ((m = t.match(/^x is (greater than or equal to|less than or equal to|greater than|less than|equal to) (.+)$/))) {
+    const b = parseAmount(oc(m, 2), ctx);
+    const op = ({ 'greater than or equal to': '>=', 'less than or equal to': '<=', 'greater than': '>', 'less than': '<', 'equal to': '==' } as Record<string, '>=' | '<=' | '>' | '<' | '=='>)[m[1]];
+    if (b !== null) return { kind: 'amount', a: ctx.boundX ?? 'X', op, b };
+  }
   if ((m = t.match(/^(.+?) is (less than|greater than|fewer than|more than) (\w+)$/))) {
     const a = parseAmount(oc(m, 1), ctx);
     const n = wordToNumber(m[3]);

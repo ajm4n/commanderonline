@@ -184,7 +184,7 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
     const dm2 = line.match(/^Whenever (?:a|an) (.+?) deals damage to you, (.+)$/i);
     if (dm2 && !/^source/i.test(dm2[1])) {
       const noun = parseNoun(`a ${dm2[1]}`);
-      if (noun) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, source: noun.filter }, hasObject: false, hasPlayer: true, rest: dm2[2] };
+      if (noun) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, source: noun.filter }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: dm2[2] };
     }
   }
   {
@@ -1035,7 +1035,7 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
   if ((m = L.match(/^Whenever a creature deals combat damage to you, (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { player: 'you', object: { types: ['Creature'] } }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever you're dealt damage, (.+)$/i)) || (m = L.match(/^Whenever you are dealt damage, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true }, hasObject: false, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^Whenever a source you control deals (noncombat )?damage to (an opponent|a player), (.+)$/i))) return { event: 'dealsDamage', filter: { player: /opponent/i.test(m[2]) ? 'opponent' : 'any', toPlayer: true, source: { controller: 'you' }, combat: m[1] ? false : undefined }, hasObject: false, hasPlayer: true, rest: m[3] };
-  if ((m = L.match(/^Whenever a source you control deals damage to you, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, source: { controller: 'you' } }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever a source you control deals damage to you, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true, source: { controller: 'you' } }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[1] };
   if ((m = L.match(/^Whenever ~ deals combat damage to (a player|an opponent|a player or battle|a player or planeswalker|an opponent or battle), (.+)$/i))) return { event: 'dealtCombatDamageToPlayer', filter: { self: true, player: /opponent/i.test(m[1]) ? 'opponent' : 'any' }, hasObject: true, hasPlayer: true, rest: m[2] };
   if ((m = L.match(/^Whenever ~ attacks and is not blocked, (.+)$/i))) return { event: 'attacksUnblocked', filter: { self: true }, hasObject: true, hasPlayer: true, rest: m[1] };
   if ((m = L.match(/^When you cycle ~, (.+)$/i))) return { event: 'cycled', filter: { self: true }, zone: ['graveyard', 'hand'], hasObject: true, hasPlayer: true, rest: m[1] };
@@ -1061,7 +1061,7 @@ function parseTriggerHeadCore(line: string): TriggerHead | null {
     tf.player = /opponent/i.test(m[2]) ? 'opponent' : 'any';
     return { event: 'dealtCombatDamageToPlayer', filter: tf, hasObject: true, hasPlayer: true, rest: m[3] };
   }
-  if ((m = L.match(/^Whenever a source (?:an opponent controls )?deals damage to you, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true }, hasObject: false, hasPlayer: true, rest: m[1] };
+  if ((m = L.match(/^Whenever a source (?:an opponent controls )?deals damage to you, (.+)$/i))) return { event: 'dealtDamage', filter: { player: 'you', toPlayer: true }, hasObject: true, hasPlayer: true, objectIsSource: true, rest: m[1] };
   if ((m = L.match(/^Whenever (?:a|an) (.+?) (?:you control )?is dealt damage, (.+)$/i))) {
     const tf = nounFilter(`a ${m[1]}${/you control/i.test(m[0]) ? ' you control' : ''}`);
     if (tf) return { event: 'dealtDamage', filter: tf, hasObject: true, hasPlayer: false, rest: m[2] };

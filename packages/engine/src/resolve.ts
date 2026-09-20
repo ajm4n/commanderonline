@@ -1,3 +1,4 @@
+import { costMemory } from './casting.js';
 import type { Game, Gen } from './game.js';
 import type { StackItem, Target, ZoneName } from './types.js';
 import type { TriggeredAbilitySpec, ActivatedAbilitySpec, SpellAbilitySpec } from './script.js';
@@ -47,7 +48,7 @@ export function* resolveTopOfStack(g: Game): Gen {
     triggerContext: item.triggerContext ?? {},
     x: item.xValue ?? 0,
     modes: item.modes ?? [],
-    memory: {},
+    memory: { ...((item.triggerContext?.costMemory as Record<string, unknown> | undefined) ?? (item.kind === 'spell' ? costMemory(src) : {})) },
     stackItemId: item.id,
   };
   if (item.triggerContext?.delayedTargets) {

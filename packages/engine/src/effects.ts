@@ -693,6 +693,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           pos = r.type === 'options' && r.ids[0] === 'bottom' ? 'bottom' : 'top';
         }
         g.moveObject(o.id, 'library', { position: pos });
+        ctx.memory['libraryPlaced'] = [...((ctx.memory['libraryPlaced'] as ObjectId[] | undefined) ?? []), o.id];
       }
       return;
     case 'exert': {
@@ -2222,7 +2223,8 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
       return;
     }
     case 'moveRest': {
-      const ids = ((ctx.memory[e.key] as ObjectId[] | undefined) ?? []).filter((id) => g.state.objects[id]?.zone === 'library');
+      const placed = (ctx.memory['libraryPlaced'] as ObjectId[] | undefined) ?? [];
+      const ids = ((ctx.memory[e.key] as ObjectId[] | undefined) ?? []).filter((id) => g.state.objects[id]?.zone === 'library' && !placed.includes(id));
       if (!ids.length) return;
       const p = g.state.objects[ids[0]].controller;
       if (e.to === 'graveyard' || e.to === 'exile' || e.to === 'hand') {

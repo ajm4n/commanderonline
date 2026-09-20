@@ -377,8 +377,17 @@ function reduceGeneric(cost: ManaCost, n: number): ManaCost {
   return { ...cost, symbols };
 }
 
+/** Objects a cost just sacrificed or exiled, for "the sacrificed creature's power" style references. */
+export function costMemory(obj: GameObject | undefined): Record<string, unknown> {
+  if (!obj) return {};
+  const moved = [...((obj.memory['sacrificedAsCost'] as ObjectId[] | undefined) ?? []), ...((obj.memory['exiledAsCost'] as ObjectId[] | undefined) ?? [])];
+  return moved.length ? { lastMoved: moved } : {};
+}
+
 export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: AbilityCost, x: number, abilityText?: string): Gen<boolean> {
   const ctx = { sourceId: obj.id, controller: p, x };
+  delete obj.memory['sacrificedAsCost'];
+  delete obj.memory['exiledAsCost'];
   if (cost.optional) {
     const { optional: _o, ...rest } = cost;
     void _o;
@@ -688,6 +697,7 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
       if (resp.type !== 'objects') return false;
       ids = resp.ids;
     }
+    obj.memory['sacrificedAsCost'] = ids;
     for (const id of ids) g.moveObject(id, 'graveyard', { cause: 'sacrifice', sourceId: obj.id });
   }
   if (cost.sacrificeEach) {
@@ -1746,11 +1756,11 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
       if (!ok) return false;
       for (const c of alts[0]) g.player(p).manaPool[c]++;
       const extra = spec.effects.filter((e) => e.kind !== 'addMana');
-      if (extra.length) yield* executeEffects(g, extra, { sourceId: id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
+      if (extra.length) yield* executeEffects(g, extra, { sourceId: id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: costMemory(obj) });
     } else {
       const ok = yield* payAbilityCost(g, p, obj, spec.cost, 0, spec.text);
       if (!ok) return false;
-      yield* executeEffects(g, spec.effects, { sourceId: id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: {} });
+      yield* executeEffects(g, spec.effects, { sourceId: id, controller: p, targets: [], triggerContext: {}, x: 0, modes: [], memory: costMemory(obj) });
     }
     g.touch();
     g.emit({ name: 'abilityActivated', objectId: id, playerId: p, data: { mana: true } });
@@ -1805,7 +1815,7 @@ export function* activateAbility(g: Game, p: PlayerId, id: ObjectId, abilityInde
     targetStamps: g.stampTargets(targets),
     xValue: x,
     timestamp: g.now(),
-    triggerContext: { ability: spec, targetSlots: slots },
+    triggerContext: { ability: spec, targetSlots: slots, costMemory: costMemory(obj) },
   };
   g.state.stack.push(item);
   g.touch();

@@ -28,6 +28,8 @@ export interface ParseCtx {
   exploreRef?: Ref;
   /** Bound by a sentence whose comparison defines "the difference". */
   difference?: Amount;
+  /** What "X" stands for once a "where X is …" sentence has defined it (later sentences may test X). */
+  boundX?: Amount;
 }
 
 export function newCtx(partial: Partial<ParseCtx> = {}): ParseCtx {
@@ -410,7 +412,7 @@ function amt(text: string, ctx: ParseCtx) {
     const who = playerRef(hm[1], ctx);
     if (who) return (hm[2].toLowerCase() === 'hand' ? { kind: 'handSize', ref: who } : { kind: 'graveyardSize', ref: who }) as Amount;
   }
-  return parseAmount(text, { self: SELF, difference: ctx.difference, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, resolvePlayer: (p) => playerRef(p, ctx) });
+  return parseAmount(text, { self: SELF, difference: ctx.difference, boundX: ctx.boundX, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, resolvePlayer: (p) => playerRef(p, ctx) });
 }
 
 /** "for each X": a count of matching objects, or any other amount phrase. */
@@ -1103,6 +1105,7 @@ const PATTERNS: Pattern[] = [
     if (!c) return null;
     if (/^(return|tap|untap|exile|destroy) another /i.test(m[0])) (c.pre[0] as { filter: ObjectFilter }).filter.other = true;
     if (m[3]) (c.pre[0] as { count: number }).count = 20;
+    else if (m[2]) (c.pre[0] as { count: number | 'X' }).count = wordToNumber(m[2]) ?? 1;
     const verb = m[1].toLowerCase();
     const eff: Effect = verb === 'return' ? { kind: 'returnToHand', what: c.ref } : verb === 'tap' ? { kind: 'tap', what: c.ref } : verb === 'untap' ? { kind: 'untap', what: c.ref } : verb === 'exile' ? { kind: 'exile', what: c.ref, untilSourceLeaves: !!m[5], remember: 'exiled' } : { kind: 'destroy', what: c.ref };
     if (verb === 'return' && !/ to (?:its|their) owner'?s'? hands?| to your hand/i.test(m[0])) return null;
@@ -9420,7 +9423,7 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if (/^if /i.test(text) && !/ would /i.test(text.split(',')[0])) {
     const cuts: number[] = [];
     for (let k = 3; k < text.length; k++) if (text[k] === ',') cuts.push(k);
-    const rctx = { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer };
+    const rctx = { self: SELF, lastObj: ctx.lastObj, triggerHasObject: ctx.triggerHasObject, lastPlayer: ctx.lastPlayer, triggerHasPlayer: ctx.triggerHasPlayer, boundX: ctx.boundX };
     for (const pass of [0, 1]) {
       for (const k of cuts) {
         const condText = text.slice(3, k).trim();
@@ -9480,7 +9483,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^(.+?), where X is ([^,]+?), (.+)$/i)) && /\bX\b/.test(m[1])) {
     const a = amt(m[2], ctx);
     const inner = a !== null ? parseSentence(`${m[1]}, ${m[3]}`, ctx) : null;
-    if (inner) return inner.map((e) => substituteX(e, a!));
+    if (inner) {
+      ctx.boundX = a!;
+      return inner.map((e) => substituteX(e, a!));
+    }
   }
   if ((m = text.match(/^(.+?), where X is (\d+) minus (.+)$/i))) {
     const mm = m;
@@ -9493,7 +9499,10 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     // Fall through when either half fails: a later pattern may take the whole sentence.
     const a = amt(m[2], ctx);
     const inner = parseSentence(m[1], ctx);
-    if (inner && a !== null) return inner.map((e) => substituteX(e, a));
+    if (inner && a !== null) {
+      ctx.boundX = a;
+      return inner.map((e) => substituteX(e, a));
+    }
   }
   if ((m = text.match(/^for each (.+?), (.+)$/i))) {
     const noun = parseNoun(m[1]);
@@ -9653,9 +9662,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
     const out: Effect[] = [];
     let ok = true;
     const verb = parts[0].match(/^(put|destroy|exile|return|create|tap|untap|sacrifice|counter|draw|discard|gain|lose|remove|reveal|search|mill|scry)\b/i)?.[1];
+    // "Each player discards their hand, then draws seven cards": a later clause that starts with a
+    // third-person verb keeps the first clause's player subject.
+    const sharedSubject = parts[0].match(/^((?:target |each |that |the |another )?(?:players?|opponents?|its controller|its owner|defending player|the monarch|each other player))\b/i)?.[1] ?? null;
     for (let pi = 0; pi < parts.length; pi++) {
       const p = parts[pi];
-      let r = parseSentence(p, ctx);
+      let r: Effect[] | null = null;
+      if (pi > 0 && sharedSubject && /^(?:then )?(?:loses|gains|deals|draws|discards|mills|sacrifices|puts|exiles|reveals|shuffles|creates|taps|untaps|returns|destroys|searches|scries|surveils|investigates|gets)\b/i.test(p)) r = parseSentence(`${/^target /i.test(sharedSubject) ? 'that player' : sharedSubject} ${p.replace(/^then /i, '')}`, ctx);
+      if (!r) r = parseSentence(p, ctx);
       if (!r && pi > 0 && verb && !/^(you|each player|each opponent|target player|target opponent|that player|those players|it|they|~|its|their)\b/i.test(p)) r = parseSentence(`${verb} ${p}`, ctx);
       // "target creature gains haste and gets +X/+0": the second clause shares the first clause's
       // subject. Reuse the target the first clause chose rather than adding a second target slot.
@@ -9897,10 +9911,14 @@ export function parseSentence(s: string, ctx: ParseCtx): Effect[] | null {
   if ((m = text.match(/^(.+?), then (.+)$/i)) && !/^(?:if|when|whenever|until|unless)\b/i.test(text)) {
     const saved = ctx.targets.length;
     const a = parseSentence(m[1], ctx) ?? parseSentence(`you ${m[1]}`, ctx);
-    let b = a ? parseSentence(m[2], ctx) ?? parseSentence(`you ${m[2]}`, ctx) : null;
+    // "Each player discards their hand, then draws seven cards": a third-person verb after ", then"
+    // keeps the first clause's subject (an imperative "then draw a card" is still you).
+    const sub = m[1].match(/^((?:target |each |that |the )?[~\w' -]+?) (?:loses?|gains?|deals?|fights?|attacks?|blocks?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
+    const thirdPerson = /^(?:loses|gains|deals|fights|attacks|blocks|draws|discards|mills|sacrifices|puts|exiles|reveals|shuffles|creates|taps|untaps|returns|destroys|searches|scries|surveils|gets|has|may|can't|cannot)\b/i.test(m[2]);
+    let b = a && sub && thirdPerson ? parseSentence(`${sub[1]} ${m[2]}`, ctx) : null;
+    if (a && !b) b = parseSentence(m[2], ctx) ?? parseSentence(`you ${m[2]}`, ctx);
     if (a && !b) {
       // "Each player discards their hand, then returns up to three cards ...": shared subject.
-      const sub = m[1].match(/^((?:target |each |that |the )?[~\w' -]+?) (?:loses?|gains?|deals?|fights?|attacks?|blocks?|draws?|discards?|mills?|sacrifices?|puts?|exiles?|reveals?|shuffles?|creates?|taps?|untaps?|returns?|destroys?|searches)\b/i);
       if (sub) b = parseSentence(`${sub[1]} ${m[2]}`, ctx);
     }
     if (a && b) return [...a, ...b];
@@ -10581,6 +10599,19 @@ export function parseEffects(text: string, ctx: ParseCtx): { effects: Effect[]; 
       unhandled.push(s);
       effects.push({ kind: 'manual', text: s });
     }
+  }
+  // "Reveal cards … until you reveal X. Put that card into your hand and exile all other cards revealed
+  // this way." — the reveal-until already parks the non-matches somewhere, so the follow-up decides where.
+  for (let i = 0; i < effects.length; i++) {
+    const r = effects[i];
+    if (r.kind !== 'revealUntil' || r.destination !== 'hold' || !r.key) continue;
+    const j = effects.findIndex((e, k) => k > i && e.kind === 'moveRest' && e.key === r.key);
+    if (j < 0) continue;
+    const to = (effects[j] as { to: string }).to;
+    const rest = ({ exile: 'exile', graveyard: 'graveyard', hand: 'hand', bottom: 'bottom', bottomRandom: 'bottom', top: 'top', shuffle: 'shuffle' } as Record<string, typeof r.rest | undefined>)[to];
+    if (!rest) continue;
+    r.rest = rest;
+    effects.splice(j, 1);
   }
   return { effects, unhandled };
 }
