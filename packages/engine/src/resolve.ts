@@ -169,7 +169,8 @@ function* resolveSpell(g: Game, item: StackItem, ctx: EffectContext): Gen {
   g.emit({ name: 'spellResolved', objectId: item.sourceId, playerId: item.controller });
   if (obj && !isCopy && obj.zone === 'stack') {
     let dest: ZoneName = 'graveyard';
-    if (obj.castFromZone === 'graveyard' || obj.memory['exileOnResolve']) dest = 'exile';
+    if ((obj.castFromZone === 'graveyard' && !obj.memory['escaped']) || obj.memory['exileOnResolve']) dest = 'exile';
+    delete obj.memory['escaped']; // an escaped spell goes back to the graveyard like any other
     if (/^Rebound\b/m.test(face.oracleText) && obj.castFromZone === 'hand') dest = 'exile';
     if (obj.isCommander && dest === 'graveyard') {
       // Commander in graveyard offered to command zone by SBA.

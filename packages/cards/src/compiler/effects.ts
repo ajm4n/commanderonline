@@ -2153,6 +2153,17 @@ const PATTERNS: Pattern[] = [
     return who ? [{ kind: 'applyRule', rule: { kind: 'custom', tag: 'cantActivateAbilities', data: /mana abilities/i.test(m[0]) ? { exceptMana: true } : {} }, on: who, duration: / until end of turn$| this turn$/i.test(m[0]) ? 'endOfTurn' : 'permanent' }] : null;
   }],
   // "you may pay {1}. If you do, copy that ability."
+  // Thousand-Year Storm: "copy it for each other instant and sorcery spell you've cast before it this turn"
+  [/^copy (?:it|that spell) for each other (instant and sorcery|instant or sorcery|instant|sorcery|creature|noncreature) spell you(?:'ve| have) cast before it this turn(?:\. you may choose new targets for the cop(?:y|ies))?$/i, (m) => {
+    const kind = m[1].toLowerCase();
+    const filter: ObjectFilter = /instant (?:and|or) sorcery/.test(kind) ? { types: ['Instant', 'Sorcery'] } : kind === 'noncreature' ? { notTypes: ['Creature'] } : { types: [kind.charAt(0).toUpperCase() + kind.slice(1)] };
+    return [{ kind: 'copySpell', what: { ref: 'stackTarget' }, count: { kind: 'sum', parts: [{ kind: 'eventsThisTurn', event: 'cast', player: 'you', filter }, -1] } }];
+  }],
+  // Bonus Round: "that player copies it and may choose new targets for the copy"
+  [/^(that player|its controller|you) cop(?:y|ies) (?:it|that spell)(?: and may choose new targets for the copy)?$/i, (m, ctx) => {
+    const who: Ref = /^you$/i.test(m[1]) ? YOU : m[1].toLowerCase() === 'its controller' ? { ref: 'controllerOf', of: { ref: 'stackTarget' } } : ctx.lastPlayer ?? { ref: 'triggerPlayer' };
+    return [{ kind: 'copySpell', what: { ref: 'stackTarget' }, controller: who }];
+  }],
   [/^copy (?:that|the) (?:ability|spell or ability)(?: for each (.+))?$/i, (m, ctx) => {
     void ctx;
     if (m[1]) return null;

@@ -567,7 +567,8 @@ export function* payAbilityCost(g: Game, p: PlayerId, obj: GameObject, cost: Abi
     const cands = g.player(p).graveyard.filter((id) => matchesFilter(g, g.obj(id), { ...cost.exileFromGraveyard!.filter, zone: 'graveyard' }, ctx));
     if (cands.length < cnt(cost.exileFromGraveyard.count, cands.length)) return false;
   }
-  if (cost.exileObjects) {
+  if (cost.exileObjects && !Array.isArray(obj.memory['exiledAsCost'])) {
+    // (Already paid above when the cards were exiled; this only guards costs that never reached that step.)
     const cands = objectsMatching(g, cost.exileObjects.filter, ctx);
     if (cost.exileObjects.count !== 'any' && cands.length < cnt(cost.exileObjects.count, cands.length)) return false;
   }
@@ -915,6 +916,33 @@ export function playableFromTop(g: Game, p: PlayerId, obj: GameObject): boolean 
 const PERMANENT_TYPES = ['Artifact', 'Creature', 'Enchantment', 'Planeswalker', 'Battle'] as const;
 
 /**
+ * Escape (rule 702.138): the card's own "Escape—{cost}, Exile N other cards from your graveyard." line, or escape
+ * granted by a player rule (Underworld Breach: mana cost plus exiling three other cards).
+ */
+export function escapeCost(g: Game, obj: GameObject): { mana: string; exile: number } | null {
+  const m = obj.card.oracleText.match(/^Escape—(\{[^\n]*?\}), Exile (\w+) other cards? from your graveyard/m);
+  if (m) {
+    const words: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+    const n = words[m[2].toLowerCase()] ?? parseInt(m[2], 10);
+    if (Number.isFinite(n)) return { mana: m[1], exile: n };
+  }
+  for (const r of g.playerRules(obj.owner)) {
+    if (r.kind !== 'custom' || r.tag !== 'grantEscape') continue;
+    const d = (r.data as { filter?: import('./types.js').ObjectFilter; exile?: number } | undefined) ?? {};
+    if (d.filter && !matchesFilter(g, obj, { ...d.filter, zone: undefined }, { sourceId: null, controller: obj.owner })) continue;
+    return { mana: obj.card.manaCost ?? '', exile: d.exile ?? 3 };
+  }
+  return null;
+}
+
+/** Can this graveyard card be cast with escape right now (enough other cards to exile)? */
+function canEscape(g: Game, p: PlayerId, obj: GameObject): boolean {
+  if (obj.zone !== 'graveyard' || obj.owner !== p) return false;
+  const esc = escapeCost(g, obj);
+  return !!esc && g.player(p).graveyard.filter((id) => id !== obj.id).length >= esc.exile;
+}
+
+/**
  * Muldrotha: "cast a permanent spell of each permanent type from your graveyard" each turn. The first permanent type
  * of the card not yet used this turn, or undefined when every type it has is spent.
  */
@@ -935,6 +963,7 @@ function castableFrom(g: Game, p: PlayerId, obj: GameObject): boolean {
   if (obj.zone === 'hand' || obj.zone === 'command') return true;
   if (obj.zone === 'graveyard') {
     if ((obj.owner === p && /^Flashback/m.test(obj.card.oracleText)) || obj.memory['castableBy'] === p) return true;
+    if (canEscape(g, p, obj)) return true;
     if (obj.owner !== p) return false;
     for (const r of g.playerRules(p)) {
       if (r.kind !== 'custom' || r.tag !== 'castFromGraveyard') continue;
@@ -1030,7 +1059,8 @@ export function computeCastCost(g: Game, p: PlayerId, obj: GameObject, faceIndex
   else if (alt) cost = parseManaCost(alt.cost.mana ?? '');
   else if (opts.alternative === 'flashback' && zone === 'graveyard') {
     const fb = obj.card.oracleText.match(/Flashback (\{[^\n]+?\})(?:\s|$)/);
-    cost = parseManaCost(fb?.[1] ?? face.manaCost);
+    const esc = fb ? null : escapeCost(g, obj);
+    cost = parseManaCost(fb?.[1] ?? esc?.mana ?? face.manaCost);
   } else if (typeof obj.memory['playForCost'] === 'string' && zone === 'exile') {
     // Airbend and similar: cast it from exile for a fixed cost instead of its mana cost.
     cost = parseManaCost(obj.memory['playForCost'] as string);
@@ -1691,6 +1721,19 @@ export function* castSpell(g: Game, p: PlayerId, id: ObjectId, resp: Extract<Res
     if (!ok) {
       revert();
       return false;
+    }
+  }
+  // Escape: exile the other cards from the graveyard as part of the cost (rule 702.138a).
+  if (fromZone === 'graveyard' && !/^Flashback/m.test(face.oracleText) && obj.memory['castableBy'] !== p) {
+    const esc = escapeCost(g, obj);
+    if (esc) {
+      const ok = yield* payAbilityCost(g, p, obj, { exileObjects: { filter: { zone: 'graveyard', owner: 'you' }, count: esc.exile } }, x);
+      if (!ok) {
+        revert();
+        return false;
+      }
+      obj.memory['escaped'] = true;
+      obj.additionalCostsPaid.push('escape');
     }
   }
   // "You may cast a permanent spell from your graveyard by sacrificing a land in addition to

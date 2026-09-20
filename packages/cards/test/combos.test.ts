@@ -133,7 +133,7 @@ function game(seed = 3, commanders: CardData[] = [], config: Partial<import('@co
 
 describe('combos and staples played through the engine', () => {
   it('every card in the suite compiles fully', () => {
-    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine'];
+    const names = ["Thassa's Oracle", 'Blood Artist', 'Zulaport Cutthroat', 'Wrath of God', 'Sanguine Bond', 'Exquisite Blood', 'Grave Pact', 'Fling', 'Chaos Warp', 'Mana Drain', 'Wheel of Fortune', 'Peregrine Drake', 'Kiki-Jiki, Mirror Breaker', 'Esper Sentinel', 'Walking Ballista', 'Grim Hireling', 'Living Death', 'Notion Thief', 'Dockside Extortionist', 'Swords to Plowshares', 'Rhystic Study', 'Skullclamp', 'Swan Song', 'Aven Mindcensor', 'Cultivate', 'Edgar Markov', 'Muldrotha, the Gravetide', 'Niv-Mizzet, Parun', 'The Gitrog Monster', 'Animate Dead', 'Guardian Project', 'Sylvan Library', 'Scroll Rack', 'Krosan Grip', 'Damn', 'Anointed Procession', 'Parallel Lives', 'Doubling Season', 'Impact Tremors', 'Sword of Feast and Famine', 'Underworld Breach', 'Brain Freeze', 'Thousand-Year Storm', 'Bonus Round'];
     const notFull = names.filter((n) => scriptFor(C(n)).coverage !== 'full').map((n) => `${n}: ${scriptFor(C(n)).unhandledText?.join(' / ')}`);
     expect(notFull).toEqual([]);
   });
@@ -641,5 +641,42 @@ describe('combos and staples played through the engine', () => {
     expect(d.g.player(p2).life).toBe(36); // 2/2 + 2/+2
     expect(d.g.player(p2).hand.length).toBe(hand2 - 1);
     expect(d.g.state.battlefield.filter((id) => d.g.obj(id).controller === p1 && d.g.obj(id).card.name === 'Forest').every((id) => !d.g.obj(id).tapped)).toBe(true);
+  });
+  it('Underworld Breach lets you escape a spell from the graveyard by exiling three other cards', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Island', 2);
+    d.put(p1, C('Underworld Breach'));
+    const freeze = d.g.createObject(C('Brain Freeze'), p1, 'graveyard', { skipEvents: true }).id;
+    for (let i = 0; i < 3; i++) d.g.createObject(C('Plains'), p1, 'graveyard', { skipEvents: true });
+    d.g.refreshDecision();
+    d.until((x) => x.type === 'priority' && x.player === p1);
+    expect(d.prio().playableCards).toContain(freeze);
+    const lib2 = d.g.player(p2).library.length;
+    d.cast(freeze);
+    d.targetPlayer(p2);
+    d.resolve();
+    expect(d.g.player(p2).library.length).toBe(lib2 - 3);
+    expect(d.g.player(p1).exile).toHaveLength(3); // the three Plains
+    expect(d.g.player(p1).graveyard.map((id) => d.g.obj(id).card.name)).toContain('Brain Freeze'); // back to the graveyard, not exiled
+    // With only Brain Freeze left there is nothing to exile, so it is no longer castable.
+    d.until((x) => x.type === 'priority' && x.player === p1);
+    expect(d.prio().playableCards).not.toContain(freeze);
+  });
+
+  it('Thousand-Year Storm copies the second spell once', () => {
+    const { d, p1, p2 } = game();
+    d.lands(p1, 'Island', 4);
+    d.put(p1, C('Thousand-Year Storm'));
+    const f1 = d.give(p1, C('Brain Freeze'));
+    const f2 = d.give(p1, C('Brain Freeze'));
+    const lib2 = d.g.player(p2).library.length;
+    d.cast(f1);
+    d.targetPlayer(p2);
+    d.resolve();
+    expect(d.g.player(p2).library.length).toBe(lib2 - 3); // no earlier spell: no copies
+    d.cast(f2);
+    d.targetPlayer(p2);
+    d.resolve();
+    expect(d.g.player(p2).library.length).toBe(lib2 - 9); // original + one copy
   });
 });

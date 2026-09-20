@@ -1366,6 +1366,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
     }
     case 'copySpell': {
       const n = e.count !== undefined ? amt(e.count) : 1;
+      const copyController = e.controller ? g.resolvePlayers(e.controller, ctx)[0] ?? ctx.controller : ctx.controller;
       for (const t of g.resolveRef(e.what, ctx)) {
         if (t.kind !== 'stackItem') continue;
         const item = g.state.stack.find((s) => s.id === t.id);
@@ -1376,7 +1377,7 @@ export function* executeEffect(g: Game, e: Effect, ctx: EffectContext): Gen {
           continue;
         }
         for (let i = 0; i < n; i++) {
-          const copy = { ...item, id: g.state.nextStackId++, controller: ctx.controller, timestamp: g.now(), text: `${item.text} (copy)`, copiedCard: g.state.objects[item.sourceId]?.card, targets: [...item.targets], targetStamps: item.targetStamps ? [...item.targetStamps] : undefined };
+          const copy = { ...item, id: g.state.nextStackId++, controller: copyController, timestamp: g.now(), text: `${item.text} (copy)`, copiedCard: g.state.objects[item.sourceId]?.card, targets: [...item.targets], targetStamps: item.targetStamps ? [...item.targetStamps] : undefined };
           // Rule 707.10c: the copy's controller may choose new targets.
           const srcObj = g.state.objects[item.sourceId];
           if (srcObj && item.targets.some((t) => t.kind !== 'none')) {

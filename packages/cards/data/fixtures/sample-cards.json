@@ -8121,5 +8121,126 @@
     "image_uris": {
       "normal": "https://cards.scryfall.io/normal/front/c/7/c7710eb5-c56a-437b-8847-2a829c404d47.jpg?1783930094"
     }
+  },
+  {
+    "object": "card",
+    "id": "0e51d796-7279-4c06-87f0-37adbdaa41df",
+    "oracle_id": "27e0948b-9916-473b-8d8c-a51bdfbc7457",
+    "name": "Underworld Breach",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}",
+    "cmc": 2,
+    "type_line": "Enchantment",
+    "oracle_text": "Each nonland card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard. (You may cast cards from your graveyard for their escape cost.)\nAt the beginning of the end step, sacrifice this enchantment.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/0/e/0e51d796-7279-4c06-87f0-37adbdaa41df.jpg?1783931543"
+    }
+  },
+  {
+    "object": "card",
+    "id": "3a2d7cf9-dddb-4de3-b4f2-c52e3ec8fb4b",
+    "oracle_id": "464c0150-3dbc-403b-9ada-fef25ab1f29d",
+    "name": "Brain Freeze",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{U}",
+    "cmc": 2,
+    "type_line": "Instant",
+    "oracle_text": "Target player mills three cards.\nStorm (When you cast this spell, copy it for each spell cast before it this turn. You may choose new targets for the copies.)",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": [
+      "Storm",
+      "Mill"
+    ],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/3/a/3a2d7cf9-dddb-4de3-b4f2-c52e3ec8fb4b.jpg?1783939313"
+    }
+  },
+  {
+    "object": "card",
+    "id": "76c48a67-1410-40f1-9b93-0172d85e4688",
+    "oracle_id": "dd4cf149-2fae-40e5-b50b-639f6bcec65e",
+    "name": "Thousand-Year Storm",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{4}{U}{R}",
+    "cmc": 6,
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever you cast an instant or sorcery spell, copy it for each other instant and sorcery spell you've cast before it this turn. You may choose new targets for the copies.",
+    "colors": [
+      "U",
+      "R"
+    ],
+    "color_identity": [
+      "U",
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/7/6/76c48a67-1410-40f1-9b93-0172d85e4688.jpg?1783909050"
+    }
+  },
+  {
+    "object": "card",
+    "id": "e21aa266-4264-4e02-9403-02930e641573",
+    "oracle_id": "40ab2b22-9cf6-4a73-a05f-6ce496d10bf7",
+    "name": "Bonus Round",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{R}{R}",
+    "cmc": 3,
+    "type_line": "Sorcery",
+    "oracle_text": "Until end of turn, whenever a player casts an instant or sorcery spell, that player copies it and may choose new targets for the copy.",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "keywords": [],
+    "legalities": {
+      "commander": "legal"
+    },
+    "games": [
+      "paper"
+    ],
+    "digital": false,
+    "image_uris": {
+      "normal": "https://cards.scryfall.io/normal/front/e/2/e21aa266-4264-4e02-9403-02930e641573.jpg?1783934859"
+    }
   }
 ]

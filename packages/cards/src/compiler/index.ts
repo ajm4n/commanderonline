@@ -126,6 +126,18 @@ function compileFace(card: CardData, faceName: string, text: string, typeLine: s
       line = line.replace(/^Solved — /i, '');
       solvedFrom = abilities.length;
     }
+    // Underworld Breach: "Each nonland card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard."
+    {
+      const bm = line.match(/^Each (nonland card|card|creature card|instant and sorcery card) in your graveyard has escape\. The escape cost is equal to the card's mana cost plus exile (\w+) other cards? from your graveyard\.?$/i);
+      const n = bm ? wordToNumber(bm[2]) : null;
+      if (bm && typeof n === 'number') {
+        const what = bm[1].toLowerCase();
+        const filter: import('@commander/engine').ObjectFilter = what === 'nonland card' ? { nonland: true } : what === 'creature card' ? { types: ['Creature'] } : what === 'instant and sorcery card' ? { types: ['Instant', 'Sorcery'] } : {};
+        abilities.push({ kind: 'static', text: line, ruleAffects: 'controller', rule: { kind: 'custom', tag: 'grantEscape', data: { filter, exile: n } } });
+        compiledLines.push(line);
+        continue;
+      }
+    }
     // Animate Dead / Dance of the Dead / Necromancy: the whole reanimation trigger is one engine effect.
     {
       const rm = line.match(/^When ~ enters, if it is on the battlefield, (?:it loses "enchant creature card in a graveyard" and gains|it becomes an Aura with) "enchant creature put onto the battlefield with ~\." (Return enchanted creature card to the battlefield|Put enchanted creature card onto the battlefield( tapped)?|Put target creature card from a graveyard onto the battlefield) under your control and attach ~ to it\. When ~ leaves the battlefield, that creature's controller sacrifices it\.$/i);

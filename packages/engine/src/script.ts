@@ -362,7 +362,7 @@ export type Effect =
   | { kind: 'shuffle'; who?: Ref }
   | { kind: 'gainControl'; what: Ref; duration?: Duration; who?: Ref }
   | { kind: 'exchangeControl'; a: Ref; b: Ref }
-  | { kind: 'copySpell'; what: Ref; count?: Amount }
+  | { kind: 'copySpell'; what: Ref; count?: Amount; /** Who controls the copies (default: this effect's controller). */ controller?: Ref }
   /** Copy a card (not a spell): a token copy is created in exile that its controller may then cast ("Copy target instant card in your graveyard. You may cast the copy"). */
   | { kind: 'copyCard'; what: Ref }
   | { kind: 'fight'; a: Ref; b: Ref; /** "deals damage equal to its toughness" */ useToughness?: boolean }
